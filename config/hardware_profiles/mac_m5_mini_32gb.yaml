@@ -1,0 +1,117 @@
+# ============================================================
+# Hardware Profile: Mac Mini M5 — Template (update on purchase)
+# ============================================================
+
+profile:
+  name: "mac_m5_mini_32gb"
+  description: "Mac Mini M5, 32GB unified memory (placeholder)"
+  platform: "macos"
+  chip_family: "apple_silicon"
+  chip_model: "m5"
+  python_min_version: "3.11"
+
+memory:
+  total_gb: 32
+  os_reserved_gb: 4
+  framework_reserved_gb: 2
+  available_for_models_gb: 26
+  max_concurrent_models: 3
+  max_primary_model_size_gb: 14
+  max_secondary_model_size_gb: 7
+
+storage:
+  internal:
+    total_gb: 512
+    mount_path: "/"
+    enabled: true
+    uses: [python_envs, source_code, config_files]
+  external:
+    total_gb: 1000
+    mount_path: "/Volumes/MAC_MINI_1TB"
+    enabled: true
+    uses: [llm_models, checkpoints, logs, datasets, vector_stores]
+
+paths:
+  workspace_root: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+  models:
+    ollama:      "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/ollama"
+    lmstudio:    "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/lmstudio"
+    huggingface: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/hf"
+  runtime:
+    checkpoints:  "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/checkpoints"
+    logs:         "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
+    vector_store: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/vector_store"
+    datasets:     "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/data"
+  internal:
+    venv:   "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv"
+    source: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+
+local_services:
+  ollama:
+    enabled: true
+    base_url: "http://localhost:11434"
+    env_var_override: "OLLAMA_BASE_URL"
+  lmstudio:
+    enabled: false
+    base_url: "http://localhost:1234/v1"
+    env_var_override: "LMSTUDIO_BASE_URL"
+
+models:
+  primary:
+    provider: "ollama"
+    model_id: "llama3.3:70b-instruct-q2_K"
+    estimated_size_gb: 26.0
+    use_cases: [general_reasoning, writing, analysis, complex_tasks]
+    quantization: "q2_K"
+  router:
+    provider: "ollama"
+    model_id: "qwen2.5:7b"
+    estimated_size_gb: 4.7
+    use_cases: [routing, classification, supervisor]
+    quantization: "q4_K_M"
+  embeddings:
+    provider: "ollama"
+    model_id: "nomic-embed-text"
+    estimated_size_gb: 0.3
+    use_cases: [embeddings, rag, semantic_search]
+    quantization: null
+  cloud_fallback:
+    openai:
+      model_id: "gpt-4o"
+      use_cases: [frontier_reasoning]
+    anthropic:
+      model_id: "claude-opus-4-6"
+      use_cases: [frontier_reasoning, complex_code]
+
+safeguards:
+  default_recursion_limit: 20
+  max_recursion_limit: 40
+  default_token_budget: 100000
+  max_token_budget: 300000
+  loop_detection_window: 5
+  loop_detection_threshold: 3
+  max_errors_per_run: 3
+  step_counter_enabled: true
+  human_interrupt_on_irreversible: true
+
+observability:
+  langsmith:
+    enabled: true
+    project_name: "local-agents-m5"
+    env_var: "LANGSMITH_API_KEY"
+  local_logging:
+    enabled: true
+    format: "json"
+    log_dir: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
+    rotation: "daily"
+    retention_days: 30
+
+security:
+  secret_backend: "keychain"
+  keychain_service_names:
+    openai: "openai"
+    anthropic: "anthropic"
+    langsmith: "langsmith"
+  prompt_injection_guard: true
+  tool_permission_enforcement: true
+  git_secret_scanning: true

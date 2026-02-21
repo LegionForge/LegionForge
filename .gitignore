@@ -1,0 +1,48 @@
+# ── SECRETS — NEVER COMMIT ───────────────────────────────────
+.env.secrets
+.env.local
+.env.production
+*.key
+*.pem
+secrets/
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+
+# ── Virtual Environments ─────────────────────────────────────
+venv/
+.venv/
+
+# ── LangGraph Runtime ────────────────────────────────────────
+.langgraph/
+.langchain/
+
+# ── Model Files ──────────────────────────────────────────────
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.onnx
+
+# ── Logs & Runtime Data ──────────────────────────────────────
+logs/
+*.log
+checkpoints/
+*.db
+*.sqlite
+vector_store/
+
+# ── macOS ────────────────────────────────────────────────────
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# ── IDEs ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+.cursor/
