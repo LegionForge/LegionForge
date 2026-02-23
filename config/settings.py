@@ -57,9 +57,7 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_sizes(self) -> MemoryConfig:
-        max_combined = (
-            self.max_primary_model_size_gb + self.max_secondary_model_size_gb
-        )
+        max_combined = self.max_primary_model_size_gb + self.max_secondary_model_size_gb
         if max_combined > self.available_for_models_gb:
             raise ValueError(
                 f"Primary + secondary model sizes exceed available memory."
@@ -233,17 +231,12 @@ class HardwareSettings(BaseModel):
         if self.observability.langsmith.enabled:
             os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
             os.environ.setdefault(
-                "LANGCHAIN_PROJECT",
-                self.observability.langsmith.project_name
+                "LANGCHAIN_PROJECT", self.observability.langsmith.project_name
             )
         os.environ.setdefault(
-            "AGENT_MAX_RECURSION",
-            str(self.safeguards.max_recursion_limit)
+            "AGENT_MAX_RECURSION", str(self.safeguards.max_recursion_limit)
         )
-        os.environ.setdefault(
-            "AGENT_MAX_TOKENS",
-            str(self.safeguards.max_token_budget)
-        )
+        os.environ.setdefault("AGENT_MAX_TOKENS", str(self.safeguards.max_token_budget))
 
     def summarize(self) -> str:
         return (
@@ -269,12 +262,37 @@ class HardwareSettings(BaseModel):
 PROFILES_DIR = Path(__file__).parent / "hardware_profiles"
 DEFAULT_PROFILE = "mac_m4_mini_16gb"
 
+# Project root is always the directory containing this file's parent (config/).
+# This makes workspace_root portable across any machine or CI environment.
+# Override with WORKSPACE_ROOT env var if you need a non-standard location.
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def _resolve_paths(raw: dict, project_root: Path) -> None:
+    """Resolve relative subpaths in the YAML dict against project_root.
+
+    Hardware profile YAMLs store subdirectory paths as relative fragments
+    (e.g. "models/ollama"). This function resolves them to absolute paths
+    at load time so the rest of the framework always works with absolute paths.
+    """
+    paths = raw.setdefault("paths", {})
+    paths["workspace_root"] = str(project_root)
+
+    for category in ("models", "runtime", "internal"):
+        section = paths.get(category, {})
+        for key, val in section.items():
+            if val is not None and not os.path.isabs(str(val)):
+                section[key] = str(project_root / val)
+
+    # Resolve observability log_dir if it's a relative path
+    log_dir = raw.get("observability", {}).get("local_logging", {}).get("log_dir", "")
+    if log_dir and not os.path.isabs(log_dir):
+        raw["observability"]["local_logging"]["log_dir"] = str(project_root / log_dir)
+
 
 def load_settings(profile: Optional[str] = None) -> HardwareSettings:
     profile_name = (
-        profile
-        or os.environ.get("AGENT_HARDWARE_PROFILE")
-        or DEFAULT_PROFILE
+        profile or os.environ.get("AGENT_HARDWARE_PROFILE") or DEFAULT_PROFILE
     )
     profile_path = PROFILES_DIR / f"{profile_name}.yaml"
     if not profile_path.exists():
@@ -284,6 +302,11 @@ def load_settings(profile: Optional[str] = None) -> HardwareSettings:
         )
     with open(profile_path, "r") as f:
         raw = yaml.safe_load(f)
+
+    workspace_override = os.environ.get("WORKSPACE_ROOT")
+    project_root = Path(workspace_override) if workspace_override else PROJECT_ROOT
+    _resolve_paths(raw, project_root)
+
     return HardwareSettings(**raw)
 
 

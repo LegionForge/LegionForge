@@ -32,19 +32,19 @@ storage:
     uses: [llm_models, checkpoints, logs, datasets, vector_stores]
 
 paths:
-  workspace_root: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+  # workspace_root is injected at runtime — do not set here
   models:
-    ollama:      "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/ollama"
-    lmstudio:    "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/lmstudio"
-    huggingface: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/hf"
+    ollama:      "models/ollama"
+    lmstudio:    "models/lmstudio"
+    huggingface: "models/hf"
   runtime:
-    checkpoints:  "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/checkpoints"
-    logs:         "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
-    vector_store: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/vector_store"
-    datasets:     "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/data"
+    checkpoints:  "checkpoints"
+    logs:         "logs"
+    vector_store: "vector_store"
+    datasets:     "data"
   internal:
-    venv:   "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv"
-    source: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+    venv:   "venv"
+    source: ""   # project root itself
 
 local_services:
   ollama:
@@ -102,7 +102,7 @@ observability:
   local_logging:
     enabled: true
     format: "json"
-    log_dir: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
+    log_dir: "logs"   # relative — resolved to workspace_root/logs at runtime
     rotation: "daily"
     retention_days: 30
 

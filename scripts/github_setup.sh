@@ -2,7 +2,7 @@
 # ============================================================
 # github_setup.sh
 # One-time script to initialize git, create the GitHub repo
-# jpc-mac-agent-framework, and push the first commit.
+# LegionForge, and push the first commit.
 #
 # Requirements: GitHub CLI (gh) already authenticated
 # Run from the project root:
@@ -18,7 +18,7 @@ GITHUB_VISIBILITY="private"   # Change to "public" if preferred
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║      jpc-mac-agent-framework — GitHub Setup          ║"
+echo "║              LegionForge — GitHub Setup               ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -88,7 +88,7 @@ echo "💾  Creating initial commit..."
 git commit -m "feat: initial framework scaffold
 
 - Hardware-parameterized config (YAML + Pydantic)
-- Mac M4 16GB and M5 32GB hardware profiles  
+- Mac M4 16GB and M5 32GB hardware profiles
 - Loop safeguards: recursion limit, step counter, action history
 - macOS Keychain secret management (never in files)
 - LangSmith + local JSON logging observability

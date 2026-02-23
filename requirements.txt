@@ -1,6 +1,5 @@
 # ============================================================
-# Core LangGraph Framework Requirements
-# Pin major versions; allow patch updates (~=)
+# jpc-mac-agent-framework — requirements.txt
 # Last verified: February 2026 / Python 3.11
 # ============================================================
 
@@ -18,8 +17,16 @@ langchain-ollama~=0.1
 # ── Observability ────────────────────────────────────────────
 langsmith~=0.1
 
-# ── Persistence / Checkpointing ──────────────────────────────
-langgraph-checkpoint-sqlite~=1.0
+#Edited by JP per Claude recommendation (20260222)
+# ── Persistence — PostgreSQL (replaces SQLite) ───────────────
+langgraph-checkpoint-postgres~=2.0
+# Commented out due to dependency conflicts per claude (20260222)
+# Security: pin SQLite checkpointer to patched version (unused but present)
+# Fixes CVE-2025-64104, CVE-2025-64439, CVE-2025-67644
+#  langgraph-checkpoint-sqlite>=3.0.1
+psycopg[binary,pool]~=3.1
+pgvector~=0.3
+
 
 # ── Config & Validation ──────────────────────────────────────
 pydantic~=2.0
@@ -30,13 +37,16 @@ pyyaml~=6.0
 keyring~=25.0
 python-dotenv~=1.0
 
-# ── Token Counting ───────────────────────────────────────────
+# ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
+aiolimiter~=1.1                  # Async rate limiter for API calls
 
 # ── HTTP / Async ─────────────────────────────────────────────
 httpx~=0.27
 aiohttp~=3.9
-tenacity~=8.0
+tenacity~=8.0                    # Retry logic for API calls
+fastapi~=0.111                   # Health/status endpoint
+uvicorn~=0.30                    # ASGI server for health endpoint
 
 # ── Dev / Testing ────────────────────────────────────────────
 pytest~=8.0

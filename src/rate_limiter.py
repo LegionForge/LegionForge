@@ -1,0 +1,322 @@
+"""
+src/rate_limiter.py
+───────────────────
+Async rate limiter for paid API calls. Tracks token consumption,
+enforces per-minute and per-day limits, and alerts when approaching
+thresholds. Backed by PostgreSQL for persistence across restarts.
+
+Usage:
+    from src.rate_limiter import RateLimiter, get_limiter
+
+    limiter = get_limiter("openai")
+    async with limiter.guard(estimated_tokens=500):
+        response = await llm.ainvoke(...)
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import AsyncGenerator
+
+from aiolimiter import AsyncLimiter
+
+logger = logging.getLogger(__name__)
+
+
+# ── Rate limit configuration per provider ─────────────────────────────────────
+
+
+@dataclass
+class ProviderLimits:
+    """Rate limits for a single LLM provider."""
+
+    name: str
+
+    # Per-minute limits
+    calls_per_minute: int = 60
+    tokens_per_minute: int = 100_000
+
+    # Per-day soft limits (alert threshold — not hard block)
+    tokens_per_day_alert: int = 500_000
+    cost_per_day_alert_usd: float = 10.0
+
+    # Hard daily token limit (blocks further calls)
+    tokens_per_day_hard_limit: int = 1_000_000
+
+    # Per-call limits
+    max_tokens_per_call: int = 8_000
+
+    # Estimated cost per 1K tokens (for alerting)
+    cost_per_1k_input_tokens: float = 0.0
+    cost_per_1k_output_tokens: float = 0.0
+
+
+# Default limits by provider (conservative — adjust to your plan)
+PROVIDER_LIMITS: dict[str, ProviderLimits] = {
+    "openai": ProviderLimits(
+        name="openai",
+        calls_per_minute=60,
+        tokens_per_minute=90_000,
+        tokens_per_day_alert=400_000,
+        tokens_per_day_hard_limit=800_000,
+        max_tokens_per_call=8_000,
+        cost_per_1k_input_tokens=0.00015,  # gpt-4o-mini pricing
+        cost_per_1k_output_tokens=0.0006,
+    ),
+    "anthropic": ProviderLimits(
+        name="anthropic",
+        calls_per_minute=50,
+        tokens_per_minute=80_000,
+        tokens_per_day_alert=300_000,
+        tokens_per_day_hard_limit=600_000,
+        max_tokens_per_call=8_000,
+        cost_per_1k_input_tokens=0.0003,  # claude-haiku pricing
+        cost_per_1k_output_tokens=0.0015,
+    ),
+    "ollama": ProviderLimits(
+        name="ollama",
+        calls_per_minute=999,  # Local — no real limit
+        tokens_per_minute=999_999,
+        tokens_per_day_alert=99_999_999,
+        tokens_per_day_hard_limit=99_999_999,
+        max_tokens_per_call=32_000,
+        cost_per_1k_input_tokens=0.0,  # Free
+        cost_per_1k_output_tokens=0.0,
+    ),
+}
+
+
+# ── In-memory daily counter (resets at midnight, persisted to DB) ─────────────
+
+
+@dataclass
+class DailyCounter:
+    """Tracks daily token usage in memory."""
+
+    provider: str
+    date_str: str = ""
+    total_tokens: int = 0
+    total_calls: int = 0
+    estimated_cost_usd: float = 0.0
+    alert_sent: bool = False
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def reset_if_new_day(self) -> None:
+        from datetime import date
+
+        today = date.today().isoformat()
+        if self.date_str != today:
+            self.date_str = today
+            self.total_tokens = 0
+            self.total_calls = 0
+            self.estimated_cost_usd = 0.0
+            self.alert_sent = False
+
+    async def add(
+        self,
+        tokens: int,
+        input_tokens: int,
+        output_tokens: int,
+        limits: ProviderLimits,
+    ) -> None:
+        async with self._lock:
+            self.reset_if_new_day()
+            self.total_tokens += tokens
+            self.total_calls += 1
+            self.estimated_cost_usd += (
+                input_tokens / 1000
+            ) * limits.cost_per_1k_input_tokens + (
+                output_tokens / 1000
+            ) * limits.cost_per_1k_output_tokens
+
+
+# ── Rate Limiter class ────────────────────────────────────────────────────────
+
+
+class RateLimiter:
+    """
+    Async rate limiter for a single LLM provider.
+    Enforces per-minute call rate and token budgets.
+    """
+
+    def __init__(self, provider: str):
+        if provider not in PROVIDER_LIMITS:
+            logger.warning(
+                f"No limits configured for provider '{provider}'. Using defaults."
+            )
+            self._limits = ProviderLimits(name=provider)
+        else:
+            self._limits = PROVIDER_LIMITS[provider]
+
+        self._provider = provider
+
+        # Token bucket for calls-per-minute
+        self._call_limiter = AsyncLimiter(
+            max_rate=self._limits.calls_per_minute,
+            time_period=60,
+        )
+
+        # Daily counter
+        self._daily = DailyCounter(provider=provider)
+
+    @property
+    def limits(self) -> ProviderLimits:
+        return self._limits
+
+    def _check_hard_limits(self, estimated_tokens: int) -> None:
+        """Raise if daily hard limits would be exceeded."""
+        self._daily.reset_if_new_day()
+
+        if (
+            self._daily.total_tokens + estimated_tokens
+            > self._limits.tokens_per_day_hard_limit
+        ):
+            raise RuntimeError(
+                f"🚫 Hard daily token limit reached for '{self._provider}'.\n"
+                f"   Used: {self._daily.total_tokens:,} / "
+                f"{self._limits.tokens_per_day_hard_limit:,} tokens today.\n"
+                f"   Reset at midnight or increase limit in rate_limiter.py."
+            )
+
+        if estimated_tokens > self._limits.max_tokens_per_call:
+            raise RuntimeError(
+                f"🚫 Single call token estimate ({estimated_tokens:,}) exceeds "
+                f"per-call limit ({self._limits.max_tokens_per_call:,}) "
+                f"for '{self._provider}'."
+            )
+
+    def _check_soft_alerts(self) -> None:
+        """Log warnings when approaching soft limits."""
+        self._daily.reset_if_new_day()
+
+        usage_pct = self._daily.total_tokens / max(self._limits.tokens_per_day_alert, 1)
+
+        if usage_pct >= 1.0 and not self._daily.alert_sent:
+            logger.warning(
+                f"⚠️  ALERT: '{self._provider}' has exceeded daily soft limit!\n"
+                f"   Tokens: {self._daily.total_tokens:,} / "
+                f"{self._limits.tokens_per_day_alert:,}\n"
+                f"   Est. cost: ${self._daily.estimated_cost_usd:.4f}"
+            )
+            self._daily.alert_sent = True
+
+        elif 0.8 <= usage_pct < 1.0:
+            logger.warning(
+                f"⚠️  '{self._provider}' at {usage_pct:.0%} of daily token limit. "
+                f"({self._daily.total_tokens:,} tokens, "
+                f"${self._daily.estimated_cost_usd:.4f} est. cost)"
+            )
+
+        if self._daily.estimated_cost_usd >= self._limits.cost_per_day_alert_usd:
+            logger.warning(
+                f"💰 Cost alert: '{self._provider}' has accumulated "
+                f"${self._daily.estimated_cost_usd:.4f} today "
+                f"(threshold: ${self._limits.cost_per_day_alert_usd:.2f})"
+            )
+
+    @asynccontextmanager
+    async def guard(
+        self,
+        estimated_tokens: int = 1000,
+    ) -> AsyncGenerator[None, None]:
+        """
+        Async context manager that enforces rate limits.
+        Wrap any paid API call with this.
+
+        Usage:
+            async with limiter.guard(estimated_tokens=500):
+                response = await llm.ainvoke(prompt)
+        """
+        # Check hard limits BEFORE acquiring the rate limiter
+        self._check_hard_limits(estimated_tokens)
+        self._check_soft_alerts()
+
+        # Acquire the per-minute call token
+        async with self._call_limiter:
+            start = time.monotonic()
+            try:
+                yield
+            finally:
+                elapsed_ms = int((time.monotonic() - start) * 1000)
+                logger.debug(
+                    f"[{self._provider}] call completed in {elapsed_ms}ms "
+                    f"(estimated {estimated_tokens} tokens)"
+                )
+
+    async def record_actual_usage(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        run_id: str | None = None,
+        agent_name: str | None = None,
+        success: bool = True,
+        latency_ms: int | None = None,
+    ) -> None:
+        """
+        Record actual token usage after a call completes.
+        Updates in-memory counter and persists to database.
+        """
+        total = input_tokens + output_tokens
+        await self._daily.add(
+            tokens=total,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            limits=self._limits,
+        )
+
+        # Persist to DB (non-blocking — fire and forget)
+        try:
+            from src.database import record_api_usage
+
+            await record_api_usage(
+                provider=self._provider,
+                model="unknown",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                run_id=run_id,
+                agent_name=agent_name,
+                success=success,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist API usage to DB: {e}")
+
+    def get_daily_status(self) -> dict:
+        """Return current daily usage status."""
+        self._daily.reset_if_new_day()
+        return {
+            "provider": self._provider,
+            "date": self._daily.date_str,
+            "total_tokens": self._daily.total_tokens,
+            "total_calls": self._daily.total_calls,
+            "estimated_cost_usd": round(self._daily.estimated_cost_usd, 6),
+            "token_limit_soft": self._limits.tokens_per_day_alert,
+            "token_limit_hard": self._limits.tokens_per_day_hard_limit,
+            "usage_pct": round(
+                self._daily.total_tokens
+                / max(self._limits.tokens_per_day_alert, 1)
+                * 100,
+                1,
+            ),
+        }
+
+
+# ── Module-level limiter registry ─────────────────────────────────────────────
+
+_limiters: dict[str, RateLimiter] = {}
+
+
+def get_limiter(provider: str) -> RateLimiter:
+    """Get or create a rate limiter for a provider (singleton per provider)."""
+    if provider not in _limiters:
+        _limiters[provider] = RateLimiter(provider)
+    return _limiters[provider]
+
+
+def get_all_daily_status() -> list[dict]:
+    """Get daily usage status for all active providers."""
+    return [limiter.get_daily_status() for limiter in _limiters.values()]

@@ -1,4 +1,5 @@
 # ── SECRETS — NEVER COMMIT ───────────────────────────────────
+.env
 .env.secrets
 .env.local
 .env.production
@@ -46,3 +47,52 @@ vector_store/
 .vscode/
 .idea/
 .cursor/
+
+# PostgreSQL data directories — never commit these
+postgres/
+*.dylib
+*.so
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Logs
+logs/
+*.log
+
+# pyenv
+.python-version
+
+# jp git notes
+GITFLOW.md
+
+# ── Claude Code Infrastructure ────────────────────────────────
+.claude/
+CLAUDE.md
+.claudeignore
+
+# ── Personal / Private Notes ──────────────────────────────────
+jp.md

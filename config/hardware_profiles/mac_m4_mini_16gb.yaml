@@ -43,7 +43,7 @@ storage:
 
   external:
     total_gb: 1000
-    mount_path: "/Volumes/MAC_MINI_1TB"   # 
+    mount_path: "/Volumes/MAC_MINI_1TB"   #
     enabled: true
     # What lives on external drive
     uses:
@@ -53,25 +53,27 @@ storage:
       - datasets
       - vector_stores
 
-# ── Paths (resolved from storage.external.mount_path) ───────
+# ── Paths ────────────────────────────────────────────────────
+# All paths are relative to workspace_root, which is derived at runtime
+# from the location of config/settings.py (project root). Override with
+# the WORKSPACE_ROOT environment variable if needed.
 paths:
-  # All paths below are relative to external mount unless is_internal: true
-  workspace_root: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+  # workspace_root is injected at runtime — do not set here
 
   models:
-    ollama:   "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/ollama"
-    lmstudio: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/lmstudio"
-    huggingface: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/hf"
+    ollama:      "models/ollama"
+    lmstudio:    "models/lmstudio"
+    huggingface: "models/hf"
 
   runtime:
-    checkpoints: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/checkpoints"
-    logs:        "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
-    vector_store: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/vector_store"
-    datasets:    "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/data"
+    checkpoints: "checkpoints"
+    logs:        "logs"
+    vector_store: "vector_store"
+    datasets:    "data"
 
   internal:
-    venv:   "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv"        # Virtual environment (external drive)
-    source: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"  # Source code
+    venv:   "venv"   # Virtual environment
+    source: ""       # Project root itself
 
 # ── Local LLM Services ───────────────────────────────────────
 local_services:
@@ -110,7 +112,7 @@ models:
 
   embeddings:
     provider: "ollama"
-    model_id: "nomic-embed-text"
+    model_id: "nomic-embed-text:latest"
     estimated_size_gb: 0.3
     use_cases:
       - embeddings
@@ -148,7 +150,7 @@ observability:
   local_logging:
     enabled: true
     format: "json"
-    log_dir: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
+    log_dir: "logs"   # relative — resolved to workspace_root/logs at runtime
     rotation: "daily"
     retention_days: 30
 
