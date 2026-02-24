@@ -179,7 +179,7 @@ def increment_step(state: dict) -> dict:
 def _action_signature(tool_name: str, tool_input: Any) -> str:
     """Create a stable hash signature for a tool call."""
     payload = f"{tool_name}:{str(tool_input)}"
-    return hashlib.md5(payload.encode()).hexdigest()[:12]
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
 def detect_action_loop(

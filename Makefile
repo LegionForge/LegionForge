@@ -34,6 +34,7 @@ help:
 	@echo "  make test-fast    — run tests excluding slow ones"
 	@echo "  make lint         — run black formatter check"
 	@echo "  make format       — auto-format with black"
+	@echo "  make security-audit — smoke tests + bandit static analysis"
 	@echo "  make git-status   — show git status"
 	@echo "  make dev-branch   — create and switch to dev branch"
 	@echo "  make logs         — tail the agent log"
@@ -167,6 +168,31 @@ lint:
 format:
 	@$(VENV)/bin/black $(BASE)/src $(BASE)/tests $(BASE)/config
 	@echo "✅ Code formatted"
+
+# ── Security Audit ───────────────────────────────────────────
+# Run at every milestone: phase start/end, new library added, new agent added,
+# before any PR merge. Proactive checks prevent downstream compounding errors.
+.PHONY: security-audit
+security-audit:
+	@echo "🔐 Running security audit..."
+	@echo ""
+	@echo "--- Smoke tests (includes security regression tests) ---"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo ""
+	@echo "--- bandit static analysis (medium+ severity) ---"
+	@if [ -x "$(VENV)/bin/bandit" ]; then \
+		$(VENV)/bin/bandit -r $(BASE)/src/ -ll && echo "✅ bandit: no medium/high issues found" \
+		|| (echo "❌ bandit found medium/high severity issues above — fix before merging" && exit 1); \
+	else \
+		echo "⚠️  bandit not installed. Run: make install"; \
+	fi
+	@echo ""
+	@echo "--- Checking for password/secret in URI patterns ---"
+	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
+		&& echo "✅ No embedded passwords in connection URIs" \
+		|| (echo "❌ Found password in URI above — use keyword args instead" && exit 1)
+	@echo ""
+	@echo "✅ Security audit complete. Review any warnings above."
 
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status

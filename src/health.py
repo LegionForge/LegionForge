@@ -76,14 +76,15 @@ async def _check_postgres() -> dict:
         import os
         import psycopg
 
-        conn_str = (
-            f"postgresql://{os.environ.get('POSTGRES_USER','jpc')}"
-            f":{os.environ.get('POSTGRES_PASSWORD','')}"
-            f"@{os.environ.get('POSTGRES_HOST','localhost')}"
-            f":{os.environ.get('POSTGRES_PORT','5432')}"
-            f"/{os.environ.get('POSTGRES_DB','legionforge')}"
-        )
-        async with await psycopg.AsyncConnection.connect(conn_str) as conn:
+        # Use keyword arguments — never build a URI with the password embedded,
+        # as the full URI can appear in tracebacks and be captured by log handlers.
+        async with await psycopg.AsyncConnection.connect(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=int(os.environ.get("POSTGRES_PORT", "5432")),
+            dbname=os.environ.get("POSTGRES_DB", "legionforge"),
+            user=os.environ.get("POSTGRES_USER", "jpc"),
+            password=os.environ.get("POSTGRES_PASSWORD", ""),
+        ) as conn:
             await conn.execute("SELECT 1")
         latency_ms = int((time.monotonic() - start) * 1000)
         return {"status": "ok", "latency_ms": latency_ms}

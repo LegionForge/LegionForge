@@ -121,7 +121,8 @@ def load_all_keys_to_env() -> None:
 
 # ── Prompt Injection Detection ────────────────────────────────────────────────
 
-# Patterns that indicate potential prompt injection attempts
+# Patterns that indicate potential prompt injection attempts.
+# Minimum count is enforced by test_injection_pattern_count_regression.
 _INJECTION_PATTERNS = [
     # Classic override attempts
     r"ignore\s+(all\s+)?previous\s+instructions?",
@@ -148,6 +149,19 @@ _INJECTION_PATTERNS = [
     r"<\s*(?:system|instruction|prompt)\s*>",
     r"\[INST\]|\[\/INST\]",
     r"<\|im_start\|>|<\|im_end\|>",
+    # DAN / numbered jailbreak variants (DAN 2.0, DAN 11.0, etc.)
+    r"dan\s*\d+\.?\d*",
+    r"(enable|activate|unlock)\s+(dan|developer|god|unrestricted|jailbreak)\s+mode",
+    # Persistent instruction override
+    r"from\s+now\s+on[,\s]+(you\s+(are|must|will|should)|act\s+as|respond\s+as)",
+    r"in\s+(your\s+next|the\s+next)\s+(message|response|reply|output|turn)",
+    # Encoding / obfuscation bypass
+    r"(decode|translate|interpret|convert)\s+(this\s+)?(from\s+)?(base64|hex|rot13|morse|caesar\s+cipher)",
+    r"base64\s*[=:]\s*[A-Za-z0-9+/]{10,}={0,2}",
+    # Hypothetical / academic framing (common jailbreak preambles)
+    r"for\s+(educational|academic|research|hypothetical|illustrative)\s+purposes",
+    r"hypothetically\s+(speaking|,|if\b)",
+    r"imagine\s+(you\s+(are|were|could|can)|being\s+a\s+)",
 ]
 
 _COMPILED_PATTERNS = [

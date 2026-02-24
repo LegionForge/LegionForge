@@ -691,6 +691,17 @@ make test-smoke
 
 | Item | Priority | Phase | Notes |
 |---|---|---|---|
+| `INTERVAL hours` not validated | **High** | **1** | `get_usage_summary()` / `get_threat_summary()` — `hours` must be integer 1–8760 before query |
+| Rate limiter race condition | **High** | **1** | Two concurrent calls can both pass daily hard-limit check before either increments counter; fix with lock around check-and-reserve |
+| No rate limiting on `/status` endpoint | High | 2 | Each hit spawns fresh DB + Ollama checks; no throttle; add request cache + rate cap before networked exposure |
+| Injection detection is advisory-only | **High** | **1** | `base_graph.py` logs injection detection but continues — violates fail-safe; must block on detection |
+| Loop protection resets on checkpoint resume | Medium | 1 | Step counter and action history reset on checkpoint resume; terminated loop can restart clean |
+| PII patterns incomplete | Medium | 1 | `_PII_PATTERNS` missing: IPv4, internal URLs, DB DSNs, file paths with usernames |
+| API keys persist in `os.environ` | Medium | 1 | `load_all_keys_to_env()` writes keys to environment — visible to child processes for process lifetime |
+| Keychain retry swallows `KeyboardInterrupt` | Medium | 1 | `except Exception` in `get_api_key()` retry catches `KeyboardInterrupt`; narrow to specific exceptions |
+| Tracing state pollution between runs | Medium | 1 | Tracing toggle restores via `.env` re-read; if `.env` lacks setting, subsequent runs silently disable tracing |
+| Hardcoded page size in `health.py` | Low | 1 | `page_size = 16384` assumes M1/M4; use `ctypes.cdll.libc.getpagesize()` |
+| `similarity_search()` no input bounds | Low | 1 | `limit` and `min_similarity` accept any value; add bounds (limit: 1–1000, similarity: 0.0–1.0) |
 | Pool deprecation warning | Low | 1 | `AsyncConnectionPool` constructor warning — harmless, fix in Phase 1 |
 | `setup_postgres.sh` hardcodes PG16 paths | Low | 1 | Script ran successfully; update version string for future reference |
 | No integration tests | Medium | 1 | Smoke tests pass without services. Add DB + Ollama integration tests |

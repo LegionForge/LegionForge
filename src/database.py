@@ -29,24 +29,42 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# ── Connection string ─────────────────────────────────────────────────────────
+# ── Connection helpers ────────────────────────────────────────────────────────
 
 
-def _build_conn_string() -> str:
-    """Build PostgreSQL connection string from environment or config defaults."""
+def _get_postgres_password() -> str:
+    """
+    Return the PostgreSQL password from the environment.
+    Raises RuntimeError if not set. Warns if loaded from env var instead of Keychain.
+    Never embed this value in a connection URI — pass as a keyword argument only.
+    """
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    if not password:
+        raise RuntimeError(
+            "POSTGRES_PASSWORD not set. Store it with:\n"
+            "  python -m keyring set postgres api_key\n"
+            "Then source ~/.zshrc so POSTGRES_PASSWORD is loaded at startup."
+        )
+    return password
+
+
+def _build_conninfo_no_password() -> str:
+    """
+    Build a PostgreSQL conninfo string WITHOUT the password.
+    Password must be passed separately via the 'password' keyword argument
+    to avoid it appearing in tracebacks, logs, or error messages.
+
+    Usage:
+        pool = AsyncConnectionPool(
+            conninfo=_build_conninfo_no_password(),
+            kwargs={"password": _get_postgres_password(), ...},
+        )
+    """
     host = os.environ.get("POSTGRES_HOST", "localhost")
     port = os.environ.get("POSTGRES_PORT", "5432")
     db = os.environ.get("POSTGRES_DB", "legionforge")
     user = os.environ.get("POSTGRES_USER", "jpc")
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-
-    if not password:
-        raise RuntimeError(
-            "POSTGRES_PASSWORD not set. Store it with:\n"
-            "  python -m keyring set postgres password\n"
-            "Then add to .env: POSTGRES_PASSWORD loaded from keyring at startup."
-        )
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    return f"host={host} port={port} dbname={db} user={user}"
 
 
 # ── Connection pool (module-level singleton) ──────────────────────────────────
@@ -61,14 +79,15 @@ async def init_db() -> None:
     """
     global _pool
 
-    conn_str = _build_conn_string()
+    conninfo = _build_conninfo_no_password()
+    password = _get_postgres_password()
 
     logger.info("Initializing PostgreSQL connection pool...")
     _pool = AsyncConnectionPool(
-        conninfo=conn_str,
+        conninfo=conninfo,
         min_size=1,
         max_size=10,
-        kwargs={"row_factory": dict_row, "autocommit": True},
+        kwargs={"password": password, "row_factory": dict_row, "autocommit": True},
     )
     await _pool.wait()
 
@@ -225,15 +244,17 @@ def get_pool() -> AsyncConnectionPool:
 @asynccontextmanager
 async def get_checkpointer() -> AsyncGenerator[AsyncPostgresSaver, None]:
     """
-    Async context manager that yields an AsyncPostgresSaver.
+    Async context manager that yields an AsyncPostgresSaver backed by the
+    existing connection pool. Reuses the pool rather than opening a new
+    connection, which keeps the password out of any URI string.
 
     Usage:
         async with get_checkpointer() as checkpointer:
             graph = my_graph.compile(checkpointer=checkpointer)
     """
-    conn_str = _build_conn_string()
-    async with AsyncPostgresSaver.from_conn_string(conn_str) as checkpointer:
-        yield checkpointer
+    pool = get_pool()
+    checkpointer = AsyncPostgresSaver(pool)
+    yield checkpointer
 
 
 # ── Vector store helpers ──────────────────────────────────────────────────────
@@ -334,6 +355,13 @@ async def record_api_usage(
 
 async def get_usage_summary(hours: int = 24) -> dict:
     """Get token usage summary for the last N hours, grouped by provider."""
+    if (
+        not isinstance(hours, int)
+        or isinstance(hours, bool)
+        or hours < 1
+        or hours > 8760
+    ):
+        raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
     pool = get_pool()
     async with pool.connection() as conn:
         rows = await conn.fetch(
@@ -454,6 +482,13 @@ async def get_threat_summary(hours: int = 24) -> dict:
     Get threat event summary for the last N hours.
     Used by the health server's /threats endpoint (Phase 4).
     """
+    if (
+        not isinstance(hours, int)
+        or isinstance(hours, bool)
+        or hours < 1
+        or hours > 8760
+    ):
+        raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
     pool = get_pool()
     async with pool.connection() as conn:
         rows = await conn.fetch(

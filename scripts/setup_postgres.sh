@@ -103,9 +103,10 @@ DB_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
 # Create user (ignore error if already exists)
 createuser --superuser $DB_USER 2>/dev/null || true
 
-# Set password
-psql postgres -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD';" 2>/dev/null || \
-    psql -U $DB_USER postgres -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD';" 2>/dev/null || true
+# Set password — use psql variable substitution to avoid shell injection
+# if the password ever contains single quotes or special characters.
+psql postgres -v pass="$DB_PASSWORD" -c "ALTER USER $DB_USER WITH PASSWORD :'pass';" 2>/dev/null || \
+    psql -U "$DB_USER" postgres -v pass="$DB_PASSWORD" -c "ALTER USER $DB_USER WITH PASSWORD :'pass';" 2>/dev/null || true
 
 # Create database (ignore error if already exists)
 createdb -U $DB_USER $DB_NAME 2>/dev/null || true
@@ -118,8 +119,14 @@ psql -U $DB_USER -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;" 2>/dev
 echo "✅ PostgreSQL extensions enabled (vector, pg_trgm)"
 
 # ── Store password in macOS Keychain ─────────────────────────
+# Pass password via temp env var + heredoc — never interpolate secrets
+# directly into python3 -c "..." strings (shell injection risk).
 echo "🔐 Storing database password in macOS Keychain..."
-python3 -c "import keyring; keyring.set_password('postgres', 'api_key', '$DB_PASSWORD')"
+_LF_TMP_PWD="$DB_PASSWORD" python3 - << 'PYTHON_EOF'
+import os, keyring
+keyring.set_password('postgres', 'api_key', os.environ['_LF_TMP_PWD'])
+PYTHON_EOF
+unset _LF_TMP_PWD
 echo "✅ Password stored in Keychain (service: 'postgres', username: 'api_key')"
 
 # ── Update .env with connection details ───────────────────────
