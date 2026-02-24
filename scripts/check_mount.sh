@@ -22,7 +22,7 @@
 set -e
 
 VOLUME="/Volumes/MAC_MINI_1TB"
-PROJECT="$VOLUME/jpc-mac-agent-framework"
+PROJECT="$VOLUME/LegionForge"
 WAIT_MODE=false
 CREATE_DIRS=false
 MAX_WAIT=60   # seconds

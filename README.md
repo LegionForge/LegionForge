@@ -94,7 +94,7 @@ python -c "import keyring; print(keyring.get_password('openai', 'api_key')[:8] +
 ### 5. Pull Local Models
 
 ```bash
-export OLLAMA_MODELS=/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/ollama
+export OLLAMA_MODELS=/Volumes/MAC_MINI_1TB/LegionForge/models/ollama
 
 ollama pull llama3.1:8b        # Primary reasoning (~4.9GB)
 ollama pull qwen2.5:3b         # Router/supervisor (~1.9GB)
@@ -116,7 +116,7 @@ For full first-time setup instructions, see [`VERIFICATION.md`](./VERIFICATION.m
 ## Project Structure
 
 ```
-jpc-mac-agent-framework/
+LegionForge/
 ├── TLDR.md                        # Start here — plain-language project summary
 ├── PROJECT_STATUS.md              # Current build state, infra details, todos
 ├── PHASE_PLAN.md                  # Full phased roadmap with exit criteria

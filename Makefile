@@ -3,7 +3,7 @@
 # Usage: make <target>
 # ============================================================
 
-BASE    := /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+BASE    := /Volumes/MAC_MINI_1TB/LegionForge
 VENV    := $(BASE)/venv
 PYTHON  := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
@@ -51,6 +51,11 @@ check:
 	@$(PYTHON) -c "from src.security import get_api_key_optional; \
 		k = get_api_key_optional('langsmith'); \
 		print('✅ LangSmith key found' if k else '⚠️  LangSmith key not found')"
+	@if [ -n "$$POSTGRES_PASSWORD" ]; then \
+		echo "✅ Keychain: postgres password loaded"; \
+	else \
+		echo "⚠️  Keychain: postgres password NOT loaded — source ~/.zshrc or run: python3 -m keyring set postgres api_key"; \
+	fi
 
 .PHONY: start
 start: check ollama-start db-start ollama-warm
@@ -62,7 +67,7 @@ start: check ollama-start db-start ollama-warm
 .PHONY: stop
 stop:
 	@echo "Stopping services..."
-	@brew services stop postgresql@16 2>/dev/null || true
+	@brew services stop postgresql@17 2>/dev/null || true
 	@brew services stop ollama 2>/dev/null || true
 	@echo "✅ Services stopped"
 
@@ -90,13 +95,13 @@ usage:
 # ── Database ──────────────────────────────────────────────────
 .PHONY: db-start
 db-start:
-	@brew services start postgresql@16 2>/dev/null || true
+	@brew services start postgresql@17 2>/dev/null || true
 	@sleep 2
 	@echo "✅ PostgreSQL started"
 
 .PHONY: db-stop
 db-stop:
-	@brew services stop postgresql@16
+	@brew services stop postgresql@17
 	@echo "✅ PostgreSQL stopped"
 
 .PHONY: db-init

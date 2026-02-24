@@ -61,7 +61,7 @@ git branch         → dev (pushed to origin)
 
 ### PostgreSQL 17
 - **Version:** 17.8 (Homebrew)
-- **Data directory:** `/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/postgres/data17`
+- **Data directory:** `/Volumes/MAC_MINI_1TB/LegionForge/postgres/data17`
 - **Database:** `jpc_agents`
 - **User:** `jpc`
 - **Password:** stored in macOS Keychain (`service: postgres, username: api_key`) and password manager
@@ -124,13 +124,13 @@ Every new terminal session needs the PostgreSQL password loaded:
 
 ```bash
 # Already added to ~/.zshrc — runs automatically
-export POSTGRES_PASSWORD=$(/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv/bin/python3 \
+export POSTGRES_PASSWORD=$(/Volumes/MAC_MINI_1TB/LegionForge/venv/bin/python3 \
   -c "import keyring; print(keyring.get_password('postgres', 'api_key'))")
 ```
 
 Activate the venv:
 ```bash
-source /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv/bin/activate
+source /Volumes/MAC_MINI_1TB/LegionForge/venv/bin/activate
 ```
 
 ---
@@ -139,7 +139,7 @@ source /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv/bin/activate
 
 ```bash
 source ~/.zshrc                          # loads POSTGRES_PASSWORD
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # NEW: fail if any loaded tool is unregistered
@@ -247,11 +247,11 @@ pgrep -fl "uvicorn" || echo "clean"
 
 ```bash
 # Full copy — preserves permissions and timestamps
-cp -rp /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework /Volumes/MAC_MINI_1TB/LegionForge
+cp -rp /Volumes/MAC_MINI_1TB/LegionForge /Volumes/MAC_MINI_1TB/LegionForge
 ```
 ```bash
 # Verify the copy succeeded — compare file counts
-OLD=$(find /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework -not -path "*/venv/*" | wc -l)
+OLD=$(find /Volumes/MAC_MINI_1TB/LegionForge -not -path "*/venv/*" | wc -l)
 NEW=$(find /Volumes/MAC_MINI_1TB/LegionForge -not -path "*/venv/*" | wc -l)
 echo "Old: $OLD  New: $NEW"
 # Expected: counts match
@@ -279,7 +279,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 ```
 ```bash
 # Update each file — run one at a time
-OLD_PATH="/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+OLD_PATH="/Volumes/MAC_MINI_1TB/LegionForge"
 NEW_PATH="/Volumes/MAC_MINI_1TB/LegionForge"
 
 sed -i '' "s|$OLD_PATH|$NEW_PATH|g" Makefile
@@ -317,7 +317,7 @@ grep "jpc-mac-agent-framework" ~/.zshrc
 ```
 ```bash
 # Apply the update
-sed -i '' 's|/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework|/Volumes/MAC_MINI_1TB/LegionForge|g' ~/.zshrc
+sed -i '' 's|/Volumes/MAC_MINI_1TB/LegionForge|/Volumes/MAC_MINI_1TB/LegionForge|g' ~/.zshrc
 ```
 ```bash
 # Verify the change
@@ -348,7 +348,7 @@ cat ~/Library/LaunchAgents/homebrew.mxcl.postgresql@17.plist | grep "jpc-mac"
 ```
 ```bash
 # If the above shows old path, update it
-sed -i '' 's|/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework|/Volumes/MAC_MINI_1TB/LegionForge|g' \
+sed -i '' 's|/Volumes/MAC_MINI_1TB/LegionForge|/Volumes/MAC_MINI_1TB/LegionForge|g' \
   ~/Library/LaunchAgents/homebrew.mxcl.postgresql@17.plist
 ```
 ```bash
@@ -497,7 +497,7 @@ git push origin feature/phase-1-security-foundations
 
 ```bash
 # Remove the old project directory
-rm -rf /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+rm -rf /Volumes/MAC_MINI_1TB/LegionForge
 ```
 ```bash
 # Verify it's gone

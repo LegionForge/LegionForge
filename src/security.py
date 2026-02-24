@@ -15,6 +15,9 @@ import re
 import logging
 from typing import Any
 
+import subprocess
+import time
+
 import keyring
 
 logger = logging.getLogger(__name__)
@@ -30,18 +33,43 @@ _KEY_ENV_FALLBACKS = {
 }
 
 
-def get_api_key(service: str) -> str:
+def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> str:
     """
     Retrieve an API key from macOS Keychain, falling back to environment
     variables. Raises RuntimeError if the key cannot be found.
 
+    Retries the Keychain lookup up to _retries times with a short delay
+    between attempts — the Keychain can be transiently unavailable at
+    shell startup or right after login.
+
     Usage:
         key = get_api_key("anthropic")
     """
-    # Try Keychain first
-    key = keyring.get_password(service, "api_key")
+    # Try Keychain first, with retries for transient unavailability
+    key = None
+    for attempt in range(_retries):
+        try:
+            key = keyring.get_password(service, "api_key")
+            if key:
+                break
+        except Exception:
+            if attempt < _retries - 1:
+                time.sleep(_retry_delay)
     if key:
         return key
+
+    # Try macOS security CLI fallback — handles cases where the Python
+    # keyring library is blocked by code-signing restrictions
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
 
     # Try environment variable fallback
     env_var = _KEY_ENV_FALLBACKS.get(service, f"{service.upper()}_API_KEY")

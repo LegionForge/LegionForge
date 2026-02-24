@@ -29,7 +29,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/scripts/check_mount.sh</string>
+        <string>/Volumes/MAC_MINI_1TB/LegionForge/scripts/check_mount.sh</string>
         <string>--wait</string>
         <string>--create-dirs</string>
     </array>

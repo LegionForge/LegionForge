@@ -10,11 +10,11 @@
 # ============================================================
 set -e
 
-BASE="/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+BASE="/Volumes/MAC_MINI_1TB/LegionForge"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║         Restoring jpc-mac-agent-framework            ║"
+echo "║              Restoring LegionForge                   ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -271,19 +271,19 @@ storage:
     uses: [llm_models, checkpoints, logs, datasets, vector_stores]
 
 paths:
-  workspace_root: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+  workspace_root: "/Volumes/MAC_MINI_1TB/LegionForge"
   models:
-    ollama:      "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/ollama"
-    lmstudio:    "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/lmstudio"
-    huggingface: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/models/hf"
+    ollama:      "/Volumes/MAC_MINI_1TB/LegionForge/models/ollama"
+    lmstudio:    "/Volumes/MAC_MINI_1TB/LegionForge/models/lmstudio"
+    huggingface: "/Volumes/MAC_MINI_1TB/LegionForge/models/hf"
   runtime:
-    checkpoints:  "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/checkpoints"
-    logs:         "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
-    vector_store: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/vector_store"
-    datasets:     "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/data"
+    checkpoints:  "/Volumes/MAC_MINI_1TB/LegionForge/checkpoints"
+    logs:         "/Volumes/MAC_MINI_1TB/LegionForge/logs"
+    vector_store: "/Volumes/MAC_MINI_1TB/LegionForge/vector_store"
+    datasets:     "/Volumes/MAC_MINI_1TB/LegionForge/data"
   internal:
-    venv:   "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv"
-    source: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+    venv:   "/Volumes/MAC_MINI_1TB/LegionForge/venv"
+    source: "/Volumes/MAC_MINI_1TB/LegionForge"
 
 local_services:
   ollama:
@@ -341,7 +341,7 @@ observability:
   local_logging:
     enabled: true
     format: "json"
-    log_dir: "/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/logs"
+    log_dir: "/Volumes/MAC_MINI_1TB/LegionForge/logs"
     rotation: "daily"
     retention_days: 30
 

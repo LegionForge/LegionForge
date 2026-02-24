@@ -10,9 +10,9 @@ Each step has a pass/fail indicator. Stop and fix before continuing if anything 
 ```bash
 # Copy everything into the correct locations on the external drive
 # (overwrite existing files — new versions are additive, not breaking)
-cp -r ~/Downloads/jpc-v3/* /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/
-chmod +x /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/scripts/*.sh
-chmod +x /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/Makefile
+cp -r ~/Downloads/jpc-v3/* /Volumes/MAC_MINI_1TB/LegionForge/
+chmod +x /Volumes/MAC_MINI_1TB/LegionForge/scripts/*.sh
+chmod +x /Volumes/MAC_MINI_1TB/LegionForge/Makefile
 ```
 
 ---
@@ -22,8 +22,8 @@ chmod +x /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/Makefile
 The `requirements.txt` has new packages. Install them:
 
 ```bash
-source /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/venv/bin/activate
-pip install -r /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/requirements.txt
+source /Volumes/MAC_MINI_1TB/LegionForge/venv/bin/activate
+pip install -r /Volumes/MAC_MINI_1TB/LegionForge/requirements.txt
 ```
 
 **Expected:** Lots of output, no red errors. Final line should say `Successfully installed...`
@@ -43,7 +43,7 @@ All four should print version info. ✅
 ## Step 2 — Config Still Loads
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 python -c "from config.settings import settings"
 ```
 
@@ -54,7 +54,7 @@ python -c "from config.settings import settings"
 ## Step 3 — Run Smoke Tests
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 python -m pytest tests/test_smoke.py -v
 ```
 
@@ -93,8 +93,8 @@ If any box is unchecked, write the missing tests before merging.
 ## Step 4 — Install PostgreSQL
 
 ```bash
-chmod +x /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/scripts/setup_postgres.sh
-/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/scripts/setup_postgres.sh
+chmod +x /Volumes/MAC_MINI_1TB/LegionForge/scripts/setup_postgres.sh
+/Volumes/MAC_MINI_1TB/LegionForge/scripts/setup_postgres.sh
 ```
 
 **Expected output ends with:**
@@ -102,7 +102,7 @@ chmod +x /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/scripts/setup_postgres.sh
 ✅  PostgreSQL setup complete!
 Database: jpc_agents
 User:     jpc
-Data dir: /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework/postgres/data
+Data dir: /Volumes/MAC_MINI_1TB/LegionForge/postgres/data
 Password: stored in macOS Keychain
 ```
 
@@ -119,7 +119,7 @@ Should print PostgreSQL version info. ✅
 ## Step 5 — Initialize Database Tables
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 make db-init
 ```
 
@@ -169,7 +169,7 @@ echo $POSTGRES_PASSWORD   # Should print a long random string
 ## Step 8 — Run Full Smoke Tests Again (With DB Available)
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 python -m pytest tests/test_smoke.py -v
 ```
 
@@ -189,7 +189,7 @@ All tests should still pass. ✅
 ## Step 9 — Verify Makefile Works
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 make help
 ```
 
@@ -207,7 +207,7 @@ Should show all green checkmarks. ✅
 
 In one terminal:
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make health-server
 ```
@@ -247,7 +247,7 @@ If any component shows "error", the detail field will tell you why. ✅
 ## Step 11 — Create dev Branch
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/jpc-mac-agent-framework
+cd /Volumes/MAC_MINI_1TB/LegionForge
 make dev-branch
 ```
 

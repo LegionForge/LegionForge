@@ -2,7 +2,7 @@
 # ============================================================
 # scripts/setup_postgres.sh
 #
-# One-time PostgreSQL setup for jpc-mac-agent-framework.
+# One-time PostgreSQL setup for LegionForge.
 # Run this ONCE after installing PostgreSQL.
 #
 # What it does:
@@ -19,7 +19,7 @@
 
 set -e
 
-BASE="/Volumes/MAC_MINI_1TB/jpc-mac-agent-framework"
+BASE="/Volumes/MAC_MINI_1TB/LegionForge"
 PG_DATA="$BASE/postgres/data"
 PG_VERSION="16"
 DB_NAME="jpc_agents"
