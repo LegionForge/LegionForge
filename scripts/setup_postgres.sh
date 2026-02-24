@@ -22,7 +22,7 @@ set -e
 BASE="/Volumes/MAC_MINI_1TB/LegionForge"
 PG_DATA="$BASE/postgres/data"
 PG_VERSION="16"
-DB_NAME="jpc_agents"
+DB_NAME="legionforge"
 DB_USER="jpc"
 
 echo ""

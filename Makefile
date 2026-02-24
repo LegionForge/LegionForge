@@ -115,7 +115,7 @@ print('✅ Database initialized')"
 
 .PHONY: db-shell
 db-shell:
-	@psql -U jpc -d jpc_agents
+	@psql -U jpc -d legionforge
 
 # ── Ollama ────────────────────────────────────────────────────
 .PHONY: ollama-start

@@ -81,7 +81,7 @@ async def _check_postgres() -> dict:
             f":{os.environ.get('POSTGRES_PASSWORD','')}"
             f"@{os.environ.get('POSTGRES_HOST','localhost')}"
             f":{os.environ.get('POSTGRES_PORT','5432')}"
-            f"/{os.environ.get('POSTGRES_DB','jpc_agents')}"
+            f"/{os.environ.get('POSTGRES_DB','legionforge')}"
         )
         async with await psycopg.AsyncConnection.connect(conn_str) as conn:
             await conn.execute("SELECT 1")

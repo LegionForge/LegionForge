@@ -36,7 +36,7 @@ def _build_conn_string() -> str:
     """Build PostgreSQL connection string from environment or config defaults."""
     host = os.environ.get("POSTGRES_HOST", "localhost")
     port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "jpc_agents")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
     user = os.environ.get("POSTGRES_USER", "jpc")
     password = os.environ.get("POSTGRES_PASSWORD", "")
 

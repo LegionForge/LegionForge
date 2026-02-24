@@ -62,7 +62,7 @@ git branch         → dev (pushed to origin)
 ### PostgreSQL 17
 - **Version:** 17.8 (Homebrew)
 - **Data directory:** `/Volumes/MAC_MINI_1TB/LegionForge/postgres/data17`
-- **Database:** `jpc_agents`
+- **Database:** `legionforge`
 - **User:** `jpc`
 - **Password:** stored in macOS Keychain (`service: postgres, username: api_key`) and password manager
 - **Auto-start:** via `brew services` (starts at login)
@@ -170,8 +170,8 @@ curl -s http://localhost:8765/status | python3 -m json.tool
 | Phase | Description | Status |
 |---|---|---|
 | **Phase 1** | Display strings, titles, doc headings, `.env` LANGSMITH_PROJECT, code display names | ✅ Done |
-| **Phase 2** | Physical directory rename + venv rebuild + all absolute path updates + ~/.zshrc + PostgreSQL plist | ⬜ Pending — do before any new development |
-| **Phase 3** | Database rename `jpc_agents` → `legionforge` (pg_dump → create new DB → restore → update all config refs) | ⬜ Pending — do after Phase 2 |
+| **Phase 2** | Physical directory rename + venv rebuild + all absolute path updates + ~/.zshrc + PostgreSQL plist | ✅ Done — PR #2 merged |
+| **Phase 3** | Database rename `legionforge` → `legionforge` (pg_dump → create new DB → restore → update all config refs) | ⬜ Pending — do before any new development |
 | **Phase 4** | GitHub migration: rename `jp-cruz/jpc-mac-agent-framework` → `LegionForge/LegionForge`, create public `jp-cruz/LegionForge`, update git remote | ⬜ Deferred to v1.0 |
 
 ### Phase 2 — Directory Copy & Path Update (do in order, verify each step before proceeding)
@@ -191,7 +191,7 @@ df -h /Volumes/MAC_MINI_1TB/
 
 ```bash
 # 1b. Take a PostgreSQL dump as insurance
-pg_dump -U jpc jpc_agents > /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_$(date +%Y%m%d).sql
+pg_dump -U jpc legionforge > /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_$(date +%Y%m%d).sql
 ```
 ```bash
 # 1c. Verify the dump is non-empty
@@ -363,12 +363,12 @@ pg_isready -h localhost
 ```
 ```bash
 # Verify the database is accessible
-psql -U jpc -d jpc_agents -c "SELECT current_database(), version();"
-# Expected: returns "jpc_agents" and PostgreSQL version string
+psql -U jpc -d legionforge -c "SELECT current_database(), version();"
+# Expected: returns "legionforge" and PostgreSQL version string
 ```
 ```bash
 # Verify all tables still exist
-psql -U jpc -d jpc_agents -c "\dt"
+psql -U jpc -d legionforge -c "\dt"
 # Expected: lists checkpoints, documents, api_usage, health_metrics, etc.
 ```
 > **DEBUG — PostgreSQL won't start:**
@@ -524,16 +524,16 @@ rm /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql
 
 ```bash
 # Full dump of current database
-pg_dump -U jpc -Fc jpc_agents > /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_$(date +%Y%m%d).dump
+pg_dump -U jpc -Fc legionforge > /Volumes/MAC_MINI_1TB/pg_backup_legionforge_$(date +%Y%m%d).dump
 ```
 ```bash
 # Verify dump is non-empty
-ls -lh /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_*.dump
+ls -lh /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
 # Expected: file size > 10KB
 ```
 ```bash
 # Verify dump is readable
-pg_restore --list /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_*.dump | head -20
+pg_restore --list /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump | head -20
 # Expected: lists tables and schema objects
 ```
 > **DEBUG:** If pg_restore --list fails, the dump is corrupt. Re-run pg_dump before continuing.
@@ -550,23 +550,23 @@ createdb -U jpc legionforge
 ```
 ```bash
 # Restore into new database
-pg_restore -U jpc -d legionforge /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_*.dump
+pg_restore -U jpc -d legionforge /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
 ```
 ```bash
 # Verify all tables restored correctly
 psql -U jpc -d legionforge -c "\dt"
-# Expected: same tables as jpc_agents
+# Expected: same tables as legionforge
 ```
 ```bash
 # Verify row counts match between old and new DB
-psql -U jpc -c "SELECT 'jpc_agents' db, COUNT(*) FROM jpc_agents.public.documents
+psql -U jpc -c "SELECT 'legionforge' db, COUNT(*) FROM legionforge.public.documents
                 UNION ALL
                 SELECT 'legionforge', COUNT(*) FROM legionforge.public.documents;"
 # Expected: both counts match
 ```
 > **DEBUG — restore fails with errors:**
 > 1. Check for extension errors: pgvector must be installed. Verify: `psql -U jpc -d legionforge -c "CREATE EXTENSION IF NOT EXISTS vector;"`
-> 2. Re-run restore with verbose: `pg_restore -U jpc -d legionforge -v /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_*.dump 2>&1 | tail -30`
+> 2. Re-run restore with verbose: `pg_restore -U jpc -d legionforge -v /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump 2>&1 | tail -30`
 
 - [ ] Step 2 complete — new database has all tables and data
 
@@ -574,17 +574,17 @@ psql -U jpc -c "SELECT 'jpc_agents' db, COUNT(*) FROM jpc_agents.public.document
 
 #### STEP 3 — Update all code references
 
-Update all `jpc_agents` references to `legionforge`:
+Update all `legionforge` references to `legionforge`:
 
 ```bash
 cd /Volumes/MAC_MINI_1TB/LegionForge
-sed -i '' 's|jpc_agents|legionforge|g' src/database.py
-sed -i '' 's|jpc_agents|legionforge|g' src/health.py
-sed -i '' 's|jpc_agents|legionforge|g' src/startup.sh
-sed -i '' 's|jpc_agents|legionforge|g' scripts/setup_postgres.sh
-sed -i '' 's|jpc_agents|legionforge|g' Makefile
-sed -i '' 's|jpc_agents|legionforge|g' VERIFICATION.md
-sed -i '' 's|jpc_agents|legionforge|g' PROJECT_STATUS.md
+sed -i '' 's|legionforge|legionforge|g' src/database.py
+sed -i '' 's|legionforge|legionforge|g' src/health.py
+sed -i '' 's|legionforge|legionforge|g' src/startup.sh
+sed -i '' 's|legionforge|legionforge|g' scripts/setup_postgres.sh
+sed -i '' 's|legionforge|legionforge|g' Makefile
+sed -i '' 's|legionforge|legionforge|g' VERIFICATION.md
+sed -i '' 's|legionforge|legionforge|g' PROJECT_STATUS.md
 ```
 ```bash
 # Update .env (local only, gitignored)
@@ -593,7 +593,7 @@ echo "POSTGRES_DB=legionforge" >> .env
 ```
 ```bash
 # Verify no old database name remains
-grep -r "jpc_agents" /Volumes/MAC_MINI_1TB/LegionForge/ \
+grep -r "legionforge" /Volumes/MAC_MINI_1TB/LegionForge/ \
   --exclude-dir=venv --exclude-dir=.git \
   --include="*.py" --include="*.sh" --include="*.yaml" --include="*.md" --include="Makefile"
 # Expected: no output
@@ -627,7 +627,7 @@ kill %1 2>/dev/null || pkill -f uvicorn
 > **DEBUG — DB connection fails:**
 > 1. Check POSTGRES_DB env var: `echo $POSTGRES_DB` — should be `legionforge`
 > 2. Test connection directly: `psql -U jpc -d legionforge -c "SELECT 1;"`
-> 3. Rollback option: revert `src/database.py` to `jpc_agents` and reconnect to old DB
+> 3. Rollback option: revert `src/database.py` to `legionforge` and reconnect to old DB
 
 - [ ] Step 4 complete — smoke tests pass, health server connects to legionforge
 
@@ -638,7 +638,7 @@ kill %1 2>/dev/null || pkill -f uvicorn
 ```bash
 git add src/database.py src/health.py src/startup.sh scripts/setup_postgres.sh \
         Makefile VERIFICATION.md PROJECT_STATUS.md
-git commit -m "chore: Phase 3 rename — database renamed from jpc_agents to legionforge
+git commit -m "chore: Phase 3 rename — database renamed from legionforge to legionforge
 
 All code references updated. New DB restored from pg_dump backup.
 All 23 smoke tests passing against legionforge database.
@@ -657,16 +657,16 @@ git push origin feature/phase-1-security-foundations
 
 ```bash
 # Drop the old database
-dropdb -U jpc jpc_agents
+dropdb -U jpc legionforge
 ```
 ```bash
 # Verify it's gone
-psql -U jpc -l | grep jpc_agents
+psql -U jpc -l | grep legionforge
 # Expected: no output
 ```
 ```bash
 # Remove the pg_dump backup files (optional)
-rm /Volumes/MAC_MINI_1TB/pg_backup_jpc_agents_*.dump
+rm /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
 rm /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql 2>/dev/null || true
 ```
 ```bash

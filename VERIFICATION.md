@@ -100,7 +100,7 @@ chmod +x /Volumes/MAC_MINI_1TB/LegionForge/scripts/setup_postgres.sh
 **Expected output ends with:**
 ```
 ✅  PostgreSQL setup complete!
-Database: jpc_agents
+Database: legionforge
 User:     jpc
 Data dir: /Volumes/MAC_MINI_1TB/LegionForge/postgres/data
 Password: stored in macOS Keychain
@@ -109,7 +109,7 @@ Password: stored in macOS Keychain
 **Verify PostgreSQL is running:**
 ```bash
 source ~/.zshrc
-psql -U jpc -d jpc_agents -c "SELECT version();"
+psql -U jpc -d legionforge -c "SELECT version();"
 ```
 
 Should print PostgreSQL version info. ✅
@@ -130,7 +130,7 @@ make db-init
 
 **Verify tables were created:**
 ```bash
-psql -U jpc -d jpc_agents -c "\dt"
+psql -U jpc -d legionforge -c "\dt"
 ```
 
 Should show tables including `checkpoints`, `api_usage`, `health_metrics`, `documents`. ✅
