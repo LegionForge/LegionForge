@@ -320,3 +320,46 @@ def get_limiter(provider: str) -> RateLimiter:
 def get_all_daily_status() -> list[dict]:
     """Get daily usage status for all active providers."""
     return [limiter.get_daily_status() for limiter in _limiters.values()]
+
+
+# ── Token estimation ──────────────────────────────────────────────────────────
+
+
+def estimate_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
+    """
+    Estimate the token count for a text string using tiktoken.
+    Falls back to len(text) // 4 if the model encoding is not found.
+
+    The gpt-3.5-turbo encoding (cl100k_base) is a reasonable proxy for
+    most modern LLMs including Llama 3 and Qwen models.
+    """
+    try:
+        import tiktoken
+
+        enc = tiktoken.encoding_for_model(model)
+        return len(enc.encode(text))
+    except (KeyError, Exception):
+        return len(text) // 4
+
+
+def preflight_budget_check(estimated_tokens: int, provider: str) -> None:
+    """
+    Check estimated token cost against hard limits BEFORE calling the LLM.
+    Raises RuntimeError (with PREFLIGHT_BUDGET_EXCEEDED context) if the
+    estimate would exceed the provider's hard daily or per-call limit.
+
+    Call this immediately before every llm.ainvoke() in agent nodes.
+
+    Args:
+        estimated_tokens: Token estimate for the upcoming call (input only is fine).
+        provider:         Provider name — must match a key in PROVIDER_LIMITS.
+    """
+    limiter = get_limiter(provider)
+    try:
+        limiter._check_hard_limits(estimated_tokens)
+    except RuntimeError as e:
+        logger.error(
+            f"[preflight] PREFLIGHT_BUDGET_EXCEEDED for provider='{provider}' "
+            f"estimated_tokens={estimated_tokens}"
+        )
+        raise RuntimeError(f"PREFLIGHT_BUDGET_EXCEEDED: {e}") from e

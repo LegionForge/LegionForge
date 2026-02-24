@@ -22,6 +22,8 @@ import uuid
 from typing import Annotated, Any
 import operator
 
+from src.security import HITL_HALT_CATEGORIES, HITL_LOG_CATEGORIES
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -282,6 +284,89 @@ def check_safeguards(state: dict) -> str:
         )
         return "end"
     return "continue"
+
+
+# ── HITL (Human-in-the-Loop) gate ────────────────────────────────────────────
+# Phase 1: detect and halt. Phase 2: pause via LangGraph interrupt_before and
+# surface an approval request to the operator dashboard.
+
+
+def check_hitl_required(
+    action: str,
+    input_text: str,
+    state: dict,
+    categories: list[str] | None = None,
+) -> dict:
+    """
+    Determine if a human must approve before the agent proceeds.
+
+    Tiered response based on category risk level:
+      HALT tier  — force-end immediately (CMD_INJECTION, SELF_PROBE,
+                   DATA_STAGING, PRIVILEGE_ESCALATION).
+      LOG tier   — log warning and continue (CREDENTIAL_PROBE, RECONNAISSANCE,
+                   INTERNAL_PROBE, BULK_DESTRUCTIVE, SYSTEM_PATH_PROBE).
+
+    Phase 1 behaviour:
+      HALT tier → logger.warning() + return {"force_end": True}
+      LOG tier  → logger.warning() + return {} (run continues)
+
+    Phase 2 behaviour (TODO): use LangGraph interrupt_before to pause the graph
+    and wait for operator approval via the approval API. The 'hitl_pending' flag
+    in state will be checked by the routing function.
+
+    Args:
+        action:     The tool or action being attempted (for logging).
+        input_text: The text that triggered the HITL check (sanitized excerpt).
+        state:      Current agent state (for run_id).
+        categories: List of matched DESTRUCTIVE_PATTERN category names.
+
+    Returns:
+        {} if no HITL required, or only LOG-tier categories matched.
+        {"force_end": True} if any HALT-tier category matched.
+    """
+    if not categories:
+        return {}
+
+    run_id = state.get("run_id", "unknown")
+    run_prefix = run_id[:8] if run_id != "unknown" else run_id
+
+    halt_cats = [c for c in categories if c in HITL_HALT_CATEGORIES]
+    log_cats = [c for c in categories if c in HITL_LOG_CATEGORIES]
+
+    # LOG tier: suspicious but ambiguous — record and continue
+    if log_cats:
+        logger.warning(
+            f"[hitl] Suspicious pattern (log-and-continue) — "
+            f"action='{action}' categories={log_cats} run={run_prefix}..."
+        )
+        # TODO Phase 4: await log_threat_event(
+        #     agent_id="safeguards", run_id=run_id,
+        #     threat_type="DESTRUCTIVE_PATTERN", severity="LOW",
+        #     details={"action": action, "categories": log_cats, "excerpt": input_text},
+        # )
+
+    # HALT tier: unambiguously adversarial — force-end immediately
+    if halt_cats:
+        logger.warning(
+            f"[hitl] HITL HALT — action='{action}' categories={halt_cats} "
+            f"run={run_prefix}... Forcing termination. "
+            f"Phase 2 will surface approval request instead."
+        )
+        # TODO Phase 4: make this function `async def`, replace the block below with:
+        #   await log_threat_event(agent_id="safeguards", run_id=run_id,
+        #       threat_type="DESTRUCTIVE_PATTERN", severity="HIGH",
+        #       details={"action": action, "categories": halt_cats})
+        # and update the call site in SecureToolNode to `await check_hitl_required(...)`.
+        #
+        # DB logging is intentionally omitted in Phase 1 because calling
+        # asyncio.get_event_loop().run_until_complete() from inside an already-running
+        # async event loop raises RuntimeError. logger.warning() is the Phase 1 audit
+        # record. Phase 4 wires the Threat Analyst, at which point reliable DB
+        # persistence of DESTRUCTIVE_PATTERN events is required.
+        return {"force_end": True}
+
+    # Only LOG-tier categories matched — run continues
+    return {}
 
 
 # ── Error tracking ────────────────────────────────────────────────────────────

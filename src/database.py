@@ -219,6 +219,36 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     """
     )
 
+    # Tool registry — tracks approved tools with integrity hashes.
+    # verify_tool_before_invocation() checks here at invocation time.
+    # Feeds Phase 4 Threat Analyst for TOOL_HASH_MISMATCH events.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tool_registry (
+            tool_id             TEXT PRIMARY KEY,
+            source              TEXT NOT NULL,
+            version             TEXT NOT NULL DEFAULT '1.0.0',
+            description         TEXT NOT NULL,
+            description_hash    TEXT NOT NULL,
+            schema_hash         TEXT NOT NULL,
+            entrypoint_hash     TEXT,
+            declared_side_effects TEXT[] NOT NULL DEFAULT '{}',
+            approved_by         TEXT NOT NULL,
+            approved_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            approval_notes      TEXT DEFAULT '',
+            status              TEXT NOT NULL DEFAULT 'PENDING',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+    )
+
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS tool_registry_status_idx
+        ON tool_registry (status)
+    """
+    )
+
     logger.info("Application tables verified")
 
 
@@ -395,10 +425,12 @@ THREAT_TYPES = {
     "LOOP_DETECTED",  # safeguards.py loop detection fired
     "STEP_LIMIT_REACHED",  # safeguards.py step counter hit max
     "TOKEN_BUDGET_EXCEEDED",  # safeguards.py token budget exhausted
+    "CAPABILITY_VIOLATION",  # agent attempted a forbidden or unregistered action
+    "DESTRUCTIVE_PATTERN",  # input matches credential/infra/bulk-exfil pattern — HITL required
 }
 
 # Valid action_taken values
-THREAT_ACTIONS = {"BLOCKED", "SANDBOX_RETRY", "LOGGED", "REDACTED"}
+THREAT_ACTIONS = {"BLOCKED", "SANDBOX_RETRY", "LOGGED", "REDACTED", "HITL_REQUIRED"}
 
 
 async def log_threat_event(

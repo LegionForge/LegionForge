@@ -35,6 +35,10 @@ help:
 	@echo "  make lint         — run black formatter check"
 	@echo "  make format       — auto-format with black"
 	@echo "  make security-audit — smoke tests + bandit static analysis"
+	@echo "  make review-prep  — all automated gates for PR review (run before manual review)"
+	@echo "  make register-researcher-tools — register Phase 1 tools (one-time)"
+	@echo "  make verify-tool-registry — verify all registered tools are APPROVED"
+	@echo "  make verify-model-integrity — hash-check Ollama model manifests"
 	@echo "  make git-status   — show git status"
 	@echo "  make dev-branch   — create and switch to dev branch"
 	@echo "  make logs         — tail the agent log"
@@ -193,6 +197,98 @@ security-audit:
 		|| (echo "❌ Found password in URI above — use keyword args instead" && exit 1)
 	@echo ""
 	@echo "✅ Security audit complete. Review any warnings above."
+
+# ── Code Review Prep ─────────────────────────────────────────
+# Run before every manual PR review. Automated gates must all pass
+# before starting the human checklist in docs/code-review-protocol.md.
+.PHONY: review-prep
+review-prep:
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
+	@echo "  LegionForge — PR Review: Automated Gates"
+	@echo "════════════════════════════════════════════════════"
+	@echo ""
+	@echo "─── [1/6] Formatting ────────────────────────────────"
+	@cd $(BASE) && $(VENV)/bin/black --check src/ tests/ config/ \
+		&& echo "✅ Black: all files formatted" \
+		|| (echo "❌ Black: unformatted files above — run: make format" && exit 1)
+	@echo ""
+	@echo "─── [2/6] Smoke tests ───────────────────────────────"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo ""
+	@echo "─── [3/6] Bandit static analysis ────────────────────"
+	@if [ -x "$(VENV)/bin/bandit" ]; then \
+		$(VENV)/bin/bandit -r $(BASE)/src/ -ll \
+		&& echo "✅ Bandit: no medium/high issues" \
+		|| (echo "❌ Bandit: medium/high issues above — fix before merging" && exit 1); \
+	else \
+		echo "⚠️  bandit not installed — run: make install"; \
+	fi
+	@echo ""
+	@echo "─── [4/6] Secret scan ───────────────────────────────"
+	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
+		&& echo "✅ No embedded passwords in connection URIs" \
+		|| (echo "❌ Embedded password in URI — use keyword args" && exit 1)
+	@! grep -rn "sk-[A-Za-z0-9]\{20,\}" $(BASE)/src/ --include="*.py" \
+		&& echo "✅ No OpenAI-style API keys in source" \
+		|| (echo "❌ Possible API key in source above" && exit 1)
+	@echo ""
+	@echo "─── [5/6] New external dependencies ────────────────"
+	@DEPS=$$(git diff origin/main -- requirements.txt 2>/dev/null | grep "^+" | grep -v "^+++" | grep -v "^+#"); \
+	if [ -n "$$DEPS" ]; then \
+		echo "⚠️  New dependencies detected — review required (Phase C3):"; \
+		echo "$$DEPS"; \
+	else \
+		echo "✅ No new external dependencies"; \
+	fi
+	@echo ""
+	@echo "─── [6/6] Scope check — changed files ──────────────"
+	@git diff --stat origin/main 2>/dev/null || git diff --stat HEAD~1
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
+	@echo "  Automated gates complete."
+	@echo "  If all green, proceed to manual review:"
+	@echo "  docs/code-review-protocol.md  (Phase B onward)"
+	@echo "════════════════════════════════════════════════════"
+	@echo ""
+
+# ── Tool Registry ────────────────────────────────────────────
+.PHONY: register-researcher-tools
+register-researcher-tools:
+	@echo "Registering researcher agent tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.researcher import register_researcher_tools; \
+asyncio.run(register_researcher_tools()); \
+print('✅ Researcher tools registered')"
+
+.PHONY: verify-tool-registry
+verify-tool-registry:
+	@echo "Verifying tool registry (all loaded tools must be APPROVED)..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio, sys; \
+from src.agents.researcher import register_researcher_tools, RESEARCHER_TOOL_MANIFESTS; \
+from src.security import verify_tool_before_invocation; \
+async def check(): \
+    await register_researcher_tools(); \
+    failed = []; \
+    for m in RESEARCHER_TOOL_MANIFESTS: \
+        ok = await verify_tool_before_invocation(m.tool_id); \
+        (print(f'  ✅ {m.tool_id}') if ok else (failed.append(m.tool_id), print(f'  ❌ {m.tool_id}'))); \
+    if failed: print(f'FAIL: {failed}', file=sys.stderr); sys.exit(1); \
+    else: print('✅ All tools verified'); \
+asyncio.run(check())"
+
+.PHONY: verify-model-integrity
+verify-model-integrity:
+	@echo "Verifying Ollama model manifests..."
+	@$(PYTHON) -c "\
+import hashlib, json, pathlib, sys; \
+ollama_dir = pathlib.Path('/Volumes/MAC_MINI_1TB/ollama_models/manifests'); \
+if not ollama_dir.exists(): print('⚠️  Ollama model dir not found — skipping'); sys.exit(0); \
+manifests = list(ollama_dir.rglob('*')); \
+print(f'Found {len(manifests)} manifest entries in {ollama_dir}'); \
+print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status

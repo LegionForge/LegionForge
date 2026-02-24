@@ -32,6 +32,7 @@ from config.settings import settings
 from src.safeguards import (
     SafeguardedState,
     check_safeguards,
+    check_hitl_required,
     create_run_config,
     detect_action_loop,
     check_token_budget,
@@ -40,7 +41,21 @@ from src.safeguards import (
 )
 from src.llm_factory import get_primary_llm, get_router_llm
 from src.observability import log_agent_event, get_metrics, timed
-from src.security import sanitize_text, sanitize_for_trace
+from src.security import (
+    sanitize_text,
+    sanitize_for_trace,
+    sanitize_messages,
+    sanitize_output,
+    sanitize_tool_input,
+    verify_tool_before_invocation,
+    validate_fetch_url,
+    detect_destructive_pattern,
+    check_capability_boundary,
+    Guardian,
+    FORBIDDEN_CAPABILITIES,
+    SecurityError,
+)
+from src.rate_limiter import preflight_budget_check, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +114,18 @@ async def agent_node(state: AgentState) -> dict:
     try:
         llm = get_primary_llm(temperature=0.1)
 
-        # Sanitize messages before sending
-        messages = state["messages"]
+        # Sanitize outbound messages (PII redaction before sending to LLM)
+        clean_messages = sanitize_messages(state["messages"])
+
+        # Pre-flight budget check before incurring token cost
+        msg_text = " ".join(
+            m.content if isinstance(m.content, str) else str(m.content)
+            for m in clean_messages
+        )
+        preflight_budget_check(estimate_tokens(msg_text), "ollama")
 
         with timed("llm_latency_ms", get_metrics()):
-            response = await llm.ainvoke(messages)
+            response = await llm.ainvoke(clean_messages)
 
         # Track token usage if available
         if hasattr(response, "usage_metadata") and response.usage_metadata:
@@ -193,6 +215,148 @@ def route_after_agent(state: AgentState) -> str:
 
     # Otherwise, continue the loop
     return "agent"
+
+
+# ── Phase 1 Security Stubs ────────────────────────────────────────────────────
+# These stubs are wired in Phase 1 and replaced with real implementations
+# in Phase 2 (Guardian sidecar service, JWT task tokens, provenance scoring).
+
+
+async def guardian_check(tool_id: str, state: dict) -> bool:
+    """Phase 1 stub — delegates to Guardian.check(). Phase 2 replaces with sidecar call."""
+    return Guardian.check(tool_id, "invoke", state)
+
+
+async def validate_acl_token(state: dict) -> bool:
+    """Phase 1 stub — always returns True. Phase 2 validates JWT task token."""
+    return True
+
+
+def score_embedding_trust(doc: dict) -> float:
+    """Phase 1 stub — returns 1.0. Phase 2 scores document provenance."""
+    return 1.0
+
+
+# ── SecureToolNode ────────────────────────────────────────────────────────────
+
+
+class SecureToolNode:
+    """
+    Wraps LangGraph ToolNode with pre/post security controls:
+      1. verify_tool_before_invocation() — registry + hash integrity check
+      2. guardian_check()               — capability boundary enforcement
+      3. detect_action_loop()           — repeated-call detection
+      4. Execute via inner ToolNode
+      5. sanitize_output()              — PII + injection scan on tool response
+
+    Use this instead of raw ToolNode for all agents.
+    """
+
+    def __init__(self, tools: list) -> None:
+        from langgraph.prebuilt import ToolNode
+
+        self._inner = ToolNode(tools)
+        self._tool_names = {t.name for t in tools}
+
+    async def __call__(self, state: AgentState, config=None) -> dict:
+        result: dict = {}
+
+        # Extract tool calls from the last AI message
+        last_msg = state["messages"][-1] if state["messages"] else None
+        tool_calls = getattr(last_msg, "tool_calls", None) or []
+
+        for tc in tool_calls:
+            tool_id = tc["name"] if isinstance(tc, dict) else tc.name
+            tool_input = (
+                tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+            )
+
+            # 1. Registry + hash integrity check
+            approved = await verify_tool_before_invocation(tool_id)
+            if not approved:
+                logger.error(
+                    f"[SecureToolNode] Tool '{tool_id}' failed registry check. Halting."
+                )
+                return {"force_end": True, "loop_detected": False}
+
+            # 2. Guardian capability boundary
+            allowed = await guardian_check(tool_id, state)
+            if not allowed:
+                logger.error(f"[SecureToolNode] Guardian blocked '{tool_id}'. Halting.")
+                return {"force_end": True, "loop_detected": False}
+
+            # 3. Action loop detection
+            loop_updates = detect_action_loop(state, tool_id, tool_input)
+            result.update(loop_updates)
+            if result.get("loop_detected"):
+                logger.warning(
+                    f"[SecureToolNode] Loop detected for '{tool_id}'. Halting."
+                )
+                return result
+
+            # 4. Sanitize and validate every tool argument (belt-and-suspenders)
+            for arg_name, arg_value in (tool_input or {}).items():
+                if not isinstance(arg_value, str):
+                    continue
+
+                # 4a. Outbound sanitization — strip PII / detect injection in args
+                clean_arg, san_meta = sanitize_tool_input(arg_value, tool_id=tool_id)
+
+                # 4b. SSRF prevention for any argument that looks like a URL
+                if arg_name in ("url", "uri", "endpoint", "href", "src"):
+                    try:
+                        validate_fetch_url(clean_arg)
+                    except SecurityError as e:
+                        logger.error(
+                            f"[SecureToolNode] SSRF blocked for '{tool_id}': {e}"
+                        )
+                        return {"force_end": True, "loop_detected": False}
+
+                # 4c. Destructive / HITL pattern detection
+                requires_hitl, categories = detect_destructive_pattern(clean_arg)
+                if requires_hitl:
+                    hitl_updates = check_hitl_required(
+                        action=f"{tool_id}.{arg_name}",
+                        input_text=clean_arg[:200],
+                        state=state,
+                        categories=categories,
+                    )
+                    result.update(hitl_updates)
+                    if result.get("force_end"):
+                        logger.warning(
+                            f"[SecureToolNode] HITL halt on '{tool_id}' "
+                            f"arg='{arg_name}' categories={categories}"
+                        )
+                        return result
+
+        # 5. Execute via inner ToolNode
+        if config is not None:
+            inner_result = await self._inner.ainvoke(state, config)
+        else:
+            inner_result = await self._inner.ainvoke(state)
+        result.update(inner_result)
+
+        # 6. Sanitize tool output before it enters agent context
+        if "messages" in result:
+            sanitized_msgs = []
+            for msg in result["messages"]:
+                if hasattr(msg, "content") and isinstance(msg.content, str):
+                    clean_content, meta = sanitize_output(msg.content)
+                    if meta.get("injection_detected"):
+                        logger.warning(
+                            "[SecureToolNode] Injection pattern in tool output — sanitized."
+                        )
+                    try:
+                        msg = msg.model_copy(update={"content": clean_content})
+                    except AttributeError:
+                        try:
+                            msg = msg.copy(update={"content": clean_content})
+                        except Exception:
+                            pass
+                sanitized_msgs.append(msg)
+            result["messages"] = sanitized_msgs
+
+        return result
 
 
 # ── Graph builder ─────────────────────────────────────────────────────────────

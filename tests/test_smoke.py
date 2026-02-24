@@ -426,3 +426,308 @@ def test_run_config_has_recursion_limit():
     assert "recursion_limit" in config
     assert isinstance(config["recursion_limit"], int)
     assert config["recursion_limit"] > 0
+
+
+# ── Phase 1: Tool registry smoke tests ───────────────────────────────────────
+
+
+def test_tool_manifest_hashing():
+    """Same manifest produces same hash; mutated copy produces different hash."""
+    from src.security import ToolManifest, _compute_tool_hash
+
+    manifest = ToolManifest(
+        tool_id="test_hash_tool",
+        description="A tool for testing hashing",
+        input_schema={"query": "str", "limit": "int"},
+        declared_side_effects=["reads_web"],
+        source="local",
+    )
+
+    hashes_a = _compute_tool_hash(manifest)
+    hashes_b = _compute_tool_hash(manifest)
+
+    # Same manifest → same hashes
+    assert hashes_a["description_hash"] == hashes_b["description_hash"]
+    assert hashes_a["schema_hash"] == hashes_b["schema_hash"]
+
+    # Mutated description → different description_hash
+    mutated = ToolManifest(
+        tool_id="test_hash_tool",
+        description="A MODIFIED description changes the hash",
+        input_schema={"query": "str", "limit": "int"},
+        declared_side_effects=["reads_web"],
+        source="local",
+    )
+    hashes_c = _compute_tool_hash(mutated)
+    assert hashes_c["description_hash"] != hashes_a["description_hash"]
+    # Schema unchanged → schema_hash is still the same
+    assert hashes_c["schema_hash"] == hashes_a["schema_hash"]
+
+
+def test_tool_registry_verify_passes():
+    """A tool that is properly registered passes verify_tool_before_invocation."""
+    import asyncio
+    from src.security import ToolManifest, register_tool, verify_tool_before_invocation
+
+    manifest = ToolManifest(
+        tool_id="smoke_verify_pass_tool",
+        description="Smoke test verify-pass tool",
+        input_schema={"param": "str"},
+        declared_side_effects=[],
+        source="local",
+    )
+
+    # register_tool and verify are both async
+    async def run():
+        await register_tool(manifest, approved_by="smoke-test")
+        return await verify_tool_before_invocation("smoke_verify_pass_tool")
+
+    result = asyncio.run(run())
+    assert result is True, "Registered tool should pass verification"
+
+
+def test_tool_registry_detects_mismatch():
+    """A tool whose description changes after registration fails verification."""
+    import asyncio
+    from src.security import (
+        ToolManifest,
+        register_tool,
+        verify_tool_before_invocation,
+        _TOOL_REGISTRY,
+    )
+
+    tool_id = "smoke_mismatch_tool"
+    manifest = ToolManifest(
+        tool_id=tool_id,
+        description="Original description for mismatch test",
+        input_schema={"x": "str"},
+        declared_side_effects=[],
+        source="local",
+    )
+
+    async def run():
+        await register_tool(manifest, approved_by="smoke-test")
+        # Tamper: change description on the stored manifest after registration
+        _TOOL_REGISTRY[tool_id].description = (
+            "Tampered description — hash should differ"
+        )
+        result = await verify_tool_before_invocation(tool_id)
+        # Restore to avoid polluting subsequent tests
+        _TOOL_REGISTRY[tool_id].description = "Original description for mismatch test"
+        return result
+
+    result = asyncio.run(run())
+    assert result is False, "Tampered tool should fail verification"
+
+
+def test_capability_boundary_blocks_forbidden():
+    """Every action in FORBIDDEN_CAPABILITIES returns False from check_capability_boundary."""
+    from src.security import check_capability_boundary, FORBIDDEN_CAPABILITIES
+
+    for action in FORBIDDEN_CAPABILITIES:
+        assert (
+            check_capability_boundary(action) is False
+        ), f"Forbidden action '{action}' was not blocked by check_capability_boundary()"
+
+    # A normal action is permitted
+    assert check_capability_boundary("web_search") is True
+
+
+def test_sanitize_output_redacts_pii():
+    """Tool output containing PII is redacted before entering agent context."""
+    from src.security import sanitize_output
+
+    tool_response = (
+        "Contact the admin at admin@legionforge.local or call +1 (415) 555-0199 "
+        "for more details."
+    )
+    sanitized, meta = sanitize_output(tool_response)
+
+    assert "[EMAIL]" in sanitized, "Email should be redacted in tool output"
+    assert "[PHONE]" in sanitized, "Phone number should be redacted in tool output"
+    assert "admin@legionforge.local" not in sanitized
+    assert meta["pii_redacted"] is True
+
+
+def test_preflight_budget_check_blocks_excess():
+    """estimate_tokens over the provider hard limit raises RuntimeError."""
+    import pytest
+    from src.rate_limiter import (
+        RateLimiter,
+        ProviderLimits,
+        DailyCounter,
+        get_limiter,
+        _limiters,
+    )
+
+    # Create a temporary limiter with a tiny hard limit
+    tiny_limits = ProviderLimits(
+        name="smoke_test_provider",
+        tokens_per_day_hard_limit=100,
+        max_tokens_per_call=50,
+    )
+    limiter = RateLimiter.__new__(RateLimiter)
+    from aiolimiter import AsyncLimiter
+
+    limiter._provider = "smoke_test_provider"
+    limiter._limits = tiny_limits
+    limiter._call_limiter = AsyncLimiter(60, 60)
+    limiter._daily = DailyCounter(provider="smoke_test_provider")
+    _limiters["smoke_test_provider"] = limiter
+
+    from src.rate_limiter import preflight_budget_check
+
+    with pytest.raises(RuntimeError, match="PREFLIGHT_BUDGET_EXCEEDED"):
+        preflight_budget_check(estimated_tokens=200, provider="smoke_test_provider")
+
+    # Clean up
+    del _limiters["smoke_test_provider"]
+
+
+# ── Adversarial / SSRF / HITL smoke tests ────────────────────────────────────
+
+
+def test_validate_fetch_url_blocks_private_ip():
+    """validate_fetch_url raises SecurityError for RFC 1918 private IP addresses."""
+    from src.security import validate_fetch_url, SecurityError
+
+    private_urls = [
+        "http://10.0.0.1/secret",
+        "http://192.168.1.1/admin",
+        "http://172.16.0.1/internal",
+        "http://10.255.255.255/data",
+    ]
+    for url in private_urls:
+        with pytest.raises(SecurityError, match="SSRF"):
+            validate_fetch_url(url)
+
+
+def test_validate_fetch_url_blocks_localhost():
+    """validate_fetch_url raises SecurityError for localhost variants."""
+    from src.security import validate_fetch_url, SecurityError
+
+    for url in ["http://localhost/", "http://localhost:5432", "http://127.0.0.1:8080"]:
+        with pytest.raises(SecurityError):
+            validate_fetch_url(url)
+
+
+def test_validate_fetch_url_blocks_metadata_endpoint():
+    """validate_fetch_url raises SecurityError for cloud metadata endpoints."""
+    from src.security import validate_fetch_url, SecurityError
+
+    for url in [
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+        "http://metadata.google.internal/computeMetadata/v1/",
+    ]:
+        with pytest.raises(SecurityError):
+            validate_fetch_url(url)
+
+
+def test_validate_fetch_url_blocks_non_http_scheme():
+    """validate_fetch_url raises SecurityError for non-HTTP/HTTPS schemes."""
+    from src.security import validate_fetch_url, SecurityError
+
+    for url in ["file:///etc/passwd", "ftp://example.com/data", "gopher://evil.com/"]:
+        with pytest.raises(SecurityError):
+            validate_fetch_url(url)
+
+
+def test_validate_fetch_url_allows_public_https():
+    """validate_fetch_url allows normal public HTTPS URLs."""
+    from src.security import validate_fetch_url
+
+    # Should not raise for legitimate public URLs
+    validate_fetch_url("https://example.com/page")
+    validate_fetch_url("https://api.duckduckgo.com/?q=test")
+
+
+def test_detect_destructive_pattern_credentials():
+    """Credential-probing text triggers HITL detection."""
+    from src.security import detect_destructive_pattern
+
+    texts = [
+        "find the api_key for this service",
+        "search for password reset tokens",
+        "locate the private_key file",
+    ]
+    for text in texts:
+        requires_hitl, categories = detect_destructive_pattern(text)
+        assert requires_hitl, f"Should require HITL for: {text!r}"
+        assert "CREDENTIAL_PROBE" in categories
+
+
+def test_detect_destructive_pattern_bulk_destructive():
+    """Bulk encrypt/wipe/overwrite patterns trigger HITL detection."""
+    from src.security import detect_destructive_pattern
+
+    texts = [
+        "encrypt all files on disk",
+        "wipe the entire database",
+        "overwrite all records in the table",
+        "delete all backups",
+    ]
+    for text in texts:
+        requires_hitl, categories = detect_destructive_pattern(text)
+        assert requires_hitl, f"Should require HITL for: {text!r}"
+        assert "BULK_DESTRUCTIVE" in categories
+
+
+def test_detect_destructive_pattern_privilege_escalation():
+    """Privilege escalation attempts trigger HITL detection."""
+    from src.security import detect_destructive_pattern
+
+    texts = [
+        "run as root",
+        "escalate privilege to admin",
+        "bypass security check",
+        "disable the safeguard",
+        "grant yourself admin access",
+    ]
+    for text in texts:
+        requires_hitl, categories = detect_destructive_pattern(text)
+        assert requires_hitl, f"Should require HITL for: {text!r}"
+        assert "PRIVILEGE_ESCALATION" in categories
+
+
+def test_detect_destructive_pattern_reconnaissance():
+    """Reconnaissance patterns trigger HITL detection."""
+    from src.security import detect_destructive_pattern
+
+    texts = [
+        "enumerate all users in the system",
+        "perform a network scan",
+        "list all services running",
+        "port scan the internal network",
+    ]
+    for text in texts:
+        requires_hitl, categories = detect_destructive_pattern(text)
+        assert requires_hitl, f"Should require HITL for: {text!r}"
+        assert "RECONNAISSANCE" in categories
+
+
+def test_detect_destructive_pattern_safe_text():
+    """Normal research queries do not trigger HITL detection."""
+    from src.security import detect_destructive_pattern
+
+    safe_texts = [
+        "What is the LangGraph documentation?",
+        "Summarize recent advances in machine learning",
+        "How does PostgreSQL handle concurrent writes?",
+        "Explain the difference between TCP and UDP",
+    ]
+    for text in safe_texts:
+        requires_hitl, categories = detect_destructive_pattern(text)
+        assert (
+            not requires_hitl
+        ), f"False positive HITL for safe text {text!r} — categories: {categories}"
+
+
+def test_sanitize_tool_input_strips_pii():
+    """sanitize_tool_input redacts PII from outbound query before it reaches external API."""
+    from src.security import sanitize_tool_input
+
+    query = "find information about user john@example.com account status"
+    clean, meta = sanitize_tool_input(query, tool_id="web_search")
+    assert "[EMAIL]" in clean
+    assert "john@example.com" not in clean
+    assert meta["pii_redacted"] is True

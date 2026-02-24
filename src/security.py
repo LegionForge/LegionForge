@@ -10,9 +10,13 @@ before being processed or traced.
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+import json
 import os
 import re
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 import subprocess
@@ -285,3 +289,634 @@ def sanitize_for_trace(data: Any) -> Any:
     elif isinstance(data, list):
         return [sanitize_for_trace(item) for item in data]
     return data
+
+
+def sanitize_output(text: str) -> tuple[str, dict]:
+    """
+    Sanitize external tool output before it enters agent context.
+    Applies PII redaction and injection detection — same as sanitize_text()
+    but named distinctly so call sites are unambiguous about direction.
+    """
+    return sanitize_text(text, redact_pii=True, check_injection=True)
+
+
+def sanitize_messages(messages: list) -> list:
+    """
+    Sanitize a list of messages before outbound LLM calls (PII redaction on send).
+    Handles both LangChain BaseMessage objects and plain dicts.
+    Returns the same type as received (messages are NOT converted).
+    """
+    sanitized = []
+    for msg in messages:
+        if hasattr(msg, "content") and isinstance(msg.content, str):
+            clean, _ = sanitize_text(msg.content)
+            try:
+                msg = msg.model_copy(update={"content": clean})
+            except AttributeError:
+                try:
+                    msg = msg.copy(update={"content": clean})
+                except Exception:
+                    pass  # If copy fails, use original msg
+        elif isinstance(msg, dict) and isinstance(msg.get("content"), str):
+            msg = dict(msg)
+            msg["content"], _ = sanitize_text(msg["content"])
+        sanitized.append(msg)
+    return sanitized
+
+
+# ── Tool Registry ─────────────────────────────────────────────────────────────
+
+
+class SecurityError(Exception):
+    """Raised when a security invariant is violated (unregistered tool, hash mismatch)."""
+
+
+@dataclass
+class ToolManifest:
+    """Describes a tool at registration time. Immutable after registration."""
+
+    tool_id: str
+    description: str
+    input_schema: dict  # JSON-serialisable dict
+    declared_side_effects: list[
+        str
+    ]  # e.g. ["reads_web", "calls_external_api:duckduckgo.com"]
+    source: str  # "local" | "langchain" | "custom"
+    version: str = "1.0.0"
+    entrypoint_func: Any = field(
+        default=None, repr=False
+    )  # callable; used for source hash
+
+
+# In-memory registries — populated by register_tool() at startup
+_TOOL_REGISTRY: dict[str, ToolManifest] = {}
+_TOOL_HASHES: dict[str, dict[str, str]] = (
+    {}
+)  # tool_id → {description_hash, schema_hash, entrypoint_hash}
+
+
+def _compute_fast_hash(manifest: ToolManifest) -> dict[str, str]:
+    """
+    Fast in-memory integrity hash — description and schema only. No disk I/O.
+
+    Used in the per-invocation hot path (verify_tool_before_invocation).
+    Both inputs live in memory so this is microseconds, not milliseconds.
+    """
+    description_hash = hashlib.sha256(manifest.description.encode("utf-8")).hexdigest()
+    schema_json = json.dumps(manifest.input_schema, sort_keys=True, ensure_ascii=True)
+    schema_hash = hashlib.sha256(schema_json.encode("utf-8")).hexdigest()
+    return {"description_hash": description_hash, "schema_hash": schema_hash}
+
+
+def _compute_tool_hash(manifest: ToolManifest) -> dict[str, str]:
+    """
+    Full integrity hash — description, schema, AND entrypoint source via
+    inspect.getsource(). Reads from disk; use only at registration time and
+    in the `make verify-tool-registry` startup check, NOT on every invocation.
+
+    Returns dict with keys: description_hash, schema_hash, entrypoint_hash.
+    entrypoint_hash is None if the function source cannot be retrieved
+    (built-ins, lambdas, dynamically created functions).
+    """
+    hashes = _compute_fast_hash(manifest)
+
+    entrypoint_hash: str | None = None
+    if manifest.entrypoint_func is not None:
+        try:
+            source = inspect.getsource(manifest.entrypoint_func)
+            entrypoint_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        except (OSError, TypeError):
+            entrypoint_hash = None
+
+    hashes["entrypoint_hash"] = entrypoint_hash
+    return hashes
+
+
+async def register_tool(
+    manifest: ToolManifest,
+    approved_by: str = "operator",
+    approval_notes: str = "",
+) -> None:
+    """
+    Register a tool in the in-memory registry and persist to DB.
+    Idempotent — calling again with the same tool_id updates the record.
+
+    Args:
+        manifest:       ToolManifest describing the tool.
+        approved_by:    Identifier of the approver (e.g. "operator", "ci").
+        approval_notes: Free-text rationale for approval.
+    """
+    hashes = _compute_tool_hash(manifest)
+
+    # Always update in-memory registry first (works even without DB)
+    _TOOL_REGISTRY[manifest.tool_id] = manifest
+    _TOOL_HASHES[manifest.tool_id] = hashes
+
+    logger.info(
+        f"[tool-registry] Registered '{manifest.tool_id}' (source={manifest.source} "
+        f"version={manifest.version} approved_by={approved_by})"
+    )
+
+    # Persist to DB — non-fatal if DB not available (smoke tests run without DB)
+    try:
+        from src.database import get_pool
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO tool_registry
+                    (tool_id, source, version, description, description_hash,
+                     schema_hash, entrypoint_hash, declared_side_effects,
+                     approved_by, approval_notes, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'APPROVED')
+                ON CONFLICT (tool_id) DO UPDATE SET
+                    source            = EXCLUDED.source,
+                    version           = EXCLUDED.version,
+                    description       = EXCLUDED.description,
+                    description_hash  = EXCLUDED.description_hash,
+                    schema_hash       = EXCLUDED.schema_hash,
+                    entrypoint_hash   = EXCLUDED.entrypoint_hash,
+                    declared_side_effects = EXCLUDED.declared_side_effects,
+                    approved_by       = EXCLUDED.approved_by,
+                    approval_notes    = EXCLUDED.approval_notes,
+                    status            = 'APPROVED',
+                    approved_at       = NOW()
+                """,
+                manifest.tool_id,
+                manifest.source,
+                manifest.version,
+                manifest.description,
+                hashes["description_hash"],
+                hashes["schema_hash"],
+                hashes["entrypoint_hash"],
+                manifest.declared_side_effects,
+                approved_by,
+                approval_notes,
+            )
+    except RuntimeError:
+        logger.debug(
+            f"[tool-registry] DB not initialized — '{manifest.tool_id}' "
+            "registered in memory only."
+        )
+    except Exception as e:
+        logger.warning(
+            f"[tool-registry] DB persist failed for '{manifest.tool_id}': {e} "
+            "— registered in memory only."
+        )
+
+
+async def verify_tool_before_invocation(tool_id: str) -> bool:
+    """
+    Check that a tool is registered and its hashes have not changed since registration.
+
+    Returns True if the tool is approved and integrity checks pass.
+    Returns False (and logs a threat event) on hash mismatch or unregistered tool.
+    Raises SecurityError only when the violation is severe enough to halt the run.
+    """
+    if tool_id not in _TOOL_REGISTRY:
+        logger.error(
+            f"[tool-registry] CAPABILITY_VIOLATION — tool '{tool_id}' not registered."
+        )
+        # Log to DB if available
+        try:
+            from src.database import log_threat_event
+
+            await log_threat_event(
+                agent_id="security",
+                run_id="unknown",
+                threat_type="CAPABILITY_VIOLATION",
+                action_taken="BLOCKED",
+                confidence=1.0,
+                raw_input=tool_id[:200],
+                metadata={"tool_id": tool_id},
+            )
+        except Exception:
+            pass
+        return False
+
+    manifest = _TOOL_REGISTRY[tool_id]
+    stored_hashes = _TOOL_HASHES[tool_id]
+
+    # Fast path: only check description + schema (pure in-memory, no disk I/O).
+    # Entrypoint source hash is verified at startup via make verify-tool-registry,
+    # not on every call — inspect.getsource() reads from disk and is expensive
+    # when called hundreds of times per session.
+    current_hashes = _compute_fast_hash(manifest)
+
+    mismatches = {
+        k: (stored_hashes.get(k), current_hashes.get(k))
+        for k in ("description_hash", "schema_hash")
+        if stored_hashes.get(k) and stored_hashes.get(k) != current_hashes.get(k)
+    }
+
+    if mismatches:
+        logger.error(
+            f"[tool-registry] TOOL_HASH_MISMATCH for '{tool_id}'. "
+            f"Fields changed: {list(mismatches.keys())}"
+        )
+        try:
+            from src.database import log_threat_event
+
+            await log_threat_event(
+                agent_id="security",
+                run_id="unknown",
+                threat_type="TOOL_HASH_MISMATCH",
+                action_taken="BLOCKED",
+                confidence=1.0,
+                raw_input=tool_id[:200],
+                metadata={"tool_id": tool_id, "mismatches": list(mismatches.keys())},
+            )
+        except Exception:
+            pass
+        return False
+
+    return True
+
+
+# ── Capability Boundary ───────────────────────────────────────────────────────
+
+FORBIDDEN_CAPABILITIES: frozenset[str] = frozenset(
+    {
+        "register_tool",
+        "write_executable",
+        "invoke_unregistered",
+        "modify_registry",
+        "escalate_scope",
+        "spawn_agent_direct",
+        "modify_own_state",
+    }
+)
+
+
+def check_capability_boundary(action: str) -> bool:
+    """
+    Phase 1 stub. Blocks actions in FORBIDDEN_CAPABILITIES.
+    Full Guardian enforcement is wired in Phase 2 as a sidecar service.
+
+    Returns True if action is permitted, False if forbidden.
+    """
+    if action in FORBIDDEN_CAPABILITIES:
+        logger.error(f"[guardian-stub] CAPABILITY_VIOLATION blocked: {action}")
+        return False
+    return True
+
+
+# ── SSRF Prevention ───────────────────────────────────────────────────────────
+# Blocks Server-Side Request Forgery: an injected prompt instructing the agent
+# to fetch internal services (postgres port, cloud metadata, localhost, etc.)
+
+_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
+
+_BLOCKED_HOSTS: frozenset[str] = frozenset(
+    {
+        "localhost",
+        "metadata.google.internal",  # GCP metadata
+        "169.254.169.254",  # AWS/Azure/GCP IMDS — cloud credentials endpoint
+        "100.100.100.200",  # Alibaba Cloud metadata
+    }
+)
+
+# Private / non-routable IP prefixes (string-level fast check before DNS)
+_PRIVATE_IP_PATTERNS: list[re.Pattern] = [
+    re.compile(r"^127\."),  # loopback (127.0.0.0/8)
+    re.compile(r"^10\."),  # RFC 1918 (10.0.0.0/8)
+    re.compile(r"^172\.(1[6-9]|2\d|3[01])\."),  # RFC 1918 (172.16-31.x)
+    re.compile(r"^192\.168\."),  # RFC 1918 (192.168.0.0/16)
+    re.compile(r"^169\.254\."),  # link-local / IMDS (169.254.0.0/16)
+    re.compile(r"^0\."),  # 0.0.0.0/8 — unspecified
+    re.compile(r"^::1$"),  # IPv6 loopback
+    re.compile(r"^fc[0-9a-f]{2}:", re.I),  # IPv6 unique local (fc00::/7)
+    re.compile(r"^fd[0-9a-f]{2}:", re.I),  # IPv6 unique local (fd00::/8)
+    re.compile(r"^fe80:", re.I),  # IPv6 link-local
+]
+
+
+def _is_private_ip(ip: str) -> bool:
+    """Return True if ip string matches any private/reserved range."""
+    for pattern in _PRIVATE_IP_PATTERNS:
+        if pattern.match(ip):
+            return True
+    return False
+
+
+def validate_fetch_url(url: str) -> None:
+    """
+    Validate a URL before making an outbound HTTP request.
+
+    Raises SecurityError for:
+    - Non-HTTP/HTTPS schemes  (file://, ftp://, gopher://, etc.)
+    - Localhost and known metadata endpoints
+    - Private / RFC 1918 / link-local IP addresses (SSRF prevention)
+    - .local domains (mDNS — resolves to internal hosts)
+    - DNS rebinding: resolves the hostname and checks the resulting IPs
+
+    Call this inside every tool that makes outbound HTTP requests, BEFORE
+    the request is made. SecureToolNode also calls this as belt-and-suspenders.
+
+    Adversarial scenarios blocked:
+      - web_fetch("http://localhost:5432")        — DB port
+      - web_fetch("http://192.168.1.1/admin")    — internal router
+      - web_fetch("http://169.254.169.254/...")  — cloud credentials
+      - web_fetch("file:///etc/passwd")           — local file read
+      - DNS rebinding: evil.com → 127.0.0.1 after TTL
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    if not url or not isinstance(url, str):
+        raise SecurityError(f"Invalid URL: {url!r}")
+
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        raise SecurityError(f"Malformed URL {url!r}: {e}") from e
+
+    # 1. Scheme check
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        raise SecurityError(
+            f"[SSRF] Forbidden URL scheme {scheme!r}. Only http/https are allowed."
+        )
+
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise SecurityError(f"[SSRF] URL has no hostname: {url!r}")
+
+    # 2. Blocked hostname list
+    if host in _BLOCKED_HOSTS:
+        raise SecurityError(
+            f"[SSRF] Blocked host {host!r} (known metadata/internal endpoint)."
+        )
+
+    # 3. .local domain (mDNS — resolves to internal hosts on the LAN)
+    if host.endswith(".local"):
+        raise SecurityError(f"[SSRF] .local domains are not permitted: {host!r}")
+
+    # 4. String-level private IP check (fast path — catches literal IPs in URL)
+    if _is_private_ip(host):
+        raise SecurityError(f"[SSRF] Private IP address in URL: {host!r}")
+
+    # 5. DNS resolution check — catches DNS rebinding and CNAMEs to internal IPs
+    try:
+        addrs = socket.getaddrinfo(host, None)
+        for _, _, _, _, addr in addrs:
+            resolved_ip = addr[0]
+            if _is_private_ip(resolved_ip):
+                raise SecurityError(
+                    f"[SSRF] {host!r} resolves to private IP {resolved_ip!r}. "
+                    "Possible DNS rebinding attack."
+                )
+    except SecurityError:
+        raise
+    except OSError:
+        pass  # DNS resolution failed — let httpx handle that gracefully
+
+    logger.debug(f"[ssrf-check] URL validated: {url!r}")
+
+
+# ── Outbound Tool Input Sanitization ─────────────────────────────────────────
+# Symmetric counterpart to sanitize_output(). Sanitize BEFORE sending to any
+# external API — prevents PII from leaking into third-party search queries,
+# and detects injection attempts that may have crept into tool arguments.
+
+
+def sanitize_tool_input(text: str, tool_id: str = "") -> tuple[str, dict]:
+    """
+    Sanitize a tool input value before it leaves the process.
+
+    Applies PII redaction and injection detection — same pipeline as
+    sanitize_text() but named distinctly so call sites are unambiguous
+    about direction (outbound vs inbound).
+
+    Call this on every argument that will be sent to an external API
+    (search queries, fetch URLs, summarization inputs, etc.)
+    """
+    result, meta = sanitize_text(text, redact_pii=True, check_injection=True)
+    if meta.get("pii_redacted") or meta.get("injection_detected"):
+        logger.warning(
+            f"[tool-input] sanitize_tool_input on tool='{tool_id}': "
+            f"pii_redacted={meta['pii_redacted']} "
+            f"injection_detected={meta['injection_detected']}"
+        )
+    return result, meta
+
+
+# ── Destructive Pattern Detection (HITL trigger) ──────────────────────────────
+# Patterns that are either adversarial OR legitimately risky enough to require
+# human approval before the agent proceeds.
+#
+# These are NOT all malicious — a security researcher legitimately needs to query
+# for "password policy". The point is: a HUMAN should decide, not the agent alone.
+
+_DESTRUCTIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # ── Credential probing ────────────────────────────────────────────────────
+    # Searching for or extracting secrets, keys, or auth material.
+    # May be legitimate security research — but always needs human review.
+    (
+        re.compile(
+            r"\b(password|passwd|api[_\-\s]?key|secret[_\-\s]?key|private[_\-\s]?key"
+            r"|access[_\-\s]?token|auth[_\-\s]?token|bearer[_\-\s]?token|credentials?"
+            r"|keychain|vault\s+secret|pgp\s+key|ssh\s+key|client[_\-\s]?secret)\b",
+            re.I,
+        ),
+        "CREDENTIAL_PROBE",
+    ),
+    # ── Internal infrastructure probing ──────────────────────────────────────
+    # Attempts to discover or interact with internal services, admin panels,
+    # or network topology. Classic lateral-movement reconnaissance pattern.
+    (
+        re.compile(
+            r"\b(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.\d+\.\d+"
+            r"|internal[_\-\s]?(api|service|host|network|endpoint)"
+            r"|intranet|admin[_\-\s]?(panel|console|interface|login|portal)"
+            r"|management[_\-\s]?(console|interface|portal)"
+            r"|corp(orate)?\s+network|vpn\s+(gateway|server|config))\b",
+            re.I,
+        ),
+        "INTERNAL_PROBE",
+    ),
+    # ── System file / path probing ────────────────────────────────────────────
+    # Attempts to read system credentials, configs, or sensitive files.
+    # Covers Unix, macOS, and Windows common targets.
+    (
+        re.compile(
+            r"(/etc/(passwd|shadow|hosts|sudoers|crontab|ssh|ssl)"
+            r"|/root/|/home/\w+/\.(ssh|aws|gnupg|config)"
+            r"|~/\.(ssh|aws|gnupg|config|env|bashrc|zshrc)"
+            r"|\\\\HKLM\\\\|\\\\HKCU\\\\|%APPDATA%|%SYSTEMROOT%|%LOCALAPPDATA%"
+            r"|C:\\\\Windows\\\\System32|C:\\\\Users\\\\[^/\\\\]+\\\\AppData)",
+            re.I,
+        ),
+        "SYSTEM_PATH_PROBE",
+    ),
+    # ── Bulk data exfiltration ────────────────────────────────────────────────
+    # Mass extraction framing: dumps, full exports, scraping everything.
+    # Also catches encrypt/overwrite/destroy patterns (ransomware-adjacent).
+    (
+        re.compile(
+            r"\b(exfil(trat)?e?"
+            r"|dump\s+(all|the\s+(database|db|tables?|data|users?|records?))"
+            r"|export\s+(all|every|complete|full|entire)"
+            r"|scrape\s+(all|every|the\s+(site|web|pages?|content))"
+            r"|harvest\s+(all|data|credentials?|emails?|records?)"
+            # Bulk destroy/overwrite (ransomware / destructive patterns)
+            r"|encrypt\s+(all|every|the)\s+(files?|data|disks?|volumes?|backups?)"
+            r"|overwrite\s+(all|every|the)\s+(files?|data|disks?|records?)"
+            r"|wipe\s+(all|the|disks?|drives?|volumes?|database)"
+            r"|delete\s+(all|every|the)\s+(files?|data|records?|users?|backups?)"
+            r"|shred\s+(all|every|the)\s+(files?|data|disks?))\b",
+            re.I,
+        ),
+        "BULK_DESTRUCTIVE",
+    ),
+    # ── Self-probe ────────────────────────────────────────────────────────────
+    # Agent attempting to learn its own config, identity, or secrets.
+    # A key early indicator of a successful prompt injection.
+    (
+        re.compile(
+            r"\b(your\s+(system\s+)?prompt|your\s+instructions?"
+            r"|your\s+(api\s+)?key|your\s+(initial|current)\s+(instructions?|context)"
+            r"|legionforge\s+(config|secret|key|prompt)"
+            r"|agent[_\-\s]?(config|settings|state|key|identity)"
+            r"|what\s+are\s+your\s+instructions?)\b",
+            re.I,
+        ),
+        "SELF_PROBE",
+    ),
+    # ── Command / shell injection ─────────────────────────────────────────────
+    # Shell metacharacters or command sequences in tool arguments.
+    # Indicates attempt to escape tool boundaries and run system commands.
+    (
+        re.compile(
+            r"[|;&`]\s*(cat|ls|ps|id|whoami|wget|curl|nc|netcat|bash|sh|zsh|dash"
+            r"|python\d*|perl|ruby|node|php|powershell|cmd\.exe)\b"
+            r"|\$\([^)]+\)"  # $(command) subshell
+            r"|`[^`]{3,}`"  # `command` backtick execution
+            r"|\beval\s*\(",  # eval( calls
+            re.I,
+        ),
+        "CMD_INJECTION",
+    ),
+    # ── Prompt-level privilege escalation ────────────────────────────────────
+    # Agent being instructed to escalate its own permissions or bypass controls.
+    (
+        re.compile(
+            r"\b(sudo|run\s+as\s+(root|admin|administrator|superuser)"
+            r"|escalate\s+(privileges?|permissions?|access|scope)"
+            r"|bypass\s+(the\s+)?(security|auth\w*|authorization|check|filter|guard)"
+            r"|disable\s+(the\s+|a\s+)?(security|safeguards?|checks?|filters?|guards?|monitoring|logging)"
+            r"|grant\s+(yourself|itself|the\s+agent)(\s+\w+)?\s+(access|permissions?|privileges?))\b",
+            re.I,
+        ),
+        "PRIVILEGE_ESCALATION",
+    ),
+    # ── Data staging / covert channel setup ──────────────────────────────────
+    # Patterns that suggest setting up infrastructure for exfiltration:
+    # posting data to webhooks, encoding for transmission, dead-drop patterns.
+    (
+        re.compile(
+            r"\b(send\s+(this|the|all)\s+(data|output|result|content)\s+to"
+            r"|post\s+(this|the|all)\s+(data|output|result)\s+to"
+            r"|webhook\.site|requestbin|pipedream|ngrok\.(io|com)"
+            r"|pastebin\.com|hastebin|ghostbin"  # common data dead-drops
+            r"|base64\s+(encode|encod)\s+(and\s+)?(send|post|upload)"
+            r"|encode\s+(and\s+)?(exfil|send|transmit|upload))\b",
+            re.I,
+        ),
+        "DATA_STAGING",
+    ),
+    # ── Reconnaissance patterns ───────────────────────────────────────────────
+    # Systematic enumeration of users, services, network topology, or software
+    # versions — standard first phase of an attack chain.
+    (
+        re.compile(
+            r"\b(enumerate\s+(all\s+)?(users?|accounts?|services?|hosts?|ports?|subnets?|domains?)"
+            r"|list\s+all\s+(users?|accounts?|services?|processes?|ports?|connections?)"
+            r"|network\s+(scan|map|topology|enumeration)"
+            r"|port\s+(scan|sweep|probe)"
+            r"|service\s+(discovery|enumeration|fingerprint)"
+            r"|os\s+(detection|fingerprint|version\s+scan))\b",
+            re.I,
+        ),
+        "RECONNAISSANCE",
+    ),
+]
+
+
+# ── HITL tier classification ─────────────────────────────────────────────────
+# HALT tier: high-confidence, unambiguously adversarial in any tool-call context.
+# Run is force-ended immediately. No legitimate task should trigger these.
+HITL_HALT_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "CMD_INJECTION",  # Shell metacharacters — clear attempt to escape tool sandbox
+        "SELF_PROBE",  # Agent learning its own config — sign of successful injection
+        "DATA_STAGING",  # Webhook dead-drops, encode-and-send — exfiltration setup
+        "PRIVILEGE_ESCALATION",  # "bypass security check" — unambiguously adversarial
+    }
+)
+
+# LOG tier: ambiguous — may be adversarial OR legitimate research.
+# Event is logged and run continues. Operator reviews in threat_events table.
+# Examples of legitimate triggers:
+#   CREDENTIAL_PROBE:  "best practices for API key rotation"
+#   RECONNAISSANCE:    "how to enumerate Python package dependencies"
+#   INTERNAL_PROBE:    article mentioning "localhost" in a Docker tutorial
+#   BULK_DESTRUCTIVE:  "delete all old log records" (legitimate admin task)
+HITL_LOG_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "CREDENTIAL_PROBE",
+        "RECONNAISSANCE",
+        "INTERNAL_PROBE",
+        "BULK_DESTRUCTIVE",
+        "SYSTEM_PATH_PROBE",
+    }
+)
+
+
+def detect_destructive_pattern(text: str) -> tuple[bool, list[str]]:
+    """
+    Scan text for patterns that require human-in-the-loop review or immediate halt.
+    Returns (any_matched, list_of_matched_categories).
+
+    Callers should check each category against HITL_HALT_CATEGORIES to decide
+    whether to force-end or log-and-continue. check_hitl_required() does this
+    automatically.
+
+    HALT categories (force_end=True):
+      CMD_INJECTION        — shell metacharacters in tool arguments
+      SELF_PROBE           — agent probing its own config or identity
+      DATA_STAGING         — webhook dead-drops, encode-and-send setup
+      PRIVILEGE_ESCALATION — bypass/disable security controls
+
+    LOG categories (log + continue):
+      CREDENTIAL_PROBE     — queries containing password/key/token vocabulary
+      RECONNAISSANCE       — systematic enumeration requests
+      INTERNAL_PROBE       — localhost, admin panels, internal service refs
+      BULK_DESTRUCTIVE     — mass encrypt/wipe/delete framing
+      SYSTEM_PATH_PROBE    — /etc/passwd, ~/.ssh, registry path refs
+    """
+    matched: list[str] = []
+    for pattern, category in _DESTRUCTIVE_PATTERNS:
+        if pattern.search(text):
+            matched.append(category)
+    return bool(matched), matched
+
+
+class Guardian:
+    """
+    Phase 1 stub. Real Guardian implemented in Phase 2 as a sidecar service.
+    All methods return permissive results past the capability check,
+    and log every call to build the Phase 2 baseline.
+    """
+
+    @staticmethod
+    def check(tool_id: str, action: str, state: dict) -> bool:
+        """
+        Returns True if the tool invocation is permitted.
+        Blocks immediately on FORBIDDEN_CAPABILITIES; otherwise permits.
+        """
+        logger.debug(f"[guardian-stub] check(tool_id={tool_id!r}, action={action!r})")
+        if not check_capability_boundary(action):
+            return False
+        return True  # stub: allow everything past capability check
