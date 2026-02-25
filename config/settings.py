@@ -219,6 +219,10 @@ class SecurityConfig(BaseModel):
     guardian_timeout_seconds: float = 2.0
     # Phase 2: Health server auth
     health_token_service: str = "legionforge_health"
+    # Phase 3: Task-scoped JWT tokens
+    task_token_secret_service: str = "legionforge_task_tokens"
+    task_token_issuer: str = "legionforge"
+    task_token_ttl_seconds: int = 3600
 
 
 class HardwareSettings(BaseModel):

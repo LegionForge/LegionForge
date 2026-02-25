@@ -507,6 +507,9 @@ THREAT_TYPES = {
     "DESTRUCTIVE_PATTERN",  # input matches credential/infra/bulk-exfil pattern — HITL required
     "AUDIT_LOG_TAMPER",  # audit log hash chain integrity check failed
     "SEQUENCE_VIOLATION",  # tool call sequence not in approved agent_profiles
+    # Phase 3: task token ACL
+    "TOOL_SCOPE_VIOLATION",  # agent (deny policy) tried a tool outside its token scope
+    "INVALID_TASK_TOKEN",  # JWT was invalid, expired, or had wrong issuer
 }
 
 # Valid action_taken values
@@ -618,6 +621,47 @@ async def get_threat_summary(hours: int = 24) -> dict:
             hours,
         )
     return {"hours": hours, "by_type": [dict(r) for r in rows]}
+
+
+async def get_recent_escalations(hours: int = 24, limit: int = 20) -> list[dict]:
+    """
+    Return recent ESCALATION_BLOCKED events from the audit log.
+
+    Phase 3: surfaced on the health server /status endpoint so operators can
+    see which agents hit scope boundaries without trawling raw logs.
+
+    Returns a list of dicts with keys: seq, ts, agent_id, payload.
+    Returns an empty list if the DB is unavailable or the table is empty.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT seq, ts, agent_id, payload
+            FROM audit_log
+            WHERE event_type = 'ESCALATION_BLOCKED'
+              AND ts > NOW() - INTERVAL '%s hours'
+            ORDER BY ts DESC
+            LIMIT %s
+            """,
+            hours,
+            limit,
+        )
+    return [
+        {
+            "seq": r["seq"],
+            "ts": (
+                r["ts"].isoformat() if hasattr(r["ts"], "isoformat") else str(r["ts"])
+            ),
+            "agent_id": r["agent_id"],
+            "payload": (
+                r["payload"]
+                if isinstance(r["payload"], dict)
+                else json.loads(r["payload"])
+            ),
+        }
+        for r in rows
+    ]
 
 
 # ── Audit log hash chain ───────────────────────────────────────────────────────

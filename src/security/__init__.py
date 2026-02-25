@@ -9,7 +9,19 @@ Import paths like `from src.security import sanitize_text` still resolve
 correctly — Python sees this package and finds the symbols here.
 
 Phase 2 adds `src/security/guardian.py` (FastAPI sidecar).
+Phase 3 adds `src/security/acl.py` (JWT task tokens).
 """
+
+from src.security.acl import (
+    # Task token types
+    TaskToken,
+    EscalationRequest,
+    PrivilegeEscalationError,
+    # Core functions
+    issue_task_token,
+    validate_task_token,
+    derive_task_token,
+)
 
 from src.security.core import (
     # API key management
@@ -59,6 +71,14 @@ from src.security.core import (
 )
 
 __all__ = [
+    # Phase 3: Task tokens
+    "TaskToken",
+    "EscalationRequest",
+    "PrivilegeEscalationError",
+    "issue_task_token",
+    "validate_task_token",
+    "derive_task_token",
+    # Core security
     "get_api_key",
     "get_api_key_optional",
     "load_all_keys_to_env",

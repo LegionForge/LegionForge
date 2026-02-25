@@ -50,6 +50,7 @@ from src.security.core import (
     _TOOL_REGISTRY,
     _TOOL_HASHES,
 )
+from src.security.acl import validate_task_token
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ async def _lifespan(application: FastAPI):
 app = FastAPI(
     title="LegionForge Guardian",
     description="Deterministic security sidecar — NO LLM calls",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=_lifespan,
 )
 
@@ -173,6 +174,48 @@ class ReportRequest(BaseModel):
 
 
 # ── Five-check enforcement pipeline ──────────────────────────────────────────
+
+
+def _check_0_task_token(
+    tool_id: str, task_token: str | None
+) -> GuardianCheckResponse | None:
+    """
+    Check 0 (Phase 3): Validate the JWT task token and verify tool is in scope.
+
+    Only runs when the request includes a task_token. Agents without tokens
+    are unconstrained for backward compatibility (Phase 4 will enforce tokens
+    on all agents).
+
+    Two failure modes:
+      - Token present but invalid/expired → tier="halt" (INVALID_TASK_TOKEN)
+      - Token valid but tool not in granted_tools → tier="halt" (TOOL_SCOPE_VIOLATION)
+    """
+    if not task_token:
+        return None  # No token — skip check (backward compat)
+
+    token = validate_task_token(task_token)
+    if token is None:
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason="Task token is invalid or expired",
+            threat_type="INVALID_TASK_TOKEN",
+            confidence=1.0,
+        )
+
+    if tool_id not in token.granted_tools:
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason=(
+                f"Tool '{tool_id}' not authorised by task token "
+                f"(granted: {token.granted_tools})"
+            ),
+            threat_type="TOOL_SCOPE_VIOLATION",
+            confidence=1.0,
+        )
+
+    return None
 
 
 def _check_1_tool_registry(tool_id: str) -> GuardianCheckResponse | None:
@@ -305,7 +348,7 @@ async def health() -> JSONResponse:
     Unauthenticated liveness check.
     Used by Docker healthcheck and make check.
     """
-    return JSONResponse({"status": "ok", "service": "guardian", "version": "2.0.0"})
+    return JSONResponse({"status": "ok", "service": "guardian", "version": "3.0.0"})
 
 
 @app.get("/rules")
@@ -328,9 +371,18 @@ async def rules() -> JSONResponse:
 async def check(request: GuardianCheckRequest) -> GuardianCheckResponse:
     """
     Synchronous enforcement endpoint — hot path.
-    Five checks in order, fail-fast. NO LLM calls.
+    Six checks in order (Phase 3: +check_0 JWT), fail-fast. NO LLM calls.
     """
     await _maybe_refresh_caches()
+
+    # 0. Task token ACL (Phase 3) — validate JWT signature + tool scope
+    resp = _check_0_task_token(request.tool_id, request.task_token)
+    if resp:
+        logger.warning(
+            f"[guardian/check] HALT check=0 tool={request.tool_id!r} "
+            f"agent={request.agent_id!r} threat={resp.threat_type!r}"
+        )
+        return resp
 
     # 1. Tool registry
     resp = _check_1_tool_registry(request.tool_id)

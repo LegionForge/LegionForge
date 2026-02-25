@@ -37,7 +37,9 @@ help:
 	@echo "  make format       — auto-format with black"
 	@echo "  make security-audit — smoke tests + bandit static analysis"
 	@echo "  make review-prep  — all automated gates for PR review (run before manual review)"
+	@echo "  make setup-task-token-secret — generate and store JWT signing secret (one-time)"
 	@echo "  make register-researcher-tools — register Phase 1 tools (one-time)"
+	@echo "  make register-orchestrator-tools — register Phase 3 orchestrator tools (one-time)"
 	@echo "  make register-agent-sequences — register Researcher expected sequences"
 	@echo "  make verify-tool-registry — verify all registered tools are APPROVED"
 	@echo "  make verify-model-integrity — hash-check Ollama model manifests"
@@ -350,6 +352,33 @@ async def run(): \
     if ok: print(f'✅ Audit log chain valid ({rows} rows verified)'); \
     else: print(f'❌ Chain INVALID at row {rows}: {err}'); sys.exit(1); \
 asyncio.run(run())"
+
+# ── Phase 3: JWT task token secret setup ──────────────────────
+.PHONY: setup-task-token-secret
+setup-task-token-secret:
+	@echo "Setting up JWT task token signing secret..."
+	@echo "Generating a 32-byte hex secret..."
+	@SECRET=$$($(PYTHON) -c "import secrets; print(secrets.token_hex(32))") && \
+	security add-generic-password \
+		-s legionforge_task_tokens \
+		-a api_key \
+		-w "$$SECRET" \
+		-U 2>/dev/null && \
+	echo "✅ Task token secret stored in Keychain (service=legionforge_task_tokens)" && \
+	echo "   Verify with: security find-generic-password -s legionforge_task_tokens -a api_key -w" \
+	|| echo "❌ Could not store secret in Keychain — store manually:"
+	@echo "   python3 -c \"import secrets; print(secrets.token_hex(32))\""
+	@echo "   security add-generic-password -s legionforge_task_tokens -a api_key -w '<secret>' -U"
+
+# ── Phase 3: Orchestrator tool registration ───────────────────
+.PHONY: register-orchestrator-tools
+register-orchestrator-tools:
+	@echo "Registering orchestrator agent tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.orchestrator import register_orchestrator_tools; \
+asyncio.run(register_orchestrator_tools()); \
+print('✅ Orchestrator tools registered')"
 
 # ── Agent sequence registration ───────────────────────────────
 .PHONY: register-agent-sequences
