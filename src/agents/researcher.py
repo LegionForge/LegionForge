@@ -387,6 +387,7 @@ async def run_researcher(
         "task": task,
         "result": None,
         "sources": [],
+        "sequence_so_far": [],
         "messages": [HumanMessage(content=task)],
     }
 
