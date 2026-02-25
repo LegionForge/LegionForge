@@ -27,7 +27,7 @@ from typing import Annotated, Any, TypedDict
 import operator
 
 import httpx
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
@@ -250,25 +250,40 @@ async def validate_fetch_url_async(url: str) -> None:
     await loop.run_in_executor(None, validate_fetch_url, url)
 
 
-async def guardian_check(tool_id: str, state: dict) -> bool:
+async def guardian_check(tool_id: str, state: dict) -> GuardianCheckResponse:
     """
-    Phase 2: Call the Guardian sidecar service for capability enforcement.
+    Phase 3: Call the Guardian sidecar service for capability enforcement.
 
-    Falls back to check_capability_boundary() if guardian_enabled=False in
-    settings — allows make test-smoke to pass without Docker running.
+    Returns the full GuardianCheckResponse so SecureToolNode can branch on tier:
+      - tier="allow"   → proceed
+      - tier="sandbox" → skip this tool call, inject error ToolMessage, continue run
+      - tier="halt"    → force_end=True (security violation)
+
+    Falls back to check_capability_boundary() if guardian_enabled=False —
+    allows make test-smoke to pass without Docker running.
 
     Guardian unavailability is a FAIL-SAFE: any connection error or timeout
-    causes this function to return False, which causes SecureToolNode to halt
-    the run via force_end=True. Never fail-open.
+    returns tier="halt". Never fail-open.
     """
     if not settings.security.guardian_enabled:
-        # Phase 1 fallback for offline/test environments
-        return check_capability_boundary(tool_id)
+        # Offline fallback — return a proper GuardianCheckResponse
+        allowed = check_capability_boundary(tool_id)
+        return GuardianCheckResponse(
+            allowed=allowed,
+            tier="allow" if allowed else "halt",
+            reason=(
+                "capability boundary check (offline mode)"
+                if allowed
+                else f"Capability boundary violation: {tool_id}"
+            ),
+            confidence=1.0,
+        )
 
     try:
         agent_id = state.get("agent_id", state.get("run_id", "unknown"))
         run_id = state.get("run_id", "unknown")
         sequence_so_far = state.get("sequence_so_far", [])
+        task_token = state.get("task_token")
 
         payload = {
             "tool_id": tool_id,
@@ -277,6 +292,7 @@ async def guardian_check(tool_id: str, state: dict) -> bool:
             "agent_id": agent_id,
             "run_id": run_id,
             "sequence_so_far": sequence_so_far,
+            "task_token": task_token,  # Phase 3: forward JWT to Guardian check_0
         }
 
         async with httpx.AsyncClient(
@@ -287,24 +303,33 @@ async def guardian_check(tool_id: str, state: dict) -> bool:
                 json=payload,
             )
             resp.raise_for_status()
-            result = GuardianCheckResponse(**resp.json())
-            if not result.allowed:
+            guardian_resp = GuardianCheckResponse(**resp.json())
+            if not guardian_resp.allowed:
                 logger.warning(
-                    f"[guardian] BLOCKED tool={tool_id!r} tier={result.tier!r} "
-                    f"reason={result.reason!r} threat={result.threat_type!r}"
+                    f"[guardian] {guardian_resp.tier.upper()} tool={tool_id!r} "
+                    f"reason={guardian_resp.reason!r} threat={guardian_resp.threat_type!r}"
                 )
-            return result.allowed
+            return guardian_resp
 
     except (httpx.ConnectError, httpx.TimeoutException) as e:
-        # Guardian unavailable — fail-safe halt
         logger.error(
             f"[guardian] Connection failed ({type(e).__name__}: {e}). "
             "Failing safe — halting run."
         )
-        return False
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason=f"Guardian unavailable: {type(e).__name__}",
+            confidence=1.0,
+        )
     except Exception as e:
         logger.error(f"[guardian] Unexpected error: {e}. Failing safe — halting run.")
-        return False
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason=f"Guardian error: {e}",
+            confidence=1.0,
+        )
 
 
 async def validate_acl_token(state: dict, tool_id: str) -> bool:
@@ -446,10 +471,13 @@ class SecureToolNode:
     """
     Wraps LangGraph ToolNode with pre/post security controls:
       1. verify_tool_before_invocation() — registry + hash integrity check
-      2. guardian_check()               — capability boundary enforcement
-      3. detect_action_loop()           — repeated-call detection
-      4. Execute via inner ToolNode
-      5. sanitize_output()              — PII + injection scan on tool response
+      2a. validate_acl_token()           — JWT task token scope check
+      2b. guardian_check()               — capability boundary + sequence enforcement
+          tier="halt"   → force_end=True (security violation, run is dead)
+          tier="sandbox"→ skip tool, inject error ToolMessage, run continues
+      3. detect_action_loop()            — repeated-call detection
+      4. Execute approved tools via inner ToolNode
+      5. sanitize_output()               — PII + injection scan on tool responses
 
     Use this instead of raw ToolNode for all agents.
     """
@@ -467,11 +495,16 @@ class SecureToolNode:
         last_msg = state["messages"][-1] if state["messages"] else None
         tool_calls = getattr(last_msg, "tool_calls", None) or []
 
-        # Track sequence for Guardian (maintained across tool calls in this node invocation)
+        # Sequence tracking for Guardian
         sequence_so_far = list(state.get("sequence_so_far") or [])
+
+        # Phase 3: track which calls were approved vs sandboxed
+        approved_tc_ids: set[str] = set()
+        sandbox_messages: list[ToolMessage] = []
 
         for tc in tool_calls:
             tool_id = tc["name"] if isinstance(tc, dict) else tc.name
+            tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
             tool_input = (
                 tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
             )
@@ -495,13 +528,56 @@ class SecureToolNode:
                 )
                 return {"force_end": True, "loop_detected": False}
 
-            # 2b. Guardian capability boundary + sequence check
-            # Pass current sequence_so_far so Guardian can check sequence contracts.
+            # 2b. Guardian capability boundary + sequence check (Phase 3)
+            # Now returns GuardianCheckResponse so we can branch on tier.
             state_with_seq = {**state, "sequence_so_far": sequence_so_far}
-            allowed = await guardian_check(tool_id, state_with_seq)
-            if not allowed:
-                logger.error(f"[SecureToolNode] Guardian blocked '{tool_id}'. Halting.")
-                return {"force_end": True, "loop_detected": False}
+            guardian_resp = await guardian_check(tool_id, state_with_seq)
+
+            if not guardian_resp.allowed:
+                if guardian_resp.tier == "sandbox":
+                    # Novel sequence — skip this tool, feed agent an error message,
+                    # let the run continue so the agent can try a different approach.
+                    logger.warning(
+                        f"[SecureToolNode] SANDBOX '{tool_id}': {guardian_resp.reason}"
+                    )
+                    try:
+                        from src.database import log_threat_event
+
+                        await log_threat_event(
+                            agent_id=state.get("run_id", "unknown"),
+                            run_id=state.get("run_id", "unknown"),
+                            threat_type="SEQUENCE_VIOLATION",
+                            action_taken="SANDBOX_RETRY",
+                            confidence=guardian_resp.confidence,
+                            metadata={
+                                "tool_id": tool_id,
+                                "sequence": sequence_so_far,
+                                "reason": guardian_resp.reason,
+                            },
+                        )
+                    except Exception:
+                        pass  # Non-fatal — run continues regardless
+
+                    sandbox_messages.append(
+                        ToolMessage(
+                            content=(
+                                f"[SANDBOX] Tool '{tool_id}' was blocked: "
+                                f"novel sequence not in approved patterns. "
+                                f"Try a different tool or approach."
+                            ),
+                            tool_call_id=tc_id,
+                            name=tool_id,
+                        )
+                    )
+                    continue  # Skip to next tool call; don't add to approved set
+
+                else:
+                    # halt — security violation, run is dead
+                    logger.error(
+                        f"[SecureToolNode] Guardian HALT '{tool_id}': "
+                        f"{guardian_resp.reason}"
+                    )
+                    return {"force_end": True, "loop_detected": False}
 
             # 3. Action loop detection
             loop_updates = detect_action_loop(state, tool_id, tool_input)
@@ -547,23 +623,60 @@ class SecureToolNode:
                         )
                         return result
 
-            # Update sequence tracking after successful checks
+            # All checks passed — mark as approved
             sequence_so_far = sequence_so_far + [tool_id]
+            approved_tc_ids.add(tc_id)
 
         # Persist updated sequence to state
         result["sequence_so_far"] = sequence_so_far
 
-        # 5. Execute via inner ToolNode
+        # 5. Execute approved tools via inner ToolNode
+        if not approved_tc_ids:
+            # All calls were sandboxed — return synthetic messages, no inner execution
+            result["messages"] = sandbox_messages
+            return result
+
+        # If some calls were sandboxed, filter the last message to only approved calls
+        exec_state = state
+        if sandbox_messages:
+            try:
+                approved_tcs = [
+                    tc
+                    for tc in tool_calls
+                    if (
+                        tc.get("id", "")
+                        if isinstance(tc, dict)
+                        else getattr(tc, "id", "")
+                    )
+                    in approved_tc_ids
+                ]
+                filtered_msg = last_msg.model_copy(update={"tool_calls": approved_tcs})
+                exec_state = {
+                    **state,
+                    "messages": [*state["messages"][:-1], filtered_msg],
+                }
+            except Exception:
+                exec_state = state  # Fallback: run all (inner skips unknown calls)
+
         if config is not None:
-            inner_result = await self._inner.ainvoke(state, config)
+            inner_result = await self._inner.ainvoke(exec_state, config)
         else:
-            inner_result = await self._inner.ainvoke(state)
+            inner_result = await self._inner.ainvoke(exec_state)
         result.update(inner_result)
 
+        # Append sandbox ToolMessages after real tool results
+        if sandbox_messages:
+            result["messages"] = list(result.get("messages", [])) + sandbox_messages
+
         # 6. Sanitize tool output before it enters agent context
+        # Only sanitize inner results — sandbox messages are system-generated
         if "messages" in result:
             sanitized_msgs = []
             for msg in result["messages"]:
+                # Skip sanitizing our own synthetic sandbox messages
+                if isinstance(msg, ToolMessage) and msg in sandbox_messages:
+                    sanitized_msgs.append(msg)
+                    continue
                 if hasattr(msg, "content") and isinstance(msg.content, str):
                     clean_content, meta = sanitize_output(msg.content)
                     if meta.get("injection_detected"):

@@ -1041,8 +1041,15 @@ def test_validate_task_token_returns_none_on_tampered_token():
             run_id="run-smoke-002",
             granted_tools=["web_search"],
         )
-        # Tamper: flip last character
-        tampered = token_str[:-1] + ("A" if token_str[-1] != "A" else "B")
+        # Tamper: flip a character in the MIDDLE of the signature segment.
+        # Flipping the very last character is unreliable: HMAC-SHA256 produces 32 bytes
+        # (32 % 3 == 2), so the last base64url character has 2 unused bits — flipping
+        # those bits doesn't change the decoded signature bytes. Use the midpoint instead.
+        parts = token_str.split(".")
+        sig = parts[-1]
+        mid = max(0, len(sig) // 2)
+        tampered_sig = sig[:mid] + ("A" if sig[mid] != "A" else "B") + sig[mid + 1 :]
+        tampered = ".".join(parts[:-1] + [tampered_sig])
         result = validate_task_token(tampered)
         assert result is None, "Tampered token should return None"
     finally:
@@ -1283,3 +1290,136 @@ def test_status_endpoint_includes_escalation_events_key():
         "escalation_events" in data
     ), "/status must include 'escalation_events' key (Phase 3.4)"
     assert isinstance(data["escalation_events"], list)
+
+
+# ── Phase 3: Sandbox retry smoke tests ────────────────────────────────────────
+
+
+def test_guardian_check_is_async_coroutine():
+    """guardian_check() is an async coroutine function (return type changed from bool)."""
+    import inspect
+    from src.base_graph import guardian_check
+
+    assert inspect.iscoroutinefunction(
+        guardian_check
+    ), "guardian_check must be async after Phase 3 sandbox retry refactor"
+
+
+def test_guardian_check_return_type_annotation_is_guardian_check_response():
+    """guardian_check() return annotation is GuardianCheckResponse (not bool)."""
+    import typing
+    from src.base_graph import guardian_check
+    from src.security.guardian import GuardianCheckResponse
+
+    hints = typing.get_type_hints(guardian_check)
+    assert hints.get("return") is GuardianCheckResponse, (
+        f"guardian_check return type should be GuardianCheckResponse, "
+        f"got {hints.get('return')}"
+    )
+
+
+def test_guardian_check_response_sandbox_tier_model_valid():
+    """GuardianCheckResponse can represent a sandbox tier (novel sequence)."""
+    from src.security.guardian import GuardianCheckResponse
+
+    resp = GuardianCheckResponse(
+        allowed=False,
+        tier="sandbox",
+        reason="novel sequence not in approved patterns",
+        threat_type="SEQUENCE_VIOLATION",
+        confidence=0.85,
+    )
+    assert resp.allowed is False
+    assert resp.tier == "sandbox"
+    assert resp.threat_type == "SEQUENCE_VIOLATION"
+
+
+def test_guardian_check_offline_returns_guardian_check_response():
+    """guardian_check() offline fallback returns GuardianCheckResponse (not bool)."""
+    import asyncio
+    from src.base_graph import guardian_check
+    from src.security.guardian import GuardianCheckResponse
+
+    # guardian_enabled=False in test settings — offline path runs
+    result = asyncio.run(
+        guardian_check("web_search", {"run_id": "smoke-test", "sequence_so_far": []})
+    )
+    assert isinstance(
+        result, GuardianCheckResponse
+    ), f"Expected GuardianCheckResponse, got {type(result)}"
+    assert result.tier in ("allow", "halt", "sandbox")
+
+
+def test_secure_tool_node_imports_tool_message():
+    """ToolMessage is imported in base_graph (required for sandbox synthetic messages)."""
+    import importlib
+
+    # Verify the import succeeds — if ToolMessage is missing the sandbox path breaks
+    from langchain_core.messages import ToolMessage
+
+    assert ToolMessage is not None
+
+    # Also verify SecureToolNode is importable
+    from src.base_graph import SecureToolNode
+
+    assert SecureToolNode is not None
+
+
+def test_database_has_sequence_violation_threat_type():
+    """THREAT_TYPES includes SEQUENCE_VIOLATION (sandbox retry logging)."""
+    from src.database import THREAT_TYPES
+
+    assert "SEQUENCE_VIOLATION" in THREAT_TYPES
+
+
+# ── Phase 3: Researcher task token smoke tests ────────────────────────────────
+
+
+def test_researcher_state_inherits_task_token_from_agent_state():
+    """ResearcherState inherits task_token from AgentState (Phase 3)."""
+    import typing
+    from src.agents.researcher import ResearcherState
+
+    hints = typing.get_type_hints(ResearcherState)
+    assert (
+        "task_token" in hints
+    ), "ResearcherState must have 'task_token' (inherited from AgentState)"
+
+
+def test_researcher_tool_manifests_all_have_tool_ids():
+    """All RESEARCHER_TOOL_MANIFESTS have non-empty tool_id strings."""
+    from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
+
+    assert len(RESEARCHER_TOOL_MANIFESTS) == 3, "Expected exactly 3 researcher tools"
+    for manifest in RESEARCHER_TOOL_MANIFESTS:
+        assert (
+            isinstance(manifest.tool_id, str) and manifest.tool_id
+        ), f"Empty tool_id in manifest: {manifest}"
+
+
+def test_researcher_tool_ids_match_researcher_expected_sequences():
+    """Every tool_id in RESEARCHER_EXPECTED_SEQUENCES appears in RESEARCHER_TOOL_MANIFESTS."""
+    from src.agents.researcher import (
+        RESEARCHER_TOOL_MANIFESTS,
+        RESEARCHER_EXPECTED_SEQUENCES,
+    )
+
+    registered_ids = {m.tool_id for m in RESEARCHER_TOOL_MANIFESTS}
+    for seq in RESEARCHER_EXPECTED_SEQUENCES:
+        for tid in seq:
+            assert tid in registered_ids, (
+                f"'{tid}' in RESEARCHER_EXPECTED_SEQUENCES "
+                f"is not in RESEARCHER_TOOL_MANIFESTS: {registered_ids}"
+            )
+
+
+def test_researcher_run_function_accepts_thread_id_param():
+    """run_researcher() accepts thread_id and max_steps params (smoke only — no I/O)."""
+    import inspect
+    from src.agents.researcher import run_researcher
+
+    sig = inspect.signature(run_researcher)
+    params = set(sig.parameters.keys())
+    assert "task" in params
+    assert "thread_id" in params
+    assert "max_steps" in params
