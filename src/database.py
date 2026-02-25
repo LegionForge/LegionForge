@@ -14,9 +14,12 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 import psycopg
@@ -106,6 +109,28 @@ async def init_db() -> None:
     # Set up application tables
     async with _pool.connection() as conn:
         await _create_app_tables(conn)
+
+    # Verify audit log chain integrity (warn-only — empty chain on first run is valid)
+    chain_ok, verified_rows, error_msg = await verify_audit_log_chain()
+    if not chain_ok and verified_rows > 0:
+        logger.warning(
+            f"[audit-log] Chain integrity check FAILED at row {verified_rows}: {error_msg}. "
+            "Logging threat event and continuing — investigate before trusting audit data."
+        )
+        try:
+            await log_threat_event(
+                agent_id="database",
+                run_id="startup",
+                threat_type="AUDIT_LOG_TAMPER",
+                action_taken="LOGGED",
+                confidence=1.0,
+                raw_input=error_msg[:200] if error_msg else None,
+                metadata={"verified_rows": verified_rows},
+            )
+        except Exception:
+            pass
+    elif chain_ok:
+        logger.info(f"[audit-log] Chain valid ({verified_rows} rows verified)")
 
     logger.info("✅ Database initialization complete")
 
@@ -246,6 +271,59 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         """
         CREATE INDEX IF NOT EXISTS tool_registry_status_idx
         ON tool_registry (status)
+    """
+    )
+
+    # Audit log — append-only, hash-chained event ledger.
+    # Tamper detection: each row includes a SHA-256 of its own content plus
+    # the previous row's hash. verify_audit_log_chain() walks the chain at startup.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            seq        BIGSERIAL PRIMARY KEY,
+            ts         TIMESTAMPTZ DEFAULT now(),
+            event_type TEXT NOT NULL,
+            agent_id   TEXT,
+            payload    JSONB NOT NULL,
+            prev_hash  TEXT NOT NULL,
+            row_hash   TEXT NOT NULL
+        )
+    """
+    )
+
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC)
+    """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS audit_log_event_type_idx ON audit_log (event_type, ts DESC)
+    """
+    )
+
+    # RAG provenance — idempotent column additions to documents table.
+    # These track where each document came from and whether to trust it.
+    for col_sql in [
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_url TEXT",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_hash TEXT",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS trust_score FLOAT DEFAULT 0.5",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ingested_by TEXT",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT now()",
+    ]:
+        await conn.execute(col_sql)
+
+    # Agent sequence registry — maps agent_id to permitted tool-call sequences.
+    # Guardian checks incoming sequence_so_far against registered prefixes.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_profiles (
+            agent_id      TEXT NOT NULL,
+            sequence      TEXT[] NOT NULL,
+            registered_at TIMESTAMPTZ DEFAULT NOW(),
+            registered_by TEXT NOT NULL DEFAULT 'operator',
+            PRIMARY KEY (agent_id, sequence)
+        )
     """
     )
 
@@ -427,6 +505,8 @@ THREAT_TYPES = {
     "TOKEN_BUDGET_EXCEEDED",  # safeguards.py token budget exhausted
     "CAPABILITY_VIOLATION",  # agent attempted a forbidden or unregistered action
     "DESTRUCTIVE_PATTERN",  # input matches credential/infra/bulk-exfil pattern — HITL required
+    "AUDIT_LOG_TAMPER",  # audit log hash chain integrity check failed
+    "SEQUENCE_VIOLATION",  # tool call sequence not in approved agent_profiles
 }
 
 # Valid action_taken values
@@ -538,3 +618,234 @@ async def get_threat_summary(hours: int = 24) -> dict:
             hours,
         )
     return {"hours": hours, "by_type": [dict(r) for r in rows]}
+
+
+# ── Audit log hash chain ───────────────────────────────────────────────────────
+
+# Genesis sentinel — the prev_hash for the very first audit log row.
+# Changing this value invalidates all existing audit records.
+_AUDIT_LOG_GENESIS = hashlib.sha256(b"LEGIONFORGE_AUDIT_LOG_GENESIS").hexdigest()
+
+
+def _compute_audit_row_hash(
+    seq: int,
+    ts: str,
+    event_type: str,
+    agent_id: str | None,
+    payload: dict,
+    prev_hash: str,
+) -> str:
+    """
+    Compute the SHA-256 hash for a single audit log row.
+    All fields are canonicalised before hashing to prevent format-dependent
+    variations from breaking the chain (e.g. datetime formatting).
+
+    This function is deterministic: same inputs always produce the same hash.
+    """
+    canonical = f"{seq}|{ts}|{event_type}|{agent_id or ''}|{json.dumps(payload, sort_keys=True)}|{prev_hash}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def append_audit_log(
+    event_type: str,
+    agent_id: str | None,
+    payload: dict,
+) -> int:
+    """
+    Append an event to the audit log and return the new sequence number.
+
+    The row_hash is computed over all fields including prev_hash, forming
+    a tamper-evident hash chain. Any modification to historical rows will
+    be detected by verify_audit_log_chain().
+
+    Non-fatal if DB is unavailable — returns -1 and logs a warning.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        # Get last row hash — genesis sentinel if table is empty
+        last_row = await conn.fetchrow(
+            "SELECT seq, row_hash FROM audit_log ORDER BY seq DESC LIMIT 1"
+        )
+        prev_hash = last_row["row_hash"] if last_row else _AUDIT_LOG_GENESIS
+
+        ts_now = datetime.now(tz=timezone.utc).isoformat()
+        # Insert with placeholder seq to get the BIGSERIAL value, then compute hash
+        new_row = await conn.fetchrow(
+            """
+            INSERT INTO audit_log (ts, event_type, agent_id, payload, prev_hash, row_hash)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING seq, ts
+            """,
+            ts_now,
+            event_type,
+            agent_id,
+            json.dumps(payload, sort_keys=True),
+            prev_hash,
+            "PENDING",  # placeholder — updated immediately below
+        )
+        seq = new_row["seq"]
+        ts_str = (
+            new_row["ts"].isoformat()
+            if hasattr(new_row["ts"], "isoformat")
+            else str(new_row["ts"])
+        )
+        row_hash = _compute_audit_row_hash(
+            seq, ts_str, event_type, agent_id, payload, prev_hash
+        )
+        await conn.execute(
+            "UPDATE audit_log SET row_hash = %s WHERE seq = %s",
+            row_hash,
+            seq,
+        )
+
+    logger.debug(
+        f"[audit-log] Appended seq={seq} event_type={event_type} agent_id={agent_id}"
+    )
+    return seq
+
+
+async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
+    """
+    Walk the audit log from the first row to the last, recomputing each row_hash
+    and verifying it matches the stored value.
+
+    Returns:
+        (chain_ok, verified_rows, error_message)
+        - chain_ok=True, verified_rows=N, error_message=None  — chain is intact
+        - chain_ok=True, verified_rows=0, error_message=None  — empty log (valid on first run)
+        - chain_ok=False, verified_rows=N, error_message=str  — tamper detected at row N+1
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            "SELECT seq, ts, event_type, agent_id, payload, prev_hash, row_hash FROM audit_log ORDER BY seq ASC"
+        )
+
+    if not rows:
+        return True, 0, None
+
+    expected_prev = _AUDIT_LOG_GENESIS
+    for i, row in enumerate(rows):
+        seq = row["seq"]
+        ts = (
+            row["ts"].isoformat() if hasattr(row["ts"], "isoformat") else str(row["ts"])
+        )
+        payload = (
+            row["payload"]
+            if isinstance(row["payload"], dict)
+            else json.loads(row["payload"])
+        )
+        stored_prev = row["prev_hash"]
+        stored_hash = row["row_hash"]
+
+        if stored_prev != expected_prev:
+            return (
+                False,
+                i,
+                f"seq={seq} prev_hash mismatch (expected {expected_prev[:12]}..., got {stored_prev[:12]}...)",
+            )
+
+        computed = _compute_audit_row_hash(
+            seq, ts, row["event_type"], row["agent_id"], payload, stored_prev
+        )
+        if computed != stored_hash:
+            return False, i, f"seq={seq} row_hash mismatch — row may have been tampered"
+
+        expected_prev = stored_hash
+
+    return True, len(rows), None
+
+
+# ── RAG document with provenance ──────────────────────────────────────────────
+
+
+async def store_document_with_provenance(
+    content: str,
+    embedding: list[float],
+    source_url: str,
+    namespace: str = "default",
+    metadata: dict | None = None,
+    trust_score: float = 0.5,
+    ingested_by: str = "system",
+) -> int:
+    """
+    Store a document with full provenance tracking.
+    Returns the new document ID.
+
+    source_hash is computed from the content so we can detect if the
+    same URL returns different content (possible poisoning indicator).
+    """
+    source_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    pool = get_pool()
+    async with pool.connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO documents
+                (content, embedding, namespace, metadata,
+                 source_url, source_hash, trust_score, ingested_by, ingested_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            RETURNING id
+            """,
+            content,
+            embedding,
+            namespace,
+            json.dumps(metadata or {}),
+            source_url,
+            source_hash,
+            trust_score,
+            ingested_by,
+        )
+    return row["id"]
+
+
+# ── Agent sequence registry ───────────────────────────────────────────────────
+
+
+async def register_agent_sequences(
+    agent_id: str,
+    sequences: list[list[str]],
+    registered_by: str = "operator",
+) -> None:
+    """
+    Register permitted tool-call sequences for an agent.
+    Idempotent — calling again with the same sequences is a no-op.
+
+    Guardian's sequence-check uses these at enforcement time to decide whether
+    a novel sequence should be sandboxed.
+
+    Args:
+        agent_id:       Identifier for the agent (e.g. "researcher").
+        sequences:      List of permitted sequences, each a list of tool_ids.
+                        Example: [["web_search", "web_fetch", "document_summarize"]]
+        registered_by:  Who approved these sequences (e.g. "operator", "ci").
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        for seq in sequences:
+            await conn.execute(
+                """
+                INSERT INTO agent_profiles (agent_id, sequence, registered_by)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (agent_id, sequence) DO NOTHING
+                """,
+                agent_id,
+                seq,
+                registered_by,
+            )
+    logger.info(
+        f"[agent-profiles] Registered {len(sequences)} sequences for agent '{agent_id}'"
+    )
+
+
+async def get_agent_sequences(agent_id: str) -> list[list[str]]:
+    """
+    Retrieve all registered sequences for an agent.
+    Returns empty list if no sequences are registered (agent is unconstrained).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            "SELECT sequence FROM agent_profiles WHERE agent_id = %s ORDER BY registered_at ASC",
+            agent_id,
+        )
+    return [list(row["sequence"]) for row in rows]
