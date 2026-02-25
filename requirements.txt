@@ -4,7 +4,7 @@
 # ============================================================
 
 # ── Framework Core ───────────────────────────────────────────
-langgraph~=0.2
+langgraph~=0.6
 langchain~=0.3
 langchain-core~=0.3
 langchain-community~=0.3
@@ -17,13 +17,8 @@ langchain-ollama~=0.1
 # ── Observability ────────────────────────────────────────────
 langsmith~=0.1
 
-#Edited by JP per Claude recommendation (20260222)
-# ── Persistence — PostgreSQL (replaces SQLite) ───────────────
+# ── Persistence — PostgreSQL ──────────────────────────────────
 langgraph-checkpoint-postgres~=2.0
-# Commented out due to dependency conflicts per claude (20260222)
-# Security: pin SQLite checkpointer to patched version (unused but present)
-# Fixes CVE-2025-64104, CVE-2025-64439, CVE-2025-67644
-#  langgraph-checkpoint-sqlite>=3.0.1
 psycopg[binary,pool]~=3.1
 pgvector~=0.3
 
@@ -48,8 +43,8 @@ duckduckgo-search~=6.0
 httpx~=0.27
 aiohttp~=3.9
 tenacity~=8.0                    # Retry logic for API calls
-fastapi~=0.111                   # Health/status endpoint
-uvicorn~=0.30                    # ASGI server for health endpoint
+fastapi~=0.132                   # Health/status endpoint
+uvicorn~=0.41                    # ASGI server for health endpoint
 
 # ── Dev / Testing ────────────────────────────────────────────
 pytest~=8.0

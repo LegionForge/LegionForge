@@ -213,6 +213,12 @@ class SecurityConfig(BaseModel):
     prompt_injection_guard: bool
     tool_permission_enforcement: bool
     git_secret_scanning: bool
+    # Phase 2: Guardian sidecar enforcement
+    guardian_enabled: bool = True
+    guardian_url: str = "http://localhost:9766"
+    guardian_timeout_seconds: float = 2.0
+    # Phase 2: Health server auth
+    health_token_service: str = "legionforge_health"
 
 
 class HardwareSettings(BaseModel):

@@ -171,6 +171,21 @@ RESEARCHER_TOOL_MANIFESTS = [
 ]
 
 
+# ── Approved tool-call sequences ─────────────────────────────────────────────
+# Guardian uses these to enforce sequence contracts for the Researcher agent.
+# Novel sequences not matching any prefix below are sandboxed in Phase 2
+# (Phase 3 will retry them in an isolated environment).
+# Register with: make register-agent-sequences
+RESEARCHER_EXPECTED_SEQUENCES: list[list[str]] = [
+    ["web_search", "web_fetch", "document_summarize"],
+    ["web_search", "document_summarize"],
+    ["web_fetch", "document_summarize"],
+    ["web_search"],
+    ["web_fetch"],
+    ["document_summarize"],
+]
+
+
 async def register_researcher_tools() -> None:
     """
     Register all researcher tools in the tool registry.
@@ -372,6 +387,7 @@ async def run_researcher(
         "task": task,
         "result": None,
         "sources": [],
+        "sequence_so_far": [],
         "messages": [HumanMessage(content=task)],
     }
 

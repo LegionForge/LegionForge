@@ -25,13 +25,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
+import secrets
+import subprocess
 import time
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from config.settings import settings
@@ -47,6 +50,95 @@ app = FastAPI(
 )
 
 _startup_time = time.monotonic()
+
+# ── Bearer token management ───────────────────────────────────────────────────
+# Simple opaque token (no JWT library needed).
+# Token stored in macOS Keychain as service=legionforge_health, account=api_key.
+# On first start: generated, stored, printed once to console.
+# /health stays unauthenticated (Docker/make check must not require a token).
+# /status, /metrics, /usage require Authorization: Bearer <token>.
+
+
+def _load_or_create_health_token() -> str:
+    """
+    Load the health server token from Keychain. If not found, generate a new one,
+    store it, and print it once to the console.
+
+    Uses the macOS `security` CLI as a fallback (same pattern as get_api_key()).
+    Returns the token string.
+    """
+    service = settings.security.health_token_service
+
+    # Try macOS security CLI (most reliable in server context)
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+
+    # Token not found — generate and store
+    token = secrets.token_urlsafe(32)
+    try:
+        subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-s",
+                service,
+                "-a",
+                "api_key",
+                "-w",
+                token,
+                "-U",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except Exception as e:
+        logger.warning(f"[health-auth] Could not store token in Keychain: {e}")
+
+    print(
+        f"\n[health-auth] Generated health server token (store this securely):\n  {token}\n"
+    )
+    return token
+
+
+_health_token: str | None = None
+
+
+def _get_health_token() -> str:
+    """Return the cached health token, loading from Keychain if needed."""
+    global _health_token
+    if _health_token is None:
+        _health_token = _load_or_create_health_token()
+    return _health_token
+
+
+def _verify_bearer_token(request: Request) -> bool:
+    """
+    Check the Authorization header for a valid Bearer token.
+    Uses hmac.compare_digest() for constant-time comparison (timing attack safe).
+    Returns True if valid, False otherwise.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return False
+    provided = auth_header[len("Bearer ") :].strip()
+    expected = _get_health_token()
+    return hmac.compare_digest(provided, expected)
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(
+        {"error": "Unauthorized", "detail": "Bearer token required"},
+        status_code=401,
+        headers={"WWW-Authenticate": 'Bearer realm="LegionForge Health"'},
+    )
 
 
 # ── Health check helpers ──────────────────────────────────────────────────────
@@ -165,11 +257,14 @@ async def health() -> JSONResponse:
 
 
 @app.get("/status")
-async def status() -> JSONResponse:
+async def status(request: Request) -> JSONResponse:
     """
     Full system status. Checks all components.
-    Use this for human inspection via browser or curl.
+    Requires Bearer token (Authorization: Bearer <token>).
+    Use this for human inspection via curl or make status.
     """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
     # Run all checks concurrently
     ollama_task = asyncio.create_task(_check_ollama())
     postgres_task = asyncio.create_task(_check_postgres())
@@ -234,14 +329,18 @@ async def status() -> JSONResponse:
 
 
 @app.get("/metrics")
-async def metrics() -> JSONResponse:
-    """Performance metrics snapshot."""
+async def metrics(request: Request) -> JSONResponse:
+    """Performance metrics snapshot. Requires Bearer token."""
+    if not _verify_bearer_token(request):
+        return _unauthorized()
     return JSONResponse(get_metrics_summary())
 
 
 @app.get("/usage")
-async def usage() -> JSONResponse:
-    """API usage summary for the last 24 hours."""
+async def usage(request: Request) -> JSONResponse:
+    """API usage summary for the last 24 hours. Requires Bearer token."""
+    if not _verify_bearer_token(request):
+        return _unauthorized()
     try:
         from src.database import get_usage_summary
 

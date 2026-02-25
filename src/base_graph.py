@@ -20,10 +20,13 @@ Key patterns demonstrated:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import socket
 from typing import Annotated, Any, TypedDict
 import operator
 
+import httpx
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -55,6 +58,7 @@ from src.security import (
     FORBIDDEN_CAPABILITIES,
     SecurityError,
 )
+from src.security.guardian import GuardianCheckResponse
 from src.rate_limiter import preflight_budget_check, estimate_tokens
 
 logger = logging.getLogger(__name__)
@@ -87,6 +91,10 @@ class AgentState(TypedDict):
     token_count: int
     run_id: str
     tracing_enabled: bool
+
+    # ── Security: tool call sequence tracking ─────────────────────────────────
+    # Maintained by SecureToolNode; passed to Guardian /check for sequence validation.
+    sequence_so_far: list[str]
 
     # ── Agent-specific fields ─────────────────────────────────────────────────
     task: str  # The current task description
@@ -217,24 +225,107 @@ def route_after_agent(state: AgentState) -> str:
     return "agent"
 
 
-# ── Phase 1 Security Stubs ────────────────────────────────────────────────────
-# These stubs are wired in Phase 1 and replaced with real implementations
-# in Phase 2 (Guardian sidecar service, JWT task tokens, provenance scoring).
+# ── Security helpers ──────────────────────────────────────────────────────────
+
+
+async def validate_fetch_url_async(url: str) -> None:
+    """
+    Async wrapper around validate_fetch_url().
+
+    The underlying DNS lookup (socket.getaddrinfo) is synchronous.
+    This wrapper runs it in a thread executor to avoid blocking the event loop.
+    Raises SecurityError for SSRF-blocked URLs (same as validate_fetch_url()).
+    """
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, validate_fetch_url, url)
 
 
 async def guardian_check(tool_id: str, state: dict) -> bool:
-    """Phase 1 stub — delegates to Guardian.check(). Phase 2 replaces with sidecar call."""
-    return Guardian.check(tool_id, "invoke", state)
+    """
+    Phase 2: Call the Guardian sidecar service for capability enforcement.
+
+    Falls back to check_capability_boundary() if guardian_enabled=False in
+    settings — allows make test-smoke to pass without Docker running.
+
+    Guardian unavailability is a FAIL-SAFE: any connection error or timeout
+    causes this function to return False, which causes SecureToolNode to halt
+    the run via force_end=True. Never fail-open.
+    """
+    if not settings.security.guardian_enabled:
+        # Phase 1 fallback for offline/test environments
+        return check_capability_boundary(tool_id)
+
+    try:
+        agent_id = state.get("agent_id", state.get("run_id", "unknown"))
+        run_id = state.get("run_id", "unknown")
+        sequence_so_far = state.get("sequence_so_far", [])
+
+        payload = {
+            "tool_id": tool_id,
+            "action": "invoke",
+            "args": {},
+            "agent_id": agent_id,
+            "run_id": run_id,
+            "sequence_so_far": sequence_so_far,
+        }
+
+        async with httpx.AsyncClient(
+            timeout=settings.security.guardian_timeout_seconds
+        ) as client:
+            resp = await client.post(
+                f"{settings.security.guardian_url}/check",
+                json=payload,
+            )
+            resp.raise_for_status()
+            result = GuardianCheckResponse(**resp.json())
+            if not result.allowed:
+                logger.warning(
+                    f"[guardian] BLOCKED tool={tool_id!r} tier={result.tier!r} "
+                    f"reason={result.reason!r} threat={result.threat_type!r}"
+                )
+            return result.allowed
+
+    except (httpx.ConnectError, httpx.TimeoutException) as e:
+        # Guardian unavailable — fail-safe halt
+        logger.error(
+            f"[guardian] Connection failed ({type(e).__name__}: {e}). "
+            "Failing safe — halting run."
+        )
+        return False
+    except Exception as e:
+        logger.error(f"[guardian] Unexpected error: {e}. Failing safe — halting run.")
+        return False
 
 
 async def validate_acl_token(state: dict) -> bool:
-    """Phase 1 stub — always returns True. Phase 2 validates JWT task token."""
+    """
+    Phase 2 stub — always returns True.
+    Phase 3: validate JWT task token via Guardian /acl endpoint.
+    """
     return True
 
 
-def score_embedding_trust(doc: dict) -> float:
-    """Phase 1 stub — returns 1.0. Phase 2 scores document provenance."""
-    return 1.0
+async def score_embedding_trust(doc: dict) -> float:
+    """
+    Phase 2: Look up document trust_score from DB by doc id.
+    Returns 0.5 (neutral) if doc_id is not present or DB is unavailable.
+    """
+    doc_id = doc.get("id")
+    if doc_id is None:
+        return 0.5
+    try:
+        from src.database import get_pool
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT trust_score FROM documents WHERE id = %s", doc_id
+            )
+        if row and row["trust_score"] is not None:
+            return float(row["trust_score"])
+    except Exception:
+        pass
+    return 0.5
 
 
 # ── SecureToolNode ────────────────────────────────────────────────────────────
@@ -265,6 +356,9 @@ class SecureToolNode:
         last_msg = state["messages"][-1] if state["messages"] else None
         tool_calls = getattr(last_msg, "tool_calls", None) or []
 
+        # Track sequence for Guardian (maintained across tool calls in this node invocation)
+        sequence_so_far = list(state.get("sequence_so_far") or [])
+
         for tc in tool_calls:
             tool_id = tc["name"] if isinstance(tc, dict) else tc.name
             tool_input = (
@@ -279,8 +373,10 @@ class SecureToolNode:
                 )
                 return {"force_end": True, "loop_detected": False}
 
-            # 2. Guardian capability boundary
-            allowed = await guardian_check(tool_id, state)
+            # 2. Guardian capability boundary + sequence check
+            # Pass current sequence_so_far so Guardian can check sequence contracts.
+            state_with_seq = {**state, "sequence_so_far": sequence_so_far}
+            allowed = await guardian_check(tool_id, state_with_seq)
             if not allowed:
                 logger.error(f"[SecureToolNode] Guardian blocked '{tool_id}'. Halting.")
                 return {"force_end": True, "loop_detected": False}
@@ -302,10 +398,10 @@ class SecureToolNode:
                 # 4a. Outbound sanitization — strip PII / detect injection in args
                 clean_arg, san_meta = sanitize_tool_input(arg_value, tool_id=tool_id)
 
-                # 4b. SSRF prevention for any argument that looks like a URL
+                # 4b. Async SSRF prevention for any argument that looks like a URL
                 if arg_name in ("url", "uri", "endpoint", "href", "src"):
                     try:
-                        validate_fetch_url(clean_arg)
+                        await validate_fetch_url_async(clean_arg)
                     except SecurityError as e:
                         logger.error(
                             f"[SecureToolNode] SSRF blocked for '{tool_id}': {e}"
@@ -328,6 +424,12 @@ class SecureToolNode:
                             f"arg='{arg_name}' categories={categories}"
                         )
                         return result
+
+            # Update sequence tracking after successful checks
+            sequence_so_far = sequence_so_far + [tool_id]
+
+        # Persist updated sequence to state
+        result["sequence_so_far"] = sequence_so_far
 
         # 5. Execute via inner ToolNode
         if config is not None:
@@ -429,6 +531,7 @@ async def run_agent(
         **init,
         "task": task,
         "result": None,
+        "sequence_so_far": [],
         "messages": [HumanMessage(content=task)],
     }
 

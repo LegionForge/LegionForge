@@ -22,7 +22,10 @@ from typing import Any
 import subprocess
 import time
 
-import keyring
+try:
+    import keyring as _keyring  # unavailable in Linux containers
+except ImportError:
+    _keyring = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +53,17 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
         key = get_api_key("anthropic")
     """
     # Try Keychain first, with retries for transient unavailability
+    # (_keyring is None when running in a Linux container — fall through to env vars)
     key = None
-    for attempt in range(_retries):
-        try:
-            key = keyring.get_password(service, "api_key")
-            if key:
-                break
-        except Exception:
-            if attempt < _retries - 1:
-                time.sleep(_retry_delay)
+    if _keyring is not None:
+        for attempt in range(_retries):
+            try:
+                key = _keyring.get_password(service, "api_key")
+                if key:
+                    break
+            except Exception:
+                if attempt < _retries - 1:
+                    time.sleep(_retry_delay)
     if key:
         return key
 

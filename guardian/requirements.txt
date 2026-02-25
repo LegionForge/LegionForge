@@ -1,0 +1,8 @@
+# guardian/requirements.txt
+# Minimal dependencies for the Guardian sidecar container.
+# NO LLM clients (intentional — Guardian must be deterministic and lightweight).
+fastapi~=0.132
+uvicorn~=0.41
+pydantic~=2.0
+psycopg[binary]~=3.1
+httpx~=0.27
