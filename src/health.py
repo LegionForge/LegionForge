@@ -364,6 +364,98 @@ async def usage(request: Request) -> JSONResponse:
         )
 
 
+@app.get("/bom")
+async def bom(request: Request) -> JSONResponse:
+    """
+    AI Bill of Materials snapshot. Requires Bearer token.
+
+    Returns all tracked models, tools, agents, and security-critical
+    dependencies with version, origin, hash, and CVE scan status.
+    Used by the Threat Analyst agent for CVE cross-referencing.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.security.bom import get_bom
+
+        report = await get_bom()
+        return JSONResponse(report.to_dict())
+    except Exception as e:
+        return JSONResponse(
+            {"error": str(e), "note": "BOM assembly failed"},
+            status_code=503,
+        )
+
+
+@app.get("/rules")
+async def rules(request: Request) -> JSONResponse:
+    """
+    Pending threat rules awaiting operator review. Requires Bearer token.
+
+    Returns all PENDING rules proposed by the Threat Analyst.
+    Use POST /rules/{rule_id}/approve or /rules/{rule_id}/reject to action them.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import get_pending_rules
+
+        pending = await get_pending_rules()
+        return JSONResponse({"pending_rules": pending, "count": len(pending)})
+    except Exception as e:
+        return JSONResponse(
+            {"error": str(e), "note": "Database may not be initialized"},
+            status_code=503,
+        )
+
+
+@app.post("/rules/{rule_id}/approve")
+async def approve_rule(rule_id: str, request: Request) -> JSONResponse:
+    """
+    Approve a PENDING threat rule. Operator-only action.
+
+    Guardian picks up the change on its next 5-minute poll cycle —
+    no immediate in-process effect, preserving an operator review window.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import approve_threat_rule
+
+        updated = await approve_threat_rule(rule_id, approved_by="operator")
+        if updated:
+            return JSONResponse(
+                {
+                    "status": "approved",
+                    "rule_id": rule_id,
+                    "note": "Guardian will apply on next 5-minute poll cycle",
+                }
+            )
+        return JSONResponse(
+            {"error": "Rule not found or not in PENDING status"}, status_code=404
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.post("/rules/{rule_id}/reject")
+async def reject_rule(rule_id: str, request: Request) -> JSONResponse:
+    """Reject a PENDING threat rule. Operator-only action."""
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import reject_threat_rule
+
+        updated = await reject_threat_rule(rule_id, rejected_by="operator")
+        if updated:
+            return JSONResponse({"status": "rejected", "rule_id": rule_id})
+        return JSONResponse(
+            {"error": "Rule not found or not in PENDING status"}, status_code=404
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
 # ── Server runner ─────────────────────────────────────────────────────────────
 
 

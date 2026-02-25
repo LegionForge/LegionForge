@@ -327,6 +327,39 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     """
     )
 
+    # Phase 4: Adaptive threat rules — proposed by Threat Analyst, approved by human.
+    # Guardian polls this table for APPROVED rules and hot-reloads every 5 minutes.
+    # Security invariant: only operators may set status → 'APPROVED'; agents may only
+    # INSERT rows with status='PENDING'. No agent may UPDATE or DELETE rows.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS threat_rules (
+            id            SERIAL PRIMARY KEY,
+            rule_id       UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+            proposed_by   TEXT NOT NULL,
+            proposed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            approved_by   TEXT,
+            approved_at   TIMESTAMPTZ,
+            status        TEXT NOT NULL DEFAULT 'PENDING'
+                              CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+            rule_type     TEXT NOT NULL
+                              CHECK (rule_type IN (
+                                  'INJECTION_PATTERN',
+                                  'CAPABILITY_BLOCK',
+                                  'SEQUENCE_BLOCK',
+                                  'RATE_LIMIT_TIGHTEN'
+                              )),
+            rule_def      JSONB NOT NULL,
+            justification TEXT,
+            evidence_ids  TEXT[],
+            expires_at    TIMESTAMPTZ
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS threat_rules_status_idx ON threat_rules (status, proposed_at DESC)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -510,6 +543,9 @@ THREAT_TYPES = {
     # Phase 3: task token ACL
     "TOOL_SCOPE_VIOLATION",  # agent (deny policy) tried a tool outside its token scope
     "INVALID_TASK_TOKEN",  # JWT was invalid, expired, or had wrong issuer
+    # Phase 4: adaptive threat intelligence
+    "RULE_PROPOSED",  # Threat Analyst proposed a new detection rule (PENDING)
+    "RULE_APPLIED",  # Guardian loaded an APPROVED rule into its hot-reload cache
 }
 
 # Valid action_taken values
@@ -893,3 +929,201 @@ async def get_agent_sequences(agent_id: str) -> list[list[str]]:
             agent_id,
         )
     return [list(row["sequence"]) for row in rows]
+
+
+# ── Phase 4: Threat rules ─────────────────────────────────────────────────────
+
+# Valid rule types for proposed Guardian rules.
+RULE_TYPES = {
+    "INJECTION_PATTERN",
+    "CAPABILITY_BLOCK",
+    "SEQUENCE_BLOCK",
+    "RATE_LIMIT_TIGHTEN",
+}
+
+
+async def propose_threat_rule(
+    proposed_by: str,
+    rule_type: str,
+    rule_def: dict,
+    justification: str,
+    evidence_ids: list[str] | None = None,
+    expires_at: str | None = None,
+) -> str:
+    """
+    Insert a new threat rule with status='PENDING'.
+
+    Only agents may call this (they can only INSERT PENDING rows).
+    Human operators approve via approve_threat_rule() or the /rules endpoint.
+
+    Args:
+        proposed_by:   Agent ID proposing the rule (e.g. 'threat_analyst').
+        rule_type:     One of RULE_TYPES.
+        rule_def:      The rule payload (JSONB). Schema depends on rule_type:
+                       INJECTION_PATTERN: {"pattern": "regex string", "flags": "i"}
+                       CAPABILITY_BLOCK:  {"tool_id": "...", "reason": "..."}
+                       SEQUENCE_BLOCK:    {"sequence": ["tool_a", "tool_b"]}
+                       RATE_LIMIT_TIGHTEN: {"provider": "...", "new_daily_limit": N}
+        justification: Human-readable explanation referencing threat_events.
+        evidence_ids:  List of run_ids from threat_events that triggered this proposal.
+        expires_at:    ISO datetime string for rule expiry (None = no expiry).
+
+    Returns:
+        rule_id (UUID string) of the newly created rule.
+    """
+    pool = get_pool()
+    import json
+
+    async with pool.connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO threat_rules
+                (proposed_by, rule_type, rule_def, justification, evidence_ids, expires_at)
+            VALUES (%s, %s, %s::jsonb, %s, %s, %s)
+            RETURNING rule_id::text
+            """,
+            proposed_by,
+            rule_type,
+            json.dumps(rule_def),
+            justification,
+            evidence_ids or [],
+            expires_at,
+        )
+    rule_id = row["rule_id"]
+    logger.info(
+        f"[threat-rules] Rule proposed rule_id={rule_id} type={rule_type} by={proposed_by}"
+    )
+    return rule_id
+
+
+async def get_pending_rules(limit: int = 50) -> list[dict]:
+    """
+    Return all PENDING threat rules for human review.
+    Used by the /rules endpoint (operator review UI).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT rule_id::text, proposed_by, proposed_at, rule_type,
+                   rule_def, justification, evidence_ids
+            FROM threat_rules
+            WHERE status = 'PENDING'
+            ORDER BY proposed_at DESC
+            LIMIT %s
+            """,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def get_approved_rules() -> list[dict]:
+    """
+    Return all currently APPROVED, non-expired threat rules.
+    Called by Guardian's hot-reload cache refresh (every 5 minutes).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT rule_id::text, rule_type, rule_def, approved_at, expires_at
+            FROM threat_rules
+            WHERE status = 'APPROVED'
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY approved_at ASC
+            """
+        )
+    return [dict(r) for r in rows]
+
+
+async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
+    """
+    Approve a PENDING threat rule. Operator-only action.
+
+    Security invariant: this function is never called by agents — only by human
+    operators via the /rules/approve endpoint or a CLI tool. Agents may only
+    INSERT PENDING rows via propose_threat_rule().
+
+    Returns True if the rule was found and updated, False if not found.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE threat_rules
+            SET status = 'APPROVED', approved_by = %s, approved_at = NOW()
+            WHERE rule_id = %s::uuid AND status = 'PENDING'
+            """,
+            approved_by,
+            rule_id,
+        )
+    updated = result.split()[-1] != "0"  # "UPDATE N" — N > 0 means success
+    if updated:
+        logger.info(f"[threat-rules] Rule approved rule_id={rule_id} by={approved_by}")
+    return updated
+
+
+async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
+    """
+    Reject a PENDING threat rule. Operator-only action.
+    Rejected rules are retained for audit; they are never deleted.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE threat_rules
+            SET status = 'REJECTED', approved_by = %s, approved_at = NOW()
+            WHERE rule_id = %s::uuid AND status = 'PENDING'
+            """,
+            rejected_by,
+            rule_id,
+        )
+    updated = result.split()[-1] != "0"
+    if updated:
+        logger.info(f"[threat-rules] Rule rejected rule_id={rule_id} by={rejected_by}")
+    return updated
+
+
+async def get_threat_events_for_analysis(
+    hours: int = 168,  # 7 days default — enough context for weekly digest
+    limit: int = 500,
+) -> list[dict]:
+    """
+    Fetch recent threat events for the Threat Analyst agent.
+
+    Returns structured dicts suitable for LLM analysis. Excludes raw_input
+    (may contain PII / injection content) — only metadata and sanitized fields.
+
+    Args:
+        hours:  Lookback window in hours (default 168 = 7 days).
+        limit:  Maximum rows returned (prevents context window overflow).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                id, agent_id, run_id, threat_type, action_taken,
+                confidence, metadata, ts
+            FROM threat_events
+            WHERE ts > NOW() - INTERVAL '%s hours'
+            ORDER BY ts DESC
+            LIMIT %s
+            """,
+            hours,
+            limit,
+        )
+    return [
+        {
+            "id": r["id"],
+            "agent_id": r["agent_id"],
+            "run_id": r["run_id"],
+            "threat_type": r["threat_type"],
+            "action_taken": r["action_taken"],
+            "confidence": float(r["confidence"]) if r["confidence"] else None,
+            "metadata": r["metadata"] or {},
+            "ts": r["ts"].isoformat() if r["ts"] else None,
+        }
+        for r in rows
+    ]

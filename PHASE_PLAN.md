@@ -1,9 +1,9 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 3.0.0
+**Version:** 4.0.0
 **Last updated:** 2026-02-25
-**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete
+**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete | Phase 4 ✅ Complete
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -39,8 +39,8 @@ Phase 0  ✅  Infrastructure                    → DONE
 Phase 1  ✅  First Agent + Security Foundations → DONE
 Phase 2  ✅  Containerization + Guardian        → DONE
 Phase 3  ✅  ACLs + Task Tokens + Sub-Agents    → DONE
-Phase 4  ⬜  Adaptive Security                  → NEXT    (weeks 11–14)
-Phase 5  ⬜  Crystallization Pipeline           → (weeks 15–19)
+Phase 4  ✅  Adaptive Security                  → DONE    (weeks 11–14)
+Phase 5  ⬜  Crystallization Pipeline           → NEXT    (weeks 15–19)
 Phase 6  ⬜  Red Team + Pentest Bot             → (weeks 20+)
 ```
 
@@ -362,29 +362,40 @@ Rather than implicit tool-call blocking, Phase 4 adds an explicit structured out
 
 ---
 
-## Phase 4 — Adaptive Threat Intelligence
+## Phase 4 — Adaptive Threat Intelligence ✅ COMPLETE
 
 **Goal:** The framework learns from its own threat history.
 
 **Duration:** ~4 weeks
 **Dependencies:** Phase 3 complete; meaningful data in `threat_events`
 **Exit criteria:** Threat Analyst produces weekly digest; proposed rules go through human approval gate; Guardian applies approved rules without restart.
+**Completed:** 2026-02-25 — 117/117 smoke tests passing
 
-### Component 4.1 — Threat Analyst Agent
+### Component 4.1 — Threat Analyst Agent ✅
 **File:** `src/agents/threat_analyst.py`
 **Role:** `security_analyst`
-**Schedule:** Daily, via cron or LangGraph scheduled trigger
+**Schedule:** Daily, via cron or LangGraph scheduled trigger (`make run-threat-analyst`)
 
-Reads `threat_events` (read-only via task token). Fetches CVE/threat intelligence. Proposes new detection rules as structured JSON with status PENDING. Generates daily threat digest. Cannot apply its own rules.
+Reads `threat_events` (read-only via task token with `deny` escalation policy). Fetches BOM for CVE cross-reference. Proposes new detection rules as PENDING JSONB in `threat_rules` table. Generates threat digest. Cannot apply its own rules. Uses `qwen2.5:3b` (router LLM — fast structured analysis, not reasoning).
 
-### Component 4.2 — Adaptive Guardian Rules
+### Component 4.2 — Adaptive Guardian Rules ✅
 
-Guardian polls `threat_rules` every 5 minutes for APPROVED rules. Hot-reloads without restart. PENDING and REJECTED rules ignored.
+Guardian polls `threat_rules` every 60s for APPROVED rules (`_refresh_caches()`). Hot-reloads without restart. PENDING and REJECTED rules ignored. `_check_6_adaptive_rules()` enforces three rule types:
+- `CAPABILITY_BLOCK` — halts if `tool_id` matches blocked tool
+- `INJECTION_PATTERN` — halts if any string arg matches compiled regex pattern
+- `SEQUENCE_BLOCK` — sandboxes if sequence-so-far starts with blocked sequence
+Malformed rule defs skip with warning (never crash the check pipeline). Guardian version 4.0.0.
 
-### Component 4.3 — AI Bill of Materials (AI-BOM)
+### Component 4.3 — AI Bill of Materials (AI-BOM) ✅
 **File:** `src/security/bom.py` (new)
 
-Tracks every model, tool, agent, and dependency with version, origin, hash, CVE scan status, last security review date. `GET /bom` health endpoint returns full BOM. Threat Analyst cross-references new CVEs against BOM and flags affected components.
+Tracks every model, tool, agent, and Python dependency with version, origin, SHA-256 hash, CVE scan status, last security review date. `GET /bom` health endpoint returns full BOM (Bearer auth required). BOM assembly is DB-fault-tolerant: returns 0 tools if DB unavailable rather than failing. 12 security-critical packages tracked. `/rules`, `/rules/{id}/approve`, `/rules/{id}/reject` endpoints added to health server for human-gate workflow.
+
+### Database additions ✅
+- `threat_rules` table with `PENDING`/`APPROVED`/`REJECTED` status and JSONB `rule_def`
+- `THREAT_TYPES` extended: `RULE_PROPOSED`, `RULE_APPLIED`
+- `RULE_TYPES = {"INJECTION_PATTERN", "CAPABILITY_BLOCK", "SEQUENCE_BLOCK", "RATE_LIMIT_TIGHTEN"}`
+- Async helpers: `propose_threat_rule()`, `get_pending_rules()`, `get_approved_rules()`, `approve_threat_rule()`, `reject_threat_rule()`, `get_threat_events_for_analysis()`
 
 ---
 

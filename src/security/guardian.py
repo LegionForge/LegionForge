@@ -83,17 +83,23 @@ _approved_tools: dict[str, dict[str, str]] = {}
 # agent_id → list of approved sequences [[tool_id, ...], ...]
 _agent_sequences: dict[str, list[list[str]]] = {}
 
+# Phase 4: approved adaptive rules from threat_rules table.
+# list of dicts: {"rule_id": str, "rule_type": str, "rule_def": dict, ...}
+# Refreshed every 5 minutes (same TTL as other caches).
+# Applied in _check_6_adaptive_rules() — AFTER all static checks.
+_adaptive_rules: list[dict] = []
+
 _cache_last_refreshed: float = 0.0
 _CACHE_TTL_SECONDS: float = 60.0
 
 
 async def _refresh_caches() -> None:
     """
-    Load approved tools and agent sequences from the DB into memory.
+    Load approved tools, agent sequences, and adaptive threat rules from DB.
     Called on startup and periodically by the background refresh task.
     Non-fatal if DB is unavailable — caches retain their last known values.
     """
-    global _approved_tools, _agent_sequences, _cache_last_refreshed
+    global _approved_tools, _agent_sequences, _adaptive_rules, _cache_last_refreshed
 
     try:
         from src.database import get_pool
@@ -105,6 +111,16 @@ async def _refresh_caches() -> None:
             )
             seq_rows = await conn.fetch(
                 "SELECT agent_id, sequence FROM agent_profiles ORDER BY agent_id, registered_at"
+            )
+            # Phase 4: load approved, non-expired adaptive rules
+            rule_rows = await conn.fetch(
+                """
+                SELECT rule_id::text, rule_type, rule_def
+                FROM threat_rules
+                WHERE status = 'APPROVED'
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY approved_at ASC
+                """
             )
 
         new_tools: dict[str, dict[str, str]] = {}
@@ -121,13 +137,25 @@ async def _refresh_caches() -> None:
                 new_seqs[aid] = []
             new_seqs[aid].append(list(row["sequence"]))
 
+        new_rules: list[dict] = []
+        for row in rule_rows:
+            new_rules.append(
+                {
+                    "rule_id": row["rule_id"],
+                    "rule_type": row["rule_type"],
+                    "rule_def": row["rule_def"] or {},
+                }
+            )
+
         _approved_tools = new_tools
         _agent_sequences = new_seqs
+        _adaptive_rules = new_rules
         _cache_last_refreshed = time.monotonic()
 
         logger.debug(
             f"[guardian] Cache refreshed: {len(_approved_tools)} tools, "
-            f"{sum(len(v) for v in _agent_sequences.values())} sequences"
+            f"{sum(len(v) for v in _agent_sequences.values())} sequences, "
+            f"{len(_adaptive_rules)} adaptive rules"
         )
 
     except Exception as e:
@@ -339,6 +367,89 @@ def _check_5_hash_integrity(tool_id: str, args: dict) -> GuardianCheckResponse |
     return None
 
 
+def _check_6_adaptive_rules(
+    tool_id: str, args: dict, sequence_so_far: list[str]
+) -> GuardianCheckResponse | None:
+    """
+    Check 6 (Phase 4): Apply approved adaptive rules from the threat_rules table.
+
+    Rules are loaded every 60 seconds by _refresh_caches().
+    Static checks (0–5) always run first — adaptive rules are an additional layer.
+
+    Enforced rule types:
+      CAPABILITY_BLOCK:  halt if this tool_id is explicitly blocked.
+      INJECTION_PATTERN: halt if any string arg matches the regex.
+      SEQUENCE_BLOCK:    sandbox if sequence_so_far+[tool_id] starts with blocked seq.
+      RATE_LIMIT_TIGHTEN: not enforced here (rate limiter handles this in-process).
+
+    Note: If a regex in a proposed rule is malformed, the rule is skipped with a
+    warning rather than crashing — bad rules must not break the hot path.
+    """
+    import re
+
+    for rule in _adaptive_rules:
+        rule_type = rule.get("rule_type")
+        rule_def = rule.get("rule_def") or {}
+        rule_id_short = rule.get("rule_id", "")[:8]
+
+        if rule_type == "CAPABILITY_BLOCK":
+            blocked_tool = rule_def.get("tool_id")
+            if blocked_tool and tool_id == blocked_tool:
+                return GuardianCheckResponse(
+                    allowed=False,
+                    tier="halt",
+                    reason=(
+                        f"Adaptive rule {rule_id_short}...: tool '{tool_id}' "
+                        f"is capability-blocked — {rule_def.get('reason', 'no reason given')}"
+                    ),
+                    threat_type="CAPABILITY_VIOLATION",
+                    confidence=1.0,
+                )
+
+        elif rule_type == "INJECTION_PATTERN":
+            pattern = rule_def.get("pattern")
+            flags_str = rule_def.get("flags", "")
+            if pattern:
+                re_flags = re.IGNORECASE if "i" in flags_str else 0
+                try:
+                    compiled = re.compile(pattern, re_flags)
+                    for arg_val in args.values():
+                        if isinstance(arg_val, str) and compiled.search(arg_val):
+                            return GuardianCheckResponse(
+                                allowed=False,
+                                tier="halt",
+                                reason=(
+                                    f"Adaptive rule {rule_id_short}...: "
+                                    "injection pattern matched in tool args"
+                                ),
+                                threat_type="INJECTION_DETECTED",
+                                confidence=0.95,
+                            )
+                except re.error as regex_err:
+                    logger.warning(
+                        f"[guardian] Adaptive rule {rule_id_short}... has invalid regex "
+                        f"{pattern!r}: {regex_err} — skipping"
+                    )
+
+        elif rule_type == "SEQUENCE_BLOCK":
+            blocked_seq = rule_def.get("sequence", [])
+            if blocked_seq:
+                candidate = sequence_so_far + [tool_id]
+                if candidate[: len(blocked_seq)] == blocked_seq:
+                    return GuardianCheckResponse(
+                        allowed=False,
+                        tier="sandbox",
+                        reason=(
+                            f"Adaptive rule {rule_id_short}...: "
+                            f"blocked sequence {blocked_seq} detected"
+                        ),
+                        threat_type="SEQUENCE_VIOLATION",
+                        confidence=1.0,
+                    )
+
+    return None  # All adaptive rules passed
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -348,13 +459,13 @@ async def health() -> JSONResponse:
     Unauthenticated liveness check.
     Used by Docker healthcheck and make check.
     """
-    return JSONResponse({"status": "ok", "service": "guardian", "version": "3.0.0"})
+    return JSONResponse({"status": "ok", "service": "guardian", "version": "4.0.0"})
 
 
 @app.get("/rules")
 async def rules() -> JSONResponse:
     """
-    Read-only view of currently approved tools and registered agent sequences.
+    Read-only view of approved tools, sequences, and adaptive rules.
     Useful for debugging and audit.
     """
     await _maybe_refresh_caches()
@@ -362,6 +473,10 @@ async def rules() -> JSONResponse:
         {
             "approved_tools": list(_approved_tools.keys()),
             "agent_sequences": {aid: seqs for aid, seqs in _agent_sequences.items()},
+            "adaptive_rules": [
+                {"rule_id": r["rule_id"], "rule_type": r["rule_type"]}
+                for r in _adaptive_rules
+            ],
             "cache_age_seconds": round(time.monotonic() - _cache_last_refreshed, 1),
         }
     )
@@ -371,7 +486,7 @@ async def rules() -> JSONResponse:
 async def check(request: GuardianCheckRequest) -> GuardianCheckResponse:
     """
     Synchronous enforcement endpoint — hot path.
-    Six checks in order (Phase 3: +check_0 JWT), fail-fast. NO LLM calls.
+    Seven checks in order (Phase 4: +check_6 adaptive rules), fail-fast. NO LLM calls.
     """
     await _maybe_refresh_caches()
 
@@ -426,6 +541,19 @@ async def check(request: GuardianCheckRequest) -> GuardianCheckResponse:
         logger.warning(
             f"[guardian/check] HALT check=5 tool={request.tool_id!r} "
             f"agent={request.agent_id!r} reason={resp.reason!r}"
+        )
+        return resp
+
+    # 6. Adaptive rules (Phase 4) — approved rules proposed by Threat Analyst.
+    # Applied AFTER all static checks. Rules are hot-loaded from DB every 60s.
+    resp = _check_6_adaptive_rules(
+        request.tool_id, request.args, request.sequence_so_far
+    )
+    if resp:
+        logger.warning(
+            f"[guardian/check] {'HALT' if resp.tier == 'halt' else 'SANDBOX'} check=6 "
+            f"tool={request.tool_id!r} agent={request.agent_id!r} "
+            f"rule_type={resp.threat_type!r}"
         )
         return resp
 
