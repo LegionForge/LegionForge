@@ -1,0 +1,50 @@
+# config/roles.yaml
+# ─────────────────
+# Phase 3: Role-based tool and data class definitions.
+#
+# Each role defines which tools and data sensitivity classes an agent
+# operating under that role may access. These are used when issuing
+# task tokens — the granted_tools and granted_data_classes in a token
+# must be a subset of the role's declared permissions.
+#
+# Roles are additive starting points; actual token scope may be narrower
+# (derive_task_token() enforces child ⊆ parent at derivation time).
+#
+# data_classes:
+#   public    — data that may leave the system (search results, public docs)
+#   internal  — internal operational data (agent histories, run logs)
+#   security  — threat events, audit logs, security rules (highest sensitivity)
+
+roles:
+  reader:
+    tools:
+      - web_search
+      - web_fetch
+      - document_read
+    data_classes:
+      - public
+
+  analyst:
+    tools:
+      - web_search
+      - web_fetch
+      - document_read
+      - database_query
+    data_classes:
+      - public
+      - internal
+
+  crystallization_observer:
+    tools:
+      - audit_log_read
+      - tool_call_history_read
+    data_classes:
+      - internal
+
+  security_analyst:
+    tools:
+      - threat_events_read
+      - audit_log_read
+      - rule_propose
+    data_classes:
+      - security

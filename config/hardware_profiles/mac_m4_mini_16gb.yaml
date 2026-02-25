@@ -170,3 +170,7 @@ security:
   guardian_timeout_seconds: 2.0
   # Phase 2: Health server auth
   health_token_service: "legionforge_health"
+  # Phase 3: Task-scoped JWT tokens
+  task_token_secret_service: "legionforge_task_tokens"
+  task_token_issuer: "legionforge"
+  task_token_ttl_seconds: 3600

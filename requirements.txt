@@ -32,6 +32,9 @@ pyyaml~=6.0
 keyring~=25.0
 python-dotenv~=1.0
 
+# ── JWT / Task Tokens (Phase 3) ───────────────────────────────
+PyJWT~=2.8
+
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
 aiolimiter~=1.1                  # Async rate limiter for API calls
