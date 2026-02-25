@@ -1,0 +1,36 @@
+# Dockerfile.agent-base
+# Base image for LegionForge agent containers.
+# Includes the full Python environment with all framework dependencies.
+# Agents build FROM this image and add their specific code.
+#
+# Build: docker-compose build agent-base   (profile: build-only)
+# Note:  PostgreSQL and Ollama stay native — containerising Postgres would
+#        require remapping pgvector's dylib; containerising Ollama loses
+#        Apple Silicon Metal GPU access.
+
+FROM python:3.11-slim
+
+# Security: non-root user for agent processes
+RUN addgroup --system agent && adduser --system --ingroup agent agent
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source
+COPY config/ /app/config/
+COPY src/ /app/src/
+
+ENV PYTHONPATH=/app
+
+# Agents run as non-root
+USER agent
+
+# Default: no CMD — agents supply their own entrypoints

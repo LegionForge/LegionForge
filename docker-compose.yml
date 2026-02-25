@@ -1,0 +1,70 @@
+# docker-compose.yml
+# LegionForge container stack.
+#
+# Phase 2 scope:
+#   - guardian: runs (security sidecar on 127.0.0.1:9766)
+#   - agent-base: build-only profile (not run in Phase 2)
+#
+# PostgreSQL and Ollama stay native (Homebrew) in Phase 2:
+#   - Containerising Postgres would require remapping pgvector's dylib
+#     (most fragile dependency in the stack).
+#   - Containerising Ollama loses Apple Silicon Metal GPU access.
+#
+# Guardian connects to native services via host.docker.internal.
+#
+# Usage:
+#   make guardian-start   — start Guardian in background
+#   make guardian-stop    — stop Guardian
+#   make guardian-logs    — tail Guardian logs
+#   make docker-build     — build all images
+#   make docker-up        — start all runnable services
+
+services:
+  guardian:
+    build:
+      context: .
+      dockerfile: guardian/Dockerfile
+    image: legionforge-guardian:latest
+    container_name: legionforge-guardian
+    restart: unless-stopped
+    ports:
+      # Localhost-only binding — Guardian must not be reachable from the network
+      - "127.0.0.1:9766:9766"
+    environment:
+      # Guardian connects to native Homebrew Postgres via host.docker.internal
+      POSTGRES_HOST: host.docker.internal
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: legionforge
+      POSTGRES_USER: jpc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      # Ollama (native, Metal GPU) via host.docker.internal
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Guardian config
+      PYTHONPATH: /app
+      LOG_LEVEL: info
+    extra_hosts:
+      # Required on Linux; macOS Docker Desktop provides this automatically
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: >
+        python -c "import urllib.request; urllib.request.urlopen('http://localhost:9766/health')"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # agent-base: build-only — provides the base image for future agent containers.
+  # Not started in Phase 2. Activate with: docker-compose --profile build-only build agent-base
+  agent-base:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-base
+    image: legionforge-agent-base:latest
+    profiles:
+      - build-only
+    # No ports, no restart — this is a build target, not a running service
