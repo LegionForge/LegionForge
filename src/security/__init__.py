@@ -23,6 +23,9 @@ from src.security.acl import (
     derive_task_token,
 )
 
+# Phase 4: AI Bill of Materials
+from src.security.bom import BOMEntry, BOMReport, get_bom
+
 from src.security.core import (
     # API key management
     get_api_key,
@@ -71,6 +74,10 @@ from src.security.core import (
 )
 
 __all__ = [
+    # Phase 4: AI BOM
+    "BOMEntry",
+    "BOMReport",
+    "get_bom",
     # Phase 3: Task tokens
     "TaskToken",
     "EscalationRequest",

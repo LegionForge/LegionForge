@@ -38,6 +38,10 @@ help:
 	@echo "  make security-audit — smoke tests + bandit static analysis"
 	@echo "  make review-prep  — all automated gates for PR review (run before manual review)"
 	@echo "  make setup-task-token-secret — generate and store JWT signing secret (one-time)"
+	@echo "  make register-threat-analyst-tools — register Phase 4 tools (one-time)"
+	@echo "  make run-threat-analyst — run Threat Analyst agent (7-day window)"
+	@echo "  make bom             — show AI Bill of Materials"
+	@echo "  make pending-rules   — show threat rules awaiting approval"
 	@echo "  make register-researcher-tools — register Phase 1 tools (one-time)"
 	@echo "  make register-orchestrator-tools — register Phase 3 orchestrator tools (one-time)"
 	@echo "  make register-agent-sequences — register Researcher expected sequences"
@@ -379,6 +383,40 @@ import asyncio; \
 from src.agents.orchestrator import register_orchestrator_tools; \
 asyncio.run(register_orchestrator_tools()); \
 print('✅ Orchestrator tools registered')"
+
+# ── Phase 4: Threat Analyst + BOM ────────────────────────────
+.PHONY: register-threat-analyst-tools
+register-threat-analyst-tools:
+	@echo "Registering threat analyst agent tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.threat_analyst import register_threat_analyst_tools; \
+asyncio.run(register_threat_analyst_tools()); \
+print('✅ Threat analyst tools registered')"
+
+.PHONY: run-threat-analyst
+run-threat-analyst:
+	@echo "Running Threat Analyst (7-day window)..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.threat_analyst import run_threat_analyst; \
+result = asyncio.run(run_threat_analyst()); \
+print('✅ Threat analysis complete'); \
+print(f'  Proposed rules: {len(result[\"proposed_rules\"])}'); \
+print(f'  Steps: {result[\"steps\"]}'); \
+print(f'  Errors: {result[\"errors\"]}')"
+
+.PHONY: bom
+bom:
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/bom | python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
+
+.PHONY: pending-rules
+pending-rules:
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/rules | python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing."
 
 # ── Agent sequence registration ───────────────────────────────
 .PHONY: register-agent-sequences
