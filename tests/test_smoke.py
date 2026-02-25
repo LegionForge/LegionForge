@@ -945,3 +945,258 @@ def test_researcher_expected_sequences_use_registered_tools():
                 f"is not in RESEARCHER_TOOL_MANIFESTS. "
                 f"Registered: {registered_tool_ids}"
             )
+
+
+# ── Phase 3: Task tokens + ACL smoke tests ────────────────────────────────────
+
+
+def test_acl_module_importable():
+    """src.security.acl imports cleanly (PyJWT present, no config errors)."""
+    import importlib
+
+    mod = importlib.import_module("src.security.acl")
+    assert mod is not None
+
+
+def test_task_token_dataclass_has_required_fields():
+    """TaskToken dataclass has all fields required by PHASE_PLAN Component 3.1."""
+    from src.security.acl import TaskToken
+    import dataclasses
+
+    field_names = {f.name for f in dataclasses.fields(TaskToken)}
+    expected = {
+        "token_id",
+        "agent_id",
+        "run_id",
+        "granted_tools",
+        "granted_tables",
+        "granted_data_classes",
+        "expires_at",
+        "parent_token_id",
+        "escalation_policy",
+    }
+    missing = expected - field_names
+    assert not missing, f"TaskToken missing fields: {missing}"
+
+
+def test_escalation_request_dataclass_has_required_fields():
+    """EscalationRequest dataclass has all expected fields."""
+    from src.security.acl import EscalationRequest
+    import dataclasses
+
+    field_names = {f.name for f in dataclasses.fields(EscalationRequest)}
+    expected = {
+        "token_id",
+        "agent_id",
+        "requested_tool",
+        "reason",
+        "escalation_policy",
+    }
+    missing = expected - field_names
+    assert not missing, f"EscalationRequest missing fields: {missing}"
+
+
+def test_privilege_escalation_error_is_value_error():
+    """PrivilegeEscalationError is a subclass of ValueError."""
+    from src.security.acl import PrivilegeEscalationError
+
+    assert issubclass(PrivilegeEscalationError, ValueError)
+
+
+def test_issue_and_validate_task_token_roundtrip():
+    """issue_task_token + validate_task_token roundtrip produces the correct TaskToken."""
+    import os
+    from src.security.acl import issue_task_token, validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        token_str = issue_task_token(
+            agent_id="test_agent",
+            run_id="run-smoke-001",
+            granted_tools=["web_search", "document_read"],
+            granted_tables=["documents"],
+            granted_data_classes=["public"],
+        )
+        assert isinstance(token_str, str) and len(token_str) > 20
+
+        token = validate_task_token(token_str)
+        assert token is not None
+        assert token.agent_id == "test_agent"
+        assert token.run_id == "run-smoke-001"
+        assert set(token.granted_tools) == {"web_search", "document_read"}
+        assert token.escalation_policy == "deny"
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_validate_task_token_returns_none_on_tampered_token():
+    """validate_task_token returns None (never raises) when the token is tampered."""
+    import os
+    from src.security.acl import issue_task_token, validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        token_str = issue_task_token(
+            agent_id="test_agent",
+            run_id="run-smoke-002",
+            granted_tools=["web_search"],
+        )
+        # Tamper: flip last character
+        tampered = token_str[:-1] + ("A" if token_str[-1] != "A" else "B")
+        result = validate_task_token(tampered)
+        assert result is None, "Tampered token should return None"
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_derive_task_token_blocks_privilege_escalation():
+    """derive_task_token raises PrivilegeEscalationError when child exceeds parent scope."""
+    import os
+    from src.security.acl import (
+        issue_task_token,
+        derive_task_token,
+        PrivilegeEscalationError,
+    )
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        parent_jwt = issue_task_token(
+            agent_id="orchestrator",
+            run_id="run-smoke-003",
+            granted_tools=["web_search"],
+            granted_data_classes=["public"],
+        )
+        with pytest.raises(PrivilegeEscalationError):
+            derive_task_token(
+                parent_jwt=parent_jwt,
+                granted_tools=[
+                    "web_search",
+                    "database_query",
+                ],  # database_query not in parent
+                granted_data_classes=["public"],
+            )
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_derive_task_token_succeeds_with_valid_subset():
+    """derive_task_token produces a valid child token when scope is within parent."""
+    import os
+    from src.security.acl import (
+        issue_task_token,
+        derive_task_token,
+        validate_task_token,
+    )
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        parent_jwt = issue_task_token(
+            agent_id="orchestrator",
+            run_id="run-smoke-004",
+            granted_tools=["web_search", "document_read", "database_query"],
+            granted_data_classes=["public", "internal"],
+        )
+        child_jwt = derive_task_token(
+            parent_jwt=parent_jwt,
+            granted_tools=["web_search"],
+            granted_data_classes=["public"],
+        )
+        child_token = validate_task_token(child_jwt)
+        assert child_token is not None
+        assert child_token.granted_tools == ["web_search"]
+        assert child_token.parent_token_id is not None
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_roles_yaml_parseable():
+    """config/roles.yaml loads without errors and has a 'roles' key."""
+    import yaml
+    import os
+
+    roles_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "config",
+        "roles.yaml",
+    )
+    with open(roles_path) as f:
+        data = yaml.safe_load(f)
+    assert "roles" in data, "roles.yaml must have a top-level 'roles' key"
+
+
+def test_roles_yaml_contains_expected_roles():
+    """config/roles.yaml contains all four Phase 3 roles."""
+    import yaml
+    import os
+
+    roles_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "config",
+        "roles.yaml",
+    )
+    with open(roles_path) as f:
+        data = yaml.safe_load(f)
+    roles = data["roles"]
+    for expected_role in (
+        "reader",
+        "analyst",
+        "crystallization_observer",
+        "security_analyst",
+    ):
+        assert (
+            expected_role in roles
+        ), f"roles.yaml missing expected role: {expected_role!r}"
+
+
+def test_guardian_check_request_accepts_task_token_field():
+    """GuardianCheckRequest accepts an optional task_token field (Phase 3 JWT slot)."""
+    from src.security.guardian import GuardianCheckRequest
+
+    req_with_token = GuardianCheckRequest(
+        tool_id="web_search",
+        action="invoke",
+        args={},
+        agent_id="test",
+        run_id="run-001",
+        sequence_so_far=[],
+        task_token="some.jwt.token",
+    )
+    assert req_with_token.task_token == "some.jwt.token"
+
+    req_no_token = GuardianCheckRequest(
+        tool_id="web_search",
+        action="invoke",
+        args={},
+        agent_id="test",
+        run_id="run-002",
+        sequence_so_far=[],
+    )
+    assert req_no_token.task_token is None
+
+
+def test_guardian_check_0_blocks_invalid_token():
+    """_check_0_task_token returns a halt response for a garbage JWT."""
+    from src.security.guardian import _check_0_task_token
+
+    resp = _check_0_task_token("web_search", "not.a.real.jwt")
+    assert resp is not None
+    assert resp.allowed is False
+    assert resp.tier == "halt"
+    assert resp.threat_type == "INVALID_TASK_TOKEN"
+
+
+def test_guardian_check_0_passes_when_no_token():
+    """_check_0_task_token returns None (pass) when task_token is absent."""
+    from src.security.guardian import _check_0_task_token
+
+    resp = _check_0_task_token("web_search", None)
+    assert resp is None, "No token should be a pass (backward compat)"
+
+
+def test_agent_state_has_task_token_field():
+    """AgentState TypedDict declares a task_token field."""
+    from src.base_graph import AgentState
+    import typing
+
+    hints = typing.get_type_hints(AgentState)
+    assert "task_token" in hints, "AgentState must have a 'task_token' field (Phase 3)"

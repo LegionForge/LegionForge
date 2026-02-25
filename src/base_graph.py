@@ -57,6 +57,9 @@ from src.security import (
     Guardian,
     FORBIDDEN_CAPABILITIES,
     SecurityError,
+    # Phase 3: task token ACL
+    validate_task_token,
+    EscalationRequest,
 )
 from src.security.guardian import GuardianCheckResponse
 from src.rate_limiter import preflight_budget_check, estimate_tokens
@@ -95,6 +98,13 @@ class AgentState(TypedDict):
     # ── Security: tool call sequence tracking ─────────────────────────────────
     # Maintained by SecureToolNode; passed to Guardian /check for sequence validation.
     sequence_so_far: list[str]
+
+    # ── Phase 3: Task-scoped JWT token ────────────────────────────────────────
+    # Signed JWT issued at run start. Declares which tools + data classes this
+    # agent run may access. Sub-agents receive derived (narrower) tokens.
+    # None = no token required (backward compat — agents without tokens are
+    # unconstrained for now; Phase 4 will make tokens mandatory).
+    task_token: str | None
 
     # ── Agent-specific fields ─────────────────────────────────────────────────
     task: str  # The current task description
@@ -297,11 +307,55 @@ async def guardian_check(tool_id: str, state: dict) -> bool:
         return False
 
 
-async def validate_acl_token(state: dict) -> bool:
+async def validate_acl_token(state: dict, tool_id: str) -> bool:
     """
-    Phase 2 stub — always returns True.
-    Phase 3: validate JWT task token via Guardian /acl endpoint.
+    Phase 3: Validate the task token and check the requested tool is in scope.
+
+    Behaviour:
+      - No task_token in state → True (backward compat; tokens not yet mandatory)
+      - Token present + tool in granted_tools → True
+      - Token present + tool NOT in granted_tools → log EscalationRequest; return False
+        (if escalation_policy == "request_human", EscalationRequest is surfaced on /status)
+      - Token present but invalid/expired → False (fail-safe)
+
+    Never raises — callers treat False as a halt condition.
     """
+    token_str = state.get("task_token")
+    if not token_str:
+        # No token — unconstrained run (Phase 4 will make this mandatory)
+        return True
+
+    token = validate_task_token(token_str)
+    if token is None:
+        logger.error(
+            f"[acl] Invalid or expired task token for agent={state.get('run_id', '?')}. "
+            "Halting run."
+        )
+        return False
+
+    if tool_id not in token.granted_tools:
+        escalation = EscalationRequest(
+            token_id=token.token_id,
+            agent_id=token.agent_id,
+            requested_tool=tool_id,
+            reason=f"Tool '{tool_id}' not in task token granted_tools={token.granted_tools}",
+            escalation_policy=token.escalation_policy,
+        )
+        if token.escalation_policy == "request_human":
+            logger.warning(
+                f"[acl] ESCALATION_REQUEST token={token.token_id[:8]}... "
+                f"tool={tool_id!r} policy=request_human "
+                f"(surfaced on /status — awaiting human approval)"
+            )
+        else:
+            logger.error(
+                f"[acl] TOOL_SCOPE_VIOLATION token={token.token_id[:8]}... "
+                f"tool={tool_id!r} not in granted_tools. Halting run."
+            )
+        # In both cases, block until human approves (Phase 4 will add approval queue)
+        _ = escalation  # noqa: F841 — will be stored in audit_log in Phase 4
+        return False
+
     return True
 
 
@@ -373,7 +427,18 @@ class SecureToolNode:
                 )
                 return {"force_end": True, "loop_detected": False}
 
-            # 2. Guardian capability boundary + sequence check
+            # 2a. Task token ACL check (Phase 3)
+            # Validates the JWT in state["task_token"] and checks tool is in scope.
+            # No-op if task_token is None (backward compat).
+            acl_ok = await validate_acl_token(state, tool_id)
+            if not acl_ok:
+                logger.error(
+                    f"[SecureToolNode] ACL denied tool='{tool_id}' "
+                    "— token scope violation or invalid token. Halting."
+                )
+                return {"force_end": True, "loop_detected": False}
+
+            # 2b. Guardian capability boundary + sequence check
             # Pass current sequence_so_far so Guardian can check sequence contracts.
             state_with_seq = {**state, "sequence_so_far": sequence_so_far}
             allowed = await guardian_check(tool_id, state_with_seq)
@@ -502,6 +567,7 @@ async def run_agent(
     thread_id: str | None = None,
     tracing_enabled: bool = True,
     max_steps: int | None = None,
+    task_token: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the base agent on a task. High-level interface.
@@ -532,6 +598,7 @@ async def run_agent(
         "task": task,
         "result": None,
         "sequence_so_far": [],
+        "task_token": task_token,
         "messages": [HumanMessage(content=task)],
     }
 
