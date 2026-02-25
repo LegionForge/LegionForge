@@ -164,3 +164,9 @@ security:
   prompt_injection_guard: true
   tool_permission_enforcement: true
   git_secret_scanning: true         # Reminder to use pre-commit hooks
+  # Phase 2: Guardian sidecar enforcement
+  guardian_enabled: true
+  guardian_url: "http://localhost:9766"
+  guardian_timeout_seconds: 2.0
+  # Phase 2: Health server auth
+  health_token_service: "legionforge_health"
