@@ -33,12 +33,12 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import time
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -53,10 +53,25 @@ from src.security.core import (
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    """Load caches from DB on startup. Non-fatal if DB is unavailable."""
+    logger.info("[guardian] Starting up — loading caches...")
+    await _refresh_caches()
+    logger.info(
+        f"[guardian] Ready — {len(_approved_tools)} approved tools, "
+        f"{sum(len(v) for v in _agent_sequences.values())} registered sequences"
+    )
+    yield
+    logger.info("[guardian] Shutting down.")
+
+
 app = FastAPI(
     title="LegionForge Guardian",
     description="Deterministic security sidecar — NO LLM calls",
     version="2.0.0",
+    lifespan=_lifespan,
 )
 
 # ── In-memory caches (refreshed from DB every 60 seconds) ─────────────────────
@@ -395,20 +410,6 @@ async def report(request: ReportRequest) -> JSONResponse:
     except Exception as e:
         logger.warning(f"[guardian/report] Failed to log event: {e}")
         return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
-
-
-# ── Startup ───────────────────────────────────────────────────────────────────
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    """Load caches from DB on startup. Non-fatal if DB is unavailable."""
-    logger.info("[guardian] Starting up — loading caches...")
-    await _refresh_caches()
-    logger.info(
-        f"[guardian] Ready — {len(_approved_tools)} approved tools, "
-        f"{sum(len(v) for v in _agent_sequences.values())} registered sequences"
-    )
 
 
 # ── Standalone runner ─────────────────────────────────────────────────────────

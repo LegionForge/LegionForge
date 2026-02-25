@@ -17,12 +17,13 @@ help:
 	@echo ""
 	@echo "  LegionForge"
 	@echo "  ─────────────────────────────────────────────────"
-	@echo "  make check        — verify drive, venv, models, config"
-	@echo "  make start        — full startup sequence"
+	@echo "  make check        — verify drive, venv, models, config, Guardian"
+	@echo "  make start        — full startup sequence (includes Guardian)"
 	@echo "  make stop         — graceful shutdown"
-	@echo "  make status       — print system status (curl /status)"
+	@echo "  make status       — print system status (curl /status, needs token)"
 	@echo "  make health       — quick liveness check (curl /health)"
 	@echo "  make health-server — start health server in foreground"
+	@echo "  make health-token — print stored health server Bearer token"
 	@echo "  make db-init      — initialize PostgreSQL and tables"
 	@echo "  make db-start     — start PostgreSQL service"
 	@echo "  make db-stop      — stop PostgreSQL service"
@@ -37,8 +38,15 @@ help:
 	@echo "  make security-audit — smoke tests + bandit static analysis"
 	@echo "  make review-prep  — all automated gates for PR review (run before manual review)"
 	@echo "  make register-researcher-tools — register Phase 1 tools (one-time)"
+	@echo "  make register-agent-sequences — register Researcher expected sequences"
 	@echo "  make verify-tool-registry — verify all registered tools are APPROVED"
 	@echo "  make verify-model-integrity — hash-check Ollama model manifests"
+	@echo "  make audit-log-verify — verify audit log hash chain integrity"
+	@echo "  make guardian-start — start Guardian container"
+	@echo "  make guardian-stop  — stop Guardian container"
+	@echo "  make guardian-logs  — tail Guardian container logs"
+	@echo "  make docker-build   — build all Docker images"
+	@echo "  make docker-up      — start all Docker services"
 	@echo "  make git-status   — show git status"
 	@echo "  make dev-branch   — create and switch to dev branch"
 	@echo "  make logs         — tail the agent log"
@@ -61,9 +69,12 @@ check:
 	else \
 		echo "⚠️  Keychain: postgres password NOT loaded — source ~/.zshrc or run: python3 -m keyring set postgres api_key"; \
 	fi
+	@curl -s --max-time 2 http://localhost:9766/health >/dev/null 2>&1 && \
+		echo "✅ Guardian sidecar healthy" || \
+		echo "⚠️  Guardian not running (warning only) — run: make guardian-start"
 
 .PHONY: start
-start: check ollama-start db-start ollama-warm
+start: check ollama-start db-start ollama-warm guardian-start
 	@echo ""
 	@echo "✅ Framework ready."
 	@echo "   Run 'make health-server' in a separate terminal to start the status endpoint."
@@ -84,18 +95,26 @@ health:
 
 .PHONY: status
 status:
-	@curl -s http://localhost:8765/status | python3 -m json.tool 2>/dev/null \
-		|| echo "⚠️  Health server not running. Start with: make health-server"
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/status | python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
 
 .PHONY: health-server
 health-server:
 	@echo "Starting health server at http://localhost:8765 ..."
 	@cd $(BASE) && $(PYTHON) -m src.health
 
+.PHONY: health-token
+health-token:
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	echo "Health server Bearer token:" && echo "  $$TOKEN" \
+		|| echo "⚠️  Token not found in Keychain. Start health server once to generate it: make health-server"
+
 .PHONY: usage
 usage:
-	@curl -s http://localhost:8765/usage | python3 -m json.tool 2>/dev/null \
-		|| echo "⚠️  Health server not running. Start with: make health-server"
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/usage | python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
 
 # ── Database ──────────────────────────────────────────────────
 .PHONY: db-start
@@ -289,6 +308,62 @@ if not ollama_dir.exists(): print('⚠️  Ollama model dir not found — skippi
 manifests = list(ollama_dir.rglob('*')); \
 print(f'Found {len(manifests)} manifest entries in {ollama_dir}'); \
 print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
+
+# ── Guardian (Phase 2) ────────────────────────────────────────
+.PHONY: guardian-start
+guardian-start:
+	@echo "Starting Guardian sidecar..."
+	@docker-compose up -d guardian 2>/dev/null && \
+		sleep 2 && \
+		curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
+		echo "✅ Guardian healthy at http://localhost:9766" || \
+		echo "⚠️  Guardian may still be starting — check: make guardian-logs"
+
+.PHONY: guardian-stop
+guardian-stop:
+	@docker-compose stop guardian 2>/dev/null && echo "✅ Guardian stopped" || true
+
+.PHONY: guardian-logs
+guardian-logs:
+	@docker-compose logs -f guardian
+
+.PHONY: docker-build
+docker-build:
+	@echo "Building Docker images..."
+	@docker-compose build && echo "✅ All images built"
+
+.PHONY: docker-up
+docker-up:
+	@echo "Starting all Docker services..."
+	@docker-compose up -d && echo "✅ Services started"
+
+# ── Audit log ─────────────────────────────────────────────────
+.PHONY: audit-log-verify
+audit-log-verify:
+	@echo "Verifying audit log hash chain integrity..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio, sys; \
+from src.database import init_db, verify_audit_log_chain; \
+async def run(): \
+    await init_db(); \
+    ok, rows, err = await verify_audit_log_chain(); \
+    if ok: print(f'✅ Audit log chain valid ({rows} rows verified)'); \
+    else: print(f'❌ Chain INVALID at row {rows}: {err}'); sys.exit(1); \
+asyncio.run(run())"
+
+# ── Agent sequence registration ───────────────────────────────
+.PHONY: register-agent-sequences
+register-agent-sequences:
+	@echo "Registering Researcher agent expected sequences..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, register_agent_sequences; \
+from src.agents.researcher import RESEARCHER_EXPECTED_SEQUENCES; \
+async def run(): \
+    await init_db(); \
+    await register_agent_sequences('researcher', RESEARCHER_EXPECTED_SEQUENCES); \
+    print(f'✅ Registered {len(RESEARCHER_EXPECTED_SEQUENCES)} sequences for researcher agent'); \
+asyncio.run(run())"
 
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status
