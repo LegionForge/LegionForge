@@ -357,6 +357,7 @@ async def run_researcher(
     thread_id: str | None = None,
     tracing_enabled: bool = True,
     max_steps: int | None = None,
+    task_token: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the Researcher agent on a task. High-level entry point.
@@ -366,6 +367,11 @@ async def run_researcher(
         thread_id:       Optional thread ID for checkpoint resumption.
         tracing_enabled: Set False to disable LangSmith for this run.
         max_steps:       Override the profile's default recursion limit.
+        task_token:      Optional pre-issued JWT task token. When provided (e.g.
+                         by an orchestrator passing a derived token), it is used
+                         as-is and no new token is issued. When omitted, the
+                         researcher issues its own reader-role token. Pass None
+                         to opt out of token enforcement entirely (backward compat).
 
     Returns:
         dict with 'result', 'steps', 'tokens', 'sources', 'run_id', 'errors' keys.
@@ -383,30 +389,38 @@ async def run_researcher(
         max_steps=max_steps,
     )
 
-    # Phase 3: issue a reader-role task token scoped to the researcher's tools.
+    # Phase 3: task-scoped JWT token.
+    # If a token was passed in (e.g. from an orchestrator via derive_task_token),
+    # use it directly — this is the sub-agent delegation path.
+    # If no token was passed, issue a fresh reader-role token for standalone runs.
     # escalation_policy="alert" — operational agent; scope violations are logged
     # as audit events (not threat incidents) since they're likely misconfiguration.
     # Non-fatal if the JWT secret is not yet configured (token stays None).
-    task_token: str | None = None
-    try:
-        from src.security import issue_task_token
+    if task_token is None:
+        try:
+            from src.security import issue_task_token
 
-        task_token = issue_task_token(
-            agent_id="researcher",
-            run_id=init["run_id"],
-            granted_tools=[m.tool_id for m in RESEARCHER_TOOL_MANIFESTS],
-            granted_tables=["documents"],
-            granted_data_classes=["public"],
-            escalation_policy="alert",
-        )
+            task_token = issue_task_token(
+                agent_id="researcher",
+                run_id=init["run_id"],
+                granted_tools=[m.tool_id for m in RESEARCHER_TOOL_MANIFESTS],
+                granted_tables=["documents"],
+                granted_data_classes=["public"],
+                escalation_policy="alert",
+            )
+            logger.debug(
+                f"[researcher] Task token issued for run={init['run_id'][:8]}... "
+                f"tools={[m.tool_id for m in RESEARCHER_TOOL_MANIFESTS]}"
+            )
+        except RuntimeError:
+            logger.warning(
+                "[researcher] JWT secret not configured — running without task token. "
+                "Run: make setup-task-token-secret"
+            )
+    else:
         logger.debug(
-            f"[researcher] Task token issued for run={init['run_id'][:8]}... "
-            f"tools={[m.tool_id for m in RESEARCHER_TOOL_MANIFESTS]}"
-        )
-    except RuntimeError:
-        logger.warning(
-            "[researcher] JWT secret not configured — running without task token. "
-            "Run: make setup-task-token-secret"
+            f"[researcher] Using pre-issued task token for run={init['run_id'][:8]}... "
+            "(derived from orchestrator master token)"
         )
 
     state: ResearcherState = {

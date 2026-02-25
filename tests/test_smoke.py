@@ -1414,11 +1414,150 @@ def test_researcher_tool_ids_match_researcher_expected_sequences():
 
 
 def test_researcher_run_function_accepts_thread_id_param():
-    """run_researcher() accepts thread_id and max_steps params (smoke only — no I/O)."""
+    """run_researcher() accepts thread_id, max_steps, and task_token params."""
     import inspect
     from src.agents.researcher import run_researcher
 
     sig = inspect.signature(run_researcher)
+    params = set(sig.parameters.keys())
+    assert "task" in params
+    assert "thread_id" in params
+    assert "max_steps" in params
+    # Phase 3: orchestrator passes derived token via this param
+    assert "task_token" in params, (
+        "run_researcher must accept task_token param so the orchestrator "
+        "can pass a derived (narrowed) token instead of issuing a fresh one"
+    )
+
+
+# ── Phase 3: Orchestrator smoke tests ─────────────────────────────────────────
+
+
+def test_orchestrator_importable():
+    """src.agents.orchestrator imports cleanly."""
+    import importlib
+
+    mod = importlib.import_module("src.agents.orchestrator")
+    assert mod is not None
+
+
+def test_orchestrator_state_has_required_fields():
+    """OrchestratorState has task_token (from AgentState) and sub_agent_results."""
+    import typing
+    from src.agents.orchestrator import OrchestratorState
+
+    hints = typing.get_type_hints(OrchestratorState)
+    assert (
+        "task_token" in hints
+    ), "OrchestratorState must inherit task_token from AgentState"
+    assert (
+        "sub_agent_results" in hints
+    ), "OrchestratorState must declare sub_agent_results"
+
+
+def test_orchestrator_tool_manifests_valid():
+    """ORCHESTRATOR_TOOL_MANIFESTS has exactly one tool: spawn_researcher."""
+    from src.agents.orchestrator import ORCHESTRATOR_TOOL_MANIFESTS
+
+    assert len(ORCHESTRATOR_TOOL_MANIFESTS) == 1
+    assert ORCHESTRATOR_TOOL_MANIFESTS[0].tool_id == "spawn_researcher"
+
+
+def test_orchestrator_expected_sequences_use_registered_tools():
+    """All tool_ids in ORCHESTRATOR_EXPECTED_SEQUENCES appear in ORCHESTRATOR_TOOL_MANIFESTS."""
+    from src.agents.orchestrator import (
+        ORCHESTRATOR_TOOL_MANIFESTS,
+        ORCHESTRATOR_EXPECTED_SEQUENCES,
+    )
+
+    registered_ids = {m.tool_id for m in ORCHESTRATOR_TOOL_MANIFESTS}
+    for seq in ORCHESTRATOR_EXPECTED_SEQUENCES:
+        for tid in seq:
+            assert tid in registered_ids, (
+                f"'{tid}' in ORCHESTRATOR_EXPECTED_SEQUENCES "
+                f"not in ORCHESTRATOR_TOOL_MANIFESTS: {registered_ids}"
+            )
+
+
+def test_orchestrator_master_token_issue():
+    """_issue_master_token produces a valid JWT with deny policy and all tool IDs."""
+    import os
+    from src.agents.orchestrator import _issue_master_token
+    from src.security.acl import validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        all_tools = [
+            "spawn_researcher",
+            "web_search",
+            "web_fetch",
+            "document_summarize",
+        ]
+        jwt_str = _issue_master_token("run-orch-smoke-001", all_tools)
+        assert jwt_str is not None, "Master token should be issued when secret is set"
+
+        token = validate_task_token(jwt_str)
+        assert token is not None
+        assert token.agent_id == "orchestrator"
+        assert token.escalation_policy == "deny"
+        assert set(token.granted_tools) == set(all_tools)
+        assert "internal" in token.granted_data_classes
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_orchestrator_derive_researcher_token_narrows_scope():
+    """
+    _derive_researcher_token produces a child token ⊆ master token.
+
+    Verifies the privilege hierarchy:
+      master: 4 tools + ['public', 'internal']
+      derived: 3 researcher tools + ['public'] only
+      derived.parent_token_id == master.token_id
+    """
+    import os
+    from src.agents.orchestrator import _issue_master_token, _derive_researcher_token
+    from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
+    from src.security.acl import validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        all_tools = ["spawn_researcher"] + [
+            m.tool_id for m in RESEARCHER_TOOL_MANIFESTS
+        ]
+        master_jwt = _issue_master_token("run-orch-smoke-002", all_tools)
+        assert master_jwt is not None
+
+        derived_jwt = _derive_researcher_token(master_jwt)
+        assert derived_jwt is not None, "Derivation should succeed"
+
+        master = validate_task_token(master_jwt)
+        derived = validate_task_token(derived_jwt)
+
+        assert derived is not None
+        # Child tools ⊆ parent tools
+        assert set(derived.granted_tools) <= set(
+            master.granted_tools
+        ), "Derived token must not exceed master tool scope"
+        # Child must not include 'internal' (narrowed to 'public' only)
+        assert (
+            "internal" not in derived.granted_data_classes
+        ), "Derived researcher token must not include 'internal' data class"
+        assert "public" in derived.granted_data_classes
+        # Parent linkage
+        assert (
+            derived.parent_token_id == master.token_id
+        ), "Derived token must reference parent token ID"
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_orchestrator_run_function_signature():
+    """run_orchestrator() has expected parameters."""
+    import inspect
+    from src.agents.orchestrator import run_orchestrator
+
+    sig = inspect.signature(run_orchestrator)
     params = set(sig.parameters.keys())
     assert "task" in params
     assert "thread_id" in params
