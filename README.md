@@ -1,16 +1,13 @@
 # LegionForge
 
-**Version:** 1.1.0
-**Last updated:** 2026-02-22 21:45 CST
+**Version:** 4.0.0 · **Updated:** 2026-02-25 · **Status:** Phases 0–4 complete — ready for functional testing
 
 ---
 
-A **local-first, security-native AI agent framework** built on LangGraph, running on Apple Silicon.
-Agents use local LLMs (Ollama) or cloud APIs. Security is built into the foundation — not bolted on later.
+A **local-first, security-native AI agent framework** built on LangGraph, designed for Apple Silicon Macs.
+Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built into the foundation — not bolted on later.
 
 > **New to this project? Start with [`TLDR.md`](./TLDR.md)** — a plain-language summary of what we're building and why.
-
----
 
 > **Design priorities:** Security · Reliability · Observability · Modularity
 > **Non-negotiables:** Human gates on mutations · Loop safeguards · Keychain-only credential storage · Deterministic security hot paths
@@ -21,15 +18,275 @@ Agents use local LLMs (Ollama) or cloud APIs. Security is built into the foundat
 
 | Phase | Status | What It Is |
 |---|---|---|
-| 0 — Infrastructure | ✅ Complete | PostgreSQL, pgvector, LLM factory, health server, 23/23 smoke tests |
-| 1 — First Agent + Security Foundations | 🔄 Active | Researcher agent, tool hash validation, cost estimation, threat logging |
-| 2 — Containerization + Guardian | ⬜ Next | Docker stack, Guardian security sidecar, immutable audit log |
-| 3 — ACLs + Sub-Agents | ⬜ Planned | Task tokens, role definitions, orchestrator pattern |
-| 4 — Adaptive Threat Intelligence | ⬜ Planned | Threat Analyst agent, adaptive Guardian rules, AI-BOM |
-| 5 — Crystallization Pipeline | ⬜ Planned | Observer + Crystallizer agents, pre-HITL analyzer, signed deterministic tools |
+| 0 — Infrastructure | ✅ Complete | PostgreSQL, pgvector, LLM factory, health server, smoke tests |
+| 1 — First Agent + Security Foundations | ✅ Complete | Researcher agent, tool hash validation, threat logging |
+| 2 — Containerization + Guardian | ✅ Complete | Docker stack, Guardian sidecar, immutable audit log, sequence contracts |
+| 3 — ACLs + Sub-Agents | ✅ Complete | JWT task tokens, role definitions, orchestrator + sub-agent architecture |
+| 4 — Adaptive Threat Intelligence | ✅ Complete | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials |
+| 5 — Crystallization Pipeline | ⬜ Next | Observer + Crystallizer agents, signed deterministic tools |
 | 6 — PentestAgent | ⬜ Planned | Air-gapped red-team bot, continuous security regression |
 
+**117/117 smoke tests passing. System is ready for end-to-end functional testing.**
+
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
+
+---
+
+## Installation
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| macOS Apple Silicon | M4/M5 native. M1/M2/M3 work — update the hardware profile. |
+| [Homebrew](https://brew.sh) | Package manager for PostgreSQL, Ollama, Python |
+| Python 3.11 | Use `pyenv` (recommended) or `brew install python@3.11` |
+| [Ollama](https://ollama.ai) | Local LLM runtime. Install via Homebrew or the macOS app. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Required for the Guardian security sidecar. |
+| [LangSmith](https://smith.langchain.com) account | Free tier works. Used for agent run tracing. Optional but recommended. |
+
+---
+
+### Step 1 — Clone and Create the Virtual Environment
+
+```bash
+git clone https://github.com/LegionForge/LegionForge.git
+cd LegionForge
+
+python3.11 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+---
+
+### Step 2 — Configure Your Hardware Profile
+
+The active profile is `config/hardware_profiles/mac_m4_mini_16gb.yaml`. If your external drive has a different mount path, update it:
+
+```yaml
+# config/hardware_profiles/mac_m4_mini_16gb.yaml
+storage:
+  external:
+    mount_path: "/Volumes/YOUR_DRIVE_NAME"   # ← update this
+```
+
+> **Note:** The `Makefile` has `BASE := /Volumes/MAC_MINI_1TB/LegionForge` near the top. Update this to match your actual project path before running any `make` targets.
+
+To use a different hardware profile (e.g., for an M5 Mac Mini):
+```bash
+export AGENT_HARDWARE_PROFILE=mac_m5_mini_32gb
+```
+
+---
+
+### Step 3 — Install PostgreSQL and Create the Database
+
+```bash
+brew install postgresql@17
+brew services start postgresql@17
+
+# Create the database (replace 'your_username' with your macOS username)
+createdb -U your_username legionforge
+```
+
+Store the PostgreSQL password in macOS Keychain (not in any file):
+
+```bash
+security add-generic-password -s postgres -a api_key -w 'YOUR_PG_PASSWORD' -U
+```
+
+Then add this line to your `~/.zshrc` so it loads automatically:
+
+```bash
+export POSTGRES_PASSWORD=$(security find-generic-password -s postgres -a api_key -w 2>/dev/null)
+```
+
+Apply it now:
+```bash
+source ~/.zshrc
+```
+
+> **Why Keychain?** No secrets ever live in `.env` files, config files, or environment variables that could be committed. All credentials are read from macOS Keychain at runtime.
+
+---
+
+### Step 4 — Store API Keys in Keychain
+
+Add each key you have. All are optional except the PostgreSQL password (required).
+
+```bash
+# LangSmith — agent run tracing (free tier works)
+security add-generic-password -s langsmith -a api_key -w 'lsv2_YOUR_KEY' -U
+
+# OpenAI — cloud fallback (optional)
+security add-generic-password -s openai -a api_key -w 'sk-YOUR_KEY' -U
+
+# Anthropic — cloud fallback (optional)
+security add-generic-password -s anthropic -a api_key -w 'sk-ant-YOUR_KEY' -U
+```
+
+Verify a key loaded correctly:
+```bash
+security find-generic-password -s langsmith -a api_key -w
+```
+
+---
+
+### Step 5 — Pull Local Models
+
+```bash
+# Start Ollama first
+brew services start ollama
+
+# Pull the three required models (~7GB total)
+ollama pull llama3.1:8b          # Primary reasoning model (~4.9GB)
+ollama pull qwen2.5:3b           # Router / fast structured analysis (~1.9GB)
+ollama pull nomic-embed-text     # Embeddings for RAG (~274MB)
+```
+
+Verify models loaded:
+```bash
+ollama list
+```
+
+---
+
+### Step 6 — Initialize the Database
+
+This creates all tables: `api_usage`, `health_metrics`, `documents` (pgvector/HNSW), `threat_events`, `tool_registry`, `audit_log`, `agent_profiles`, `threat_rules`, and the LangGraph checkpoint tables.
+
+```bash
+make db-init
+```
+
+---
+
+### Step 7 — One-Time Setup (run once, then done)
+
+```bash
+# Generate and store the JWT signing secret for task tokens
+make setup-task-token-secret
+
+# Register tool manifests for each agent
+make register-researcher-tools
+make register-orchestrator-tools
+make register-threat-analyst-tools
+
+# Register expected tool-call sequences for Guardian sequence checking
+make register-agent-sequences
+```
+
+---
+
+### Step 8 — Start Guardian (Docker)
+
+Guardian is a security sidecar that runs as a Docker container and validates every tool call before it executes. It has zero LLM dependency — pure deterministic checks.
+
+```bash
+# Launch Docker Desktop first (GUI or CLI), then:
+make docker-build
+make guardian-start
+
+# Verify Guardian is healthy
+curl http://localhost:9766/health
+```
+
+> **Note:** If you skip Guardian, agents still run safely — `guardian_enabled: false` in your settings will use the Phase 1 stub instead of failing. Set it in `config/hardware_profiles/mac_m4_mini_16gb.yaml`:
+> ```yaml
+> security:
+>   guardian_enabled: false
+> ```
+
+---
+
+### Step 9 — Verify Everything
+
+```bash
+# Run all 117 smoke tests (no external services required — runs in ~1s)
+make test-smoke
+
+# Run the full system check (drive, venv, Keychain, Ollama, Guardian)
+make check
+```
+
+Expected output from `make test-smoke`:
+```
+117 passed in 0.74s
+```
+
+---
+
+### Step 10 — Start the Framework
+
+```bash
+# Start all services: Ollama, PostgreSQL, model warmup, Guardian
+make start
+
+# In a separate terminal — start the health/metrics server
+make health-server
+```
+
+Verify the health server:
+```bash
+# Quick liveness check (no auth required)
+make health
+# → {"status": "ok", "version": "4.0.0", ...}
+
+# Full status (Bearer token required — generated automatically on first run)
+make status
+```
+
+---
+
+### Quick Reference: Common Commands
+
+```bash
+source venv/bin/activate   # Always activate venv first
+
+make start                 # Full startup (Ollama + PostgreSQL + Guardian + warmup)
+make stop                  # Graceful shutdown
+make health-server         # Start health/metrics server (separate terminal)
+
+make test-smoke            # 117 smoke tests, ~1s, no services required
+make lint                  # Black formatter check
+make format                # Auto-format
+
+make check                 # System preflight (drive, venv, models, Guardian)
+make health                # Quick liveness: GET /health
+make status                # Full status: GET /status (Bearer auth)
+make bom                   # AI Bill of Materials: GET /bom
+make pending-rules         # Show threat rules awaiting human approval
+
+make db-init               # (Re-)initialize database tables
+make db-start              # Start PostgreSQL
+make guardian-start        # Start Guardian Docker container
+make guardian-logs         # Tail Guardian logs
+
+make run-threat-analyst    # Run Threat Analyst agent (7-day threat window)
+make security-audit        # Smoke tests + bandit static analysis
+make audit-log-verify      # Verify audit log hash chain integrity
+```
+
+---
+
+### Troubleshooting
+
+**`make check` shows PostgreSQL password NOT loaded**
+→ Run `source ~/.zshrc` and verify `echo $POSTGRES_PASSWORD` prints a value. If empty, re-add via `security add-generic-password`.
+
+**`make db-init` fails with connection error**
+→ Ensure PostgreSQL is running: `brew services start postgresql@17`. Verify database exists: `psql -U $(whoami) -l | grep legionforge`.
+
+**`make guardian-start` fails**
+→ Docker Desktop must be running. Check: `docker ps`. If Docker isn't on PATH, launch Docker Desktop from Applications first.
+
+**Ollama models not found**
+→ Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
+
+**`make test-smoke` shows fewer than 117 tests**
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 4 (commit referencing 117 smoke tests).
 
 ---
 
@@ -40,76 +297,11 @@ Agents use local LLMs (Ollama) or cloud APIs. Security is built into the foundat
 | `mac_m4_mini_16gb` | M4 | 16GB | ✅ Active |
 | `mac_m5_mini_32gb` | M5 | 32GB | 📋 Template (update on purchase) |
 
-All hardware-specific values (memory limits, model sizes, path locations, concurrency limits, safeguard thresholds) are read from a YAML profile. **Nothing is hardcoded.** Switch hardware by setting one environment variable.
-
----
-
-## Quick Start
-
-### 1. Prerequisites
-
-- macOS (Apple Silicon M4/M5)
-- Python 3.11+
-- [Homebrew](https://brew.sh)
-- [Ollama](https://ollama.ai)
-- A [LangSmith](https://smith.langchain.com) account (free tier works)
-
-### 2. Clone and Install
+All hardware-specific values (memory limits, model sizes, concurrency limits, safeguard thresholds, paths) are read from a YAML profile. **Nothing is hardcoded.** Switch hardware by setting one environment variable:
 
 ```bash
-git clone https://github.com/LegionForge/LegionForge.git
-cd LegionForge
-
-python -m venv venv
-source venv/bin/activate
-
-pip install -r requirements.txt
+export AGENT_HARDWARE_PROFILE=mac_m5_mini_32gb
 ```
-
-### 3. Configure Your External Drive
-
-Edit `config/hardware_profiles/mac_m4_mini_16gb.yaml` and update the mount path:
-
-```yaml
-storage:
-  external:
-    mount_path: "/Volumes/MAC_MINI_1TB"   # ← update this
-```
-
-### 4. Store API Keys in macOS Keychain
-
-API keys are **never** stored in files. They live in macOS Keychain:
-
-```bash
-python -m keyring set openai api_key
-python -m keyring set anthropic api_key
-python -m keyring set langsmith api_key
-```
-
-Verify:
-```bash
-python -c "import keyring; print(keyring.get_password('openai', 'api_key')[:8] + '...')"
-```
-
-### 5. Pull Local Models
-
-```bash
-export OLLAMA_MODELS=/Volumes/MAC_MINI_1TB/LegionForge/models/ollama
-
-ollama pull llama3.1:8b        # Primary reasoning (~4.9GB)
-ollama pull qwen2.5:3b         # Router/supervisor (~1.9GB)
-ollama pull nomic-embed-text   # Embeddings (~274MB)
-```
-
-### 6. Verify Setup
-
-```bash
-python -c "from config.settings import settings; print('✅ Config loaded')"
-make test-smoke    # 23/23 should pass
-make health-server # then curl http://localhost:8765/status
-```
-
-For full first-time setup instructions, see [`VERIFICATION.md`](./VERIFICATION.md).
 
 ---
 
@@ -122,98 +314,124 @@ LegionForge/
 ├── PHASE_PLAN.md                  # Full phased roadmap with exit criteria
 ├── RESEARCH.md                    # Threat taxonomy, design theory, open questions
 ├── CONTRIBUTING.md                # Branch strategy, commit conventions, test requirements
-├── VERIFICATION.md                # Step-by-step setup verification guide
 │
 ├── config/
-│   ├── settings.py                # Pydantic config loader
+│   ├── settings.py                # Pydantic config singleton
+│   ├── roles.yaml                 # Four ACL roles: reader, analyst, operator, admin
 │   └── hardware_profiles/
 │       ├── mac_m4_mini_16gb.yaml  # Active profile
 │       └── mac_m5_mini_32gb.yaml  # Template for future hardware
 │
 ├── src/
 │   ├── base_graph.py              # LangGraph agent template — copy for every new agent
-│   ├── database.py                # PostgreSQL pool, pgvector, LangGraph checkpointer
-│   ├── security.py                # Keychain loader, PII redaction, injection detection
+│   ├── database.py                # Async PostgreSQL pool, pgvector, LangGraph checkpointer
 │   ├── safeguards.py              # Three-layer loop protection + token budgets
 │   ├── rate_limiter.py            # Per-provider rate limiting + cost alerts
 │   ├── llm_factory.py             # Unified Ollama/OpenAI/Anthropic factory
 │   ├── observability.py           # Structured logging + LangSmith upload
 │   ├── health.py                  # FastAPI health/metrics server (localhost:8765)
-│   └── agents/                    # Agents built on base_graph.py (Phase 1+)
-│       └── researcher.py          # 🔄 In progress
+│   │
+│   ├── security/
+│   │   ├── core.py                # Keychain loader, PII redaction, injection detection
+│   │   ├── acl.py                 # JWT task token issuance + validation
+│   │   ├── guardian.py            # Guardian FastAPI sidecar (localhost:9766)
+│   │   ├── bom.py                 # AI Bill of Materials assembly
+│   │   └── __init__.py            # Full backward-compat re-exports
+│   │
+│   └── agents/
+│       ├── researcher.py          # Researcher agent (web fetch, document store)
+│       ├── orchestrator.py        # Orchestrator with master→derived token hierarchy
+│       └── threat_analyst.py      # Threat Analyst (reads threat_events, proposes rules)
+│
+├── guardian/
+│   ├── Dockerfile                 # Non-root, python:3.11-slim, minimal surface
+│   └── requirements.txt           # fastapi, uvicorn, psycopg — NO LLM clients
 │
 ├── tests/
-│   ├── test_smoke.py              # 23 tests, no services required, ~0.2s
+│   ├── test_smoke.py              # 117 tests, no services required, ~1s
 │   └── conftest.py
 │
-└── scripts/
-    ├── check_mount.sh             # Verify external drive mounted before agent start
-    ├── setup_postgres.sh          # One-time PostgreSQL setup (already run)
-    └── com.jpc.check-agent-drive.plist  # macOS LaunchAgent for mount guard
+├── scripts/
+│   ├── check_mount.sh             # Verify external drive mounted before agent start
+│   └── setup_postgres.sh          # One-time PostgreSQL setup helper
+│
+├── docker-compose.yml             # Guardian on 127.0.0.1:9766
+└── Dockerfile.agent-base          # Full framework env, non-root agent user
 ```
 
 ---
 
-## Security Model
+## Security Architecture
 
-Security is layered and builds across phases. What exists today, and what is coming:
+Security is layered. Each phase adds a new layer — nothing from a prior phase is replaced.
 
-| Layer | Component | Status | Notes |
+| Layer | Component | Phase | Notes |
 |---|---|---|---|
-| Credential storage | macOS Keychain | ✅ Phase 0 | No `.env` files with secrets ever |
-| PII redaction | `security.py` | ✅ Phase 0 | Email, phone, SSN, card numbers |
-| Prompt injection detection | `security.py` | ✅ Phase 0 | Pattern-based, hot path |
-| Loop protection | `safeguards.py` | ✅ Phase 0 | Three independent layers |
-| Rate limiting + cost alerts | `rate_limiter.py` | ✅ Phase 0 | Hard cutoffs per provider |
-| Tool metadata hash validation | `security.py` | 🔄 Phase 1 | Blocks tool poisoning / rug-pull |
-| Pre-execution cost estimation | `rate_limiter.py` | 🔄 Phase 1 | Rejects resource bombs before execution |
-| Threat event logging | `database.py` | 🔄 Phase 1 | Feeds future Threat Analyst |
-| Guardian security sidecar | `src/security/guardian.py` | ⬜ Phase 2 | HTTP oracle; any framework can use it |
-| Immutable audit log | `database.py` | ⬜ Phase 2 | Hash-chain append-only event log |
-| RAG document provenance | `security.py` | ⬜ Phase 2 | Trust scoring per ingested document |
-| Task-scoped ACL tokens | `src/security/acl.py` | ⬜ Phase 3 | Ephemeral per-run privilege tokens |
-| Adaptive threat rules | `src/agents/threat_analyst.py` | ⬜ Phase 4 | Human-approved rule updates |
-| Crystallized tool signing | `src/tools/registry.py` | ⬜ Phase 5 | Ed25519; tampering breaks signature |
-| Automated red-teaming | `src/agents/pentest_agent.py` | ⬜ Phase 6 | Air-gapped; manual trigger only |
+| Credential storage | macOS Keychain | 0 | No `.env` files with secrets, ever |
+| PII redaction | `security/core.py` | 0 | Email, phone, SSN, card numbers — all outbound paths |
+| Prompt injection detection | `security/core.py` | 0 | 20 regex patterns, hot path |
+| Loop protection | `safeguards.py` | 0 | Three independent layers (recursion limit, step counter, action hash) |
+| Rate limiting + cost alerts | `rate_limiter.py` | 0 | Hard daily caps, 80%/100% alert thresholds |
+| Tool hash validation | `security/core.py` | 1 | Blocks tool poisoning / manifest rug-pull |
+| Threat event logging | `database.py` | 1 | Structured log feeding Threat Analyst |
+| Guardian security sidecar | `security/guardian.py` | 2 | 6-check pipeline before every tool call. Fail-safe: offline = halt |
+| Immutable audit log | `database.py` | 2 | SHA-256 hash-chain, append-only |
+| RAG document provenance | `security/core.py` | 2 | Trust scoring per ingested document |
+| Sequence contracts | `database.py` + Guardian | 2 | Expected tool-call sequences per agent |
+| Task-scoped ACL tokens | `security/acl.py` | 3 | Ephemeral per-run JWT, child ⊆ parent scope enforced |
+| Sub-agent privilege hierarchy | `agents/orchestrator.py` | 3 | Master token → derived token, privilege never widens |
+| Adaptive threat rules | Guardian check 6 | 4 | APPROVED rules from `threat_rules` table, hot-reloaded every 60s |
+| AI Bill of Materials | `security/bom.py` | 4 | Model, agent, tool, dependency inventory with CVE scan status |
+| Threat Analyst agent | `agents/threat_analyst.py` | 4 | Proposes rules from `threat_events` — cannot self-approve |
+| Crystallized tool signing | Phase 5 | — | Ed25519; tampering breaks signature |
+| Automated red-teaming | Phase 6 | — | Air-gapped; manual trigger only |
 
 **→ Full threat research and design theory:** [`RESEARCH.md`](./RESEARCH.md)
 
 ---
 
-## Loop Safeguards (Three Independent Layers)
+## Guardian Security Sidecar
 
-1. **LangGraph recursion limit** — framework-level hard stop, set per invocation
-2. **Step counter in state** — explicit counter in every graph's state schema
-3. **Action history tracker** — detects repeated identical actions (stuck loops)
+Guardian runs as a standalone Docker container (port 9766). It performs six deterministic checks before any tool call executes. No LLM is involved — pure logic.
 
-All three limits are read from the active hardware profile. Nothing hardcoded.
+```
+Check 1: JWT task token validation (role + scope)
+Check 2: Capability boundary (is this tool in the agent's allowed list?)
+Check 3: Destructive pattern detection (rm -rf, DROP TABLE, etc.)
+Check 4: Sequence contract (is this tool call in the expected sequence?)
+Check 5: Tool hash integrity (does the tool manifest match the registry?)
+Check 6: Adaptive rules (hot-reloaded from approved threat_rules table)
+```
+
+Guardian response tiers:
+- `allowed` — proceed
+- `sandbox` — retry in isolation (logged, no side effects)
+- `halt` — force-end run immediately
+
+**Guardian unavailable = fail-safe halt.** It never fails open.
 
 ---
 
-## Switching Hardware Profiles
+## Loop Safeguards (Three Independent Layers)
 
-```bash
-export AGENT_HARDWARE_PROFILE=mac_m5_mini_32gb
-python your_agent.py
-```
+1. **LangGraph recursion limit** — framework-level hard stop
+2. **Step counter in state** — per-run explicit counter
+3. **Action history tracker** — MD5 hash of tool call signatures, window=5, threshold=3
 
-To add a new profile:
-1. `cp config/hardware_profiles/mac_m4_mini_16gb.yaml config/hardware_profiles/YOUR_PROFILE.yaml`
-2. Update all values
-3. Validate: `python -c "from config.settings import load_settings; load_settings('YOUR_PROFILE')"`
+All limits are read from the active hardware profile. Nothing hardcoded.
 
 ---
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the branch strategy, commit message format, and smoke test requirements.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branch strategy, commit conventions, and test requirements.
 
-The short version: branch from `dev`, never commit directly to `main`, write a smoke test alongside every new component.
+Short version: branch from `main`, never commit directly to `main`, write a smoke test alongside every new component. `make test-smoke` must pass before any PR merge.
 
 ---
 
 ## License
 
-GNU Affero General Public License v3.0 (AGPL-3.0)
+GNU Affero General Public License v3.0 (AGPL-3.0) with Section 7(b) attribution clause.
 
-See [`LICENSE`](./LICENSE) for full terms.
+Copyright © 2026 John Paul "Jp" Cruz. See [`LICENSE`](./LICENSE) for full terms.
