@@ -57,8 +57,8 @@ All hardware-specific values (memory limits, model sizes, path locations, concur
 ### 2. Clone and Install
 
 ```bash
-git clone https://github.com/jp-cruz/jpc-mac-agent-framework.git
-cd jpc-mac-agent-framework
+git clone https://github.com/LegionForge/LegionForge.git
+cd LegionForge
 
 python -m venv venv
 source venv/bin/activate

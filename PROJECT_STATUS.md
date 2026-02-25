@@ -1,5 +1,5 @@
 # PROJECT_STATUS.md
-# LegionForge (dev: jpc-mac-agent-framework)
+# LegionForge
 
 **Version:** 2.1.0
 **Last updated:** 2026-02-22
@@ -111,7 +111,7 @@ git branch         → dev (pushed to origin)
 ### API Keys (macOS Keychain)
 | Service | Status | Notes |
 |---|---|---|
-| `langsmith` | ✅ stored | Tracing enabled, project: `jpc-mac-agent-framework` |
+| `langsmith` | ✅ stored | Tracing enabled, project: `legionforge` |
 | `openai` | not set | Add when API access purchased |
 | `anthropic` | not set | Add when API access purchased |
 | `postgres` | ✅ stored | Also backed up in password manager |
@@ -158,10 +158,8 @@ curl -s http://localhost:8765/status | python3 -m json.tool
 
 | Item | Detail |
 |---|---|
-| Current dev name | `jpc-mac-agent-framework` |
 | Release name | **LegionForge** |
-| Private dev repo | https://github.com/jp-cruz/jpc-mac-agent-framework (push here until v1.0) |
-| Private dev repo at v1.0 | Rename `jp-cruz/jpc-mac-agent-framework` → `LegionForge/LegionForge` |
+| Private dev repo | https://github.com/LegionForge/LegionForge (push here until v1.0) |
 | Public release repo | https://github.com/jp-cruz/LegionForge (publish at v1.0) |
 | Release target | v1.0 |
 
@@ -171,8 +169,8 @@ curl -s http://localhost:8765/status | python3 -m json.tool
 |---|---|---|
 | **Phase 1** | Display strings, titles, doc headings, `.env` LANGSMITH_PROJECT, code display names | ✅ Done |
 | **Phase 2** | Physical directory rename + venv rebuild + all absolute path updates + ~/.zshrc + PostgreSQL plist | ✅ Done — PR #2 merged |
-| **Phase 3** | Database rename `legionforge` → `legionforge` (pg_dump → create new DB → restore → update all config refs) | ⬜ Pending — do before any new development |
-| **Phase 4** | GitHub migration: rename `jp-cruz/jpc-mac-agent-framework` → `LegionForge/LegionForge`, create public `jp-cruz/LegionForge`, update git remote | ⬜ Deferred to v1.0 |
+| **Phase 3** | Database rename → `legionforge` (pg_dump → create new DB → restore → update all code refs) | ✅ Done — PR #3 merged |
+| **Phase 4** | GitHub repo rename `jp-cruz/jpc-mac-agent-framework` → `LegionForge/LegionForge`, update git remote | ✅ Done |
 
 ### Phase 2 — Directory Copy & Path Update (do in order, verify each step before proceeding)
 

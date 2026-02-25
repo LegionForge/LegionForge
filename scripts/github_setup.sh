@@ -12,7 +12,7 @@
 
 set -e
 
-REPO_NAME="jpc-mac-agent-framework"
+REPO_NAME="LegionForge"
 REPO_DESCRIPTION="Hardware-parameterized LangGraph multi-agent framework for Apple Silicon"
 GITHUB_VISIBILITY="private"   # Change to "public" if preferred
 
