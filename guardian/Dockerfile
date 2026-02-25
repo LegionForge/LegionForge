@@ -21,6 +21,12 @@ COPY config/ /app/config/
 COPY src/security/ /app/src/security/
 COPY src/__init__.py /app/src/__init__.py
 
+# Create runtime directories that settings.py will try to use, then hand ownership
+# to the non-root user. Must be done before USER switch.
+RUN mkdir -p /app/models/ollama /app/models/lmstudio /app/models/hf \
+             /app/logs /app/checkpoints /app/data /app/vector_store \
+    && chown -R guardian:guardian /app
+
 # Make the src package importable without the full project installed
 ENV PYTHONPATH=/app
 

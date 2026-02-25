@@ -108,12 +108,21 @@ def _get_signing_secret() -> str:
     Return the JWT signing secret.
 
     Load order:
-      1. Keychain service "legionforge_task_tokens" (native macOS path)
-      2. TASK_TOKEN_SECRET environment variable (Docker / CI path)
+      1. TASK_TOKEN_SECRET environment variable (Docker / CI / test path)
+      2. Keychain service "legionforge_task_tokens" (native macOS production path)
+
+    Env var is checked first so that tests and Docker containers can inject a
+    secret without touching the Keychain — and to avoid triggering a Keychain
+    auth dialog when running inside sandboxed processes (e.g. Claude Code).
 
     Raises RuntimeError if neither source yields a value.
     """
-    # Try Keychain first (import guard: core may not be importable in all contexts)
+    # Check env var first — Docker, CI, and test environments set this explicitly.
+    secret = os.environ.get("TASK_TOKEN_SECRET", "")
+    if secret:
+        return secret
+
+    # Production path: Keychain (import guard: core may not be importable in all contexts)
     try:
         from src.security.core import get_api_key_optional
 
@@ -122,11 +131,6 @@ def _get_signing_secret() -> str:
             return secret
     except Exception:
         pass
-
-    # Fallback: TASK_TOKEN_SECRET env var (Docker path — Keychain unavailable)
-    secret = os.environ.get("TASK_TOKEN_SECRET", "")
-    if secret:
-        return secret
 
     raise RuntimeError(
         f"Task token signing secret not found.\n"

@@ -410,17 +410,15 @@ async def store_document(
     """Store a document with its embedding. Returns the new document ID."""
     pool = get_pool()
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
+        cur = await conn.execute(
             """
             INSERT INTO documents (content, embedding, namespace, metadata)
             VALUES (%s, %s, %s, %s)
             RETURNING id
             """,
-            content,
-            embedding,
-            namespace,
-            metadata or {},
+            (content, embedding, namespace, metadata or {}),
         )
+        row = await cur.fetchone()
     return row["id"]
 
 
@@ -436,7 +434,7 @@ async def similarity_search(
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT
                 id,
@@ -449,13 +447,16 @@ async def similarity_search(
             ORDER BY embedding <=> %s::vector
             LIMIT %s
             """,
-            query_embedding,
-            namespace,
-            query_embedding,
-            min_similarity,
-            query_embedding,
-            limit,
+            (
+                query_embedding,
+                namespace,
+                query_embedding,
+                min_similarity,
+                query_embedding,
+                limit,
+            ),
         )
+        rows = await cur.fetchall()
     return [dict(r) for r in rows]
 
 
@@ -482,15 +483,17 @@ async def record_api_usage(
                  total_tokens, run_id, agent_name, success, latency_ms)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            provider,
-            model,
-            input_tokens,
-            output_tokens,
-            input_tokens + output_tokens,
-            run_id,
-            agent_name,
-            success,
-            latency_ms,
+            (
+                provider,
+                model,
+                input_tokens,
+                output_tokens,
+                input_tokens + output_tokens,
+                run_id,
+                agent_name,
+                success,
+                latency_ms,
+            ),
         )
 
 
@@ -505,7 +508,7 @@ async def get_usage_summary(hours: int = 24) -> dict:
         raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT
                 provider,
@@ -515,13 +518,14 @@ async def get_usage_summary(hours: int = 24) -> dict:
                 SUM(total_tokens)  AS total_tokens,
                 AVG(latency_ms)    AS avg_latency_ms
             FROM api_usage
-            WHERE ts > NOW() - INTERVAL '%s hours'
+            WHERE ts > NOW() - make_interval(hours => %s)
               AND success = TRUE
             GROUP BY provider
             ORDER BY total_tokens DESC
             """,
-            hours,
+            (hours,),
         )
+        rows = await cur.fetchall()
     return {"hours": hours, "by_provider": [dict(r) for r in rows]}
 
 
@@ -604,7 +608,7 @@ async def log_threat_event(
 
     pool = get_pool()
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
+        cur = await conn.execute(
             """
             INSERT INTO threat_events
                 (agent_id, run_id, threat_type, confidence,
@@ -612,14 +616,17 @@ async def log_threat_event(
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            agent_id,
-            run_id,
-            threat_type,
-            confidence,
-            raw_input,
-            action_taken,
-            metadata or {},
+            (
+                agent_id,
+                run_id,
+                threat_type,
+                confidence,
+                raw_input,
+                action_taken,
+                metadata or {},
+            ),
         )
+        row = await cur.fetchone()
     event_id = row["id"]
     logger.info(
         f"[threat] {threat_type} | agent={agent_id} run={run_id[:8]}... "
@@ -642,7 +649,7 @@ async def get_threat_summary(hours: int = 24) -> dict:
         raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT
                 threat_type,
@@ -650,12 +657,13 @@ async def get_threat_summary(hours: int = 24) -> dict:
                 COUNT(*)       AS count,
                 AVG(confidence) AS avg_confidence
             FROM threat_events
-            WHERE ts > NOW() - INTERVAL '%s hours'
+            WHERE ts > NOW() - make_interval(hours => %s)
             GROUP BY threat_type, action_taken
             ORDER BY count DESC
             """,
-            hours,
+            (hours,),
         )
+        rows = await cur.fetchall()
     return {"hours": hours, "by_type": [dict(r) for r in rows]}
 
 
@@ -671,18 +679,18 @@ async def get_recent_escalations(hours: int = 24, limit: int = 20) -> list[dict]
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT seq, ts, agent_id, payload
             FROM audit_log
             WHERE event_type = 'ESCALATION_BLOCKED'
-              AND ts > NOW() - INTERVAL '%s hours'
+              AND ts > NOW() - make_interval(hours => %s)
             ORDER BY ts DESC
             LIMIT %s
             """,
-            hours,
-            limit,
+            (hours, limit),
         )
+        rows = await cur.fetchall()
     return [
         {
             "seq": r["seq"],
@@ -743,26 +751,30 @@ async def append_audit_log(
     pool = get_pool()
     async with pool.connection() as conn:
         # Get last row hash — genesis sentinel if table is empty
-        last_row = await conn.fetchrow(
+        cur = await conn.execute(
             "SELECT seq, row_hash FROM audit_log ORDER BY seq DESC LIMIT 1"
         )
+        last_row = await cur.fetchone()
         prev_hash = last_row["row_hash"] if last_row else _AUDIT_LOG_GENESIS
 
         ts_now = datetime.now(tz=timezone.utc).isoformat()
         # Insert with placeholder seq to get the BIGSERIAL value, then compute hash
-        new_row = await conn.fetchrow(
+        cur2 = await conn.execute(
             """
             INSERT INTO audit_log (ts, event_type, agent_id, payload, prev_hash, row_hash)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING seq, ts
             """,
-            ts_now,
-            event_type,
-            agent_id,
-            json.dumps(payload, sort_keys=True),
-            prev_hash,
-            "PENDING",  # placeholder — updated immediately below
+            (
+                ts_now,
+                event_type,
+                agent_id,
+                json.dumps(payload, sort_keys=True),
+                prev_hash,
+                "PENDING",
+            ),
         )
+        new_row = await cur2.fetchone()
         seq = new_row["seq"]
         ts_str = (
             new_row["ts"].isoformat()
@@ -774,8 +786,7 @@ async def append_audit_log(
         )
         await conn.execute(
             "UPDATE audit_log SET row_hash = %s WHERE seq = %s",
-            row_hash,
-            seq,
+            (row_hash, seq),
         )
 
     logger.debug(
@@ -797,9 +808,10 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             "SELECT seq, ts, event_type, agent_id, payload, prev_hash, row_hash FROM audit_log ORDER BY seq ASC"
         )
+        rows = await cur.fetchall()
 
     if not rows:
         return True, 0, None
@@ -858,7 +870,7 @@ async def store_document_with_provenance(
     source_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
     pool = get_pool()
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
+        cur = await conn.execute(
             """
             INSERT INTO documents
                 (content, embedding, namespace, metadata,
@@ -866,15 +878,18 @@ async def store_document_with_provenance(
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             RETURNING id
             """,
-            content,
-            embedding,
-            namespace,
-            json.dumps(metadata or {}),
-            source_url,
-            source_hash,
-            trust_score,
-            ingested_by,
+            (
+                content,
+                embedding,
+                namespace,
+                json.dumps(metadata or {}),
+                source_url,
+                source_hash,
+                trust_score,
+                ingested_by,
+            ),
         )
+        row = await cur.fetchone()
     return row["id"]
 
 
@@ -908,9 +923,7 @@ async def register_agent_sequences(
                 VALUES (%s, %s, %s)
                 ON CONFLICT (agent_id, sequence) DO NOTHING
                 """,
-                agent_id,
-                seq,
-                registered_by,
+                (agent_id, seq, registered_by),
             )
     logger.info(
         f"[agent-profiles] Registered {len(sequences)} sequences for agent '{agent_id}'"
@@ -924,10 +937,11 @@ async def get_agent_sequences(agent_id: str) -> list[list[str]]:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             "SELECT sequence FROM agent_profiles WHERE agent_id = %s ORDER BY registered_at ASC",
-            agent_id,
+            (agent_id,),
         )
+        rows = await cur.fetchall()
     return [list(row["sequence"]) for row in rows]
 
 
@@ -975,20 +989,23 @@ async def propose_threat_rule(
     import json
 
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
+        cur = await conn.execute(
             """
             INSERT INTO threat_rules
                 (proposed_by, rule_type, rule_def, justification, evidence_ids, expires_at)
             VALUES (%s, %s, %s::jsonb, %s, %s, %s)
             RETURNING rule_id::text
             """,
-            proposed_by,
-            rule_type,
-            json.dumps(rule_def),
-            justification,
-            evidence_ids or [],
-            expires_at,
+            (
+                proposed_by,
+                rule_type,
+                json.dumps(rule_def),
+                justification,
+                evidence_ids or [],
+                expires_at,
+            ),
         )
+        row = await cur.fetchone()
     rule_id = row["rule_id"]
     logger.info(
         f"[threat-rules] Rule proposed rule_id={rule_id} type={rule_type} by={proposed_by}"
@@ -1003,7 +1020,7 @@ async def get_pending_rules(limit: int = 50) -> list[dict]:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT rule_id::text, proposed_by, proposed_at, rule_type,
                    rule_def, justification, evidence_ids
@@ -1012,8 +1029,9 @@ async def get_pending_rules(limit: int = 50) -> list[dict]:
             ORDER BY proposed_at DESC
             LIMIT %s
             """,
-            limit,
+            (limit,),
         )
+        rows = await cur.fetchall()
     return [dict(r) for r in rows]
 
 
@@ -1024,7 +1042,7 @@ async def get_approved_rules() -> list[dict]:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT rule_id::text, rule_type, rule_def, approved_at, expires_at
             FROM threat_rules
@@ -1033,6 +1051,7 @@ async def get_approved_rules() -> list[dict]:
             ORDER BY approved_at ASC
             """
         )
+        rows = await cur.fetchall()
     return [dict(r) for r in rows]
 
 
@@ -1048,16 +1067,15 @@ async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        result = await conn.execute(
+        cur = await conn.execute(
             """
             UPDATE threat_rules
             SET status = 'APPROVED', approved_by = %s, approved_at = NOW()
             WHERE rule_id = %s::uuid AND status = 'PENDING'
             """,
-            approved_by,
-            rule_id,
+            (approved_by, rule_id),
         )
-    updated = result.split()[-1] != "0"  # "UPDATE N" — N > 0 means success
+    updated = cur.statusmessage.split()[-1] != "0"  # "UPDATE N" — N > 0 means success
     if updated:
         logger.info(f"[threat-rules] Rule approved rule_id={rule_id} by={approved_by}")
     return updated
@@ -1070,16 +1088,15 @@ async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        result = await conn.execute(
+        cur = await conn.execute(
             """
             UPDATE threat_rules
             SET status = 'REJECTED', approved_by = %s, approved_at = NOW()
             WHERE rule_id = %s::uuid AND status = 'PENDING'
             """,
-            rejected_by,
-            rule_id,
+            (rejected_by, rule_id),
         )
-    updated = result.split()[-1] != "0"
+    updated = cur.statusmessage.split()[-1] != "0"
     if updated:
         logger.info(f"[threat-rules] Rule rejected rule_id={rule_id} by={rejected_by}")
     return updated
@@ -1101,19 +1118,19 @@ async def get_threat_events_for_analysis(
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        rows = await conn.fetch(
+        cur = await conn.execute(
             """
             SELECT
                 id, agent_id, run_id, threat_type, action_taken,
                 confidence, metadata, ts
             FROM threat_events
-            WHERE ts > NOW() - INTERVAL '%s hours'
+            WHERE ts > NOW() - make_interval(hours => %s)
             ORDER BY ts DESC
             LIMIT %s
             """,
-            hours,
-            limit,
+            (hours, limit),
         )
+        rows = await cur.fetchall()
     return [
         {
             "id": r["id"],

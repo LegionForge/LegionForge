@@ -40,6 +40,7 @@ help:
 	@echo "  make setup-task-token-secret — generate and store JWT signing secret (one-time)"
 	@echo "  make register-threat-analyst-tools — register Phase 4 tools (one-time)"
 	@echo "  make run-threat-analyst — run Threat Analyst agent (7-day window)"
+	@echo "  make run-researcher     — run Researcher agent (set TASK=\"...\" to customise)"
 	@echo "  make bom             — show AI Bill of Materials"
 	@echo "  make pending-rules   — show threat rules awaiting approval"
 	@echo "  make register-researcher-tools — register Phase 1 tools (one-time)"
@@ -383,6 +384,17 @@ import asyncio; \
 from src.agents.orchestrator import register_orchestrator_tools; \
 asyncio.run(register_orchestrator_tools()); \
 print('✅ Orchestrator tools registered')"
+
+# ── Run agents ───────────────────────────────────────────────
+# Usage: make run-researcher TASK="summarise what LangGraph is"
+#        make run-researcher          (uses default task)
+RESEARCHER_TASK ?= What is LangGraph and how does it relate to LangChain? Give a brief summary.
+
+.PHONY: run-researcher
+run-researcher:
+	@echo "Running Researcher agent..."
+	@echo "  Task: $(RESEARCHER_TASK)"
+	@cd $(BASE) && $(PYTHON) scripts/run_researcher.py "$(RESEARCHER_TASK)"
 
 # ── Phase 4: Threat Analyst + BOM ────────────────────────────
 .PHONY: register-threat-analyst-tools

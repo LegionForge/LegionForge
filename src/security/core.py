@@ -20,12 +20,39 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import subprocess
+import threading
 import time
 
 try:
     import keyring as _keyring  # unavailable in Linux containers
 except ImportError:
     _keyring = None  # type: ignore[assignment]
+
+
+def _keyring_get(service: str, account: str, timeout: float = 1.0) -> str | None:
+    """
+    Call keyring.get_password with a hard timeout.
+
+    On macOS, keyring.get_password can hang indefinitely when the calling process
+    does not have Keychain authorization (e.g. sandboxed tools, first-run dialogs).
+    We run the call in a daemon thread and join with a timeout so the caller is
+    never blocked longer than `timeout` seconds.
+    """
+    if _keyring is None:
+        return None
+    result: list[str | None] = [None]
+
+    def _fetch() -> None:
+        try:
+            result[0] = _keyring.get_password(service, account)
+        except Exception:
+            pass
+
+    thread = threading.Thread(target=_fetch, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    return result[0]
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,26 +81,29 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
     """
     # Try Keychain first, with retries for transient unavailability
     # (_keyring is None when running in a Linux container — fall through to env vars)
+    # Only retry on exceptions (transient Keychain unavailability at shell startup).
+    # If the lookup returns None (key absent or timeout), retrying won't help.
     key = None
-    if _keyring is not None:
-        for attempt in range(_retries):
-            try:
-                key = _keyring.get_password(service, "api_key")
-                if key:
-                    break
-            except Exception:
-                if attempt < _retries - 1:
-                    time.sleep(_retry_delay)
+    for attempt in range(_retries):
+        try:
+            key = _keyring_get(service, "api_key")
+            break  # got a result (key or None) — no point retrying
+        except Exception:
+            if attempt < _retries - 1:
+                time.sleep(_retry_delay)
     if key:
         return key
 
     # Try macOS security CLI fallback — handles cases where the Python
-    # keyring library is blocked by code-signing restrictions
+    # keyring library is blocked by code-signing restrictions.
+    # timeout=5: prevent indefinite hang when Keychain triggers an auth dialog
+    # (e.g., when running inside a sandboxed process like Claude Code).
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
             capture_output=True,
             text=True,
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -448,16 +478,18 @@ async def register_tool(
                     status            = 'APPROVED',
                     approved_at       = NOW()
                 """,
-                manifest.tool_id,
-                manifest.source,
-                manifest.version,
-                manifest.description,
-                hashes["description_hash"],
-                hashes["schema_hash"],
-                hashes["entrypoint_hash"],
-                manifest.declared_side_effects,
-                approved_by,
-                approval_notes,
+                (
+                    manifest.tool_id,
+                    manifest.source,
+                    manifest.version,
+                    manifest.description,
+                    hashes["description_hash"],
+                    hashes["schema_hash"],
+                    hashes["entrypoint_hash"],
+                    manifest.declared_side_effects,
+                    approved_by,
+                    approval_notes,
+                ),
             )
     except RuntimeError:
         logger.debug(

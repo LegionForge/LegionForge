@@ -454,9 +454,10 @@ async def score_embedding_trust(doc: dict) -> float:
 
         pool = get_pool()
         async with pool.connection() as conn:
-            row = await conn.fetchrow(
-                "SELECT trust_score FROM documents WHERE id = %s", doc_id
+            cur = await conn.execute(
+                "SELECT trust_score FROM documents WHERE id = %s", (doc_id,)
             )
+            row = await cur.fetchone()
         if row and row["trust_score"] is not None:
             return float(row["trust_score"])
     except Exception:

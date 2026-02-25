@@ -253,7 +253,7 @@ async def _tool_entries_from_db() -> list[BOMEntry]:
 
         pool = get_pool()
         async with pool.connection() as conn:
-            rows = await conn.fetch(
+            cur = await conn.execute(
                 """
                 SELECT tool_id, source, version, description_hash, schema_hash,
                        entrypoint_hash, status, approved_at
@@ -261,6 +261,7 @@ async def _tool_entries_from_db() -> list[BOMEntry]:
                 ORDER BY tool_id ASC
                 """
             )
+            rows = await cur.fetchall()
         entries = []
         for r in rows:
             # Combine hashes for a single tool fingerprint

@@ -37,6 +37,10 @@ services:
       POSTGRES_DB: legionforge
       POSTGRES_USER: jpc
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      # JWT task token signing secret — must match the value in the host Keychain.
+      # Add to ~/.zshrc:
+      #   export TASK_TOKEN_SECRET=$(security find-generic-password -s legionforge_task_tokens -a api_key -w 2>/dev/null)
+      TASK_TOKEN_SECRET: ${TASK_TOKEN_SECRET:-}
       # Ollama (native, Metal GPU) via host.docker.internal
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       # Guardian config

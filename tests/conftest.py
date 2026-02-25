@@ -22,6 +22,14 @@ def pytest_configure(config):
         "markers", "unit: marks pure unit tests with no external dependencies"
     )
 
+    # Inject a deterministic test secret for JWT task tokens so smoke tests that
+    # exercise ACL/Guardian token validation never hit the macOS Keychain.
+    # This is a test-only value — production always reads from Keychain.
+    if not os.environ.get("TASK_TOKEN_SECRET"):
+        os.environ.setdefault(
+            "TASK_TOKEN_SECRET", "smoke-test-secret-for-legionforge-32!!"
+        )
+
 
 @pytest.fixture(scope="session")
 def settings():

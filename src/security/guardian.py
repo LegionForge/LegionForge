@@ -33,6 +33,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -71,7 +72,7 @@ async def _lifespan(application: FastAPI):
 app = FastAPI(
     title="LegionForge Guardian",
     description="Deterministic security sidecar — NO LLM calls",
-    version="3.0.0",
+    version="4.0.0",
     lifespan=_lifespan,
 )
 
@@ -93,27 +94,50 @@ _cache_last_refreshed: float = 0.0
 _CACHE_TTL_SECONDS: float = 60.0
 
 
+def _guardian_db_conninfo() -> tuple[str, str]:
+    """
+    Return (conninfo_without_password, password) for Guardian's own direct DB connection.
+    Guardian does NOT use the app's connection pool — it connects independently
+    so it has no dependency on src.database or the full framework stack.
+    """
+    host = os.environ.get("POSTGRES_HOST", "host.docker.internal")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
+    user = os.environ.get("POSTGRES_USER", "jpc")
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    conninfo = f"host={host} port={port} dbname={db} user={user}"
+    return conninfo, password
+
+
 async def _refresh_caches() -> None:
     """
     Load approved tools, agent sequences, and adaptive threat rules from DB.
     Called on startup and periodically by the background refresh task.
     Non-fatal if DB is unavailable — caches retain their last known values.
+
+    Uses its own direct psycopg3 connection — does NOT depend on src.database
+    so the container can stay minimal (no LangGraph, no pgvector, etc.).
     """
     global _approved_tools, _agent_sequences, _adaptive_rules, _cache_last_refreshed
 
     try:
-        from src.database import get_pool
+        import psycopg
+        from psycopg.rows import dict_row
 
-        pool = get_pool()
-        async with pool.connection() as conn:
-            tool_rows = await conn.fetch(
+        conninfo, password = _guardian_db_conninfo()
+        async with await psycopg.AsyncConnection.connect(
+            conninfo, password=password, row_factory=dict_row, autocommit=True
+        ) as conn:
+            cur_t = await conn.execute(
                 "SELECT tool_id, description_hash, schema_hash FROM tool_registry WHERE status = 'APPROVED'"
             )
-            seq_rows = await conn.fetch(
+            tool_rows = await cur_t.fetchall()
+            cur_s = await conn.execute(
                 "SELECT agent_id, sequence FROM agent_profiles ORDER BY agent_id, registered_at"
             )
+            seq_rows = await cur_s.fetchall()
             # Phase 4: load approved, non-expired adaptive rules
-            rule_rows = await conn.fetch(
+            cur_r = await conn.execute(
                 """
                 SELECT rule_id::text, rule_type, rule_def
                 FROM threat_rules
@@ -122,6 +146,7 @@ async def _refresh_caches() -> None:
                 ORDER BY approved_at ASC
                 """
             )
+            rule_rows = await cur_r.fetchall()
 
         new_tools: dict[str, dict[str, str]] = {}
         for row in tool_rows:
@@ -152,7 +177,7 @@ async def _refresh_caches() -> None:
         _adaptive_rules = new_rules
         _cache_last_refreshed = time.monotonic()
 
-        logger.debug(
+        logger.info(
             f"[guardian] Cache refreshed: {len(_approved_tools)} tools, "
             f"{sum(len(v) for v in _agent_sequences.values())} sequences, "
             f"{len(_adaptive_rules)} adaptive rules"
