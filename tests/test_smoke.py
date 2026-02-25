@@ -1200,3 +1200,86 @@ def test_agent_state_has_task_token_field():
 
     hints = typing.get_type_hints(AgentState)
     assert "task_token" in hints, "AgentState must have a 'task_token' field (Phase 3)"
+
+
+# ── Phase 3.4: Escalation Visibility smoke tests ──────────────────────────────
+
+
+def test_escalation_policy_deny_is_default():
+    """issue_task_token defaults to escalation_policy='deny'."""
+    import os
+    from src.security.acl import issue_task_token, validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        token_str = issue_task_token(
+            agent_id="test_agent",
+            run_id="run-escalation-001",
+            granted_tools=["web_search"],
+        )
+        token = validate_task_token(token_str)
+        assert token is not None
+        assert token.escalation_policy == "deny"
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_escalation_policy_alert_accepted():
+    """issue_task_token accepts escalation_policy='alert'."""
+    import os
+    from src.security.acl import issue_task_token, validate_task_token
+
+    os.environ["TASK_TOKEN_SECRET"] = "test-secret-for-smoke-tests-32chars!!"
+    try:
+        token_str = issue_task_token(
+            agent_id="test_agent",
+            run_id="run-escalation-002",
+            granted_tools=["web_search"],
+            escalation_policy="alert",
+        )
+        token = validate_task_token(token_str)
+        assert token is not None
+        assert token.escalation_policy == "alert"
+    finally:
+        os.environ.pop("TASK_TOKEN_SECRET", None)
+
+
+def test_database_has_tool_scope_violation_threat_type():
+    """THREAT_TYPES includes TOOL_SCOPE_VIOLATION (Phase 3)."""
+    from src.database import THREAT_TYPES
+
+    assert "TOOL_SCOPE_VIOLATION" in THREAT_TYPES
+
+
+def test_database_has_invalid_task_token_threat_type():
+    """THREAT_TYPES includes INVALID_TASK_TOKEN (Phase 3)."""
+    from src.database import THREAT_TYPES
+
+    assert "INVALID_TASK_TOKEN" in THREAT_TYPES
+
+
+def test_get_recent_escalations_is_importable():
+    """get_recent_escalations is importable from src.database."""
+    import inspect
+    from src.database import get_recent_escalations
+
+    assert inspect.iscoroutinefunction(get_recent_escalations)
+
+
+def test_status_endpoint_includes_escalation_events_key():
+    """/status response includes an 'escalation_events' key (may be empty list)."""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+    from src.health import app
+
+    # Patch the health token to avoid Keychain dependency in tests
+    with patch("src.health._get_health_token", return_value="test-token"):
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/status", headers={"Authorization": "Bearer test-token"})
+    # 200 or 503 depending on whether services are up — both include the key
+    assert resp.status_code in (200, 503)
+    data = resp.json()
+    assert (
+        "escalation_events" in data
+    ), "/status must include 'escalation_events' key (Phase 3.4)"
+    assert isinstance(data["escalation_events"], list)

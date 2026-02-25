@@ -69,16 +69,28 @@ class TaskToken:
     granted_data_classes: list[str]
     expires_at: datetime
     parent_token_id: str | None
-    escalation_policy: str  # "deny" | "request_human"
+    escalation_policy: str  # "deny" | "alert"
 
 
 @dataclass
 class EscalationRequest:
     """
     Represents a runtime escalation attempt — recorded when an agent calls a
-    tool outside its token scope with escalation_policy="request_human".
-    Phase 3: logged to audit_log and surfaced on /status.
-    Phase 4: routed to human-in-the-loop approval queue.
+    tool outside its token scope.
+
+    Policy semantics (both halt the run — behaviour difference is logging only):
+      "deny"  — suspicious; logged to threat_events as TOOL_SCOPE_VIOLATION.
+                Use for sub-agents that should NEVER need to exceed their scope.
+      "alert" — operational under-scoping; logged to audit_log as ESCALATION_BLOCKED.
+                Use for experimental agents where scope may need tuning.
+
+    Phase 3: halt + write to threat_events / audit_log + surface on /status.
+    Phase 4: structured escalation via agent output (never implicit tool calls).
+
+    Security invariant: escalation approvals are always run-scoped and single-use.
+    Approving an escalation NEVER modifies roles.yaml, the tool registry, or
+    grants capability to future runs. The only legitimate way to expand an agent's
+    baseline permissions is a human editing roles.yaml and committing it.
     """
 
     token_id: str
@@ -149,7 +161,8 @@ def issue_task_token(
         granted_data_classes: Data sensitivity classes (public, internal, security).
         ttl_seconds:          Token lifetime in seconds (default: settings value).
         parent_token_id:      Token ID of the parent (for derived tokens).
-        escalation_policy:    "deny" | "request_human" on out-of-scope tool call.
+        escalation_policy:    "deny" (suspicious — threat_events) |
+                              "alert" (operational — audit_log) on out-of-scope call.
 
     Returns:
         Signed JWT string (str). Store in AgentState.task_token.

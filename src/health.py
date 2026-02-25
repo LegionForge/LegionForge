@@ -314,6 +314,16 @@ async def status(request: Request) -> JSONResponse:
         overall = "degraded"
         components["ollama"]["missing_models"] = missing_models
 
+    # Phase 3: recent escalation events (alert-policy scope violations)
+    # Non-fatal if DB is unavailable — returns empty list.
+    escalation_events: list[dict] = []
+    try:
+        from src.database import get_recent_escalations
+
+        escalation_events = await get_recent_escalations(hours=24)
+    except Exception:
+        pass  # DB not running — show empty, don't degrade overall status
+
     return JSONResponse(
         content={
             "status": overall,
@@ -323,6 +333,7 @@ async def status(request: Request) -> JSONResponse:
             "chip": settings.profile.chip_model,
             "components": components,
             "rate_limits": get_all_daily_status(),
+            "escalation_events": escalation_events,  # [] when no violations or DB offline
         },
         status_code=200 if all_ok else 503,
     )

@@ -314,23 +314,41 @@ async def validate_acl_token(state: dict, tool_id: str) -> bool:
     Behaviour:
       - No task_token in state → True (backward compat; tokens not yet mandatory)
       - Token present + tool in granted_tools → True
-      - Token present + tool NOT in granted_tools → log EscalationRequest; return False
-        (if escalation_policy == "request_human", EscalationRequest is surfaced on /status)
-      - Token present but invalid/expired → False (fail-safe)
+      - Token present + tool NOT in granted_tools:
+          policy="deny"  → log to threat_events (TOOL_SCOPE_VIOLATION), halt
+          policy="alert" → log to audit_log (ESCALATION_BLOCKED), halt
+        Both are surfaced on /status for operator review.
+      - Token present but invalid/expired → log to threat_events, halt (fail-safe)
 
     Never raises — callers treat False as a halt condition.
+    Security invariant: escalation logging never grants capability. Run is dead.
     """
     token_str = state.get("task_token")
     if not token_str:
         # No token — unconstrained run (Phase 4 will make this mandatory)
         return True
 
+    run_id = state.get("run_id", "unknown")
+
     token = validate_task_token(token_str)
     if token is None:
         logger.error(
-            f"[acl] Invalid or expired task token for agent={state.get('run_id', '?')}. "
-            "Halting run."
+            f"[acl] Invalid or expired task token for run={run_id[:8]}. Halting."
         )
+        # Log to threat_events — invalid token is always suspicious
+        try:
+            from src.database import log_threat_event
+
+            await log_threat_event(
+                agent_id=state.get("agent_id", "unknown"),
+                run_id=run_id,
+                threat_type="INVALID_TASK_TOKEN",
+                action_taken="BLOCKED",
+                confidence=1.0,
+                metadata={"tool_id": tool_id},
+            )
+        except Exception as db_err:
+            logger.warning(f"[acl] Could not log INVALID_TASK_TOKEN to DB: {db_err}")
         return False
 
     if tool_id not in token.granted_tools:
@@ -338,22 +356,61 @@ async def validate_acl_token(state: dict, tool_id: str) -> bool:
             token_id=token.token_id,
             agent_id=token.agent_id,
             requested_tool=tool_id,
-            reason=f"Tool '{tool_id}' not in task token granted_tools={token.granted_tools}",
+            reason=f"Tool '{tool_id}' not in token scope {token.granted_tools}",
             escalation_policy=token.escalation_policy,
         )
-        if token.escalation_policy == "request_human":
+
+        if token.escalation_policy == "alert":
+            # Operational under-scoping — log to audit_log, surface on /status
             logger.warning(
-                f"[acl] ESCALATION_REQUEST token={token.token_id[:8]}... "
-                f"tool={tool_id!r} policy=request_human "
-                f"(surfaced on /status — awaiting human approval)"
+                f"[acl] ESCALATION_BLOCKED (alert) token={token.token_id[:8]}... "
+                f"tool={tool_id!r} — run halted, visible on /status"
             )
+            try:
+                from src.database import append_audit_log
+
+                await append_audit_log(
+                    event_type="ESCALATION_BLOCKED",
+                    agent_id=token.agent_id,
+                    payload={
+                        "token_id": token.token_id,
+                        "run_id": run_id,
+                        "requested_tool": tool_id,
+                        "granted_tools": token.granted_tools,
+                        "reason": escalation.reason,
+                        "policy": "alert",
+                    },
+                )
+            except Exception as db_err:
+                logger.warning(
+                    f"[acl] Could not log ESCALATION_BLOCKED to audit_log: {db_err}"
+                )
         else:
+            # deny policy — suspicious, treat as a security incident
             logger.error(
-                f"[acl] TOOL_SCOPE_VIOLATION token={token.token_id[:8]}... "
+                f"[acl] TOOL_SCOPE_VIOLATION (deny) token={token.token_id[:8]}... "
                 f"tool={tool_id!r} not in granted_tools. Halting run."
             )
-        # In both cases, block until human approves (Phase 4 will add approval queue)
-        _ = escalation  # noqa: F841 — will be stored in audit_log in Phase 4
+            try:
+                from src.database import log_threat_event
+
+                await log_threat_event(
+                    agent_id=token.agent_id,
+                    run_id=run_id,
+                    threat_type="TOOL_SCOPE_VIOLATION",
+                    action_taken="BLOCKED",
+                    confidence=1.0,
+                    metadata={
+                        "token_id": token.token_id,
+                        "requested_tool": tool_id,
+                        "granted_tools": token.granted_tools,
+                    },
+                )
+            except Exception as db_err:
+                logger.warning(
+                    f"[acl] Could not log TOOL_SCOPE_VIOLATION to DB: {db_err}"
+                )
+
         return False
 
     return True
