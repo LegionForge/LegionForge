@@ -1,9 +1,9 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 2.0.0
-**Last updated:** 2026-02-22
-**Status:** Phase 0 ✅ Complete | Phase 1 🔄 Active
+**Version:** 3.0.0
+**Last updated:** 2026-02-25
+**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -36,10 +36,10 @@ Before the phases: these principles govern every decision.
 
 ```
 Phase 0  ✅  Infrastructure                    → DONE
-Phase 1  🔄  First Agent + Security Foundations → ACTIVE  (weeks 1–3)
-Phase 2  ⬜  Containerization + Guardian        → NEXT    (weeks 4–6)
-Phase 3  ⬜  ACLs + Sub-Agents                  → (weeks 7–10)
-Phase 4  ⬜  Adaptive Security                  → (weeks 11–14)
+Phase 1  ✅  First Agent + Security Foundations → DONE
+Phase 2  ✅  Containerization + Guardian        → DONE
+Phase 3  ✅  ACLs + Task Tokens + Sub-Agents    → DONE
+Phase 4  ⬜  Adaptive Security                  → NEXT    (weeks 11–14)
 Phase 5  ⬜  Crystallization Pipeline           → (weeks 15–19)
 Phase 6  ⬜  Red Team + Pentest Bot             → (weeks 20+)
 ```
@@ -277,15 +277,16 @@ Bearer token authentication on all endpoints. Token stored in Keychain. Safe to 
 
 ---
 
-## Phase 3 — ACLs, Task Tokens, Sub-Agent Architecture
+## Phase 3 — ACLs, Task Tokens, Sub-Agent Architecture ✅ COMPLETE
 
 **Goal:** Enable multi-agent workflows with tightly scoped privilege.
 
 **Duration:** ~4 weeks
 **Dependencies:** Phase 2 complete
 **Exit criteria:** Sub-agents spawned with task-scoped tokens; privilege escalation attempts logged and blocked; Researcher can spawn a sub-agent for a bounded task.
+**Smoke tests:** 88 → 95 (+7 Phase 3 orchestrator tests; 58 → 95 total across all phases)
 
-### Component 3.1 — Task Token System
+### Component 3.1 — Task Token System ✅
 **File:** `src/security/acl.py` (new)
 
 ```python
@@ -304,12 +305,21 @@ class TaskToken:
 
 JWT-signed by a key in Keychain. Guardian validates the token signature on every `/check` call.
 
-### Component 3.2 — Sub-Agent Orchestrator Pattern
+### Component 3.2 — Sub-Agent Orchestrator Pattern ✅
 **File:** `src/agents/orchestrator.py` (new)
 
 Orchestrator holds master token. Sub-agents receive derived tokens with narrower scope. Sub-agent results validated by Guardian before being passed back. No direct agent-to-agent communication — all traffic routes through orchestrator.
 
-### Component 3.3 — Role Definitions
+Implementation details:
+- `_issue_master_token()` — analyst-role JWT at run start; `escalation_policy="deny"`
+- `_derive_researcher_token()` — narrows master to researcher tools + `["public"]` data only
+- `spawn_researcher` @tool — delegates via `_spawn_researcher_sub_agent()`; master JWT captured
+  in module-level `_master_token_ref` dict (mutable ref persists across closures)
+- `run_researcher(task_token=...)` — new param accepts pre-issued derived token from orchestrator
+- `make setup-task-token-secret` — one-time Keychain setup target
+- `make register-orchestrator-tools` — one-time tool registration
+
+### Component 3.3 — Role Definitions ✅
 **File:** `config/roles.yaml` (new)
 
 ```yaml
@@ -329,7 +339,7 @@ roles:
     data_classes: [security]
 ```
 
-### Component 3.4 — Escalation Visibility
+### Component 3.4 — Escalation Visibility ✅
 
 Both `escalation_policy` values **halt the run** — the difference is how the event is classified:
 
