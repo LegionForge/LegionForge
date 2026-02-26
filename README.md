@@ -73,7 +73,7 @@ storage:
     mount_path: "/Volumes/YOUR_DRIVE_NAME"   # ← update this
 ```
 
-> **Note:** The `Makefile` has `BASE := /Volumes/MAC_MINI_1TB/LegionForge` near the top. Update this to match your actual project path before running any `make` targets.
+> **Note:** The `Makefile` auto-detects its base directory via `git rev-parse --show-toplevel`. Run all `make` targets from the project root (where `.git` lives) and this resolves automatically.
 
 To use a different hardware profile (e.g., for an M5 Mac Mini):
 ```bash

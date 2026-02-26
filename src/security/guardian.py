@@ -168,7 +168,7 @@ def _guardian_db_conninfo() -> tuple[str, str]:
     host = os.environ.get("POSTGRES_HOST", "host.docker.internal")
     port = os.environ.get("POSTGRES_PORT", "5432")
     db = os.environ.get("POSTGRES_DB", "legionforge")
-    user = os.environ.get("POSTGRES_USER", "jpc")
+    user = os.environ.get("POSTGRES_USER", os.environ.get("USER", "postgres"))
     password = os.environ.get("POSTGRES_PASSWORD", "")
     conninfo = f"host={host} port={port} dbname={db} user={user}"
     return conninfo, password

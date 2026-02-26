@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.legionforge.check-agent-drive.plist
+  ═══════════════════════════════════════════════════════════
+  macOS Launch Agent — runs check_mount.sh at login/boot.
+  Logs to /tmp/legionforge-mount-check.{log,err}.
+
+  INSTALL (run once — substitutes LEGIONFORGE_HOME automatically):
+    make install-launch-agent
+
+  Or manually:
+    LEGIONFORGE_HOME=$(git -C /path/to/LegionForge rev-parse --show-toplevel)
+    sed "s|LEGIONFORGE_HOME_PLACEHOLDER|${LEGIONFORGE_HOME}|g" \
+        scripts/com.legionforge.check-agent-drive.plist \
+        > ~/Library/LaunchAgents/com.legionforge.check-agent-drive.plist
+    launchctl load ~/Library/LaunchAgents/com.legionforge.check-agent-drive.plist
+
+  VERIFY:
+    launchctl list | grep legionforge
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.legionforge.check-agent-drive.plist
+    rm ~/Library/LaunchAgents/com.legionforge.check-agent-drive.plist
+  ═══════════════════════════════════════════════════════════
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.legionforge.check-agent-drive</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- LEGIONFORGE_HOME_PLACEHOLDER is substituted at install time via make install-launch-agent -->
+        <string>LEGIONFORGE_HOME_PLACEHOLDER/scripts/check_mount.sh</string>
+        <string>--wait</string>
+        <string>--create-dirs</string>
+    </array>
+
+    <!-- Run at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Do not restart automatically — runs once at login -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Wait 10s after login before running — gives drive time to mount -->
+    <key>StartInterval</key>
+    <integer>10</integer>
+
+    <!-- Logs — written to /tmp to avoid boot-time dependency on the external drive -->
+    <key>StandardOutPath</key>
+    <string>/tmp/legionforge-mount-check.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/legionforge-mount-check.err</string>
+</dict>
+</plist>

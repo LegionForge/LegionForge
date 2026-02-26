@@ -3,7 +3,7 @@
 # Usage: make <target>
 # ============================================================
 
-BASE    := /Volumes/MAC_MINI_1TB/LegionForge
+BASE    := $(shell git rev-parse --show-toplevel 2>/dev/null || pwd)
 VENV    := $(BASE)/venv
 PYTHON  := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
@@ -150,7 +150,7 @@ print('✅ Database initialized')"
 
 .PHONY: db-shell
 db-shell:
-	@psql -U jpc -d legionforge
+	@psql -U "$${POSTGRES_USER:-jpc}" -d legionforge
 
 # ── Ollama ────────────────────────────────────────────────────
 .PHONY: ollama-start
@@ -313,8 +313,8 @@ asyncio.run(check())"
 verify-model-integrity:
 	@echo "Verifying Ollama model manifests..."
 	@$(PYTHON) -c "\
-import hashlib, json, pathlib, sys; \
-ollama_dir = pathlib.Path('/Volumes/MAC_MINI_1TB/ollama_models/manifests'); \
+import hashlib, json, os, pathlib, sys; \
+ollama_dir = pathlib.Path(os.environ.get('OLLAMA_MODELS', pathlib.Path.home() / '.ollama' / 'models')) / 'manifests'; \
 if not ollama_dir.exists(): print('⚠️  Ollama model dir not found — skipping'); sys.exit(0); \
 manifests = list(ollama_dir.rglob('*')); \
 print(f'Found {len(manifests)} manifest entries in {ollama_dir}'); \
@@ -584,6 +584,20 @@ from src.credentials import creds; \
 creds.initialize(settings.security); \
 import json; \
 print(json.dumps(creds.status(), indent=2))"
+
+# ── macOS LaunchAgent ─────────────────────────────────────────
+# Installs the mount-check LaunchAgent, substituting the actual project path.
+# Safe to re-run (unloads existing agent first if present).
+.PHONY: install-launch-agent
+install-launch-agent:
+	@echo "🔌 Installing com.legionforge.check-agent-drive LaunchAgent..."
+	@DEST=$$HOME/Library/LaunchAgents/com.legionforge.check-agent-drive.plist; \
+	launchctl unload "$$DEST" 2>/dev/null || true; \
+	sed "s|LEGIONFORGE_HOME_PLACEHOLDER|$(BASE)|g" \
+	    "$(BASE)/scripts/com.legionforge.check-agent-drive.plist" > "$$DEST"; \
+	launchctl load "$$DEST" && \
+	echo "✅ LaunchAgent installed: $$DEST" || \
+	echo "❌ launchctl load failed — check: launchctl list | grep legionforge"
 
 # ── Phase 6: Security hardening ───────────────────────────────
 # Two-phase DB init must already have run (make db-init).

@@ -88,7 +88,7 @@ def _build_conninfo_no_password() -> str:
     host = os.environ.get("POSTGRES_HOST", "localhost")
     port = os.environ.get("POSTGRES_PORT", "5432")
     db = os.environ.get("POSTGRES_DB", "legionforge")
-    user = os.environ.get("POSTGRES_USER", "jpc")
+    user = os.environ.get("POSTGRES_USER", os.environ.get("USER", "postgres"))
     return f"host={host} port={port} dbname={db} user={user}"
 
 
@@ -185,7 +185,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
     """
     Create the legionforge_app restricted PostgreSQL user and grant minimal privileges.
 
-    Idempotent — safe to run on every startup. Runs as the admin (jpc) user.
+    Idempotent — safe to run on every startup. Runs as the admin user (POSTGRES_USER).
 
     Privilege model:
       - CONNECT on database legionforge

@@ -35,6 +35,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -47,10 +48,40 @@ logger = logging.getLogger(__name__)
 # Path to sandbox-exec binary (macOS only)
 _SANDBOX_EXEC = "/usr/bin/sandbox-exec"
 
-# Path to seatbelt profile, relative to this file's location
-_SANDBOX_PROFILE = (
+# Template sandbox profile — contains PROJECT_ROOT_PLACEHOLDER, not a real path.
+# Use _get_resolved_sandbox_profile() to get a usable file.
+_SANDBOX_PROFILE_TEMPLATE = (
     Path(__file__).parent.parent.parent / "config" / "sandbox_profiles" / "analyzer.sb"
 )
+_SANDBOX_PROFILE_PLACEHOLDER = "PROJECT_ROOT_PLACEHOLDER"
+_PROJECT_ROOT = str(Path(__file__).parent.parent.parent.resolve())
+
+# Module-level cache: resolved profile written to a tempfile once per process.
+_resolved_sandbox_profile_path: str | None = None
+
+
+def _get_resolved_sandbox_profile() -> Path | None:
+    """Return path to a sandbox profile with PROJECT_ROOT_PLACEHOLDER substituted.
+
+    Reads the template once, writes a resolved copy to a tempfile, and caches the
+    path for the lifetime of the process.  Returns None if the template is missing.
+    """
+    global _resolved_sandbox_profile_path
+    if _resolved_sandbox_profile_path is not None:
+        return Path(_resolved_sandbox_profile_path)
+    if not _SANDBOX_PROFILE_TEMPLATE.exists():
+        return None
+    content = _SANDBOX_PROFILE_TEMPLATE.read_text()
+    content = content.replace(_SANDBOX_PROFILE_PLACEHOLDER, _PROJECT_ROOT)
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".sb", prefix="legionforge-analyzer-", delete=False
+    )
+    tmp.write(content)
+    tmp.close()
+    _resolved_sandbox_profile_path = tmp.name
+    logger.debug("Resolved sandbox profile written to %s", tmp.name)
+    return Path(tmp.name)
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -564,12 +595,13 @@ def _build_sandboxed_cmd(python_cmd: list[str]) -> list[str]:
         return container_cmd
 
     # Priority 2: macOS sandbox-exec (allow-default + targeted deny)
+    sandbox_profile = _get_resolved_sandbox_profile()
     if (
         sys.platform == "darwin"
         and os.path.isfile(_SANDBOX_EXEC)
-        and _SANDBOX_PROFILE.exists()
+        and sandbox_profile is not None
     ):
-        return [_SANDBOX_EXEC, "-f", str(_SANDBOX_PROFILE)] + python_cmd
+        return [_SANDBOX_EXEC, "-f", str(sandbox_profile)] + python_cmd
 
     # Priority 3: Bare subprocess (test environments / Linux without Docker)
     return python_cmd

@@ -62,9 +62,11 @@
 ;; the user's credential store, shell config files, or cron/launchd locations
 ;; that could achieve persistence.
 
-;; Block writes to the LegionForge project tree
+;; Block writes to the LegionForge project tree.
+;; PROJECT_ROOT_PLACEHOLDER is substituted at runtime by _get_resolved_sandbox_profile()
+;; in src/tools/crystallization_analyzer.py — never use this file directly with sandbox-exec.
 (deny file-write*
-    (subpath "/Volumes/MAC_MINI_1TB/LegionForge"))
+    (subpath "PROJECT_ROOT_PLACEHOLDER"))
 
 ;; Block writes to home credential and config files
 (deny file-write*

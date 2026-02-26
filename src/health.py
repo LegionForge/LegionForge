@@ -257,7 +257,7 @@ async def _check_postgres() -> dict:
             host=os.environ.get("POSTGRES_HOST", "localhost"),
             port=int(os.environ.get("POSTGRES_PORT", "5432")),
             dbname=os.environ.get("POSTGRES_DB", "legionforge"),
-            user=os.environ.get("POSTGRES_USER", "jpc"),
+            user=os.environ.get("POSTGRES_USER", os.environ.get("USER", "postgres")),
             password=os.environ.get("POSTGRES_PASSWORD", ""),
         ) as conn:
             await conn.execute("SELECT 1")

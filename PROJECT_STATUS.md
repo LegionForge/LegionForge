@@ -86,7 +86,7 @@ make build-analyzer    # build legionforge-analyzer:latest Docker image
 
 ### PostgreSQL 17
 - **Version:** 17.8 (Homebrew)
-- **Data directory:** `/Volumes/MAC_MINI_1TB/LegionForge/postgres/data17`
+- **Data directory:** `$LEGIONFORGE_HOME/postgres/data17`
 - **Database:** `legionforge`
 - **User:** `jpc`
 - **Password:** stored in macOS Keychain (`service: postgres, username: api_key`) and password manager
@@ -141,17 +141,22 @@ make build-analyzer    # build legionforge-analyzer:latest Docker image
 
 ## Environment Setup
 
+> Set `LEGIONFORGE_HOME` to your project root before running any commands below:
+> ```bash
+> export LEGIONFORGE_HOME=/path/to/LegionForge
+> ```
+
 Every new terminal session needs the PostgreSQL password loaded:
 
 ```bash
 # Already added to ~/.zshrc — runs automatically
-export POSTGRES_PASSWORD=$(/Volumes/MAC_MINI_1TB/LegionForge/venv/bin/python3 \
+export POSTGRES_PASSWORD=$($LEGIONFORGE_HOME/venv/bin/python3 \
   -c "import keyring; print(keyring.get_password('postgres', 'api_key'))")
 ```
 
 Activate the venv:
 ```bash
-source /Volumes/MAC_MINI_1TB/LegionForge/venv/bin/activate
+source $LEGIONFORGE_HOME/venv/bin/activate
 ```
 
 ---
@@ -160,11 +165,11 @@ source /Volumes/MAC_MINI_1TB/LegionForge/venv/bin/activate
 
 ```bash
 source ~/.zshrc                          # loads POSTGRES_PASSWORD
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # NEW: fail if any loaded tool is unregistered
-make test-smoke                          # 23 tests, ~0.1s
+make test-smoke                          # 200 tests, ~2s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -207,17 +212,17 @@ See git log for the specific PRs.
 
 ```bash
 # 1a. Check available disk space — need ~3GB free for the copy
-df -h /Volumes/MAC_MINI_1TB/
+df -h $EXTERNAL_DRIVE
 ```
 > **DEBUG:** If less than 3GB free, clear logs or model cache before proceeding.
 
 ```bash
 # 1b. Take a PostgreSQL dump as insurance
-pg_dump -U jpc legionforge > /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_$(date +%Y%m%d).sql
+pg_dump -U jpc legionforge > $EXTERNAL_DRIVE/pg_backup_pre_phase2_$(date +%Y%m%d).sql
 ```
 ```bash
 # 1c. Verify the dump is non-empty
-ls -lh /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql
+ls -lh $EXTERNAL_DRIVE/pg_backup_pre_phase2_*.sql
 # Expected: file exists, size > 10KB
 ```
 > **DEBUG:** If pg_dump fails, PostgreSQL may not be running. Start it first:
@@ -225,13 +230,13 @@ ls -lh /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql
 
 ```bash
 # 1d. Copy Claude Code memory to the future path so it survives the session restart
-mkdir -p "/Users/jp/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/"
-cp "/Users/jp/.claude/projects/-Volumes-MAC-MINI-1TB-jpc-mac-agent-framework/memory/MEMORY.md" \
-   "/Users/jp/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/MEMORY.md"
+mkdir -p "$HOME/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/"
+cp "$HOME/.claude/projects/-Volumes-MAC-MINI-1TB-jpc-mac-agent-framework/memory/MEMORY.md" \
+   "$HOME/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/MEMORY.md"
 ```
 ```bash
 # 1e. Verify memory copied
-ls -lh "/Users/jp/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/MEMORY.md"
+ls -lh "$HOME/.claude/projects/-Volumes-MAC-MINI-1TB-LegionForge/memory/MEMORY.md"
 # Expected: file exists, size matches original
 ```
 
@@ -269,23 +274,23 @@ pgrep -fl "uvicorn" || echo "clean"
 
 ```bash
 # Full copy — preserves permissions and timestamps
-cp -rp /Volumes/MAC_MINI_1TB/LegionForge /Volumes/MAC_MINI_1TB/LegionForge
+cp -rp $LEGIONFORGE_HOME $LEGIONFORGE_HOME
 ```
 ```bash
 # Verify the copy succeeded — compare file counts
-OLD=$(find /Volumes/MAC_MINI_1TB/LegionForge -not -path "*/venv/*" | wc -l)
-NEW=$(find /Volumes/MAC_MINI_1TB/LegionForge -not -path "*/venv/*" | wc -l)
+OLD=$(find $LEGIONFORGE_HOME -not -path "*/venv/*" | wc -l)
+NEW=$(find $LEGIONFORGE_HOME -not -path "*/venv/*" | wc -l)
 echo "Old: $OLD  New: $NEW"
 # Expected: counts match
 ```
 ```bash
 # Spot-check key files exist in the new location
-ls /Volumes/MAC_MINI_1TB/LegionForge/src/
-ls /Volumes/MAC_MINI_1TB/LegionForge/config/hardware_profiles/
-ls /Volumes/MAC_MINI_1TB/LegionForge/tests/
+ls $LEGIONFORGE_HOME/src/
+ls $LEGIONFORGE_HOME/config/hardware_profiles/
+ls $LEGIONFORGE_HOME/tests/
 ```
 > **DEBUG:** If copy fails mid-way (disk full), remove the partial copy:
-> `rm -rf /Volumes/MAC_MINI_1TB/LegionForge` then free disk space and retry.
+> `rm -rf $LEGIONFORGE_HOME` then free disk space and retry.
 
 - [ ] Step 3 complete — full copy verified
 
@@ -293,16 +298,16 @@ ls /Volumes/MAC_MINI_1TB/LegionForge/tests/
 
 #### STEP 4 — Update all absolute paths in the new directory
 
-> Run all sed commands from inside `/Volumes/MAC_MINI_1TB/LegionForge/`.
+> Run all sed commands from inside `$LEGIONFORGE_HOME/`.
 > Using `|` as the sed delimiter to avoid escaping forward slashes.
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 ```
 ```bash
 # Update each file — run one at a time
-OLD_PATH="/Volumes/MAC_MINI_1TB/LegionForge"
-NEW_PATH="/Volumes/MAC_MINI_1TB/LegionForge"
+OLD_PATH="$LEGIONFORGE_HOME"
+NEW_PATH="$LEGIONFORGE_HOME"
 
 sed -i '' "s|$OLD_PATH|$NEW_PATH|g" Makefile
 sed -i '' "s|$OLD_PATH|$NEW_PATH|g" config/hardware_profiles/mac_m4_mini_16gb.yaml
@@ -321,7 +326,7 @@ sed -i '' "s|$OLD_PATH|$NEW_PATH|g" PROJECT_STATUS.md
 grep -r "jpc-mac-agent-framework" \
   --include="*.py" --include="*.yaml" --include="*.sh" \
   --include="*.md" --include="Makefile" \
-  /Volumes/MAC_MINI_1TB/LegionForge/ \
+  $LEGIONFORGE_HOME/ \
   --exclude-dir=venv --exclude-dir=.git
 # Expected: no output. Any output = missed file, fix before continuing.
 ```
@@ -339,7 +344,7 @@ grep "jpc-mac-agent-framework" ~/.zshrc
 ```
 ```bash
 # Apply the update
-sed -i '' 's|/Volumes/MAC_MINI_1TB/LegionForge|/Volumes/MAC_MINI_1TB/LegionForge|g' ~/.zshrc
+sed -i '' 's|$LEGIONFORGE_HOME|$LEGIONFORGE_HOME|g' ~/.zshrc
 ```
 ```bash
 # Verify the change
@@ -370,7 +375,7 @@ cat ~/Library/LaunchAgents/homebrew.mxcl.postgresql@17.plist | grep "jpc-mac"
 ```
 ```bash
 # If the above shows old path, update it
-sed -i '' 's|/Volumes/MAC_MINI_1TB/LegionForge|/Volumes/MAC_MINI_1TB/LegionForge|g' \
+sed -i '' 's|$LEGIONFORGE_HOME|$LEGIONFORGE_HOME|g' \
   ~/Library/LaunchAgents/homebrew.mxcl.postgresql@17.plist
 ```
 ```bash
@@ -394,9 +399,9 @@ psql -U jpc -d legionforge -c "\dt"
 # Expected: lists checkpoints, documents, api_usage, health_metrics, etc.
 ```
 > **DEBUG — PostgreSQL won't start:**
-> 1. Check logs: `tail -50 /Volumes/MAC_MINI_1TB/LegionForge/postgres/data17/log/$(ls -t /Volumes/MAC_MINI_1TB/LegionForge/postgres/data17/log/ | head -1)`
+> 1. Check logs: `tail -50 $LEGIONFORGE_HOME/postgres/data17/log/$(ls -t $LEGIONFORGE_HOME/postgres/data17/log/ | head -1)`
 > 2. Check if data dir path is correct in plist: `grep pgdata ~/Library/LaunchAgents/homebrew.mxcl.postgresql@17.plist`
-> 3. Try starting manually: `/opt/homebrew/opt/postgresql@17/bin/postgres -D /Volumes/MAC_MINI_1TB/LegionForge/postgres/data17`
+> 3. Try starting manually: `/opt/homebrew/opt/postgresql@17/bin/postgres -D $LEGIONFORGE_HOME/postgres/data17`
 
 - [ ] Step 6 complete — PostgreSQL running and data verified
 
@@ -405,7 +410,7 @@ psql -U jpc -d legionforge -c "\dt"
 #### STEP 7 — Rebuild venv in new directory
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 ```
 ```bash
 # Remove the copied venv (it has wrong hardcoded paths)
@@ -417,7 +422,7 @@ python3 -m venv venv
 ```
 ```bash
 # Verify the venv python path is correct
-/Volumes/MAC_MINI_1TB/LegionForge/venv/bin/python3 --version
+$LEGIONFORGE_HOME/venv/bin/python3 --version
 # Expected: Python 3.11.x
 ```
 ```bash
@@ -450,7 +455,7 @@ echo $POSTGRES_PASSWORD | wc -c
 #### STEP 8 — Full verification
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 source venv/bin/activate
 ```
 ```bash
@@ -475,7 +480,7 @@ kill %1 2>/dev/null || pkill -f uvicorn
 ```
 ```bash
 # Final scan — confirm zero old path references in entire new directory
-grep -r "jpc-mac-agent-framework" /Volumes/MAC_MINI_1TB/LegionForge/ \
+grep -r "jpc-mac-agent-framework" $LEGIONFORGE_HOME/ \
   --exclude-dir=venv --exclude-dir=.git
 # Expected: no output
 ```
@@ -491,7 +496,7 @@ grep -r "jpc-mac-agent-framework" /Volumes/MAC_MINI_1TB/LegionForge/ \
 #### STEP 9 — Commit from new directory
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 git add -u
 git status
 # Review staged files before committing
@@ -519,16 +524,16 @@ git push origin feature/phase-1-security-foundations
 
 ```bash
 # Remove the old project directory
-rm -rf /Volumes/MAC_MINI_1TB/LegionForge
+rm -rf $LEGIONFORGE_HOME
 ```
 ```bash
 # Verify it's gone
-ls /Volumes/MAC_MINI_1TB/ | grep jpc
+ls $EXTERNAL_DRIVE | grep jpc
 # Expected: no output
 ```
 ```bash
 # Remove the pg_dump backup taken in Step 1 (optional — keep if you want extra safety)
-rm /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql
+rm $EXTERNAL_DRIVE/pg_backup_pre_phase2_*.sql
 ```
 
 - [ ] Step 10 complete — old directory removed, Phase 2 done
@@ -546,16 +551,16 @@ rm /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql
 
 ```bash
 # Full dump of current database
-pg_dump -U jpc -Fc legionforge > /Volumes/MAC_MINI_1TB/pg_backup_legionforge_$(date +%Y%m%d).dump
+pg_dump -U jpc -Fc legionforge > $EXTERNAL_DRIVE/pg_backup_legionforge_$(date +%Y%m%d).dump
 ```
 ```bash
 # Verify dump is non-empty
-ls -lh /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
+ls -lh $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump
 # Expected: file size > 10KB
 ```
 ```bash
 # Verify dump is readable
-pg_restore --list /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump | head -20
+pg_restore --list $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump | head -20
 # Expected: lists tables and schema objects
 ```
 > **DEBUG:** If pg_restore --list fails, the dump is corrupt. Re-run pg_dump before continuing.
@@ -572,7 +577,7 @@ createdb -U jpc legionforge
 ```
 ```bash
 # Restore into new database
-pg_restore -U jpc -d legionforge /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
+pg_restore -U jpc -d legionforge $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump
 ```
 ```bash
 # Verify all tables restored correctly
@@ -588,7 +593,7 @@ psql -U jpc -c "SELECT 'legionforge' db, COUNT(*) FROM legionforge.public.docume
 ```
 > **DEBUG — restore fails with errors:**
 > 1. Check for extension errors: pgvector must be installed. Verify: `psql -U jpc -d legionforge -c "CREATE EXTENSION IF NOT EXISTS vector;"`
-> 2. Re-run restore with verbose: `pg_restore -U jpc -d legionforge -v /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump 2>&1 | tail -30`
+> 2. Re-run restore with verbose: `pg_restore -U jpc -d legionforge -v $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump 2>&1 | tail -30`
 
 - [ ] Step 2 complete — new database has all tables and data
 
@@ -599,7 +604,7 @@ psql -U jpc -c "SELECT 'legionforge' db, COUNT(*) FROM legionforge.public.docume
 Update all `legionforge` references to `legionforge`:
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 sed -i '' 's|legionforge|legionforge|g' src/database.py
 sed -i '' 's|legionforge|legionforge|g' src/health.py
 sed -i '' 's|legionforge|legionforge|g' src/startup.sh
@@ -615,7 +620,7 @@ echo "POSTGRES_DB=legionforge" >> .env
 ```
 ```bash
 # Verify no old database name remains
-grep -r "legionforge" /Volumes/MAC_MINI_1TB/LegionForge/ \
+grep -r "legionforge" $LEGIONFORGE_HOME/ \
   --exclude-dir=venv --exclude-dir=.git \
   --include="*.py" --include="*.sh" --include="*.yaml" --include="*.md" --include="Makefile"
 # Expected: no output
@@ -629,7 +634,7 @@ grep -r "legionforge" /Volumes/MAC_MINI_1TB/LegionForge/ \
 #### STEP 4 — Full verification against new database
 
 ```bash
-cd /Volumes/MAC_MINI_1TB/LegionForge
+cd $LEGIONFORGE_HOME
 source venv/bin/activate
 source ~/.zshrc
 ```
@@ -688,8 +693,8 @@ psql -U jpc -l | grep legionforge
 ```
 ```bash
 # Remove the pg_dump backup files (optional)
-rm /Volumes/MAC_MINI_1TB/pg_backup_legionforge_*.dump
-rm /Volumes/MAC_MINI_1TB/pg_backup_pre_phase2_*.sql 2>/dev/null || true
+rm $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump
+rm $EXTERNAL_DRIVE/pg_backup_pre_phase2_*.sql 2>/dev/null || true
 ```
 ```bash
 # Final smoke test with clean state
