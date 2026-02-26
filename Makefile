@@ -393,11 +393,15 @@ print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 .PHONY: guardian-start
 guardian-start:
 	@echo "Starting Guardian sidecar..."
-	@docker-compose up -d guardian 2>/dev/null && \
-		sleep 2 && \
-		curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
-		echo "✅ Guardian healthy at http://localhost:9766" || \
-		echo "⚠️  Guardian may still be starting — check: make guardian-logs"
+	@# Load TASK_TOKEN_SECRET from Keychain so Guardian can validate JWT task tokens.
+	@# Falls back to empty string if not found — Guardian will reject all task tokens.
+	@export TASK_TOKEN_SECRET=$$(security find-generic-password \
+		-s legionforge_task_tokens -a api_key -w 2>/dev/null || echo "") && \
+	docker-compose up -d guardian 2>/dev/null && \
+	sleep 2 && \
+	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
+	echo "✅ Guardian healthy at http://localhost:9766" || \
+	echo "⚠️  Guardian may still be starting — check: make guardian-logs"
 
 .PHONY: guardian-stop
 guardian-stop:
