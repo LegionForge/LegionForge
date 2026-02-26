@@ -12,6 +12,13 @@ Endpoints:
     GET /metrics — current performance metrics
     GET /usage   — API usage summary for the last 24h
 
+    # Phase 5 — Crystallization review (all Bearer-protected)
+    GET  /crystallization/candidates              — list READY_FOR_REVIEW packages
+    GET  /crystallization/candidates/{id}         — full package + analysis
+    POST /crystallization/candidates/{id}/approve — approve + sign + register
+    POST /crystallization/candidates/{id}/reject  — reject with reason
+    POST /crystallization/candidates/{id}/revise  — return to Crystallizer with notes
+
 Usage:
     # As a background task in your main app:
     import asyncio
@@ -36,6 +43,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from config.settings import settings
 from src.observability import get_metrics_summary
@@ -139,6 +147,81 @@ def _unauthorized() -> JSONResponse:
         status_code=401,
         headers={"WWW-Authenticate": 'Bearer realm="LegionForge Health"'},
     )
+
+
+# ── Crystallization signing pipeline helper ───────────────────────────────────
+
+
+async def _sign_and_register(package: dict, approved_by: str) -> dict:
+    """
+    Sign an approved crystallization package and register it in tool_registry.
+
+    Called from POST /crystallization/candidates/{id}/approve.
+    register_tool() auto-signs via the Ed25519 pipeline if signing is enabled.
+    Returns a status dict summarising the outcome.
+    """
+    import json as _json
+
+    from src.security.core import ToolManifest, register_tool
+    from src.database import append_audit_log
+
+    tool_name = package.get("tool_name") or "unknown"
+    tool_id = f"{tool_name}@crystallized"
+
+    input_schema = package.get("input_schema") or {}
+    if isinstance(input_schema, str):
+        try:
+            input_schema = _json.loads(input_schema)
+        except Exception:
+            input_schema = {}
+
+    declared_side_effects = package.get("declared_side_effects") or ["pure"]
+    if isinstance(declared_side_effects, str):
+        try:
+            declared_side_effects = _json.loads(declared_side_effects)
+        except Exception:
+            declared_side_effects = [declared_side_effects]
+
+    manifest = ToolManifest(
+        tool_id=tool_id,
+        description=package.get("tool_description") or "",
+        input_schema=input_schema,
+        declared_side_effects=declared_side_effects,
+        source="crystallization_pipeline",
+        version="1.0.0",
+        entrypoint_func=None,  # crystallized tools have no Python entrypoint at registration
+    )
+
+    signing_status = "skipped"
+    try:
+        await register_tool(
+            manifest,
+            approved_by=approved_by,
+            approval_notes=f"Crystallized from package {package.get('package_id')}",
+        )
+        signing_status = "signed_and_registered"
+    except Exception as exc:
+        logger.warning(f"[crystallization] register_tool failed for {tool_id!r}: {exc}")
+        signing_status = f"error: {exc}"
+
+    # Audit event — non-fatal
+    try:
+        await append_audit_log(
+            "TOOL_CRYSTALLIZED",
+            agent_id="operator",
+            payload={
+                "package_id": package.get("package_id"),
+                "tool_id": tool_id,
+                "tool_name": tool_name,
+                "candidate_id": package.get("candidate_id"),
+                "approved_by": approved_by,
+                "signing_status": signing_status,
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"[crystallization] TOOL_CRYSTALLIZED audit log failed: {exc}")
+
+    return {"tool_id": tool_id, "signing_status": signing_status}
 
 
 # ── Health check helpers ──────────────────────────────────────────────────────
@@ -453,6 +536,256 @@ async def reject_rule(rule_id: str, request: Request) -> JSONResponse:
             {"error": "Rule not found or not in PENDING status"}, status_code=404
         )
     except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+# ── Crystallization Review Interface (Phase 5) ───────────────────────────────
+
+
+@app.get("/crystallization/candidates")
+async def crystallization_candidates(request: Request) -> JSONResponse:
+    """
+    List all packages awaiting human review (status=READY_FOR_REVIEW).
+
+    Each entry includes a summary of the Pre-HITL analysis (recommendation,
+    test pass/fail counts, security clean flag, risk flags) so you can triage
+    without fetching every full report. Requires Bearer token.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import get_packages_ready_for_review
+
+        packages = await get_packages_ready_for_review()
+        return JSONResponse(
+            {
+                "packages": packages,
+                "count": len(packages),
+                "note": (
+                    "Use GET /crystallization/candidates/{package_id} for full detail. "
+                    "POST …/approve, …/reject, or …/revise to action."
+                ),
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            {"error": str(e), "note": "Database may not be initialized"},
+            status_code=503,
+        )
+
+
+@app.get("/crystallization/candidates/{package_id}")
+async def crystallization_candidate_detail(
+    package_id: str, request: Request
+) -> JSONResponse:
+    """
+    Full package record + Pre-HITL analysis report for a single package.
+
+    Read this before approving or rejecting — it includes the generated function
+    code, all test cases, and the full analysis with security findings.
+    Requires Bearer token.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import get_analysis, get_package
+
+        package = await get_package(package_id)
+        if package is None:
+            return JSONResponse({"error": "Package not found"}, status_code=404)
+        analysis = await get_analysis(package_id)
+        return JSONResponse(
+            {
+                "package": package,
+                "analysis": analysis,
+                "review_actions": {
+                    "approve": f"/crystallization/candidates/{package_id}/approve",
+                    "reject": f"/crystallization/candidates/{package_id}/reject",
+                    "revise": f"/crystallization/candidates/{package_id}/revise",
+                },
+            }
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.post("/crystallization/candidates/{package_id}/approve")
+async def crystallization_approve(package_id: str, request: Request) -> JSONResponse:
+    """
+    Approve a READY_FOR_REVIEW package.
+
+    After DB approval, immediately triggers the Ed25519 signing pipeline and
+    registers the crystallized tool in tool_registry.  Run `make bom` to verify
+    the tool appears in the Bill of Materials.  Operator-only. Requires Bearer token.
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        from src.database import approve_package, get_package
+
+        updated = await approve_package(package_id, approved_by="operator")
+        if not updated:
+            return JSONResponse(
+                {"error": "Package not found or not in READY_FOR_REVIEW status"},
+                status_code=404,
+            )
+
+        # Fetch full record for signing
+        package = await get_package(package_id)
+        if package is None:
+            return JSONResponse(
+                {
+                    "status": "approved",
+                    "package_id": package_id,
+                    "warning": "Approved in DB but package record unavailable — signing skipped",
+                },
+                status_code=207,
+            )
+
+        sign_result = await _sign_and_register(package, approved_by="operator")
+        return JSONResponse(
+            {
+                "status": "approved",
+                "package_id": package_id,
+                "tool_name": package.get("tool_name"),
+                "signing": sign_result,
+                "note": "Tool registered in tool_registry. Run `make bom` to verify.",
+            }
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.post("/crystallization/candidates/{package_id}/reject")
+async def crystallization_reject(package_id: str, request: Request) -> JSONResponse:
+    """
+    Reject a READY_FOR_REVIEW package. Reason is optional but strongly recommended.
+
+    Operator-only action. Requires Bearer token.
+    Body (optional JSON): {"reason": "explain why this package should not be crystallized"}
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        reason = ""
+        try:
+            body = await request.json()
+            reason = str(body.get("reason", ""))
+        except Exception:
+            pass  # body absent or not JSON — reason stays empty
+
+        from src.database import reject_package
+
+        updated = await reject_package(
+            package_id, rejected_by="operator", reason=reason
+        )
+        if updated:
+            return JSONResponse(
+                {"status": "rejected", "package_id": package_id, "reason": reason}
+            )
+        return JSONResponse(
+            {"error": "Package not found or not in a reviewable status"},
+            status_code=404,
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.post("/crystallization/candidates/{package_id}/revise")
+async def crystallization_revise(package_id: str, request: Request) -> JSONResponse:
+    """
+    Send a READY_FOR_REVIEW package back to the Crystallizer with revision notes.
+
+    Resets status to PENDING_ANALYSIS so the Pre-HITL Analyzer re-runs
+    automatically after the Crystallizer re-submits.
+    Operator-only action. Requires Bearer token.
+
+    Body (required JSON): {"notes": "what specifically needs to change"}
+    """
+    if not _verify_bearer_token(request):
+        return _unauthorized()
+    try:
+        notes = ""
+        try:
+            body = await request.json()
+            notes = str(body.get("notes", ""))
+        except Exception:
+            pass
+
+        from src.database import revise_package
+
+        updated = await revise_package(package_id, revision_notes=notes)
+        if updated:
+            return JSONResponse(
+                {
+                    "status": "sent_for_revision",
+                    "package_id": package_id,
+                    "notes": notes,
+                    "next_step": "make run-crystallizer CANDIDATE_ID=<candidate_id>",
+                }
+            )
+        return JSONResponse(
+            {"error": "Package not found or not in READY_FOR_REVIEW status"},
+            status_code=404,
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+# ── Phase 6: Tool revocation endpoint ────────────────────────────────────────
+
+
+class RevokeToolRequest(BaseModel):
+    reason: str = "Revoked by operator"
+
+
+@app.post("/tools/{tool_id}/revoke")
+async def revoke_tool_endpoint(
+    tool_id: str,
+    request: Request,
+    body: RevokeToolRequest,
+) -> JSONResponse:
+    """
+    Immediately revoke a registered tool.
+
+    Sets tool_registry.status = 'REVOKED' and appends a TOOL_REVOKED audit event.
+    Guardian picks up the revocation within _CACHE_TTL_SECONDS (≤ 10s).
+
+    Requires Bearer auth (same token as /status, /metrics, /usage).
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from src.database import revoke_tool
+
+        revoked_by = request.headers.get("X-Operator-Id", "health_api")
+        success = await revoke_tool(
+            tool_id=tool_id,
+            revoked_by=revoked_by,
+            reason=body.reason,
+        )
+
+        if success:
+            return JSONResponse(
+                {
+                    "status": "revoked",
+                    "tool_id": tool_id,
+                    "revoked_by": revoked_by,
+                    "reason": body.reason,
+                    "note": "Guardian cache will reflect this within 10 seconds",
+                }
+            )
+        else:
+            return JSONResponse(
+                {
+                    "error": f"Tool '{tool_id}' not found or already revoked",
+                    "tool_id": tool_id,
+                },
+                status_code=404,
+            )
+    except Exception as e:
+        logger.error(f"[health] revoke_tool failed for '{tool_id}': {e}")
         return JSONResponse({"error": str(e)}, status_code=503)
 
 

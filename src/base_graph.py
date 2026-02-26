@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import socket
 from typing import Annotated, Any, TypedDict
 import operator
@@ -295,12 +296,29 @@ async def guardian_check(tool_id: str, state: dict) -> GuardianCheckResponse:
             "task_token": task_token,  # Phase 3: forward JWT to Guardian check_0
         }
 
+        # Build Guardian request headers — include Bearer auth if token is available.
+        # This authenticates the framework as a trusted caller of the Guardian API.
+        # Prevents rogue processes on the same host from submitting /check requests.
+        guardian_headers: dict[str, str] = {"Content-Type": "application/json"}
+        try:
+            from src.credentials import creds as _creds
+
+            guardian_secret = _creds.get("legionforge_task_tokens")
+            if guardian_secret:
+                guardian_headers["Authorization"] = f"Bearer {guardian_secret}"
+        except ImportError:
+            # credentials module not available (test environments)
+            _env_secret = os.environ.get("TASK_TOKEN_SECRET", "")
+            if _env_secret:
+                guardian_headers["Authorization"] = f"Bearer {_env_secret}"
+
         async with httpx.AsyncClient(
             timeout=settings.security.guardian_timeout_seconds
         ) as client:
             resp = await client.post(
                 f"{settings.security.guardian_url}/check",
                 json=payload,
+                headers=guardian_headers,
             )
             resp.raise_for_status()
             guardian_resp = GuardianCheckResponse(**resp.json())
@@ -499,6 +517,13 @@ class SecureToolNode:
         # Sequence tracking for Guardian
         sequence_so_far = list(state.get("sequence_so_far") or [])
 
+        # Phase 6: TOCTOU mitigation — snapshot approved {call_id → tool_id} BEFORE
+        # the Guardian check loop runs. After inner ToolNode execution, we verify
+        # that every ToolMessage.tool_call_id was in this snapshot. Any unexpected
+        # call_id indicates that the inner ToolNode executed a call that was not
+        # approved by Guardian (possible TOCTOU or message injection).
+        approved_snapshot: dict[str, str] = {}  # call_id → tool_id
+
         # Phase 3: track which calls were approved vs sandboxed
         approved_tc_ids: set[str] = set()
         sandbox_messages: list[ToolMessage] = []
@@ -627,6 +652,8 @@ class SecureToolNode:
             # All checks passed — mark as approved
             sequence_so_far = sequence_so_far + [tool_id]
             approved_tc_ids.add(tc_id)
+            # Phase 6: record in TOCTOU snapshot
+            approved_snapshot[tc_id] = tool_id
 
         # Persist updated sequence to state
         result["sequence_so_far"] = sequence_so_far
@@ -665,12 +692,57 @@ class SecureToolNode:
             inner_result = await self._inner.ainvoke(exec_state)
         result.update(inner_result)
 
+        # Phase 6: TOCTOU verification — check that inner ToolNode only produced
+        # ToolMessages for call_ids that were approved in our snapshot. Any
+        # unexpected call_id means the inner node executed a call we did not vet.
+        if approved_snapshot:
+            for msg in result.get("messages", []):
+                if not isinstance(msg, ToolMessage):
+                    continue
+                tc_id = getattr(msg, "tool_call_id", None)
+                if (
+                    tc_id
+                    and tc_id not in approved_tc_ids
+                    and tc_id
+                    not in {
+                        m.tool_call_id
+                        for m in sandbox_messages
+                        if hasattr(m, "tool_call_id")
+                    }
+                ):
+                    logger.error(
+                        f"[SecureToolNode] TOCTOU violation: ToolMessage with "
+                        f"tool_call_id={tc_id!r} was not in approved snapshot. Halting."
+                    )
+                    try:
+                        from src.database import log_threat_event
+
+                        await log_threat_event(
+                            agent_id=state.get(
+                                "agent_id", state.get("run_id", "unknown")
+                            ),
+                            run_id=state.get("run_id", "unknown"),
+                            threat_type="CAPABILITY_VIOLATION",
+                            confidence=1.0,
+                            raw_input=f"Unexpected tool_call_id: {tc_id}",
+                            action_taken="BLOCKED",
+                            metadata={
+                                "approved_snapshot": approved_snapshot,
+                                "unexpected_call_id": tc_id,
+                            },
+                        )
+                    except Exception:
+                        pass
+                    return {"force_end": True, "loop_detected": False}
+
         # Append sandbox ToolMessages after real tool results
         if sandbox_messages:
             result["messages"] = list(result.get("messages", [])) + sandbox_messages
 
         # 6. Sanitize tool output before it enters agent context
         # Only sanitize inner results — sandbox messages are system-generated
+        # Phase 6: emit TOOL_RESULT_INJECTION threat event when injection detected;
+        # optionally halt if settings.security.halt_on_tool_result_injection = True.
         if "messages" in result:
             sanitized_msgs = []
             for msg in result["messages"]:
@@ -682,8 +754,47 @@ class SecureToolNode:
                     clean_content, meta = sanitize_output(msg.content)
                     if meta.get("injection_detected"):
                         logger.warning(
-                            "[SecureToolNode] Injection pattern in tool output — sanitized."
+                            "[SecureToolNode] Injection pattern in tool output — sanitized. "
+                            "Logging TOOL_RESULT_INJECTION threat event."
                         )
+                        _tool_id_for_msg = getattr(msg, "name", "unknown_tool")
+                        try:
+                            from src.database import log_threat_event
+
+                            await log_threat_event(
+                                agent_id=state.get(
+                                    "agent_id", state.get("run_id", "unknown")
+                                ),
+                                run_id=state.get("run_id", "unknown"),
+                                threat_type="TOOL_RESULT_INJECTION",
+                                confidence=0.9,
+                                raw_input=msg.content[:500],
+                                action_taken="LOGGED",
+                                metadata={
+                                    "tool_id": _tool_id_for_msg,
+                                    "patterns": meta.get("patterns", []),
+                                    "sanitized": True,
+                                },
+                            )
+                        except Exception as _db_err:
+                            logger.debug(
+                                f"[SecureToolNode] Could not log TOOL_RESULT_INJECTION: {_db_err}"
+                            )
+
+                        # Optional halt (non-breaking default: False)
+                        if getattr(
+                            settings.security, "halt_on_tool_result_injection", False
+                        ):
+                            logger.error(
+                                "[SecureToolNode] Halting run due to injection in tool result "
+                                "(halt_on_tool_result_injection=True)"
+                            )
+                            return {
+                                **state,
+                                "force_end": True,
+                                "result": "Halted: injection detected in tool result",
+                            }
+
                     try:
                         msg = msg.model_copy(update={"content": clean_content})
                     except AttributeError:

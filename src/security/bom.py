@@ -148,6 +148,19 @@ _KNOWN_AGENTS = [
         "phase_introduced": "Phase 4",
         "role": "security_analyst",
     },
+    # Phase 5 — Crystallization pipeline
+    {
+        "name": "observer",
+        "module": "src.agents.observer",
+        "phase_introduced": "Phase 5",
+        "role": "crystallization_observer",
+    },
+    {
+        "name": "crystallizer",
+        "module": "src.agents.crystallizer",
+        "phase_introduced": "Phase 5",
+        "role": "crystallizer",
+    },
 ]
 
 

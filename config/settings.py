@@ -143,6 +143,8 @@ class ModelEntry(BaseModel):
     estimated_size_gb: float
     use_cases: list[str]
     quantization: Optional[str] = None
+    # Phase 6: SHA256 of the GGUF file for integrity verification. Empty = skip.
+    gguf_sha256: str = ""
 
 
 class CloudModel(BaseModel):
@@ -208,7 +210,7 @@ class KeychainNames(BaseModel):
 
 
 class SecurityConfig(BaseModel):
-    secret_backend: Literal["keychain", "env_var", "vault"]
+    secret_backend: Literal["keychain", "env_var", "vault", "file"]
     keychain_service_names: KeychainNames
     prompt_injection_guard: bool
     tool_permission_enforcement: bool
@@ -223,6 +225,32 @@ class SecurityConfig(BaseModel):
     task_token_secret_service: str = "legionforge_task_tokens"
     task_token_issuer: str = "legionforge"
     task_token_ttl_seconds: int = 3600
+    # Phase 5: Ed25519 tool manifest signing
+    tool_signing_enabled: bool = True
+    signing_key_service: str = "legionforge_tool_signer"
+    # Phase 5.5: Credential store hardening
+    # Whether to purge API keys from os.environ after loading into CredentialStore.
+    # WARNING: Setting true breaks LangChain/LangSmith (they require env vars).
+    # Only enable if using a fully store-aware LLM client.
+    purge_env_after_load: bool = False
+    # Set false to disable all macOS Keychain access (Docker/CI environments).
+    keychain_access_allowed: bool = True
+    # Enable sandbox-exec OS-level sandboxing for analyzer subprocess (macOS only).
+    sandbox_exec_enabled: bool = True
+    # Require Bearer auth on Guardian /check and /rules endpoints.
+    # Set to true in production; leave false for local dev / smoke tests.
+    guardian_require_auth: bool = False
+    # Path to file-backend credentials YAML (empty = use default ~/.config/legionforge/credentials.yaml).
+    credentials_file_path: str = ""
+    # Phase 6: Database RBAC — restricted runtime user (no DDL, no DELETE on audit tables).
+    db_app_user: str = "legionforge_app"
+    db_app_password_service: str = "legionforge_db_app"
+    # Phase 6: Tool result injection — emit threat event and optionally halt the run.
+    halt_on_tool_result_injection: bool = False
+    # Phase 6: Analyzer Docker container (deny-default sandbox). Falls back to sandbox-exec.
+    analyzer_container_enabled: bool = True
+    # Phase 6: Model integrity — verify SHA256 of GGUF files at startup.
+    model_integrity_strict: bool = False
 
 
 class HardwareSettings(BaseModel):

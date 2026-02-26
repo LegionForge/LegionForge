@@ -41,6 +41,14 @@ roles:
     data_classes:
       - internal
 
+  # Phase 5: Crystallizer — reads nominations, writes packages
+  crystallizer:
+    tools:
+      - read_crystallization_candidate
+      - submit_crystallization_package
+    data_classes:
+      - internal
+
   security_analyst:
     tools:
       - threat_events_read

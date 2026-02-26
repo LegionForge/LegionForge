@@ -35,6 +35,9 @@ python-dotenv~=1.0
 # ── JWT / Task Tokens (Phase 3) ───────────────────────────────
 PyJWT~=2.8
 
+# ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
+cryptography~=42.0               # Ed25519; also transitive via PyJWT
+
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
 aiolimiter~=1.1                  # Async rate limiter for API calls

@@ -99,6 +99,7 @@ models:
       - writing
       - analysis
     quantization: "q4_K_M"
+    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
 
   router:
     provider: "ollama"
@@ -109,6 +110,7 @@ models:
       - classification
       - supervisor
     quantization: "q4_K_M"
+    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
 
   embeddings:
     provider: "ollama"
@@ -118,6 +120,7 @@ models:
       - embeddings
       - rag
       - semantic_search
+    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
 
   cloud_fallback:
     # Used when local model is insufficient for the task
@@ -174,3 +177,21 @@ security:
   task_token_secret_service: "legionforge_task_tokens"
   task_token_issuer: "legionforge"
   task_token_ttl_seconds: 3600
+  # Phase 5: Ed25519 tool manifest signing
+  tool_signing_enabled: true
+  signing_key_service: "legionforge_tool_signer"
+  # Phase 5.5: Credential store hardening
+  purge_env_after_load: false      # true only if LLM client is store-aware
+  keychain_access_allowed: true    # set false in Docker / Linux CI
+  sandbox_exec_enabled: true       # macOS sandbox-exec for analyzer subprocess
+  guardian_require_auth: false     # set true in production
+  credentials_file_path: ""        # empty = ~/.config/legionforge/credentials.yaml
+  # Phase 6: DB RBAC
+  db_app_user: "legionforge_app"
+  db_app_password_service: "legionforge_db_app"
+  # Phase 6: Tool result injection halt
+  halt_on_tool_result_injection: false
+  # Phase 6: Analyzer Docker container (deny-default); falls back to sandbox-exec
+  analyzer_container_enabled: true
+  # Phase 6: Model integrity strict mode (raise on SHA256 mismatch)
+  model_integrity_strict: false

@@ -1,0 +1,51 @@
+# Dockerfile.analyzer
+# ─────────────────────
+# Deny-default sandbox container for the Pre-HITL Crystallization Analyzer.
+#
+# Unlike macOS sandbox-exec (allow-default + targeted deny), Docker containers
+# are deny-default by design: no network, no writable filesystem, no new
+# privileges unless explicitly granted.
+#
+# Build:
+#   make build-analyzer
+#   # or: docker build -f Dockerfile.analyzer -t legionforge-analyzer:latest .
+#
+# Runtime flags (applied by _build_container_cmd in crystallization_analyzer.py):
+#   --network none          — no network access
+#   --read-only             — filesystem is read-only
+#   --tmpfs /tmp:size=10m   — only /tmp writable, 10MB limit
+#   --memory 128m           — OOM kill at 128MB (GGUF functions must be lightweight)
+#   --cpus 0.5              — half a CPU core max
+#   --security-opt no-new-privileges — no setuid/setgid escalation
+#   --pids-limit 20         — prevents fork bombs
+#   --user analyzer         — runs as non-root
+#
+# The container has NO access to:
+#   - The host filesystem (read-only mount)
+#   - The network (--network none)
+#   - The macOS Keychain (not in the container)
+#   - Any LegionForge source code or credentials
+
+FROM python:3.11-slim
+
+# Create non-root system user to run the analyzer
+RUN groupadd --system analyzer \
+    && useradd --system --gid analyzer --no-create-home --shell /usr/sbin/nologin analyzer
+
+# Minimal working directory — nothing else is mounted at runtime
+WORKDIR /sandbox
+
+# Install only the pure-Python stdlib dependencies needed by crystallized functions.
+# Do NOT install psycopg, langchain, httpx, or any framework dependency.
+# Crystallized functions are pure computation — they must be self-contained.
+COPY requirements.analyzer.txt /tmp/requirements.analyzer.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.analyzer.txt \
+    && rm /tmp/requirements.analyzer.txt
+
+# Drop to non-root before the entrypoint
+USER analyzer
+
+# ENTRYPOINT receives: ["runner_script_code", "json_input_args"]
+# Matches the invocation in _run_test_in_subprocess:
+#   [sys.executable, "-c", runner, json.dumps(test_input)]
+ENTRYPOINT ["python", "-c"]

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -39,7 +40,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -76,7 +77,8 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-# ── In-memory caches (refreshed from DB every 60 seconds) ─────────────────────
+# ── In-memory caches (refreshed from DB every 10 seconds) ─────────────────────
+# TTL reduced from 60s → 10s in Phase 6 to propagate tool revocations faster.
 
 # tool_id → {"description_hash": str, "schema_hash": str}
 _approved_tools: dict[str, dict[str, str]] = {}
@@ -86,12 +88,75 @@ _agent_sequences: dict[str, list[list[str]]] = {}
 
 # Phase 4: approved adaptive rules from threat_rules table.
 # list of dicts: {"rule_id": str, "rule_type": str, "rule_def": dict, ...}
-# Refreshed every 5 minutes (same TTL as other caches).
+# Refreshed every 10 seconds (same TTL as other caches).
 # Applied in _check_6_adaptive_rules() — AFTER all static checks.
 _adaptive_rules: list[dict] = []
 
+# Phase 6: set of REVOKED tool_ids — checked BEFORE approval registry.
+# Revoked tools halt immediately even if they were previously APPROVED.
+_revoked_tools: set[str] = set()
+
 _cache_last_refreshed: float = 0.0
-_CACHE_TTL_SECONDS: float = 60.0
+_CACHE_TTL_SECONDS: float = (
+    10.0  # Phase 6: reduced from 60s for faster revocation propagation
+)
+
+# ── Bearer auth configuration ─────────────────────────────────────────────────
+# When GUARDIAN_REQUIRE_AUTH=true, /check and /rules require:
+#   Authorization: Bearer <TASK_TOKEN_SECRET>
+#
+# The token is loaded once at import time from the environment. In Docker,
+# TASK_TOKEN_SECRET is injected via docker-compose.yml environment section.
+# /health is always unauthenticated (required for Docker healthcheck).
+#
+# Default: false (backward compatible). Set to "true" in production.
+
+_GUARDIAN_AUTH_TOKEN: str = os.environ.get("TASK_TOKEN_SECRET", "")
+_GUARDIAN_REQUIRE_AUTH: bool = (
+    os.environ.get("GUARDIAN_REQUIRE_AUTH", "false").lower() == "true"
+)
+
+
+def _check_bearer_auth(request: Request) -> bool:
+    """
+    Verify the Authorization: Bearer header against TASK_TOKEN_SECRET.
+
+    Returns True if:
+      - GUARDIAN_REQUIRE_AUTH is false (auth disabled — backward compat), OR
+      - TASK_TOKEN_SECRET is empty (not configured — fail-open with a warning), OR
+      - The provided token matches TASK_TOKEN_SECRET via constant-time compare.
+
+    Returns False if auth is required and the token is missing or wrong.
+    Uses hmac.compare_digest for constant-time comparison to prevent
+    timing-based token enumeration attacks.
+    """
+    if not _GUARDIAN_REQUIRE_AUTH:
+        return True  # Auth not required
+
+    if not _GUARDIAN_AUTH_TOKEN:
+        logger.warning(
+            "[guardian] GUARDIAN_REQUIRE_AUTH=true but TASK_TOKEN_SECRET is empty — "
+            "allowing request (configure TASK_TOKEN_SECRET to enforce auth)"
+        )
+        return True
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return False
+
+    provided_token = auth_header[len("Bearer ") :]
+    return hmac.compare_digest(
+        provided_token.encode("utf-8"),
+        _GUARDIAN_AUTH_TOKEN.encode("utf-8"),
+    )
+
+
+def _unauthorized(detail: str = "Unauthorized") -> JSONResponse:
+    """Return a 401 response for failed auth checks."""
+    return JSONResponse(
+        {"detail": detail, "error": "unauthorized"},
+        status_code=401,
+    )
 
 
 def _guardian_db_conninfo() -> tuple[str, str]:
@@ -111,14 +176,14 @@ def _guardian_db_conninfo() -> tuple[str, str]:
 
 async def _refresh_caches() -> None:
     """
-    Load approved tools, agent sequences, and adaptive threat rules from DB.
+    Load approved tools, revoked tools, agent sequences, and adaptive threat rules from DB.
     Called on startup and periodically by the background refresh task.
     Non-fatal if DB is unavailable — caches retain their last known values.
 
     Uses its own direct psycopg3 connection — does NOT depend on src.database
     so the container can stay minimal (no LangGraph, no pgvector, etc.).
     """
-    global _approved_tools, _agent_sequences, _adaptive_rules, _cache_last_refreshed
+    global _approved_tools, _agent_sequences, _adaptive_rules, _revoked_tools, _cache_last_refreshed
 
     try:
         import psycopg
@@ -132,6 +197,11 @@ async def _refresh_caches() -> None:
                 "SELECT tool_id, description_hash, schema_hash FROM tool_registry WHERE status = 'APPROVED'"
             )
             tool_rows = await cur_t.fetchall()
+            # Phase 6: load REVOKED tool_ids for immediate halt-on-invocation
+            cur_rev = await conn.execute(
+                "SELECT tool_id FROM tool_registry WHERE status = 'REVOKED'"
+            )
+            revoked_rows = await cur_rev.fetchall()
             cur_s = await conn.execute(
                 "SELECT agent_id, sequence FROM agent_profiles ORDER BY agent_id, registered_at"
             )
@@ -155,6 +225,8 @@ async def _refresh_caches() -> None:
                 "schema_hash": row["schema_hash"],
             }
 
+        new_revoked: set[str] = {row["tool_id"] for row in revoked_rows}
+
         new_seqs: dict[str, list[list[str]]] = {}
         for row in seq_rows:
             aid = row["agent_id"]
@@ -173,12 +245,14 @@ async def _refresh_caches() -> None:
             )
 
         _approved_tools = new_tools
+        _revoked_tools = new_revoked
         _agent_sequences = new_seqs
         _adaptive_rules = new_rules
         _cache_last_refreshed = time.monotonic()
 
         logger.info(
             f"[guardian] Cache refreshed: {len(_approved_tools)} tools, "
+            f"{len(_revoked_tools)} revoked, "
             f"{sum(len(v) for v in _agent_sequences.values())} sequences, "
             f"{len(_adaptive_rules)} adaptive rules"
         )
@@ -272,7 +346,22 @@ def _check_0_task_token(
 
 
 def _check_1_tool_registry(tool_id: str) -> GuardianCheckResponse | None:
-    """Check 1: Is the tool registered and approved?"""
+    """
+    Check 1: Is the tool registered and approved? Is it revoked?
+
+    Phase 6: Revocation is checked FIRST — a revoked tool halts even if it was
+    previously APPROVED. Revocation propagates within _CACHE_TTL_SECONDS (10s).
+    """
+    # Phase 6: revocation takes priority over approval
+    if tool_id in _revoked_tools:
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason=f"Tool '{tool_id}' has been REVOKED and is no longer permitted",
+            threat_type="TOOL_REVOKED",
+            confidence=1.0,
+        )
+
     if tool_id not in _approved_tools:
         return GuardianCheckResponse(
             allowed=False,
@@ -488,11 +577,14 @@ async def health() -> JSONResponse:
 
 
 @app.get("/rules")
-async def rules() -> JSONResponse:
+async def rules(http_request: Request) -> JSONResponse:
     """
     Read-only view of approved tools, sequences, and adaptive rules.
     Useful for debugging and audit.
+    Requires Bearer auth when GUARDIAN_REQUIRE_AUTH=true.
     """
+    if not _check_bearer_auth(http_request):
+        return _unauthorized("Bearer token required for /rules")
     await _maybe_refresh_caches()
     return JSONResponse(
         {
@@ -508,11 +600,23 @@ async def rules() -> JSONResponse:
 
 
 @app.post("/check", response_model=GuardianCheckResponse)
-async def check(request: GuardianCheckRequest) -> GuardianCheckResponse:
+async def check(
+    request: GuardianCheckRequest, http_request: Request
+) -> GuardianCheckResponse:
     """
     Synchronous enforcement endpoint — hot path.
     Seven checks in order (Phase 4: +check_6 adaptive rules), fail-fast. NO LLM calls.
+    Requires Bearer auth when GUARDIAN_REQUIRE_AUTH=true.
     """
+    if not _check_bearer_auth(http_request):
+        # Fail-safe: auth failure → halt (never fail-open on the security hot path)
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason="Guardian auth required — missing or invalid Bearer token",
+            threat_type="GUARDIAN_AUTH_FAILURE",
+            confidence=1.0,
+        )
     await _maybe_refresh_caches()
 
     # 0. Task token ACL (Phase 3) — validate JWT signature + tool scope

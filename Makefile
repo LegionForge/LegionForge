@@ -49,6 +49,10 @@ help:
 	@echo "  make verify-tool-registry — verify all registered tools are APPROVED"
 	@echo "  make verify-model-integrity — hash-check Ollama model manifests"
 	@echo "  make audit-log-verify — verify audit log hash chain integrity"
+	@echo "  make setup-db-roles  — create legionforge_app PostgreSQL role + grants (Phase 6)"
+	@echo "  make verify-models   — compute SHA256 of GGUF files for hash pinning (Phase 6)"
+	@echo "  make build-analyzer  — build legionforge-analyzer:latest Docker image (Phase 6)"
+	@echo "  make revoke-tool     — revoke a tool: make revoke-tool TOOL_ID=<id> (Phase 6)"
 	@echo "  make guardian-start — start Guardian container"
 	@echo "  make guardian-stop  — stop Guardian container"
 	@echo "  make guardian-logs  — tail Guardian container logs"
@@ -430,18 +434,238 @@ pending-rules:
 	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/rules | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing."
 
+# ── Phase 5: Ed25519 signing key setup ───────────────────────
+.PHONY: setup-signing-key
+setup-signing-key:
+	@echo "Generating Ed25519 signing keypair..."
+	@cd $(BASE) && $(PYTHON) -c "\
+from src.tools.signing import generate_signing_keypair; \
+import subprocess, hashlib; \
+priv, pub = generate_signing_keypair(); \
+result = subprocess.run(['security', 'add-generic-password', \
+    '-s', 'legionforge_tool_signer', '-a', 'api_key', '-w', priv, '-U'], \
+    capture_output=True); \
+if result.returncode == 0: \
+    fp = hashlib.sha256(bytes.fromhex(pub)).hexdigest()[:16]; \
+    print('✅ Signing key stored in Keychain (service=legionforge_tool_signer)'); \
+    print(f'   Public key fingerprint: {fp}'); \
+    print(f'   Public key (full hex):  {pub}'); \
+else: \
+    print('❌ Could not store key in Keychain:', result.stderr.decode()); \
+    print('   Store manually: security add-generic-password -s legionforge_tool_signer -a api_key -w <hex> -U')"
+
+# ── Phase 5: Observer agent ───────────────────────────────────
+.PHONY: register-observer-tools
+register-observer-tools:
+	@echo "Registering observer agent tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.observer import register_observer_tools; \
+asyncio.run(register_observer_tools()); \
+print('✅ Observer tools registered')"
+
+.PHONY: register-observer-sequences
+register-observer-sequences:
+	@echo "Registering observer agent expected sequences..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, register_agent_sequences; \
+from src.agents.observer import OBSERVER_EXPECTED_SEQUENCES; \
+async def run(): \
+    await init_db(); \
+    await register_agent_sequences('observer', OBSERVER_EXPECTED_SEQUENCES); \
+    print(f'✅ Registered {len(OBSERVER_EXPECTED_SEQUENCES)} sequences for observer agent'); \
+asyncio.run(run())"
+
+# Usage: make run-observer
+#        make run-observer OBSERVER_HOURS=72 OBSERVER_MIN_OCC=3
+OBSERVER_HOURS ?= 168
+OBSERVER_MIN_OCC ?= 3
+.PHONY: run-observer
+run-observer:
+	@echo "Running Observer agent (window=$(OBSERVER_HOURS)h, min_occ=$(OBSERVER_MIN_OCC))..."
+	@cd $(BASE) && OBSERVER_HOURS=$(OBSERVER_HOURS) OBSERVER_MIN_OCC=$(OBSERVER_MIN_OCC) \
+		$(PYTHON) scripts/run_observer.py
+
+# ── Phase 5: Crystallizer agent ──────────────────────────────
+.PHONY: register-crystallizer-tools
+register-crystallizer-tools:
+	@echo "Registering crystallizer agent tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.agents.crystallizer import register_crystallizer_tools; \
+asyncio.run(register_crystallizer_tools()); \
+print('✅ Crystallizer tools registered')"
+
+.PHONY: register-crystallizer-sequences
+register-crystallizer-sequences:
+	@echo "Registering crystallizer agent expected sequences..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, register_agent_sequences; \
+from src.agents.crystallizer import CRYSTALLIZER_EXPECTED_SEQUENCES; \
+async def run(): \
+    await init_db(); \
+    await register_agent_sequences('crystallizer', CRYSTALLIZER_EXPECTED_SEQUENCES); \
+    print(f'✅ Registered {len(CRYSTALLIZER_EXPECTED_SEQUENCES)} sequences for crystallizer agent'); \
+asyncio.run(run())"
+
+# Usage: make run-crystallizer CANDIDATE_ID=cand_abc123def456
+CANDIDATE_ID ?=
+.PHONY: run-crystallizer
+run-crystallizer:
+	@if [ -z "$(CANDIDATE_ID)" ]; then \
+		echo "❌ CANDIDATE_ID is required: make run-crystallizer CANDIDATE_ID=<id>"; \
+		exit 1; \
+	fi
+	@echo "Running Crystallizer agent for candidate $(CANDIDATE_ID)..."
+	@cd $(BASE) && CANDIDATE_ID=$(CANDIDATE_ID) $(PYTHON) scripts/run_crystallizer.py
+
+# ── Phase 5: Crystallization review ──────────────────────────
+.PHONY: pending-packages
+pending-packages:
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -H "Authorization: Bearer $$TOKEN" \
+		http://localhost:8765/crystallization/candidates | python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
+
+# Usage: make approve-package PACKAGE_ID=pkg_abc123
+PACKAGE_ID ?=
+.PHONY: approve-package
+approve-package:
+	@if [ -z "$(PACKAGE_ID)" ]; then \
+		echo "❌ PACKAGE_ID is required: make approve-package PACKAGE_ID=<id>"; \
+		exit 1; \
+	fi
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
+		http://localhost:8765/crystallization/candidates/$(PACKAGE_ID)/approve \
+		| python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing."
+
+# Usage: make reject-package PACKAGE_ID=pkg_abc123
+.PHONY: reject-package
+reject-package:
+	@if [ -z "$(PACKAGE_ID)" ]; then \
+		echo "❌ PACKAGE_ID is required: make reject-package PACKAGE_ID=<id>"; \
+		exit 1; \
+	fi
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
+		-H "Content-Type: application/json" \
+		-d '{"reason": "Rejected via make reject-package"}' \
+		http://localhost:8765/crystallization/candidates/$(PACKAGE_ID)/reject \
+		| python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing."
+
+# ── Phase 5.5: Security hardening ────────────────────────────
+# Create a credentials file template at ~/.config/legionforge/credentials.yaml
+# The file is chmod 0600 immediately. Fill in the values with real secrets.
+.PHONY: init-credentials-file
+init-credentials-file:
+	@mkdir -p ~/.config/legionforge
+	@if [ -f ~/.config/legionforge/credentials.yaml ]; then \
+		echo "⚠️  Credentials file already exists — not overwriting."; \
+		echo "    Location: ~/.config/legionforge/credentials.yaml"; \
+	else \
+		printf '# LegionForge credentials file\n# chmod 0600 required — world-readable files are rejected\n#\nopenai: ""\nanthropic: ""\nlangsmith: ""\npostgres: ""\nlegionforge_health: ""\nlegionforge_task_tokens: ""\nlegionforge_tool_signer: ""\n' \
+			> ~/.config/legionforge/credentials.yaml; \
+		chmod 0600 ~/.config/legionforge/credentials.yaml; \
+		echo "✅ Created ~/.config/legionforge/credentials.yaml (chmod 0600)"; \
+		echo "   Edit the file and fill in your credentials."; \
+	fi
+
+# Show CredentialStore status (which services are loaded)
+.PHONY: credential-store-status
+credential-store-status:
+	@cd $(BASE) && $(PYTHON) -c "\
+from config.settings import settings; \
+from src.credentials import creds; \
+creds.initialize(settings.security); \
+import json; \
+print(json.dumps(creds.status(), indent=2))"
+
+# ── Phase 6: Security hardening ───────────────────────────────
+# Two-phase DB init must already have run (make db-init).
+# This target is idempotent — safe to re-run; roles/grants are CREATE IF NOT EXISTS.
+.PHONY: setup-db-roles
+setup-db-roles:
+	@echo "🔐 Setting up legionforge_app PostgreSQL role + grants..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio, psycopg; \
+from src.database import _get_or_generate_app_password, _setup_db_roles; \
+from config.settings import settings; \
+async def run(): \
+    pwd = _get_or_generate_app_password(); \
+    dsn = f'postgresql://{settings.database.user}:{settings.database.password}@{settings.database.host}:{settings.database.port}/{settings.database.name}'; \
+    async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn: \
+        await _setup_db_roles(conn); \
+    print('✅ legionforge_app role + grants configured'); \
+asyncio.run(run())"
+
+# Compute SHA256 hashes for all configured GGUF model files.
+# Run this after downloading models to get the hash values for pinning in
+# config/hardware_profiles/mac_m4_mini_16gb.yaml under each model's gguf_sha256 field.
+.PHONY: verify-models
+verify-models:
+	@echo "🔒 Computing SHA256 hashes for installed GGUF models..."
+	@echo "   (This may take 30-120 seconds for large GGUF files)"
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.tools.model_integrity import compute_model_hashes; \
+from config.settings import settings; \
+async def run(): \
+    hashes = await compute_model_hashes(settings); \
+    print(); \
+    print('Pin these values in config/hardware_profiles/mac_m4_mini_16gb.yaml:'); \
+    for model_id, h in hashes.items(): \
+        if h: print(f'  {model_id}: {h}'); \
+        else: print(f'  {model_id}: NOT FOUND'); \
+asyncio.run(run())"
+
+# Build the deny-default analyzer container image.
+# Must be run before the Docker-backed analyzer sandbox is available.
+# Requires Docker Desktop to be running.
+.PHONY: build-analyzer
+build-analyzer:
+	@echo "🐳 Building legionforge-analyzer:latest container..."
+	@cd $(BASE) && docker build -f Dockerfile.analyzer -t legionforge-analyzer:latest .
+	@echo "✅ legionforge-analyzer:latest built"
+	@echo "   The crystallization analyzer will now prefer the Docker sandbox over sandbox-exec."
+
+# Revoke a registered tool immediately via the health server API.
+# Usage: make revoke-tool TOOL_ID=<tool_id> [REASON="optional reason"]
+# The Guardian cache refreshes within 10 seconds of revocation.
+.PHONY: revoke-tool
+revoke-tool:
+	@test -n "$(TOOL_ID)" || (echo "❌ Usage: make revoke-tool TOOL_ID=<tool_id>"; exit 1)
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	REASON=$${REASON:-"Revoked via make revoke-tool"}; \
+	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"reason\": \"$$REASON\"}" \
+		http://localhost:8765/tools/$(TOOL_ID)/revoke \
+		| python3 -m json.tool 2>/dev/null \
+		|| echo "⚠️  Health server not running or token missing."
+
 # ── Agent sequence registration ───────────────────────────────
 .PHONY: register-agent-sequences
 register-agent-sequences:
-	@echo "Registering Researcher agent expected sequences..."
+	@echo "Registering all agent expected sequences..."
 	@cd $(BASE) && $(PYTHON) -c "\
 import asyncio; \
 from src.database import init_db, register_agent_sequences; \
 from src.agents.researcher import RESEARCHER_EXPECTED_SEQUENCES; \
+from src.agents.observer import OBSERVER_EXPECTED_SEQUENCES; \
+from src.agents.crystallizer import CRYSTALLIZER_EXPECTED_SEQUENCES; \
 async def run(): \
     await init_db(); \
     await register_agent_sequences('researcher', RESEARCHER_EXPECTED_SEQUENCES); \
-    print(f'✅ Registered {len(RESEARCHER_EXPECTED_SEQUENCES)} sequences for researcher agent'); \
+    print(f'✅ researcher: {len(RESEARCHER_EXPECTED_SEQUENCES)} sequences'); \
+    await register_agent_sequences('observer', OBSERVER_EXPECTED_SEQUENCES); \
+    print(f'✅ observer:   {len(OBSERVER_EXPECTED_SEQUENCES)} sequences'); \
+    await register_agent_sequences('crystallizer', CRYSTALLIZER_EXPECTED_SEQUENCES); \
+    print(f'✅ crystallizer: {len(CRYSTALLIZER_EXPECTED_SEQUENCES)} sequences'); \
 asyncio.run(run())"
 
 # ── Git ───────────────────────────────────────────────────────

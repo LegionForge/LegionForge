@@ -1,0 +1,13 @@
+# requirements.analyzer.txt
+# ─────────────────────────
+# Minimal dependencies for the deny-default analyzer sandbox container.
+# Only pure-Python, computation-safe packages are allowed here.
+# No network clients, no database drivers, no LLM frameworks.
+
+# Standard scientific / data packages that crystallized functions may use
+numpy>=1.26,<3
+pandas>=2.0,<3
+scipy>=1.12,<2
+
+# JSON / data manipulation (usually stdlib, but some functions use these)
+# Note: stdlib json, math, hashlib, etc. are pre-installed in python:3.11-slim

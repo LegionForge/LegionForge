@@ -72,3 +72,17 @@ services:
     profiles:
       - build-only
     # No ports, no restart — this is a build target, not a running service
+
+  # Phase 6: analyzer — deny-default sandbox for AI-generated function testing.
+  # Build-only profile: docker-compose --profile build-only build analyzer
+  # The image is invoked on-demand by _build_container_cmd() in crystallization_analyzer.py.
+  # It is NOT started as a persistent service — each test case runs a fresh container.
+  analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.analyzer
+    image: legionforge-analyzer:latest
+    profiles:
+      - build-only
+    # No ports, no restart — invoked per test case by _run_test_in_subprocess()
+    # Security: --network none, --read-only, --memory 128m applied at invocation time

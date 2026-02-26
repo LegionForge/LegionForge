@@ -1,6 +1,6 @@
 # LegionForge
 
-**Version:** 4.0.0 · **Updated:** 2026-02-25 · **Status:** Phases 0–4 complete — ready for functional testing
+**Version:** 5.0.0 · **Updated:** 2026-02-25 · **Status:** Phases 0–5 complete — crystallization pipeline operational
 
 ---
 
@@ -23,10 +23,10 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 2 — Containerization + Guardian | ✅ Complete | Docker stack, Guardian sidecar, immutable audit log, sequence contracts |
 | 3 — ACLs + Sub-Agents | ✅ Complete | JWT task tokens, role definitions, orchestrator + sub-agent architecture |
 | 4 — Adaptive Threat Intelligence | ✅ Complete | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials |
-| 5 — Crystallization Pipeline | ⬜ Next | Observer + Crystallizer agents, signed deterministic tools |
+| 5 — Crystallization Pipeline | ✅ Complete | Observer + Crystallizer agents, Pre-HITL analysis, Ed25519-signed tools |
 | 6 — PentestAgent | ⬜ Planned | Air-gapped red-team bot, continuous security regression |
 
-**117/117 smoke tests passing. System is ready for end-to-end functional testing.**
+**143/143 smoke tests passing. Full crystallization pipeline operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -204,7 +204,7 @@ curl http://localhost:9766/health
 ### Step 9 — Verify Everything
 
 ```bash
-# Run all 117 smoke tests (no external services required — runs in ~1s)
+# Run all 143 smoke tests (no external services required — runs in ~1s)
 make test-smoke
 
 # Run the full system check (drive, venv, Keychain, Ollama, Guardian)
@@ -213,7 +213,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-117 passed in 0.74s
+143 passed in 1.52s
 ```
 
 ---
@@ -249,7 +249,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 117 smoke tests, ~1s, no services required
+make test-smoke            # 143 smoke tests, ~1s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -267,6 +267,14 @@ make guardian-logs         # Tail Guardian logs
 make run-threat-analyst    # Run Threat Analyst agent (7-day threat window)
 make security-audit        # Smoke tests + bandit static analysis
 make audit-log-verify      # Verify audit log hash chain integrity
+
+# Phase 5 — Crystallization pipeline
+make setup-signing-key     # Generate Ed25519 keypair + store in Keychain (one-time)
+make run-observer          # Scan audit_log for crystallization candidates
+make run-crystallizer CANDIDATE_ID=<id>  # Generate deterministic function for a candidate
+make pending-packages      # List packages awaiting human review
+make approve-package PACKAGE_ID=<id>    # Sign + register crystallized tool
+make reject-package PACKAGE_ID=<id>     # Reject a package with reason
 ```
 
 ---
@@ -285,8 +293,8 @@ make audit-log-verify      # Verify audit log hash chain integrity
 **Ollama models not found**
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
-**`make test-smoke` shows fewer than 117 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 4 (commit referencing 117 smoke tests).
+**`make test-smoke` shows fewer than 143 tests**
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 5 (commit referencing 143 smoke tests).
 
 ---
 
@@ -348,7 +356,7 @@ LegionForge/
 │   └── requirements.txt           # fastapi, uvicorn, psycopg — NO LLM clients
 │
 ├── tests/
-│   ├── test_smoke.py              # 117 tests, no services required, ~1s
+│   ├── test_smoke.py              # 143 tests, no services required, ~2s
 │   └── conftest.py
 │
 ├── scripts/

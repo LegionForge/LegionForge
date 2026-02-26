@@ -1,0 +1,120 @@
+;;
+;; config/sandbox_profiles/analyzer.sb
+;; ─────────────────────────────────────
+;; macOS TrustedBSD seatbelt profile for the Pre-HITL Crystallization Analyzer.
+;;
+;; This profile is applied to the subprocess that executes AI-generated Python
+;; functions during test case evaluation. It uses an "allow-default, deny-
+;; dangerous" strategy: normal Python stdlib operations proceed unhindered, but
+;; all network access, Keychain access, secret env reads, and writes to the
+;; LegionForge project directory are denied.
+;;
+;; Why "allow-default" and not "deny-default"?
+;;   Python requires extensive dylib loads, locale data reads, and system
+;;   framework lookups at startup. A deny-default profile requires enumerating
+;;   hundreds of legitimate paths and Mach service names — and any missed entry
+;;   silently kills the subprocess instead of reporting a test failure.
+;;   "Allow default" + targeted denials is more reliable and produces clear
+;;   error messages for actual violations.
+;;
+;; Usage:
+;;   sandbox-exec -f config/sandbox_profiles/analyzer.sb \
+;;       python -c "<runner_script>" "<json_input>"
+;;
+;; macOS seatbelt reference:
+;;   https://www.karltarvas.com/macos-app-sandboxing-via-sandbox-exec.html
+;;   man sandbox-exec  /  man 7 sandbox
+;;
+
+(version 1)
+
+;; Start permissive — then deny the dangerous categories
+(allow default)
+
+;; ── Network: fully denied ────────────────────────────────────────────────────
+;; Crystallized functions are pure — they must not phone home,
+;; exfiltrate data, or connect to any external service.
+(deny network-outbound)
+(deny network-inbound)
+(deny network-bind)
+
+;; ── Mach services: block Keychain and security-sensitive services ─────────────
+;; These Mach names provide access to macOS Keychain, security framework,
+;; CoreCrypto key material, and identity services. Blocking them ensures
+;; the sandboxed process cannot read stored credentials even if the generated
+;; code attempts to call security APIs.
+(deny mach-lookup
+    (global-name "com.apple.securityd")
+    (global-name "com.apple.SecurityServer")
+    (global-name "com.apple.keychain-daemon")
+    (global-name "com.apple.ocspd")
+    (global-name "com.apple.trustd")
+    (global-name "com.apple.ctkd")
+    (global-name "com.apple.CoreAuthentication.daemon")
+    (global-name "com.apple.identityservicesd")
+    (global-name "com.apple.lsd.mapdb")
+    (global-name "com.apple.tccd")
+    (global-name "com.apple.tccd.system")
+)
+
+;; ── File writes: block writes to project and home credential locations ─────────
+;; The generated function must not write to the LegionForge project directory,
+;; the user's credential store, shell config files, or cron/launchd locations
+;; that could achieve persistence.
+
+;; Block writes to the LegionForge project tree
+(deny file-write*
+    (subpath "/Volumes/MAC_MINI_1TB/LegionForge"))
+
+;; Block writes to home credential and config files
+(deny file-write*
+    (home-subpath "/.config/legionforge")
+    (home-subpath "/.ssh")
+    (home-subpath "/.gnupg")
+    (home-subpath "/.aws")
+    (home-subpath "/.kube")
+    (home-subpath "/.netrc")
+    (home-subpath "/.bashrc")
+    (home-subpath "/.zshrc")
+    (home-subpath "/.profile")
+    (home-subpath "/.bash_profile")
+    (home-subpath "/Library/Keychains")
+    (home-subpath "/Library/Preferences/com.apple.security.plist")
+    (home-subpath "/Library/LaunchAgents")
+)
+
+;; Block writes to system persistence locations
+(deny file-write*
+    (subpath "/Library/LaunchDaemons")
+    (subpath "/Library/LaunchAgents")
+    (subpath "/etc/cron.d")
+    (subpath "/var/spool/cron")
+)
+
+;; ── Privileged process execution: block dangerous binaries ────────────────────
+;; Prevent the sandboxed process from spawning shells, privilege escalation
+;; tools, or the macOS security CLI (which would bypass Keychain denial above).
+(deny process-exec
+    (literal "/bin/sh")
+    (literal "/bin/bash")
+    (literal "/bin/zsh")
+    (literal "/bin/dash")
+    (literal "/usr/bin/env")
+    (literal "/usr/bin/security")
+    (literal "/usr/bin/sudo")
+    (literal "/usr/bin/su")
+    (literal "/sbin/pfctl")
+    (literal "/usr/sbin/networksetup")
+    (literal "/usr/bin/osascript")
+    (literal "/usr/bin/python")
+    (literal "/usr/bin/python3")
+    (literal "/usr/local/bin/python3")
+)
+
+;; ── Signals: prevent kill signals to processes outside our subtree ─────────────
+;; Stops the sandboxed process from sending SIGKILL/SIGTERM to the parent
+;; agent process or other system processes.
+(deny signal (target others))
+
+;; ── IPC: block XPC connections to privileged services ─────────────────────────
+(deny ipc-posix-shm-write-data)

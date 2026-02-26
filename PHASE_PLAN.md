@@ -1,9 +1,9 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 4.0.0
+**Version:** 5.0.0
 **Last updated:** 2026-02-25
-**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete | Phase 4 ✅ Complete
+**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete | Phase 4 ✅ Complete | Phase 5 ✅ Complete
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -40,7 +40,7 @@ Phase 1  ✅  First Agent + Security Foundations → DONE
 Phase 2  ✅  Containerization + Guardian        → DONE
 Phase 3  ✅  ACLs + Task Tokens + Sub-Agents    → DONE
 Phase 4  ✅  Adaptive Security                  → DONE    (weeks 11–14)
-Phase 5  ⬜  Crystallization Pipeline           → NEXT    (weeks 15–19)
+Phase 5  ✅  Crystallization Pipeline           → DONE    (weeks 15–19)
 Phase 6  ⬜  Red Team + Pentest Bot             → (weeks 20+)
 ```
 
@@ -369,7 +369,7 @@ Rather than implicit tool-call blocking, Phase 4 adds an explicit structured out
 **Duration:** ~4 weeks
 **Dependencies:** Phase 3 complete; meaningful data in `threat_events`
 **Exit criteria:** Threat Analyst produces weekly digest; proposed rules go through human approval gate; Guardian applies approved rules without restart.
-**Completed:** 2026-02-25 — 117/117 smoke tests passing
+**Completed:** 2026-02-25 — 143/143 smoke tests passing
 
 ### Component 4.1 — Threat Analyst Agent ✅
 **File:** `src/agents/threat_analyst.py`
@@ -399,13 +399,26 @@ Tracks every model, tool, agent, and Python dependency with version, origin, SHA
 
 ---
 
-## Phase 5 — Crystallization Pipeline
+## Phase 5 — Crystallization Pipeline ✅ COMPLETE
 
 **Goal:** Systematically identify agent behaviors that don't need AI, generate deterministic replacements, analyze them rigorously before human review, sign and containerize them, and register them in the tool library. This phase converts learned AI behavior into durable, zero-LLM, auditable infrastructure.
 
 **Duration:** ~5 weeks
 **Dependencies:** Phase 4 complete (Threat Analyst validates new tool entries; Guardian enforces signing; meaningful call history exists in `audit_log` for the Observer to analyze)
 **Exit criteria:** At least one crystallized tool in production; full pipeline from observation through analysis through HITL approval through signed deployment is operational and documented.
+
+**Completed:** 2026-02-25 — 143/143 smoke tests passing.
+
+Implemented components:
+- `src/agents/observer.py` — LangGraph Observer agent (read-only, nominates candidates)
+- `src/agents/crystallizer.py` — LangGraph Crystallizer agent (generates deterministic functions + test suites)
+- `src/tools/crystallization_analyzer.py` — Deterministic Pre-HITL Analyzer (AST + security + subprocess test execution)
+- `src/tools/signing.py` — Ed25519 key management + manifest signing/verification
+- `src/health.py` — 5 crystallization review endpoints (list/detail/approve/reject/revise)
+- `src/database.py` — 3 new tables + 11 CRUD functions + tool_registry signature columns
+- `config/roles.yaml` — `crystallizer` role
+- `scripts/run_observer.py`, `scripts/run_crystallizer.py`
+- Makefile: `setup-signing-key`, `run-observer`, `run-crystallizer`, `pending-packages`, `approve-package`, `reject-package`
 
 ---
 

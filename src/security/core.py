@@ -69,19 +69,37 @@ _KEY_ENV_FALLBACKS = {
 
 def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> str:
     """
-    Retrieve an API key from macOS Keychain, falling back to environment
-    variables. Raises RuntimeError if the key cannot be found.
+    Retrieve an API key by service name.
 
-    Retries the Keychain lookup up to _retries times with a short delay
-    between attempts — the Keychain can be transiently unavailable at
-    shell startup or right after login.
+    Priority order:
+      1. CredentialStore in-memory cache (if initialized — zero Keychain calls)
+      2. macOS Keychain via keyring library (with timeout)
+      3. macOS security CLI (handles code-signing restriction edge cases)
+      4. Environment variable fallback
+
+    Raises RuntimeError if the key cannot be found anywhere.
 
     Usage:
         key = get_api_key("anthropic")
     """
-    # Try Keychain first, with retries for transient unavailability
-    # (_keyring is None when running in a Linux container — fall through to env vars)
-    # Only retry on exceptions (transient Keychain unavailability at shell startup).
+    # ── 1. CredentialStore fast path (after initialization) ──────────────────
+    # After creds.initialize() has been called, all secrets are in-memory.
+    # This path never touches the Keychain, CLI, or environment — no popups,
+    # no subprocess spawns, no timing attacks via secret lookup timing.
+    try:
+        from src.credentials import creds as _creds
+
+        if _creds._initialized:
+            value = _creds.get(service)
+            if value:
+                return value
+            # Service not in store — fall through to legacy path so callers
+            # requesting one-off services not in the default map still work.
+    except ImportError:
+        pass  # credentials module not yet available (bootstrap phase)
+
+    # ── 2. Keychain via keyring library ──────────────────────────────────────
+    # Only retry on exceptions (transient Keychain unavailability at startup).
     # If the lookup returns None (key absent or timeout), retrying won't help.
     key = None
     for attempt in range(_retries):
@@ -94,10 +112,10 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
     if key:
         return key
 
-    # Try macOS security CLI fallback — handles cases where the Python
-    # keyring library is blocked by code-signing restrictions.
-    # timeout=5: prevent indefinite hang when Keychain triggers an auth dialog
-    # (e.g., when running inside a sandboxed process like Claude Code).
+    # ── 3. macOS security CLI fallback ───────────────────────────────────────
+    # Handles cases where the Python keyring library is blocked by
+    # code-signing restrictions (e.g., inside a sandboxed process).
+    # timeout=5: prevent indefinite hang when Keychain triggers an auth dialog.
     try:
         result = subprocess.run(
             ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
@@ -110,13 +128,13 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
     except Exception:
         pass
 
-    # Try environment variable fallback
+    # ── 4. Environment variable fallback ─────────────────────────────────────
     env_var = _KEY_ENV_FALLBACKS.get(service, f"{service.upper()}_API_KEY")
     key = os.environ.get(env_var)
     if key:
         logger.warning(
             f"API key for '{service}' loaded from environment variable "
-            f"'{env_var}'. Prefer storing in macOS Keychain."
+            f"'{env_var}'. Prefer storing in macOS Keychain or CredentialStore."
         )
         return key
 
@@ -137,9 +155,11 @@ def get_api_key_optional(service: str) -> str | None:
 
 def load_all_keys_to_env() -> None:
     """
-    Load all available API keys from Keychain into environment variables
-    so downstream libraries (LangChain, LangSmith) can find them.
-    Call once at startup.
+    Load all available API keys into environment variables so downstream
+    libraries (LangChain, LangSmith) can find them. Call once at startup.
+
+    If CredentialStore is initialized, reads from the in-memory cache.
+    Otherwise falls back to the legacy Keychain / env-var path.
     """
     mappings = {
         "openai": "OPENAI_API_KEY",
@@ -155,7 +175,9 @@ def load_all_keys_to_env() -> None:
                 loaded.append(service)
 
     if loaded:
-        logger.info(f"Loaded API keys from Keychain: {', '.join(loaded)}")
+        logger.info(
+            f"Loaded API keys from Keychain/CredentialStore: {', '.join(loaded)}"
+        )
 
 
 # ── Prompt Injection Detection ────────────────────────────────────────────────
@@ -501,6 +523,37 @@ async def register_tool(
             f"[tool-registry] DB persist failed for '{manifest.tool_id}': {e} "
             "— registered in memory only."
         )
+
+    # Phase 5: Ed25519-sign the manifest and store in tool_registry.
+    # Non-fatal — signing unavailability is expected before setup-signing-key runs.
+    try:
+        from config.settings import settings as _settings
+
+        if _settings.security.tool_signing_enabled:
+            from src.tools.signing import sign_tool_manifest, get_public_key_fingerprint
+            from src.database import store_tool_signature
+
+            sig = sign_tool_manifest(
+                tool_id=manifest.tool_id,
+                description=manifest.description,
+                input_schema=manifest.input_schema,
+                declared_side_effects=manifest.declared_side_effects,
+                version=manifest.version,
+            )
+            fingerprint = get_public_key_fingerprint()
+            await store_tool_signature(manifest.tool_id, sig, fingerprint)
+            logger.debug(
+                f"[tool-registry] Manifest signed for '{manifest.tool_id}' "
+                f"fingerprint={fingerprint!r}"
+            )
+    except RuntimeError:
+        logger.debug(
+            f"[tool-registry] Signing key not configured — "
+            f"'{manifest.tool_id}' registered without signature. "
+            "Run: make setup-signing-key"
+        )
+    except Exception as e:
+        logger.warning(f"[tool-registry] Signing failed for '{manifest.tool_id}': {e}")
 
 
 async def verify_tool_before_invocation(tool_id: str) -> bool:

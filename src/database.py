@@ -18,11 +18,15 @@ import hashlib
 import json
 import os
 import logging
+import secrets
+import string
+import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 import psycopg
+from psycopg import sql as pgsql
 from psycopg_pool import AsyncConnectionPool
 from psycopg.rows import dict_row
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -37,16 +41,34 @@ logger = logging.getLogger(__name__)
 
 def _get_postgres_password() -> str:
     """
-    Return the PostgreSQL password from the environment.
-    Raises RuntimeError if not set. Warns if loaded from env var instead of Keychain.
+    Return the PostgreSQL password.
+
+    Priority order:
+      1. CredentialStore in-memory cache (if initialized — no env access)
+      2. POSTGRES_PASSWORD environment variable (legacy / Docker)
+
+    Raises RuntimeError if not set anywhere.
     Never embed this value in a connection URI — pass as a keyword argument only.
     """
+    # ── CredentialStore fast path ──────────────────────────────────────────
+    try:
+        from src.credentials import creds as _creds
+
+        if _creds._initialized:
+            pw = _creds.get("postgres")
+            if pw:
+                return pw
+    except ImportError:
+        pass
+
+    # ── Environment variable fallback ─────────────────────────────────────
     password = os.environ.get("POSTGRES_PASSWORD", "")
     if not password:
         raise RuntimeError(
             "POSTGRES_PASSWORD not set. Store it with:\n"
             "  python -m keyring set postgres api_key\n"
-            "Then source ~/.zshrc so POSTGRES_PASSWORD is loaded at startup."
+            "Or: export POSTGRES_PASSWORD=<value>\n"
+            "Or: initialize CredentialStore before calling init_db()."
         )
     return password
 
@@ -70,6 +92,225 @@ def _build_conninfo_no_password() -> str:
     return f"host={host} port={port} dbname={db} user={user}"
 
 
+def _build_app_user_conninfo() -> str:
+    """
+    Build a PostgreSQL conninfo string for the restricted legionforge_app user.
+    This user has no DDL, no DELETE on audit/threat tables — used for all
+    runtime agent operations after Phase 1 schema setup is complete.
+    """
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
+    user = getattr(settings.security, "db_app_user", "legionforge_app")
+    return f"host={host} port={port} dbname={db} user={user}"
+
+
+def _get_or_generate_app_password() -> str:
+    """
+    Get the legionforge_app DB user password from CredentialStore / env,
+    or generate a fresh one and store it in the macOS Keychain.
+
+    Priority:
+      1. CredentialStore in-memory cache (service "legionforge_db_app")
+      2. POSTGRES_APP_PASSWORD environment variable
+      3. Generate a random 32-char password, store in Keychain, log once
+
+    The generated password is stored via the macOS `security` CLI (same
+    pattern as _load_or_create_health_token in health.py). On non-macOS
+    or if the CLI fails, the password is printed once to stderr — store it
+    manually in your credentials YAML or Keychain.
+    """
+    service = getattr(
+        settings.security, "db_app_password_service", "legionforge_db_app"
+    )
+
+    # 1. CredentialStore (only if initialized)
+    try:
+        from src.credentials import creds as _creds
+
+        if _creds._initialized:
+            pw = _creds.get(service)
+            if pw:
+                return pw
+    except ImportError:
+        pass
+
+    # 2. Environment variable
+    pw = os.environ.get("POSTGRES_APP_PASSWORD", "")
+    if pw:
+        return pw
+
+    # 3. Generate and persist
+    _safe = string.ascii_letters + string.digits + "_-+="
+    pw = "".join(secrets.choice(_safe) for _ in range(32))
+
+    # Try to store in macOS Keychain
+    try:
+        result = subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-s",
+                service,
+                "-a",
+                "api_key",
+                "-w",
+                pw,
+                "-U",  # Update if exists
+            ],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            logger.info(
+                f"[db-rbac] Generated legionforge_app password and stored in Keychain "
+                f"(service={service!r}). Retrieve with: make setup-db-roles"
+            )
+        else:
+            logger.warning(
+                f"[db-rbac] Generated legionforge_app password but could not store in Keychain: "
+                f"{result.stderr.decode(errors='replace').strip()}\n"
+                f"  Store manually: security add-generic-password -s {service} -a api_key -w '<pw>' -U"
+            )
+    except Exception as exc:
+        logger.warning(
+            f"[db-rbac] Generated legionforge_app password but could not store in Keychain: {exc}\n"
+            f"  Store manually: security add-generic-password -s {service} -a api_key -w '<pw>' -U"
+        )
+
+    return pw
+
+
+async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
+    """
+    Create the legionforge_app restricted PostgreSQL user and grant minimal privileges.
+
+    Idempotent — safe to run on every startup. Runs as the admin (jpc) user.
+
+    Privilege model:
+      - CONNECT on database legionforge
+      - SELECT on ALL tables (read access for agents)
+      - INSERT only on audit_log and threat_events (append-only audit trail)
+      - INSERT + UPDATE on mutable app tables (no DELETE, no DDL)
+      - Full CRUD on LangGraph checkpoint tables (required by LangGraph internals)
+      - USAGE on all sequences (for BIGSERIAL PKs)
+    """
+    app_user = getattr(settings.security, "db_app_user", "legionforge_app")
+    app_pw = _get_or_generate_app_password()
+    db_name = os.environ.get("POSTGRES_DB", "legionforge")
+
+    # Create user if not exists (idempotent via DO block)
+    # We use psycopg sql module to safely format identifiers and literals.
+    await admin_conn.execute(
+        pgsql.SQL(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = {user}) THEN
+                    CREATE USER {user_id} WITH LOGIN NOINHERIT;
+                END IF;
+            END
+            $$;
+            """
+        ).format(
+            user=pgsql.Literal(app_user),
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    # Always update the password (idempotent, ensures rotation works)
+    await admin_conn.execute(
+        pgsql.SQL("ALTER USER {user_id} WITH PASSWORD {pw}").format(
+            user_id=pgsql.Identifier(app_user),
+            pw=pgsql.Literal(app_pw),
+        )
+    )
+
+    # CONNECT on the database
+    await admin_conn.execute(
+        pgsql.SQL("GRANT CONNECT ON DATABASE {db} TO {user_id}").format(
+            db=pgsql.Identifier(db_name),
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    # USAGE on schema
+    await admin_conn.execute(
+        pgsql.SQL("GRANT USAGE ON SCHEMA public TO {user_id}").format(
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    # SELECT on all tables
+    await admin_conn.execute(
+        pgsql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {user_id}").format(
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    # Append-only audit tables — INSERT only, no UPDATE/DELETE
+    await admin_conn.execute(
+        pgsql.SQL("GRANT INSERT ON audit_log, threat_events TO {user_id}").format(
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    # Mutable app tables — INSERT + UPDATE, no DELETE, no DDL
+    for tbl in [
+        "api_usage",
+        "health_metrics",
+        "documents",
+        "crystallization_candidates",
+        "crystallization_packages",
+        "crystallization_analyses",
+        "threat_rules",
+        "agent_profiles",
+        "tool_registry",
+    ]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT INSERT, UPDATE ON {tbl} TO {user_id}").format(
+                    tbl=pgsql.Identifier(tbl),
+                    user_id=pgsql.Identifier(app_user),
+                )
+            )
+        except Exception as e:
+            # Table might not exist yet on very first run — non-fatal
+            logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
+
+    # LangGraph checkpoint tables — full CRUD required by LangGraph internals
+    for tbl in [
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+    ]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL(
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO {user_id}"
+                ).format(
+                    tbl=pgsql.Identifier(tbl),
+                    user_id=pgsql.Identifier(app_user),
+                )
+            )
+        except Exception as e:
+            logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
+
+    # USAGE on all sequences (for BIGSERIAL primary keys)
+    await admin_conn.execute(
+        pgsql.SQL("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {user_id}").format(
+            user_id=pgsql.Identifier(app_user),
+        )
+    )
+
+    logger.info(
+        f"[db-rbac] Role setup complete for '{app_user}': "
+        "SELECT all, INSERT on audit/threat, INSERT+UPDATE on app tables, "
+        "full CRUD on checkpoint tables"
+    )
+
+
 # ── Connection pool (module-level singleton) ──────────────────────────────────
 
 _pool: Optional[AsyncConnectionPool] = None
@@ -77,38 +318,113 @@ _pool: Optional[AsyncConnectionPool] = None
 
 async def init_db() -> None:
     """
-    Initialize the connection pool and set up required extensions/tables.
-    Call once at application startup before any agent runs.
+    Two-phase database initialization with privilege separation.
+
+    Phase 1 (admin):  Create extensions, LangGraph checkpoint tables, app tables,
+                      and the restricted legionforge_app role via _setup_db_roles().
+    Phase 2 (app):    Initialize _pool with the restricted legionforge_app user —
+                      no DDL, no DELETE on audit tables, no superuser privileges.
+
+    This ensures all runtime agent operations run under the least-privilege DB user.
+    Admin credentials are only held during startup schema setup, then discarded.
     """
     global _pool
 
-    conninfo = _build_conninfo_no_password()
-    password = _get_postgres_password()
+    # ── Initialize CredentialStore before first secret access ──────────────
+    # This loads all credentials into memory once. After this point, no code
+    # path in the framework needs to access the Keychain or spawn the
+    # `security` CLI subprocess.
+    try:
+        from src.credentials import creds as _creds
 
-    logger.info("Initializing PostgreSQL connection pool...")
-    _pool = AsyncConnectionPool(
-        conninfo=conninfo,
+        if not _creds._initialized:
+            _creds.initialize(settings.security)
+    except ImportError:
+        logger.debug("CredentialStore not available — using legacy key access")
+    except Exception as exc:
+        logger.warning(f"CredentialStore initialization failed: {exc} — continuing")
+
+    # ── Phase 1: Admin pool — schema creation + role setup ─────────────────
+    admin_conninfo = _build_conninfo_no_password()
+    admin_password = _get_postgres_password()
+
+    logger.info("[db-init] Phase 1: Admin pool — creating schema and roles...")
+    admin_pool = AsyncConnectionPool(
+        conninfo=admin_conninfo,
         min_size=1,
-        max_size=10,
-        kwargs={"password": password, "row_factory": dict_row, "autocommit": True},
+        max_size=3,  # Small — only used during startup
+        kwargs={
+            "password": admin_password,
+            "row_factory": dict_row,
+            "autocommit": True,
+        },
     )
-    await _pool.wait()
+    try:
+        await admin_pool.wait()
 
-    # Enable pgvector and create LangGraph checkpoint tables
-    async with _pool.connection() as conn:
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")  # fuzzy text
-        await register_vector_async(conn)
-        logger.info("PostgreSQL extensions verified (vector, pg_trgm)")
+        # Enable pgvector extension (requires superuser)
+        async with admin_pool.connection() as conn:
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            await register_vector_async(conn)
+            logger.info("[db-init] Extensions verified (vector, pg_trgm)")
 
-    # Set up LangGraph checkpoint tables
-    async with get_checkpointer() as checkpointer:
-        await checkpointer.setup()
-        logger.info("LangGraph checkpoint tables verified")
+        # Set up LangGraph checkpoint tables (requires admin / DDL rights)
+        admin_checkpointer = AsyncPostgresSaver(admin_pool)
+        await admin_checkpointer.setup()
+        logger.info("[db-init] LangGraph checkpoint tables verified")
 
-    # Set up application tables
-    async with _pool.connection() as conn:
-        await _create_app_tables(conn)
+        # Create application tables
+        async with admin_pool.connection() as conn:
+            await _create_app_tables(conn)
+
+        # Create restricted app role + grant minimal privileges (idempotent)
+        async with admin_pool.connection() as conn:
+            await _setup_db_roles(conn)
+
+    finally:
+        await admin_pool.close()
+        logger.info("[db-init] Phase 1 complete — admin pool closed")
+
+    # ── Phase 2: Restricted app pool ────────────────────────────────────────
+    # From this point on, ALL database access uses the legionforge_app user:
+    # no DDL, no DELETE on audit/threat tables, no superuser privileges.
+    logger.info("[db-init] Phase 2: Initializing restricted app user pool...")
+    try:
+        app_conninfo = _build_app_user_conninfo()
+        app_password = _get_or_generate_app_password()
+        _pool = AsyncConnectionPool(
+            conninfo=app_conninfo,
+            min_size=1,
+            max_size=10,
+            kwargs={
+                "password": app_password,
+                "row_factory": dict_row,
+                "autocommit": True,
+            },
+        )
+        await _pool.wait()
+        logger.info(
+            f"[db-init] App pool initialized (user={getattr(settings.security, 'db_app_user', 'legionforge_app')!r})"
+        )
+    except Exception as pool_err:
+        # If app user pool fails (e.g., legionforge_app doesn't exist on this DB),
+        # fall back to the admin pool for backward compatibility.
+        logger.warning(
+            f"[db-init] Could not connect as restricted app user: {pool_err}. "
+            "Falling back to admin user — run 'make setup-db-roles' to create the role."
+        )
+        _pool = AsyncConnectionPool(
+            conninfo=admin_conninfo,
+            min_size=1,
+            max_size=10,
+            kwargs={
+                "password": admin_password,
+                "row_factory": dict_row,
+                "autocommit": True,
+            },
+        )
+        await _pool.wait()
 
     # Verify audit log chain integrity (warn-only — empty chain on first run is valid)
     chain_ok, verified_rows, error_msg = await verify_audit_log_chain()
@@ -360,6 +676,131 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS threat_rules_status_idx ON threat_rules (status, proposed_at DESC)"
     )
 
+    # Phase 5: Crystallization pipeline — Observer → Crystallizer → Pre-HITL Analyzer → HITL.
+    # Converts repeated AI tool calls into signed, deterministic artifacts.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS crystallization_candidates (
+            id                    BIGSERIAL PRIMARY KEY,
+            candidate_id          TEXT UNIQUE NOT NULL,
+            operation_name        TEXT NOT NULL,
+            observed_count        INTEGER NOT NULL DEFAULT 0,
+            first_seen            TIMESTAMPTZ,
+            last_seen             TIMESTAMPTZ,
+            example_inputs        JSONB NOT NULL DEFAULT '[]',
+            example_outputs       JSONB NOT NULL DEFAULT '[]',
+            input_schema          JSONB NOT NULL DEFAULT '{}',
+            output_schema         JSONB NOT NULL DEFAULT '{}',
+            token_cost_total      INTEGER NOT NULL DEFAULT 0,
+            estimated_savings_pct FLOAT NOT NULL DEFAULT 0.0,
+            reasoning             TEXT,
+            disqualifying_factors JSONB NOT NULL DEFAULT '[]',
+            status                TEXT NOT NULL DEFAULT 'NOMINATED'
+                                      CHECK (status IN (
+                                          'NOMINATED', 'IN_PROGRESS',
+                                          'PACKAGED', 'REJECTED'
+                                      )),
+            nominated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            nominated_by          TEXT NOT NULL DEFAULT 'observer_agent'
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS cryst_candidates_status_idx "
+        "ON crystallization_candidates (status, nominated_at DESC)"
+    )
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS crystallization_packages (
+            id                    BIGSERIAL PRIMARY KEY,
+            package_id            TEXT UNIQUE NOT NULL,
+            candidate_id          TEXT REFERENCES crystallization_candidates(candidate_id),
+            tool_name             TEXT NOT NULL,
+            tool_description      TEXT,
+            function_code         TEXT NOT NULL,
+            function_signature    TEXT,
+            input_schema          JSONB NOT NULL DEFAULT '{}',
+            output_schema         JSONB NOT NULL DEFAULT '{}',
+            declared_side_effects JSONB NOT NULL DEFAULT '["pure"]',
+            test_cases            JSONB NOT NULL DEFAULT '[]',
+            edge_cases            JSONB NOT NULL DEFAULT '[]',
+            adversarial_cases     JSONB NOT NULL DEFAULT '[]',
+            confidence_score      FLOAT NOT NULL DEFAULT 0.0,
+            known_limitations     JSONB NOT NULL DEFAULT '[]',
+            suggested_fallback    TEXT,
+            status                TEXT NOT NULL DEFAULT 'PENDING_ANALYSIS'
+                                      CHECK (status IN (
+                                          'PENDING_ANALYSIS', 'READY_FOR_REVIEW',
+                                          'REJECTED_BY_ANALYSIS', 'APPROVED', 'REJECTED'
+                                      )),
+            revision_notes        TEXT,
+            created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS cryst_packages_status_idx "
+        "ON crystallization_packages (status, created_at DESC)"
+    )
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS crystallization_analyses (
+            id                       BIGSERIAL PRIMARY KEY,
+            package_id               TEXT NOT NULL REFERENCES crystallization_packages(package_id),
+            analyzed_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+            forbidden_constructs     JSONB NOT NULL DEFAULT '[]',
+            undeclared_dependencies  JSONB NOT NULL DEFAULT '[]',
+            undeclared_side_effects  JSONB NOT NULL DEFAULT '[]',
+            cyclomatic_complexity    INTEGER,
+            lines_of_code            INTEGER,
+            test_cases_passed        INTEGER NOT NULL DEFAULT 0,
+            test_cases_failed        INTEGER NOT NULL DEFAULT 0,
+            failed_case_diffs        JSONB NOT NULL DEFAULT '[]',
+            ai_equivalence_rate      FLOAT NOT NULL DEFAULT 0.0,
+            adversarial_exceptions   JSONB NOT NULL DEFAULT '[]',
+            security_clean           BOOLEAN NOT NULL DEFAULT FALSE,
+            security_findings        JSONB NOT NULL DEFAULT '[]',
+            recommendation           TEXT,
+            recommendation_reasoning TEXT,
+            estimated_daily_savings  INTEGER NOT NULL DEFAULT 0,
+            risk_flags               JSONB NOT NULL DEFAULT '[]',
+            status                   TEXT NOT NULL
+                                         CHECK (status IN (
+                                             'READY_FOR_REVIEW', 'REJECTED_BY_ANALYSIS'
+                                         ))
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS cryst_analyses_pkg_idx "
+        "ON crystallization_analyses (package_id, analyzed_at DESC)"
+    )
+
+    # Phase 5: extend tool_registry with Ed25519 signature columns (idempotent).
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS signature TEXT"
+    )
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS public_key_fingerprint TEXT"
+    )
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ"
+    )
+
+    # Phase 6: extend tool_registry with revocation columns (idempotent).
+    # Adds REVOKED status support — Guardian checks this cache and halts revoked tools.
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ"
+    )
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS revoked_by TEXT"
+    )
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS revocation_reason TEXT"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -550,6 +991,13 @@ THREAT_TYPES = {
     # Phase 4: adaptive threat intelligence
     "RULE_PROPOSED",  # Threat Analyst proposed a new detection rule (PENDING)
     "RULE_APPLIED",  # Guardian loaded an APPROVED rule into its hot-reload cache
+    # Phase 5: crystallization pipeline
+    "TOOL_SIGNATURE_MISMATCH",  # Ed25519 signature on a registered tool is invalid
+    "TOOL_CRYSTALLIZED",  # crystallized tool approved, signed, and registered
+    # Phase 6: comprehensive hardening
+    "TOOL_REVOKED",  # tool is in REVOKED status — Guardian halts the call
+    "TOOL_RESULT_INJECTION",  # injection pattern detected in a tool's return value
+    "MODEL_INTEGRITY_MISMATCH",  # GGUF file SHA256 does not match pinned hash
 }
 
 # Valid action_taken values
@@ -1144,3 +1592,541 @@ async def get_threat_events_for_analysis(
         }
         for r in rows
     ]
+
+
+# ── Phase 5: Crystallization pipeline CRUD ────────────────────────────────────
+
+
+# Candidate status values — enforced by CHECK constraint in the DB.
+CANDIDATE_STATUSES = {"NOMINATED", "IN_PROGRESS", "PACKAGED", "REJECTED"}
+
+# Package status values
+PACKAGE_STATUSES = {
+    "PENDING_ANALYSIS",
+    "READY_FOR_REVIEW",
+    "REJECTED_BY_ANALYSIS",
+    "APPROVED",
+    "REJECTED",
+}
+
+
+async def nominate_candidate(
+    candidate_id: str,
+    operation_name: str,
+    observed_count: int,
+    example_inputs: list,
+    example_outputs: list,
+    input_schema: dict,
+    output_schema: dict,
+    token_cost_total: int,
+    estimated_savings_pct: float,
+    reasoning: str,
+    disqualifying_factors: list,
+    nominated_by: str = "observer_agent",
+) -> str | None:
+    """
+    Write a crystallization candidate nominated by the Observer agent.
+    Idempotent — re-nominating the same candidate_id updates observed_count.
+
+    Returns:
+        candidate_id on success, None if DB unavailable.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO crystallization_candidates
+                    (candidate_id, operation_name, observed_count,
+                     example_inputs, example_outputs, input_schema, output_schema,
+                     token_cost_total, estimated_savings_pct,
+                     reasoning, disqualifying_factors, nominated_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (candidate_id) DO UPDATE
+                    SET observed_count        = EXCLUDED.observed_count,
+                        last_seen             = now(),
+                        reasoning             = EXCLUDED.reasoning,
+                        disqualifying_factors = EXCLUDED.disqualifying_factors
+                """,
+                (
+                    candidate_id,
+                    operation_name,
+                    observed_count,
+                    json.dumps(example_inputs),
+                    json.dumps(example_outputs),
+                    json.dumps(input_schema),
+                    json.dumps(output_schema),
+                    token_cost_total,
+                    estimated_savings_pct,
+                    reasoning,
+                    json.dumps(disqualifying_factors),
+                    nominated_by,
+                ),
+            )
+        logger.info(
+            f"[crystallization] Candidate nominated: {candidate_id!r} "
+            f"operation={operation_name!r} count={observed_count}"
+        )
+        return candidate_id
+    except Exception as e:
+        logger.warning(f"[crystallization] nominate_candidate failed: {e}")
+        return None
+
+
+async def get_pending_candidates(limit: int = 20) -> list[dict]:
+    """Return NOMINATED candidates, most recent first. Non-fatal."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT candidate_id, operation_name, observed_count, status,
+                       token_cost_total, estimated_savings_pct,
+                       reasoning, disqualifying_factors, nominated_at, nominated_by
+                FROM crystallization_candidates
+                WHERE status = 'NOMINATED'
+                ORDER BY nominated_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning(f"[crystallization] get_pending_candidates failed: {e}")
+        return []
+
+
+async def get_candidate(candidate_id: str) -> dict | None:
+    """Return full candidate record by ID. Non-fatal."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT * FROM crystallization_candidates WHERE candidate_id = %s",
+                (candidate_id,),
+            )
+            row = await cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"[crystallization] get_candidate failed: {e}")
+        return None
+
+
+async def create_package(
+    package_id: str,
+    candidate_id: str,
+    tool_name: str,
+    tool_description: str,
+    function_code: str,
+    function_signature: str,
+    input_schema: dict,
+    output_schema: dict,
+    declared_side_effects: list,
+    test_cases: list,
+    edge_cases: list,
+    adversarial_cases: list,
+    confidence_score: float,
+    known_limitations: list,
+    suggested_fallback: str,
+) -> str | None:
+    """
+    Write a crystallization package submitted by the Crystallizer agent.
+    Returns package_id on success, None if DB unavailable.
+    Also updates the candidate status to IN_PROGRESS.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            await conn.execute(
+                """
+                INSERT INTO crystallization_packages
+                    (package_id, candidate_id, tool_name, tool_description,
+                     function_code, function_signature, input_schema, output_schema,
+                     declared_side_effects, test_cases, edge_cases, adversarial_cases,
+                     confidence_score, known_limitations, suggested_fallback)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    package_id,
+                    candidate_id,
+                    tool_name,
+                    tool_description,
+                    function_code,
+                    function_signature,
+                    json.dumps(input_schema),
+                    json.dumps(output_schema),
+                    json.dumps(declared_side_effects),
+                    json.dumps(test_cases),
+                    json.dumps(edge_cases),
+                    json.dumps(adversarial_cases),
+                    confidence_score,
+                    json.dumps(known_limitations),
+                    suggested_fallback,
+                ),
+            )
+            # Mark candidate as in-progress
+            await conn.execute(
+                "UPDATE crystallization_candidates SET status = 'IN_PROGRESS' "
+                "WHERE candidate_id = %s AND status = 'NOMINATED'",
+                (candidate_id,),
+            )
+        logger.info(
+            f"[crystallization] Package created: {package_id!r} "
+            f"candidate={candidate_id!r} tool={tool_name!r}"
+        )
+        return package_id
+    except Exception as e:
+        logger.warning(f"[crystallization] create_package failed: {e}")
+        return None
+
+
+async def get_package(package_id: str) -> dict | None:
+    """Return full package record by ID. Non-fatal."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT * FROM crystallization_packages WHERE package_id = %s",
+                (package_id,),
+            )
+            row = await cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"[crystallization] get_package failed: {e}")
+        return None
+
+
+async def get_packages_ready_for_review() -> list[dict]:
+    """
+    Return packages at READY_FOR_REVIEW with their latest analysis.
+    Most recently analyzed first.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT p.*, a.recommendation, a.recommendation_reasoning,
+                       a.test_cases_passed, a.test_cases_failed,
+                       a.security_clean, a.security_findings,
+                       a.estimated_daily_savings, a.risk_flags,
+                       a.analyzed_at
+                FROM crystallization_packages p
+                LEFT JOIN crystallization_analyses a USING (package_id)
+                WHERE p.status = 'READY_FOR_REVIEW'
+                ORDER BY a.analyzed_at DESC NULLS LAST
+                """,
+            )
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning(f"[crystallization] get_packages_ready_for_review failed: {e}")
+        return []
+
+
+async def create_analysis(
+    package_id: str,
+    forbidden_constructs: list,
+    undeclared_dependencies: list,
+    undeclared_side_effects: list,
+    cyclomatic_complexity: int,
+    lines_of_code: int,
+    test_cases_passed: int,
+    test_cases_failed: int,
+    failed_case_diffs: list,
+    ai_equivalence_rate: float,
+    adversarial_exceptions: list,
+    security_clean: bool,
+    security_findings: list,
+    recommendation: str,
+    recommendation_reasoning: str,
+    estimated_daily_savings: int,
+    risk_flags: list,
+    status: str,  # 'READY_FOR_REVIEW' | 'REJECTED_BY_ANALYSIS'
+) -> int | None:
+    """
+    Persist a Pre-HITL analysis report and update package status atomically.
+    Returns analysis row id on success, None on failure.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                INSERT INTO crystallization_analyses
+                    (package_id, forbidden_constructs, undeclared_dependencies,
+                     undeclared_side_effects, cyclomatic_complexity, lines_of_code,
+                     test_cases_passed, test_cases_failed, failed_case_diffs,
+                     ai_equivalence_rate, adversarial_exceptions,
+                     security_clean, security_findings,
+                     recommendation, recommendation_reasoning,
+                     estimated_daily_savings, risk_flags, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    package_id,
+                    json.dumps(forbidden_constructs),
+                    json.dumps(undeclared_dependencies),
+                    json.dumps(undeclared_side_effects),
+                    cyclomatic_complexity,
+                    lines_of_code,
+                    test_cases_passed,
+                    test_cases_failed,
+                    json.dumps(failed_case_diffs),
+                    ai_equivalence_rate,
+                    json.dumps(adversarial_exceptions),
+                    security_clean,
+                    json.dumps(security_findings),
+                    recommendation,
+                    recommendation_reasoning,
+                    estimated_daily_savings,
+                    json.dumps(risk_flags),
+                    status,
+                ),
+            )
+            row = await cur.fetchone()
+            analysis_id = row["id"]
+            # Atomically update package status
+            await conn.execute(
+                "UPDATE crystallization_packages SET status = %s WHERE package_id = %s",
+                (status, package_id),
+            )
+        logger.info(
+            f"[crystallization] Analysis saved: pkg={package_id!r} "
+            f"status={status!r} rec={recommendation!r}"
+        )
+        return analysis_id
+    except Exception as e:
+        logger.warning(f"[crystallization] create_analysis failed: {e}")
+        return None
+
+
+async def get_analysis(package_id: str) -> dict | None:
+    """Return the most recent analysis report for a package. Non-fatal."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT * FROM crystallization_analyses WHERE package_id = %s "
+                "ORDER BY analyzed_at DESC LIMIT 1",
+                (package_id,),
+            )
+            row = await cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"[crystallization] get_analysis failed: {e}")
+        return None
+
+
+async def approve_package(package_id: str, approved_by: str) -> bool:
+    """
+    Approve a READY_FOR_REVIEW package. Operator-only action.
+    Returns True if the row was updated.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                UPDATE crystallization_packages
+                SET status = 'APPROVED'
+                WHERE package_id = %s AND status = 'READY_FOR_REVIEW'
+                """,
+                (package_id,),
+            )
+        updated = cur.statusmessage.split()[-1] != "0"
+        if updated:
+            logger.info(
+                f"[crystallization] Package approved: {package_id!r} by={approved_by!r}"
+            )
+        return updated
+    except Exception as e:
+        logger.warning(f"[crystallization] approve_package failed: {e}")
+        return False
+
+
+async def reject_package(package_id: str, rejected_by: str, reason: str = "") -> bool:
+    """Reject a package at any reviewable status. Returns True if updated."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                UPDATE crystallization_packages
+                SET status = 'REJECTED', revision_notes = %s
+                WHERE package_id = %s
+                  AND status IN ('READY_FOR_REVIEW', 'PENDING_ANALYSIS')
+                """,
+                (reason, package_id),
+            )
+        updated = cur.statusmessage.split()[-1] != "0"
+        if updated:
+            logger.info(
+                f"[crystallization] Package rejected: {package_id!r} by={rejected_by!r}"
+            )
+        return updated
+    except Exception as e:
+        logger.warning(f"[crystallization] reject_package failed: {e}")
+        return False
+
+
+async def revise_package(package_id: str, revision_notes: str) -> bool:
+    """
+    Send a READY_FOR_REVIEW package back for revision.
+    Resets status to PENDING_ANALYSIS so the analyzer runs again after re-submission.
+    Returns True if updated.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                UPDATE crystallization_packages
+                SET status = 'PENDING_ANALYSIS', revision_notes = %s
+                WHERE package_id = %s AND status = 'READY_FOR_REVIEW'
+                """,
+                (revision_notes, package_id),
+            )
+        updated = cur.statusmessage.split()[-1] != "0"
+        if updated:
+            logger.info(f"[crystallization] Package sent for revision: {package_id!r}")
+        return updated
+    except Exception as e:
+        logger.warning(f"[crystallization] revise_package failed: {e}")
+        return False
+
+
+async def store_tool_signature(
+    tool_id: str,
+    signature: str,
+    public_key_fingerprint: str,
+) -> bool:
+    """Store Ed25519 signature and public key fingerprint for a registered tool."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                UPDATE tool_registry
+                SET signature = %s, public_key_fingerprint = %s, signed_at = NOW()
+                WHERE tool_id = %s AND status = 'APPROVED'
+                """,
+                (signature, public_key_fingerprint, tool_id),
+            )
+        updated = cur.statusmessage.split()[-1] != "0"
+        if updated:
+            logger.info(f"[signing] Signature stored for tool_id={tool_id!r}")
+        return updated
+    except Exception as e:
+        logger.warning(f"[signing] store_tool_signature failed: {e}")
+        return False
+
+
+async def get_tool_registry_entry(tool_id: str) -> dict | None:
+    """Return tool_registry row including signature columns. Non-fatal."""
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT * FROM tool_registry WHERE tool_id = %s AND status = 'APPROVED'",
+                (tool_id,),
+            )
+            row = await cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"[crystallization] get_tool_registry_entry failed: {e}")
+        return None
+
+
+# ── Phase 6: Tool revocation ───────────────────────────────────────────────────
+
+
+async def revoke_tool(
+    tool_id: str,
+    revoked_by: str,
+    reason: str = "Revoked by operator",
+) -> bool:
+    """
+    Revoke a registered tool by setting its status to 'REVOKED'.
+
+    Immediately effective in the next Guardian cache refresh (TTL ≤ 10s).
+    The tool will be rejected at invocation time with threat_type='TOOL_REVOKED'.
+
+    Also appends a TOOL_REVOKED event to the audit log for the hash chain.
+
+    Args:
+        tool_id:    The tool_id to revoke (must exist in tool_registry).
+        revoked_by: Operator identifier (e.g., 'operator', 'ci', 'security_team').
+        reason:     Human-readable justification for the revocation.
+
+    Returns:
+        True if the tool was found and revoked; False if not found or DB error.
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                UPDATE tool_registry
+                SET status             = 'REVOKED',
+                    revoked_at         = NOW(),
+                    revoked_by         = %s,
+                    revocation_reason  = %s
+                WHERE tool_id = %s
+                  AND status != 'REVOKED'
+                """,
+                (revoked_by, reason, tool_id),
+            )
+            rows_affected = int(cur.statusmessage.split()[-1])
+
+        if rows_affected == 0:
+            logger.warning(
+                f"[revocation] Tool '{tool_id}' not found or already revoked — no-op"
+            )
+            return False
+
+        logger.info(
+            f"[revocation] Tool '{tool_id}' REVOKED by '{revoked_by}': {reason}"
+        )
+
+        # Append to audit log (non-fatal if fails)
+        try:
+            await append_audit_log(
+                event_type="TOOL_REVOKED",
+                agent_id=revoked_by,
+                payload={"tool_id": tool_id, "reason": reason},
+            )
+        except Exception as audit_err:
+            logger.warning(f"[revocation] Audit log append failed: {audit_err}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"[revocation] revoke_tool failed for '{tool_id}': {e}")
+        return False
+
+
+async def get_revoked_tools() -> list[str]:
+    """
+    Return the list of all REVOKED tool_ids.
+
+    Called by Guardian's cache refresh to populate _revoked_tools set.
+    Guardian checks this BEFORE the approval registry — revoked tools halt
+    even if they were previously APPROVED.
+
+    Returns:
+        List of revoked tool_id strings (empty if none or DB unavailable).
+    """
+    try:
+        pool = get_pool()
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT tool_id FROM tool_registry WHERE status = 'REVOKED'"
+            )
+            rows = await cur.fetchall()
+        return [row["tool_id"] for row in rows]
+    except Exception as e:
+        logger.warning(f"[revocation] get_revoked_tools failed: {e}")
+        return []

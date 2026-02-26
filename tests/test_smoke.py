@@ -1591,7 +1591,9 @@ def test_bom_assembles_without_db():
     report = asyncio.run(get_bom())
     assert isinstance(report, BOMReport)
     assert len(report.models) == 3, "Expected 3 configured Ollama models"
-    assert len(report.agents) == 4, "Expected 4 known agents"
+    assert (
+        len(report.agents) == 6
+    ), "Expected 6 known agents (base + researcher + orchestrator + threat_analyst + observer + crystallizer)"
     assert len(report.dependencies) > 0
     assert report.generated_at is not None
 
@@ -1855,3 +1857,941 @@ def test_guardian_health_endpoint_version_is_4():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json().get("version") == "4.0.0"
+
+
+# ── Phase 5: Crystallization DB ───────────────────────────────────────────────
+
+
+def test_crystallization_db_constants_exist():
+    """CANDIDATE_STATUSES and PACKAGE_STATUSES constants are defined with correct values."""
+    from src.database import CANDIDATE_STATUSES, PACKAGE_STATUSES
+
+    assert "NOMINATED" in CANDIDATE_STATUSES
+    assert "PACKAGED" in CANDIDATE_STATUSES
+    assert "REJECTED" in CANDIDATE_STATUSES
+    assert "PENDING_ANALYSIS" in PACKAGE_STATUSES
+    assert "READY_FOR_REVIEW" in PACKAGE_STATUSES
+    assert "APPROVED" in PACKAGE_STATUSES
+
+
+def test_crystallization_threat_types_extended():
+    """THREAT_TYPES includes Phase 5 event types TOOL_CRYSTALLIZED and TOOL_SIGNATURE_MISMATCH."""
+    from src.database import THREAT_TYPES
+
+    assert "TOOL_CRYSTALLIZED" in THREAT_TYPES
+    assert "TOOL_SIGNATURE_MISMATCH" in THREAT_TYPES
+
+
+def test_nominate_candidate_is_coroutine():
+    """nominate_candidate() is an async function."""
+    import inspect
+    from src.database import nominate_candidate
+
+    assert inspect.iscoroutinefunction(nominate_candidate)
+
+
+def test_approve_package_is_coroutine():
+    """approve_package() is an async function."""
+    import inspect
+    from src.database import approve_package
+
+    assert inspect.iscoroutinefunction(approve_package)
+
+
+def test_reject_package_is_coroutine():
+    """reject_package() is an async function."""
+    import inspect
+    from src.database import reject_package
+
+    assert inspect.iscoroutinefunction(reject_package)
+
+
+def test_revise_package_is_coroutine():
+    """revise_package() is an async function."""
+    import inspect
+    from src.database import revise_package
+
+    assert inspect.iscoroutinefunction(revise_package)
+
+
+# ── Phase 5: Observer Agent ───────────────────────────────────────────────────
+
+
+def test_observer_importable():
+    """src.agents.observer imports without error (no DB, no Ollama needed)."""
+    import src.agents.observer  # noqa: F401
+
+
+def test_observer_state_has_required_fields():
+    """ObserverState has Phase 5-specific fields for nomination tracking."""
+    from src.agents.observer import ObserverState
+
+    hints = ObserverState.__annotations__
+    assert "candidates_nominated" in hints
+    assert "analysis_window_hours" in hints
+
+
+def test_observer_has_two_tool_manifests():
+    """OBSERVER_TOOL_MANIFESTS declares exactly 2 tools."""
+    from src.agents.observer import OBSERVER_TOOL_MANIFESTS
+
+    assert len(OBSERVER_TOOL_MANIFESTS) == 2
+    tool_ids = [m.tool_id for m in OBSERVER_TOOL_MANIFESTS]
+    assert "read_tool_call_history" in tool_ids
+    assert "nominate_candidate" in tool_ids
+
+
+def test_observer_expected_sequences_valid():
+    """OBSERVER_EXPECTED_SEQUENCES is a non-empty list of lists of str."""
+    from src.agents.observer import OBSERVER_EXPECTED_SEQUENCES
+
+    assert len(OBSERVER_EXPECTED_SEQUENCES) >= 1
+    for seq in OBSERVER_EXPECTED_SEQUENCES:
+        assert isinstance(seq, list)
+        assert all(isinstance(s, str) for s in seq)
+
+
+def test_observer_run_function_is_coroutine():
+    """run_observer() is an async function."""
+    import inspect
+    from src.agents.observer import run_observer
+
+    assert inspect.iscoroutinefunction(run_observer)
+
+
+# ── Phase 5: Crystallizer Agent ───────────────────────────────────────────────
+
+
+def test_crystallizer_importable():
+    """src.agents.crystallizer imports without error (no DB, no Ollama needed)."""
+    import src.agents.crystallizer  # noqa: F401
+
+
+def test_crystallizer_state_has_required_fields():
+    """CrystallizerState has Phase 5-specific fields for package tracking."""
+    from src.agents.crystallizer import CrystallizerState
+
+    hints = CrystallizerState.__annotations__
+    assert "candidate_id" in hints
+    assert "packages_created" in hints
+
+
+def test_crystallizer_has_two_tool_manifests():
+    """CRYSTALLIZER_TOOL_MANIFESTS declares exactly 2 tools."""
+    from src.agents.crystallizer import CRYSTALLIZER_TOOL_MANIFESTS
+
+    assert len(CRYSTALLIZER_TOOL_MANIFESTS) == 2
+    tool_ids = [m.tool_id for m in CRYSTALLIZER_TOOL_MANIFESTS]
+    assert "read_crystallization_candidate" in tool_ids
+    assert "submit_crystallization_package" in tool_ids
+
+
+def test_crystallizer_expected_sequences_valid():
+    """CRYSTALLIZER_EXPECTED_SEQUENCES is a non-empty list of lists of str."""
+    from src.agents.crystallizer import CRYSTALLIZER_EXPECTED_SEQUENCES
+
+    assert len(CRYSTALLIZER_EXPECTED_SEQUENCES) >= 1
+    for seq in CRYSTALLIZER_EXPECTED_SEQUENCES:
+        assert isinstance(seq, list)
+        assert all(isinstance(s, str) for s in seq)
+
+
+def test_crystallizer_run_function_is_coroutine():
+    """run_crystallizer() is an async function."""
+    import inspect
+    from src.agents.crystallizer import run_crystallizer
+
+    assert inspect.iscoroutinefunction(run_crystallizer)
+
+
+# ── Phase 5: Pre-HITL Analyzer ────────────────────────────────────────────────
+
+
+def test_analyzer_importable():
+    """src.tools.crystallization_analyzer imports without error."""
+    import src.tools.crystallization_analyzer  # noqa: F401
+
+
+def test_analyzer_ast_analyze_clean_function():
+    """_ast_analyze reports no issues for a trivial pure function."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = "def add(a: int, b: int) -> int:\n    return a + b\n"
+    result = _ast_analyze(code)
+    assert result["forbidden_constructs"] == [], result["forbidden_constructs"]
+    assert result["undeclared_dependencies"] == [], result["undeclared_dependencies"]
+    assert result["cyclomatic_complexity"] == 1
+    assert result["lines_of_code"] == 2
+
+
+def test_analyzer_ast_analyze_detects_eval():
+    """_ast_analyze flags eval() as a forbidden construct."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = "def dangerous(x: str):\n    return eval(x)\n"
+    result = _ast_analyze(code)
+    assert any(
+        "eval" in c.lower() for c in result["forbidden_constructs"]
+    ), f"Expected eval in forbidden_constructs, got: {result['forbidden_constructs']}"
+
+
+# ── Phase 5: Ed25519 Signing ──────────────────────────────────────────────────
+
+
+def test_signing_importable():
+    """src.tools.signing imports without error and _CRYPTO_AVAILABLE is True."""
+    from src.tools.signing import _CRYPTO_AVAILABLE
+
+    assert (
+        _CRYPTO_AVAILABLE
+    ), "cryptography package not installed — run: pip install 'cryptography~=42.0'"
+
+
+def test_signing_round_trip():
+    """generate_signing_keypair → sign_tool_manifest → verify_tool_signature all succeed."""
+    import os
+    from src.tools.signing import (
+        generate_signing_keypair,
+        sign_tool_manifest,
+        verify_tool_signature,
+    )
+
+    priv_hex, pub_hex = generate_signing_keypair()
+    original = os.environ.get("TOOL_SIGNING_PRIVATE_KEY")
+    try:
+        os.environ["TOOL_SIGNING_PRIVATE_KEY"] = priv_hex
+
+        sig = sign_tool_manifest(
+            tool_id="test_tool@crystallized",
+            description="A test tool",
+            input_schema={"x": "int"},
+            declared_side_effects=["pure"],
+            version="1.0.0",
+        )
+        assert isinstance(sig, str) and len(sig) == 128  # 64 bytes → 128 hex chars
+
+        valid = verify_tool_signature(
+            tool_id="test_tool@crystallized",
+            description="A test tool",
+            input_schema={"x": "int"},
+            declared_side_effects=["pure"],
+            version="1.0.0",
+            signature_hex=sig,
+            public_key_hex=pub_hex,
+        )
+        assert valid, "Signature should verify against matching public key"
+
+        # Tampered manifest should fail
+        invalid = verify_tool_signature(
+            tool_id="test_tool@crystallized",
+            description="TAMPERED",
+            input_schema={"x": "int"},
+            declared_side_effects=["pure"],
+            version="1.0.0",
+            signature_hex=sig,
+            public_key_hex=pub_hex,
+        )
+        assert not invalid, "Tampered manifest should NOT verify"
+    finally:
+        if original is None:
+            os.environ.pop("TOOL_SIGNING_PRIVATE_KEY", None)
+        else:
+            os.environ["TOOL_SIGNING_PRIVATE_KEY"] = original
+
+
+def test_signing_fingerprint_is_16_hex_chars():
+    """get_public_key_fingerprint() returns a 16-character hex string."""
+    import os
+    from src.tools.signing import generate_signing_keypair, get_public_key_fingerprint
+
+    priv_hex, _ = generate_signing_keypair()
+    original = os.environ.get("TOOL_SIGNING_PRIVATE_KEY")
+    try:
+        os.environ["TOOL_SIGNING_PRIVATE_KEY"] = priv_hex
+        fingerprint = get_public_key_fingerprint()
+        assert len(fingerprint) == 16
+        assert all(c in "0123456789abcdef" for c in fingerprint)
+    finally:
+        if original is None:
+            os.environ.pop("TOOL_SIGNING_PRIVATE_KEY", None)
+        else:
+            os.environ["TOOL_SIGNING_PRIVATE_KEY"] = original
+
+
+# ── Phase 5: Health crystallization endpoints ─────────────────────────────────
+
+
+def test_health_crystallization_list_route_registered():
+    """GET /crystallization/candidates route is registered in the health FastAPI app."""
+    from src.health import app
+
+    paths = [r.path for r in app.routes]
+    assert "/crystallization/candidates" in paths
+
+
+def test_health_crystallization_approve_route_registered():
+    """POST /crystallization/candidates/{package_id}/approve route is registered."""
+    from fastapi.routing import APIRoute
+    from src.health import app
+
+    post_routes = [
+        r.path for r in app.routes if isinstance(r, APIRoute) and "POST" in r.methods
+    ]
+    assert any(
+        "{package_id}/approve" in p for p in post_routes
+    ), f"Approve route not found. POST routes: {post_routes}"
+
+
+# ── Phase 5: BOM includes observer + crystallizer ─────────────────────────────
+
+
+def test_bom_known_agents_includes_phase5():
+    """_KNOWN_AGENTS in bom.py includes observer and crystallizer from Phase 5."""
+    from src.security.bom import _KNOWN_AGENTS
+
+    names = {a["name"] for a in _KNOWN_AGENTS}
+    assert "observer" in names, f"'observer' missing from _KNOWN_AGENTS: {names}"
+    assert (
+        "crystallizer" in names
+    ), f"'crystallizer' missing from _KNOWN_AGENTS: {names}"
+
+
+def test_bom_phase5_agents_have_correct_roles():
+    """observer role is crystallization_observer; crystallizer role is crystallizer."""
+    from src.security.bom import _KNOWN_AGENTS
+
+    agent_map = {a["name"]: a for a in _KNOWN_AGENTS}
+    assert agent_map["observer"]["role"] == "crystallization_observer"
+    assert agent_map["crystallizer"]["role"] == "crystallizer"
+
+
+# ── Phase 5.5: Security hardening smoke tests ─────────────────────────────────
+
+
+# ── CredentialStore ────────────────────────────────────────────────────────────
+
+
+def test_credential_store_importable():
+    """src.credentials.creds singleton is importable."""
+    from src.credentials import creds, CredentialStore
+
+    assert isinstance(creds, CredentialStore)
+
+
+def test_credential_store_get_before_init_uses_env_fallback():
+    """CredentialStore.get() before initialize() falls back to env var."""
+    import os
+    from src.credentials import CredentialStore
+
+    store = CredentialStore()
+    assert not store._initialized
+
+    os.environ["OPENAI_API_KEY"] = "test-key-from-env"
+    try:
+        val = store.get("openai")
+        assert val == "test-key-from-env"
+    finally:
+        del os.environ["OPENAI_API_KEY"]
+
+
+def test_credential_store_get_safe_subprocess_env_excludes_secrets():
+    """get_safe_subprocess_env() never includes API keys or passwords."""
+    import os
+    from src.credentials import CredentialStore, _SECRET_ENV_VARS
+
+    store = CredentialStore()
+
+    # Inject a fake secret into os.environ
+    os.environ["OPENAI_API_KEY"] = "sk-should-not-appear"
+    os.environ["POSTGRES_PASSWORD"] = "pg-should-not-appear"
+    try:
+        safe = store.get_safe_subprocess_env()
+        for secret_key in _SECRET_ENV_VARS:
+            assert (
+                secret_key not in safe
+            ), f"Secret env var {secret_key!r} leaked into subprocess env"
+        # PATH should always be present
+        assert "PATH" in safe
+    finally:
+        del os.environ["OPENAI_API_KEY"]
+        del os.environ["POSTGRES_PASSWORD"]
+
+
+def test_credential_store_status_has_expected_shape():
+    """CredentialStore.status() returns a dict with the expected keys."""
+    from src.credentials import CredentialStore
+
+    store = CredentialStore()
+    status = store.status()
+    assert "initialized" in status
+    assert "backend" in status
+    assert "services" in status
+    assert isinstance(status["services"], dict)
+    assert "openai" in status["services"]
+    assert "postgres" in status["services"]
+
+
+def test_credential_store_file_backend_rejects_world_readable(tmp_path):
+    """file backend raises PermissionError for world-readable credentials files."""
+    import stat
+    from src.credentials import CredentialStore
+
+    # Create a credentials file with world-readable permissions
+    cred_file = tmp_path / "credentials.yaml"
+    cred_file.write_text("openai: test-key\n")
+    cred_file.chmod(0o644)  # world-readable — should be rejected
+
+    store = CredentialStore()
+    store._credentials_file = cred_file
+
+    with pytest.raises(PermissionError, match="group/world accessible"):
+        store._load_from_file("openai")
+
+
+def test_credential_store_file_backend_reads_valid_file(tmp_path):
+    """file backend reads credentials from a properly-protected 0600 file."""
+    import stat
+    from src.credentials import CredentialStore
+
+    cred_file = tmp_path / "credentials.yaml"
+    cred_file.write_text("openai: sk-test-from-file\n")
+    cred_file.chmod(0o600)  # owner read/write only — correct
+
+    store = CredentialStore()
+    store._credentials_file = cred_file
+
+    val = store._load_from_file("openai")
+    assert val == "sk-test-from-file"
+
+
+def test_credential_store_safe_env_contains_path():
+    """get_safe_subprocess_env() always includes PATH (required for subprocesses)."""
+    from src.credentials import CredentialStore
+
+    store = CredentialStore()
+    safe = store.get_safe_subprocess_env()
+    assert "PATH" in safe, "PATH must be present in safe subprocess env"
+
+
+# ── Sandbox profile ────────────────────────────────────────────────────────────
+
+
+def test_analyzer_sandbox_profile_exists():
+    """config/sandbox_profiles/analyzer.sb seatbelt profile is present."""
+    from pathlib import Path
+
+    profile = (
+        Path(__file__).parent.parent / "config" / "sandbox_profiles" / "analyzer.sb"
+    )
+    assert profile.exists(), f"Seatbelt profile not found: {profile}"
+    assert profile.stat().st_size > 100, "Seatbelt profile appears empty"
+
+
+def test_analyzer_sandbox_profile_contains_network_deny():
+    """analyzer.sb profile denies network-outbound access."""
+    from pathlib import Path
+
+    profile = (
+        Path(__file__).parent.parent / "config" / "sandbox_profiles" / "analyzer.sb"
+    )
+    content = profile.read_text()
+    assert (
+        "(deny network-outbound)" in content
+    ), "Seatbelt profile must deny network-outbound"
+
+
+# ── Analyzer AST hardening ─────────────────────────────────────────────────────
+
+
+def test_analyzer_banned_stdlib_modules_constant():
+    """_BANNED_STDLIB_MODULES exists and contains the high-risk modules."""
+    from src.tools.crystallization_analyzer import _BANNED_STDLIB_MODULES
+
+    for mod in ("subprocess", "multiprocessing", "socket", "ssl"):
+        assert (
+            mod in _BANNED_STDLIB_MODULES
+        ), f"'{mod}' must be in _BANNED_STDLIB_MODULES"
+
+
+def test_analyzer_forbidden_names_includes_open():
+    """_FORBIDDEN_NAMES now includes 'open' (filesystem access)."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_NAMES
+
+    assert "open" in _FORBIDDEN_NAMES, "'open' must be in _FORBIDDEN_NAMES"
+
+
+def test_analyzer_forbidden_attrs_includes_exec_family():
+    """_FORBIDDEN_ATTRS includes os.exec* family methods."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_ATTRS
+
+    for attr in ("execvp", "execvpe", "fork", "spawnv"):
+        assert attr in _FORBIDDEN_ATTRS, f"'{attr}' must be in _FORBIDDEN_ATTRS"
+
+
+def test_analyzer_ast_detects_getattr_bypass():
+    """_ast_analyze catches getattr(os, 'system') bypass technique."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = """
+def malicious(x):
+    import os
+    fn = getattr(os, 'system')
+    fn('ls')
+    return x
+"""
+    result = _ast_analyze(code)
+    found_getattr = any("getattr bypass" in f for f in result["forbidden_constructs"])
+    assert (
+        found_getattr
+    ), f"getattr bypass not detected. forbidden_constructs: {result['forbidden_constructs']}"
+
+
+def test_analyzer_ast_detects_banned_stdlib_import():
+    """_ast_analyze rejects import of banned stdlib module (subprocess)."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = """
+def sneaky(cmd):
+    import subprocess
+    return subprocess.check_output(cmd)
+"""
+    result = _ast_analyze(code)
+    found = any("subprocess" in f for f in result["forbidden_constructs"])
+    assert found, (
+        f"subprocess import not detected as forbidden. "
+        f"forbidden_constructs: {result['forbidden_constructs']}"
+    )
+
+
+def test_analyzer_safe_env_function_importable():
+    """_get_safe_env() helper is defined in crystallization_analyzer."""
+    from src.tools.crystallization_analyzer import _get_safe_env
+
+    safe = _get_safe_env()
+    assert isinstance(safe, dict)
+    # Must NOT contain any API keys
+    for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "POSTGRES_PASSWORD"):
+        assert key not in safe, f"Secret key {key!r} leaked into safe env"
+
+
+def test_analyzer_build_sandboxed_cmd_importable():
+    """_build_sandboxed_cmd() helper is defined in crystallization_analyzer."""
+    import sys
+    from src.tools.crystallization_analyzer import _build_sandboxed_cmd
+
+    cmd = _build_sandboxed_cmd([sys.executable, "-c", "print('hello')"])
+    assert isinstance(cmd, list)
+    assert len(cmd) >= 3
+
+
+# ── Guardian Bearer auth ───────────────────────────────────────────────────────
+
+
+def test_guardian_bearer_auth_function_importable():
+    """_check_bearer_auth is importable from Guardian."""
+    from src.security.guardian import _check_bearer_auth
+
+    assert callable(_check_bearer_auth)
+
+
+def test_guardian_bearer_auth_disabled_when_require_auth_false(monkeypatch):
+    """_check_bearer_auth passes any request when GUARDIAN_REQUIRE_AUTH=false."""
+    import src.security.guardian as guardian_module
+    from unittest.mock import MagicMock
+
+    # Ensure auth is disabled
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", False)
+
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = ""
+    result = guardian_module._check_bearer_auth(mock_request)
+    assert result is True, "Should allow when require_auth=False"
+
+
+def test_guardian_bearer_auth_blocks_wrong_token(monkeypatch):
+    """_check_bearer_auth rejects wrong Bearer token."""
+    import src.security.guardian as guardian_module
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_AUTH_TOKEN", "correct-secret-token")
+
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = "Bearer wrong-token"
+    result = guardian_module._check_bearer_auth(mock_request)
+    assert result is False, "Should block wrong Bearer token"
+
+
+def test_guardian_bearer_auth_passes_correct_token(monkeypatch):
+    """_check_bearer_auth passes correct Bearer token."""
+    import src.security.guardian as guardian_module
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_AUTH_TOKEN", "correct-secret-token")
+
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = "Bearer correct-secret-token"
+    result = guardian_module._check_bearer_auth(mock_request)
+    assert result is True, "Should pass correct Bearer token"
+
+
+# ── Settings new security fields ──────────────────────────────────────────────
+
+
+def test_security_config_has_purge_env_after_load():
+    """SecurityConfig has purge_env_after_load field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "purge_env_after_load")
+    assert settings.security.purge_env_after_load is False  # safe default
+
+
+def test_security_config_has_keychain_access_allowed():
+    """SecurityConfig has keychain_access_allowed field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "keychain_access_allowed")
+    assert settings.security.keychain_access_allowed is True  # dev default
+
+
+def test_security_config_has_sandbox_exec_enabled():
+    """SecurityConfig has sandbox_exec_enabled field, default True."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "sandbox_exec_enabled")
+    assert settings.security.sandbox_exec_enabled is True
+
+
+def test_security_config_has_guardian_require_auth():
+    """SecurityConfig has guardian_require_auth field, default False."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "guardian_require_auth")
+    assert settings.security.guardian_require_auth is False  # backward compat default
+
+
+def test_security_config_secret_backend_accepts_file():
+    """secret_backend Literal now includes 'file' as a valid value."""
+    import typing
+    from config.settings import SecurityConfig
+
+    hints = typing.get_type_hints(SecurityConfig)
+    backend_type = hints.get("secret_backend")
+    # Literal type — check its args contain "file"
+    args = getattr(backend_type, "__args__", ())
+    assert "file" in args, f"'file' not in secret_backend Literal args: {args}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 6 — Comprehensive Security Hardening
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Database RBAC ─────────────────────────────────────────────────────────────
+
+
+def test_database_has_setup_db_roles_function():
+    """_setup_db_roles async function exists in database.py."""
+    import inspect
+    import src.database as db_module
+
+    assert hasattr(db_module, "_setup_db_roles"), "_setup_db_roles not found"
+    assert inspect.iscoroutinefunction(
+        db_module._setup_db_roles
+    ), "_setup_db_roles must be async"
+
+
+def test_security_config_has_db_app_user():
+    """SecurityConfig has db_app_user field with correct default."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "db_app_user")
+    assert settings.security.db_app_user == "legionforge_app"
+
+
+def test_security_config_has_db_app_password_service():
+    """SecurityConfig has db_app_password_service field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "db_app_password_service")
+    assert settings.security.db_app_password_service == "legionforge_db_app"
+
+
+def test_database_has_tool_revoked_threat_type():
+    """THREAT_TYPES includes TOOL_REVOKED for Phase 6 revocation events."""
+    from src.database import THREAT_TYPES
+
+    assert "TOOL_REVOKED" in THREAT_TYPES, "TOOL_REVOKED missing from THREAT_TYPES"
+
+
+def test_revoke_tool_is_async():
+    """revoke_tool() is an async function."""
+    import inspect
+    from src.database import revoke_tool
+
+    assert inspect.iscoroutinefunction(revoke_tool), "revoke_tool must be async"
+
+
+def test_get_revoked_tools_is_async():
+    """get_revoked_tools() is an async function."""
+    import inspect
+    from src.database import get_revoked_tools
+
+    assert inspect.iscoroutinefunction(
+        get_revoked_tools
+    ), "get_revoked_tools must be async"
+
+
+# ── AST hardening ─────────────────────────────────────────────────────────────
+
+
+def test_analyzer_ast_detects_sys_modules_subscript():
+    """sys.modules['subprocess'] subscript access is detected as a forbidden construct."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = "import sys\nx = sys.modules['subprocess'].run(['ls'])"
+    result = _ast_analyze(code)
+    assert any(
+        "modules" in c for c in result["forbidden_constructs"]
+    ), f"sys.modules subscript not detected: {result['forbidden_constructs']}"
+
+
+def test_analyzer_ast_detects_builtins_subscript():
+    """__builtins__['eval'] subscript access is detected as a forbidden construct."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = "__builtins__['eval']('import os')"
+    result = _ast_analyze(code)
+    assert any(
+        "__builtins__" in c for c in result["forbidden_constructs"]
+    ), f"__builtins__ subscript not detected: {result['forbidden_constructs']}"
+
+
+def test_analyzer_ast_detects_globals_subscript():
+    """globals()['exec']('...') is detected as a forbidden construct."""
+    from src.tools.crystallization_analyzer import _ast_analyze
+
+    code = "globals()['exec']('import os')"
+    result = _ast_analyze(code)
+    assert any(
+        "globals" in c for c in result["forbidden_constructs"]
+    ), f"globals() subscript not detected: {result['forbidden_constructs']}"
+
+
+def test_analyzer_ast_detects_globals_in_forbidden_names():
+    """globals is in _FORBIDDEN_NAMES."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_NAMES
+
+    assert "globals" in _FORBIDDEN_NAMES, "globals not in _FORBIDDEN_NAMES"
+
+
+def test_analyzer_ast_detects_locals_in_forbidden_names():
+    """locals is in _FORBIDDEN_NAMES."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_NAMES
+
+    assert "locals" in _FORBIDDEN_NAMES, "locals not in _FORBIDDEN_NAMES"
+
+
+def test_analyzer_ast_detects_mro_subclasses_in_forbidden_attrs():
+    """__subclasses__ and __bases__ are in _FORBIDDEN_ATTRS (MRO traversal block)."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_ATTRS
+
+    assert (
+        "__subclasses__" in _FORBIDDEN_ATTRS
+    ), "__subclasses__ not in _FORBIDDEN_ATTRS"
+    assert "__bases__" in _FORBIDDEN_ATTRS, "__bases__ not in _FORBIDDEN_ATTRS"
+    assert "__mro__" in _FORBIDDEN_ATTRS, "__mro__ not in _FORBIDDEN_ATTRS"
+
+
+def test_analyzer_ast_detects_dict_access_in_forbidden_attrs():
+    """__dict__ and modules are in _FORBIDDEN_ATTRS."""
+    from src.tools.crystallization_analyzer import _FORBIDDEN_ATTRS
+
+    assert "__dict__" in _FORBIDDEN_ATTRS, "__dict__ not in _FORBIDDEN_ATTRS"
+    assert "modules" in _FORBIDDEN_ATTRS, "modules not in _FORBIDDEN_ATTRS"
+
+
+# ── Tool revocation mechanism ─────────────────────────────────────────────────
+
+
+def test_revoke_tool_function_exists():
+    """revoke_tool and get_revoked_tools are importable from src.database."""
+    from src.database import revoke_tool, get_revoked_tools  # noqa: F401
+
+
+def test_guardian_has_revoked_tools_cache():
+    """Guardian module has _revoked_tools cache variable (set)."""
+    import src.security.guardian as guardian_module
+
+    assert hasattr(guardian_module, "_revoked_tools"), "_revoked_tools not in guardian"
+    assert isinstance(
+        guardian_module._revoked_tools, set
+    ), "_revoked_tools must be a set"
+
+
+def test_guardian_cache_ttl_reduced_to_10s():
+    """Guardian _CACHE_TTL_SECONDS is 10.0 (reduced from 60s for faster revocation)."""
+    import src.security.guardian as guardian_module
+
+    assert (
+        guardian_module._CACHE_TTL_SECONDS == 10.0
+    ), f"Expected TTL=10s, got {guardian_module._CACHE_TTL_SECONDS}"
+
+
+def test_health_revoke_tool_endpoint_registered():
+    """POST /tools/{tool_id}/revoke endpoint exists on the health server app."""
+    from src.health import app as health_app
+
+    routes = {r.path for r in health_app.routes}
+    assert (
+        "/tools/{tool_id}/revoke" in routes
+    ), f"Revoke endpoint not found. Routes: {routes}"
+
+
+def test_threat_types_has_tool_result_injection():
+    """THREAT_TYPES includes TOOL_RESULT_INJECTION for Phase 6."""
+    from src.database import THREAT_TYPES
+
+    assert (
+        "TOOL_RESULT_INJECTION" in THREAT_TYPES
+    ), "TOOL_RESULT_INJECTION missing from THREAT_TYPES"
+
+
+# ── Tool result injection ─────────────────────────────────────────────────────
+
+
+def test_security_config_has_halt_on_tool_result_injection():
+    """SecurityConfig has halt_on_tool_result_injection field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "halt_on_tool_result_injection")
+
+
+def test_halt_on_tool_result_injection_defaults_false():
+    """halt_on_tool_result_injection defaults to False (non-breaking upgrade)."""
+    from config.settings import settings
+
+    assert settings.security.halt_on_tool_result_injection is False
+
+
+# ── Container isolation ───────────────────────────────────────────────────────
+
+
+def test_dockerfile_analyzer_exists():
+    """Dockerfile.analyzer exists in the project root."""
+    from pathlib import Path
+
+    path = Path(__file__).parent.parent / "Dockerfile.analyzer"
+    assert path.exists(), "Dockerfile.analyzer not found"
+
+
+def test_build_container_cmd_importable():
+    """_build_container_cmd is importable from crystallization_analyzer."""
+    from src.tools.crystallization_analyzer import _build_container_cmd  # noqa: F401
+
+
+def test_build_container_cmd_returns_none_gracefully():
+    """_build_container_cmd returns None when Docker image is not available."""
+    from src.tools.crystallization_analyzer import _build_container_cmd
+
+    # In test environments, legionforge-analyzer:latest is not built
+    # so the function should return None gracefully (no exception)
+    result = _build_container_cmd(["python", "-c", "print(1)"])
+    # Result is either None (Docker not available) or a list (Docker available)
+    assert result is None or isinstance(
+        result, list
+    ), f"Expected None or list, got {result!r}"
+
+
+def test_analyzer_container_enabled_config_exists():
+    """SecurityConfig has analyzer_container_enabled field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "analyzer_container_enabled")
+
+
+# ── Ollama model integrity ────────────────────────────────────────────────────
+
+
+def test_model_entry_has_gguf_sha256_field():
+    """ModelEntry has gguf_sha256 field with default empty string."""
+    from config.settings import settings
+
+    assert hasattr(settings.models.primary, "gguf_sha256")
+    assert isinstance(settings.models.primary.gguf_sha256, str)
+    # Default should be empty (skip verification until user pins hashes)
+    assert settings.models.primary.gguf_sha256 == ""
+
+
+def test_model_integrity_module_importable():
+    """model_integrity module is importable."""
+    from src.tools import model_integrity  # noqa: F401
+    from src.tools.model_integrity import (
+        verify_model_integrity,
+        compute_model_hashes,
+    )  # noqa: F401
+
+
+def test_model_integrity_strict_config_exists():
+    """SecurityConfig has model_integrity_strict field."""
+    from config.settings import settings
+
+    assert hasattr(settings.security, "model_integrity_strict")
+
+
+def test_model_integrity_strict_defaults_false():
+    """model_integrity_strict defaults to False (log-only on mismatch)."""
+    from config.settings import settings
+
+    assert settings.security.model_integrity_strict is False
+
+
+# ── Phase 6 settings fields ───────────────────────────────────────────────────
+
+
+def test_credentials_module_has_db_app_service():
+    """_SERVICE_TO_ENV includes legionforge_db_app for Phase 6 RBAC."""
+    from src.credentials import _SERVICE_TO_ENV
+
+    assert (
+        "legionforge_db_app" in _SERVICE_TO_ENV
+    ), "legionforge_db_app not in _SERVICE_TO_ENV"
+    assert _SERVICE_TO_ENV["legionforge_db_app"] == "POSTGRES_APP_PASSWORD"
+
+
+def test_database_has_model_integrity_mismatch_threat_type():
+    """THREAT_TYPES includes MODEL_INTEGRITY_MISMATCH for Phase 6."""
+    from src.database import THREAT_TYPES
+
+    assert (
+        "MODEL_INTEGRITY_MISMATCH" in THREAT_TYPES
+    ), "MODEL_INTEGRITY_MISMATCH missing from THREAT_TYPES"
+
+
+def test_database_has_revoke_columns_in_app_tables():
+    """_create_app_tables adds revocation columns to tool_registry."""
+    import inspect
+    import src.database as db_module
+
+    source = inspect.getsource(db_module._create_app_tables)
+    assert "revoked_at" in source, "revoked_at column not in _create_app_tables"
+    assert "revoked_by" in source, "revoked_by column not in _create_app_tables"
+    assert "revocation_reason" in source, "revocation_reason not in _create_app_tables"
+
+
+def test_guardian_check_1_checks_revocation_first():
+    """_check_1_tool_registry checks _revoked_tools before _approved_tools."""
+    import inspect
+    import src.security.guardian as guardian_module
+
+    source = inspect.getsource(guardian_module._check_1_tool_registry)
+    # revoked_tools check must appear before approved_tools check
+    revoke_pos = source.find("_revoked_tools")
+    approved_pos = source.find("_approved_tools")
+    assert revoke_pos != -1, "_revoked_tools not referenced in _check_1_tool_registry"
+    assert (
+        approved_pos != -1
+    ), "_approved_tools not referenced in _check_1_tool_registry"
+    assert (
+        revoke_pos < approved_pos
+    ), "_revoked_tools check must come BEFORE _approved_tools check in _check_1_tool_registry"
