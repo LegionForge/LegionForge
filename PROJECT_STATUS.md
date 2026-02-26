@@ -88,7 +88,7 @@ make build-analyzer    # build legionforge-analyzer:latest Docker image
 - **Version:** 17.8 (Homebrew)
 - **Data directory:** `$LEGIONFORGE_HOME/postgres/data17`
 - **Database:** `legionforge`
-- **User:** `jpc`
+- **User:** `$POSTGRES_USER` (set via env; defaults to OS username on Homebrew installs)
 - **Password:** stored in macOS Keychain (`service: postgres, username: api_key`) and password manager
 - **Auto-start:** via `brew services` (starts at login)
 
@@ -218,7 +218,7 @@ df -h $EXTERNAL_DRIVE
 
 ```bash
 # 1b. Take a PostgreSQL dump as insurance
-pg_dump -U jpc legionforge > $EXTERNAL_DRIVE/pg_backup_pre_phase2_$(date +%Y%m%d).sql
+pg_dump -U "${POSTGRES_USER:-$(whoami)}" legionforge > $EXTERNAL_DRIVE/pg_backup_pre_phase2_$(date +%Y%m%d).sql
 ```
 ```bash
 # 1c. Verify the dump is non-empty
@@ -390,12 +390,12 @@ pg_isready -h localhost
 ```
 ```bash
 # Verify the database is accessible
-psql -U jpc -d legionforge -c "SELECT current_database(), version();"
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "SELECT current_database(), version();"
 # Expected: returns "legionforge" and PostgreSQL version string
 ```
 ```bash
 # Verify all tables still exist
-psql -U jpc -d legionforge -c "\dt"
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "\dt"
 # Expected: lists checkpoints, documents, api_usage, health_metrics, etc.
 ```
 > **DEBUG — PostgreSQL won't start:**
@@ -528,8 +528,8 @@ rm -rf $LEGIONFORGE_HOME
 ```
 ```bash
 # Verify it's gone
-ls $EXTERNAL_DRIVE | grep jpc
-# Expected: no output
+ls $EXTERNAL_DRIVE | grep "jpc-mac-agent-framework"
+# Expected: no output (old directory should be gone)
 ```
 ```bash
 # Remove the pg_dump backup taken in Step 1 (optional — keep if you want extra safety)
@@ -551,7 +551,7 @@ rm $EXTERNAL_DRIVE/pg_backup_pre_phase2_*.sql
 
 ```bash
 # Full dump of current database
-pg_dump -U jpc -Fc legionforge > $EXTERNAL_DRIVE/pg_backup_legionforge_$(date +%Y%m%d).dump
+pg_dump -U "${POSTGRES_USER:-$(whoami)}" -Fc legionforge > $EXTERNAL_DRIVE/pg_backup_legionforge_$(date +%Y%m%d).dump
 ```
 ```bash
 # Verify dump is non-empty
@@ -573,27 +573,27 @@ pg_restore --list $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump | head -20
 
 ```bash
 # Create new database
-createdb -U jpc legionforge
+createdb -U "${POSTGRES_USER:-$(whoami)}" legionforge
 ```
 ```bash
 # Restore into new database
-pg_restore -U jpc -d legionforge $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump
+pg_restore -U "${POSTGRES_USER:-$(whoami)}" -d legionforge $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump
 ```
 ```bash
 # Verify all tables restored correctly
-psql -U jpc -d legionforge -c "\dt"
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "\dt"
 # Expected: same tables as legionforge
 ```
 ```bash
 # Verify row counts match between old and new DB
-psql -U jpc -c "SELECT 'legionforge' db, COUNT(*) FROM legionforge.public.documents
+psql -U "${POSTGRES_USER:-$(whoami)}" -c "SELECT 'legionforge' db, COUNT(*) FROM legionforge.public.documents
                 UNION ALL
                 SELECT 'legionforge', COUNT(*) FROM legionforge.public.documents;"
 # Expected: both counts match
 ```
 > **DEBUG — restore fails with errors:**
-> 1. Check for extension errors: pgvector must be installed. Verify: `psql -U jpc -d legionforge -c "CREATE EXTENSION IF NOT EXISTS vector;"`
-> 2. Re-run restore with verbose: `pg_restore -U jpc -d legionforge -v $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump 2>&1 | tail -30`
+> 1. Check for extension errors: pgvector must be installed. Verify: `psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "CREATE EXTENSION IF NOT EXISTS vector;"`
+> 2. Re-run restore with verbose: `pg_restore -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -v $EXTERNAL_DRIVE/pg_backup_legionforge_*.dump 2>&1 | tail -30`
 
 - [ ] Step 2 complete — new database has all tables and data
 
@@ -653,7 +653,7 @@ kill %1 2>/dev/null || pkill -f uvicorn
 ```
 > **DEBUG — DB connection fails:**
 > 1. Check POSTGRES_DB env var: `echo $POSTGRES_DB` — should be `legionforge`
-> 2. Test connection directly: `psql -U jpc -d legionforge -c "SELECT 1;"`
+> 2. Test connection directly: `psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "SELECT 1;"`
 > 3. Rollback option: revert `src/database.py` to `legionforge` and reconnect to old DB
 
 - [ ] Step 4 complete — smoke tests pass, health server connects to legionforge
@@ -684,11 +684,11 @@ git push origin feature/phase-1-security-foundations
 
 ```bash
 # Drop the old database
-dropdb -U jpc legionforge
+dropdb -U "${POSTGRES_USER:-$(whoami)}" legionforge
 ```
 ```bash
 # Verify it's gone
-psql -U jpc -l | grep legionforge
+psql -U "${POSTGRES_USER:-$(whoami)}" -l | grep legionforge
 # Expected: no output
 ```
 ```bash

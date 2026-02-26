@@ -172,7 +172,7 @@ async def check():
     host = os.environ.get('POSTGRES_HOST', 'localhost')
     port = os.environ.get('POSTGRES_PORT', '5432')
     db   = os.environ.get('POSTGRES_DB', 'legionforge')
-    user = os.environ.get('POSTGRES_USER', 'jpc')
+    user = os.environ.get('POSTGRES_USER', os.environ.get('USER', 'postgres'))
     pw   = os.environ.get('POSTGRES_PASSWORD', '')
     conn_str = f'postgresql://{user}:{pw}@{host}:{port}/{db}'
     try:

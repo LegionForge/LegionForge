@@ -8,7 +8,7 @@
 # What it does:
 #   1. Installs PostgreSQL 16 + pgvector via Homebrew
 #   2. Configures data directory on external drive
-#   3. Creates the jpc database and user
+#   3. Creates the legionforge database and user (POSTGRES_USER or current OS user)
 #   4. Stores the password in macOS Keychain
 #   5. Starts PostgreSQL as a background service
 #
@@ -23,11 +23,13 @@ BASE="/Volumes/MAC_MINI_1TB/LegionForge"
 PG_DATA="$BASE/postgres/data"
 PG_VERSION="16"
 DB_NAME="legionforge"
-DB_USER="jpc"
+# Use POSTGRES_USER env var if set; otherwise default to current OS username
+# (Homebrew PostgreSQL creates a superuser matching the macOS login by default)
+DB_USER="${POSTGRES_USER:-$(whoami)}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║         PostgreSQL Setup for jpc-agent-framework     ║"
+echo "║            PostgreSQL Setup for LegionForge          ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
