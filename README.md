@@ -1,6 +1,6 @@
 # LegionForge
 
-**Version:** 5.0.0 · **Updated:** 2026-02-25 · **Status:** Phases 0–5 complete — crystallization pipeline operational
+**Version:** 5.5.0 · **Updated:** 2026-02-26 · **Status:** Phases 0–5.5 complete — crystallization pipeline + security hardening operational
 
 ---
 
@@ -24,9 +24,10 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 3 — ACLs + Sub-Agents | ✅ Complete | JWT task tokens, role definitions, orchestrator + sub-agent architecture |
 | 4 — Adaptive Threat Intelligence | ✅ Complete | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials |
 | 5 — Crystallization Pipeline | ✅ Complete | Observer + Crystallizer agents, Pre-HITL analysis, Ed25519-signed tools |
+| 5.5 — Security Hardening | ✅ Complete | DB RBAC, AST subscript+MRO guards, tool revocation, TOCTOU, model integrity |
 | 6 — PentestAgent | ⬜ Planned | Air-gapped red-team bot, continuous security regression |
 
-**143/143 smoke tests passing. Full crystallization pipeline operational.**
+**200/200 smoke tests passing. Crystallization pipeline + full security hardening operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -204,7 +205,7 @@ curl http://localhost:9766/health
 ### Step 9 — Verify Everything
 
 ```bash
-# Run all 143 smoke tests (no external services required — runs in ~1s)
+# Run all 200 smoke tests (no external services required — runs in ~2s)
 make test-smoke
 
 # Run the full system check (drive, venv, Keychain, Ollama, Guardian)
@@ -213,7 +214,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-143 passed in 1.52s
+200 passed in 1.61s
 ```
 
 ---
@@ -249,7 +250,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 143 smoke tests, ~1s, no services required
+make test-smoke            # 200 smoke tests, ~2s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -275,6 +276,12 @@ make run-crystallizer CANDIDATE_ID=<id>  # Generate deterministic function for a
 make pending-packages      # List packages awaiting human review
 make approve-package PACKAGE_ID=<id>    # Sign + register crystallized tool
 make reject-package PACKAGE_ID=<id>     # Reject a package with reason
+
+# Phase 5.5 — Security hardening (run once after db-init)
+make setup-db-roles        # Provision legionforge_app restricted PostgreSQL role + grants
+make verify-models         # Compute SHA256 of GGUF files; pin in hardware profile
+make build-analyzer        # Build legionforge-analyzer:latest deny-default Docker image
+make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s propagation)
 ```
 
 ---
@@ -293,8 +300,8 @@ make reject-package PACKAGE_ID=<id>     # Reject a package with reason
 **Ollama models not found**
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
-**`make test-smoke` shows fewer than 143 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 5 (commit referencing 143 smoke tests).
+**`make test-smoke` shows fewer than 200 tests**
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 5.5 (commit referencing 200 smoke tests).
 
 ---
 
@@ -346,9 +353,16 @@ LegionForge/
 │   │   ├── bom.py                 # AI Bill of Materials assembly
 │   │   └── __init__.py            # Full backward-compat re-exports
 │   │
+│   ├── tools/
+│   │   ├── crystallization_analyzer.py  # Pre-HITL AST + security + behavioral analysis
+│   │   ├── signing.py             # Ed25519 tool manifest signing + verification
+│   │   └── model_integrity.py     # SHA256 GGUF verification (Phase 5.5)
+│   │
 │   └── agents/
 │       ├── researcher.py          # Researcher agent (web fetch, document store)
 │       ├── orchestrator.py        # Orchestrator with master→derived token hierarchy
+│       ├── observer.py            # Observer agent (nominates crystallization candidates)
+│       ├── crystallizer.py        # Crystallizer agent (generates deterministic functions)
 │       └── threat_analyst.py      # Threat Analyst (reads threat_events, proposes rules)
 │
 ├── guardian/
@@ -356,14 +370,22 @@ LegionForge/
 │   └── requirements.txt           # fastapi, uvicorn, psycopg — NO LLM clients
 │
 ├── tests/
-│   ├── test_smoke.py              # 143 tests, no services required, ~2s
+│   ├── test_smoke.py              # 200 tests, no services required, ~2s
 │   └── conftest.py
 │
 ├── scripts/
 │   ├── check_mount.sh             # Verify external drive mounted before agent start
-│   └── setup_postgres.sh          # One-time PostgreSQL setup helper
+│   ├── setup_postgres.sh          # One-time PostgreSQL setup helper
+│   ├── db_setup_roles.sql         # Standalone SQL for legionforge_app role setup (Phase 5.5)
+│   ├── run_observer.py            # Run Observer agent
+│   └── run_crystallizer.py        # Run Crystallizer agent
 │
-├── docker-compose.yml             # Guardian on 127.0.0.1:9766
+├── config/
+│   └── sandbox_profiles/
+│       └── analyzer.sb            # macOS sandbox-exec profile for analyzer subprocess
+│
+├── Dockerfile.analyzer            # Deny-default analyzer sandbox (Phase 5.5)
+├── docker-compose.yml             # Guardian on 127.0.0.1:9766; analyzer build-only service
 └── Dockerfile.agent-base          # Full framework env, non-root agent user
 ```
 
@@ -391,7 +413,12 @@ Security is layered. Each phase adds a new layer — nothing from a prior phase 
 | Adaptive threat rules | Guardian check 6 | 4 | APPROVED rules from `threat_rules` table, hot-reloaded every 60s |
 | AI Bill of Materials | `security/bom.py` | 4 | Model, agent, tool, dependency inventory with CVE scan status |
 | Threat Analyst agent | `agents/threat_analyst.py` | 4 | Proposes rules from `threat_events` — cannot self-approve |
-| Crystallized tool signing | Phase 5 | — | Ed25519; tampering breaks signature |
+| Crystallized tool signing | `tools/signing.py` | 5 | Ed25519; tampering breaks signature |
+| DB RBAC — restricted app user | `database.py` | 5.5 | `legionforge_app`: no DDL, no DELETE on audit tables |
+| AST subscript + MRO guards | `tools/crystallization_analyzer.py` | 5.5 | Blocks `sys.modules['subprocess']`, MRO traversal, `globals()['eval']` |
+| Tool revocation | Guardian + `health.py` | 5.5 | REVOKED status, Guardian TTL 10s, `/tools/{id}/revoke` |
+| TOCTOU prevention | `base_graph.py` | 5.5 | `approved_snapshot` pre-loop; unexpected call_id → threat event + halt |
+| Ollama model integrity | `tools/model_integrity.py` | 5.5 | SHA256 streaming GGUF verification on startup |
 | Automated red-teaming | Phase 6 | — | Air-gapped; manual trigger only |
 
 **→ Full threat research and design theory:** [`RESEARCH.md`](./RESEARCH.md)
@@ -403,12 +430,13 @@ Security is layered. Each phase adds a new layer — nothing from a prior phase 
 Guardian runs as a standalone Docker container (port 9766). It performs six deterministic checks before any tool call executes. No LLM is involved — pure logic.
 
 ```
+Check 0: REVOKED status — tool revoked? → halt immediately (Phase 5.5)
 Check 1: JWT task token validation (role + scope)
 Check 2: Capability boundary (is this tool in the agent's allowed list?)
 Check 3: Destructive pattern detection (rm -rf, DROP TABLE, etc.)
 Check 4: Sequence contract (is this tool call in the expected sequence?)
 Check 5: Tool hash integrity (does the tool manifest match the registry?)
-Check 6: Adaptive rules (hot-reloaded from approved threat_rules table)
+Check 6: Adaptive rules (hot-reloaded from approved threat_rules table every 10s)
 ```
 
 Guardian response tiers:

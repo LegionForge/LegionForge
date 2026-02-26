@@ -1,9 +1,9 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 5.0.0
-**Last updated:** 2026-02-25
-**Status:** Phase 0 ✅ Complete | Phase 1 ✅ Complete | Phase 2 ✅ Complete | Phase 3 ✅ Complete | Phase 4 ✅ Complete | Phase 5 ✅ Complete
+**Version:** 5.5.0
+**Last updated:** 2026-02-26
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ⬜ Planned
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -35,13 +35,14 @@ Before the phases: these principles govern every decision.
 ## Phase Overview
 
 ```
-Phase 0  ✅  Infrastructure                    → DONE
-Phase 1  ✅  First Agent + Security Foundations → DONE
-Phase 2  ✅  Containerization + Guardian        → DONE
-Phase 3  ✅  ACLs + Task Tokens + Sub-Agents    → DONE
-Phase 4  ✅  Adaptive Security                  → DONE    (weeks 11–14)
-Phase 5  ✅  Crystallization Pipeline           → DONE    (weeks 15–19)
-Phase 6  ⬜  Red Team + Pentest Bot             → (weeks 20+)
+Phase 0    ✅  Infrastructure                    → DONE
+Phase 1    ✅  First Agent + Security Foundations → DONE
+Phase 2    ✅  Containerization + Guardian        → DONE
+Phase 3    ✅  ACLs + Task Tokens + Sub-Agents    → DONE
+Phase 4    ✅  Adaptive Security                  → DONE    (weeks 11–14)
+Phase 5    ✅  Crystallization Pipeline           → DONE    (weeks 15–19)
+Phase 5.5  ✅  Security Hardening Sprint          → DONE    (10-vector hardening; 200 smoke tests)
+Phase 6    ⬜  Red Team + Pentest Bot             → NEXT    (weeks 20+)
 ```
 
 Each phase is independently shippable. Phases do not block each other for core agent work — security layers are additive.
@@ -407,7 +408,7 @@ Tracks every model, tool, agent, and Python dependency with version, origin, SHA
 **Dependencies:** Phase 4 complete (Threat Analyst validates new tool entries; Guardian enforces signing; meaningful call history exists in `audit_log` for the Observer to analyze)
 **Exit criteria:** At least one crystallized tool in production; full pipeline from observation through analysis through HITL approval through signed deployment is operational and documented.
 
-**Completed:** 2026-02-25 — 143/143 smoke tests passing.
+**Completed:** 2026-02-25 — 168/168 smoke tests passing at Phase 5 completion; 200/200 after Phase 5.5 hardening sprint.
 
 Implemented components:
 - `src/agents/observer.py` — LangGraph Observer agent (read-only, nominates candidates)
@@ -834,6 +835,43 @@ CREATE TABLE crystallization_analyses (
     risk_flags                JSONB,
     status                    TEXT    -- READY_FOR_REVIEW or REJECTED_BY_ANALYSIS
 );
+```
+
+---
+
+## Phase 5.5 — Security Hardening Sprint ✅ COMPLETE
+
+**Goal:** Close ten attack vectors identified during adversarial threat-model review of the Phase 5 crystallization pipeline. No new agents — security hardening only.
+
+**Completed:** 2026-02-26 — 200/200 smoke tests passing.
+
+### What was hardened
+
+| # | Vector | Fix |
+|---|---|---|
+| 1 | `sys.modules['subprocess']` subscript bypass | `ast.Subscript` node check in crystallization_analyzer |
+| 2 | `__builtins__['eval']()` subscript bypass | same check |
+| 3 | MRO traversal `().__class__.__bases__[0].__subclasses__()` | `__bases__`, `__subclasses__`, `__mro__`, `__class__`, `__dict__` → `_FORBIDDEN_ATTRS` |
+| 4 | `globals()['eval']()` / `locals()` lookups | `globals`, `locals`, `type` → `_FORBIDDEN_NAMES` |
+| 5 | DB superuser for all runtime queries | Two-phase `init_db()` — admin pool for DDL, restricted `legionforge_app` pool for runtime (no DELETE on audit tables, no DDL) |
+| 6 | No `REVOKED` status in tool_registry; 60s stale cache | `REVOKED` status + Guardian TTL 60s → 10s + `POST /tools/{id}/revoke` |
+| 7 | Tool result injection: logs only, no threat event | `SecureToolNode` emits `TOOL_RESULT_INJECTION` event + optional halt |
+| 8 | Analyzer uses subprocess — not deny-default container | `Dockerfile.analyzer` deny-default; Docker > sandbox-exec > bare priority |
+| 9 | Guardian TOCTOU: state mutable between check + exec | `approved_snapshot` captured pre-loop; post-exec `tool_call_id` verification |
+| 10 | Ollama model files: no SHA256 integrity verification | `src/tools/model_integrity.py`; `MODEL_INTEGRITY_MISMATCH` threat event; `make verify-models` |
+
+### New files
+- `src/tools/model_integrity.py` — streaming SHA256 GGUF verification
+- `Dockerfile.analyzer` — deny-default analyzer sandbox
+- `requirements.analyzer.txt` — minimal analyzer deps (numpy, pandas, scipy only)
+- `scripts/db_setup_roles.sql` — standalone SQL for manual PostgreSQL role setup
+
+### New Makefile targets
+```bash
+make setup-db-roles    # provision legionforge_app PostgreSQL role + grants (idempotent)
+make verify-models     # print SHA256 of GGUF files for hash pinning
+make build-analyzer    # build legionforge-analyzer:latest Docker image
+make revoke-tool TOOL_ID=<id>  # immediately revoke a tool via health API
 ```
 
 ---

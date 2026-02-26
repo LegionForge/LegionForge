@@ -1,7 +1,7 @@
 # LegionForge Architecture
 
-Phase 1 — Security Foundations + Researcher Agent
-Last updated: 2026-02-24
+Phase 5.5 — Crystallization Pipeline + Security Hardening
+Last updated: 2026-02-26
 
 ---
 
@@ -225,7 +225,24 @@ A failure at any step halts the tool call and returns `force_end: True`.
          │                               │
          │  · PII redaction              │
          │  · Injection scan             │
-         │  · Log if injection found     │
+         │  · TOOL_RESULT_INJECTION      │
+         │    threat event if detected   │
+         │  · Optional halt              │
+         │    (halt_on_tool_result_      │
+         │     injection config flag)    │
+         └───────────────┬───────────────┘
+                         │
+                         ▼
+         ┌───────────────────────────────┐
+         │  Step 7: TOCTOU Verification  │
+         │  (Phase 5.5)                  │
+         │                               │
+         │  · Verify every              │
+         │    ToolMessage.tool_call_id   │
+         │    was in approved_snapshot   │
+         │  · Unexpected call_id →       │
+         │    TOCTOU_DETECTED event      │
+         │    + force_end=True           │
          └───────────────┬───────────────┘
                          │
                          ▼
@@ -386,33 +403,53 @@ What's built vs what's coming.
   Safeguards  │  23 smoke tests
   (step, loop, token budget)
 
-  Phase 1 ✅  Security foundations (this phase)
+  Phase 1 ✅  Security foundations
   ─────────────────────────────────────────────────────────────
   Tool registry + hash integrity   │  SecureToolNode
   Output sanitization (inbound)    │  Outbound PII redaction
   SSRF prevention                  │  Destructive pattern detection
-  Tiered HITL                      │  Guardian stub (Phase 2 sidecar)
   Capability boundary              │  Researcher agent
   46 smoke tests                   │
 
-  Phase 2 (planned)
+  Phase 2 ✅  Containerization + Guardian
   ─────────────────────────────────────────────────────────────
-  Guardian sidecar service         │  JWT task tokens (ACL)
-  SearxNG (replace DuckDuckGo)     │  Async DNS validation
-  Document provenance scoring      │  Operator approval UI
-  Embedding trust scoring          │
+  Guardian sidecar (:9766)         │  Immutable audit log (hash chain)
+  Docker Compose stack             │  RAG document provenance
+  Sequence contracts               │  Health server bearer auth
+  58 smoke tests                   │
 
-  Phase 3 (planned)
+  Phase 3 ✅  ACLs + Task Tokens + Sub-Agents
   ─────────────────────────────────────────────────────────────
-  Multi-agent orchestration        │  Planner agent
-  Coder agent                      │  Agent-to-agent auth
-  Shared tool registry             │
+  JWT task tokens                  │  Sub-agent orchestrator
+  Role definitions (roles.yaml)    │  Privilege escalation blocking
+  95 smoke tests                   │
 
-  Phase 4 (planned)
+  Phase 4 ✅  Adaptive Threat Intelligence
   ─────────────────────────────────────────────────────────────
-  Threat Analyst agent             │  Async HITL DB logging
-  Forensic dashboard               │  Automated incident response
-  Anomaly detection                │
+  Threat Analyst agent             │  Adaptive Guardian rules (hot-reload)
+  AI Bill of Materials             │  /rules human approval endpoints
+  143 smoke tests                  │
+
+  Phase 5 ✅  Crystallization Pipeline
+  ─────────────────────────────────────────────────────────────
+  Observer agent (nominates)       │  Crystallizer agent (generates)
+  Pre-HITL Analyzer (AST+diff)     │  Ed25519 signing + packaging
+  HITL review endpoints            │  CredentialStore (Keychain/env/file)
+  sandbox-exec analyzer profile    │  168 smoke tests
+
+  Phase 5.5 ✅  Security Hardening Sprint (10 vectors)
+  ─────────────────────────────────────────────────────────────
+  DB RBAC: legionforge_app user    │  Tool revocation (REVOKED + TTL 10s)
+  AST subscript + MRO guards       │  TOOL_RESULT_INJECTION threat event
+  TOCTOU approved_snapshot         │  Docker deny-default analyzer sandbox
+  Ollama SHA256 model integrity    │  /tools/{id}/revoke endpoint
+  200 smoke tests                  │
+
+  Phase 6 ⬜  PentestAgent (NEXT)
+  ─────────────────────────────────────────────────────────────
+  Air-gapped attack suite          │  Pentest → Guardian feedback loop
+  Synthetic environment only       │  Structured pentest report
+  Manual trigger only              │  ~220 smoke tests target
 ```
 
 ---
