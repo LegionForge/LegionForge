@@ -14,11 +14,14 @@ Each step has a pass/fail indicator. Stop and fix before continuing if anything 
 ## Step 0 — Deploy Files
 
 ```bash
-# Copy everything into the correct locations on the external drive
-# (overwrite existing files — new versions are additive, not breaking)
-cp -r ~/Downloads/jpc-v3/* ${LEGIONFORGE_HOME}/
+# Clone the repository (first-time setup)
+git clone https://github.com/LegionForge/LegionForge.git ${LEGIONFORGE_HOME}
+
+# Or if already cloned, pull the latest changes
+cd ${LEGIONFORGE_HOME} && git pull origin main
+
+# Ensure scripts are executable
 chmod +x ${LEGIONFORGE_HOME}/scripts/*.sh
-chmod +x ${LEGIONFORGE_HOME}/Makefile
 ```
 
 ---
@@ -107,7 +110,7 @@ ${LEGIONFORGE_HOME}/scripts/setup_postgres.sh
 ```
 ✅  PostgreSQL setup complete!
 Database: legionforge
-User:     jpc
+User:     <your postgres user>
 Data dir: ${LEGIONFORGE_HOME}/postgres/data
 Password: stored in macOS Keychain
 ```
@@ -115,7 +118,7 @@ Password: stored in macOS Keychain
 **Verify PostgreSQL is running:**
 ```bash
 source ~/.zshrc
-psql -U jpc -d legionforge -c "SELECT version();"
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "SELECT version();"
 ```
 
 Should print PostgreSQL version info. ✅
@@ -136,7 +139,7 @@ make db-init
 
 **Verify tables were created:**
 ```bash
-psql -U jpc -d legionforge -c "\dt"
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge -c "\dt"
 ```
 
 Should show tables including `checkpoints`, `api_usage`, `health_metrics`, `documents`. ✅
