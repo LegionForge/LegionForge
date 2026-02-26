@@ -1,8 +1,8 @@
 # TLDR.md
 # LegionForge — What Is This and What Are We Building?
 
-**Version:** 1.1.0
-**Last updated:** 2026-02-22 22:00 CST
+**Version:** 1.2.0
+**Last updated:** 2026-02-26
 
 ---
 
@@ -16,23 +16,26 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Infrastructure is done.** All plumbing is running: PostgreSQL 17, pgvector, async LangGraph checkpointing, rate limiting, observability, health server, 23/23 smoke tests passing.
+✅ **Phases 0–5.5 are complete.** The full crystallization pipeline is operational (Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signed tool), and a ten-vector security hardening sprint has closed the major attack surface identified during adversarial threat-model review.
 
-🔄 **Now building:** The first real agent (Researcher) + Phase 1 security foundations.
+**200/200 smoke tests passing.** Database RBAC, AST bypass guards, tool revocation, TOCTOU prevention, and Ollama model integrity are all in production.
+
+⬜ **Next:** Phase 6 — PentestAgent (air-gapped red-team bot, continuous security regression).
 
 ---
 
-## The Big Picture — Six Phases
+## The Big Picture — Six Phases (+ Security Hardening Sprint)
 
-| Phase | What Gets Built | Why It Matters |
+| Phase | What Gets Built | Status |
 |---|---|---|
-| **0** ✅ | Infrastructure, database, LLM factory, health server | Foundation — done |
-| **1** 🔄 | Researcher agent + tool registry + capability boundaries + threat event logging | First agent + closes biggest security gaps |
-| **2** | Docker containerization + Guardian security sidecar + immutable audit log + RAG provenance | Platform-independent; any framework can use Guardian |
-| **3** | Task tokens + ACLs + sub-agent orchestrator | Safe multi-agent with tightly scoped privileges |
-| **4** | Threat Analyst agent + adaptive Guardian rules + AI-BOM | Framework learns from its own threat history |
-| **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, signed deterministic tools | Systematically replace AI with determinism; zero LLM overhead for routine tasks |
-| **6** | PentestAgent (air-gapped red-team bot) | Continuous security regression testing against your own agents |
+| **0** | Infrastructure, database, LLM factory, health server | ✅ Done |
+| **1** | Researcher agent + tool registry + capability boundaries + threat event logging | ✅ Done |
+| **2** | Docker containerization + Guardian security sidecar + immutable audit log + RAG provenance | ✅ Done |
+| **3** | Task tokens + ACLs + sub-agent orchestrator | ✅ Done |
+| **4** | Threat Analyst agent + adaptive Guardian rules + AI-BOM | ✅ Done |
+| **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, signed tools | ✅ Done |
+| **5.5** | Security hardening: DB RBAC, AST bypass guards, tool revocation, TOCTOU, model integrity | ✅ Done |
+| **6** | PentestAgent — air-gapped red-team bot, continuous security regression | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -97,12 +100,11 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ## What We Are Missing (Known Gaps)
 
-- **AI-BOM (Bill of Materials)** — cross-reference all components against CVE feeds. Planned Phase 4.
-- **Immutable audit log** — current logs are mutable files. Hash-chain append-only log planned Phase 2.
-- **LangSmith privacy audit (R-02)** — confirm PII redaction runs before upstream trace upload. Phase 1 critical blocker.
-- **Output sanitization on tool responses** — input sanitization exists; outbound tool response sanitization is a Phase 1 critical blocker.
-- **Embedding-level anomaly detection** — RAG poisoning at the vector level. Phase 2 open question.
-- **pip-audit / dependency hash pinning** — supply chain hygiene for our own dependencies. Research item R-06.
+- **Automated red-teaming** — Phase 6 PentestAgent will run a full attack suite against deployed agents (prompt injection, RAG poisoning, privilege escalation, resource bombs, crystallized tool behavioral attacks). Manual trigger only.
+- **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level remains an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
+- **pip-audit / dependency hash pinning** — supply chain hygiene for our own Python dependencies. Supply chain attacks via transitive deps remain an accepted residual risk.
+- **GGUF hash pinning** — `make verify-models` prints hashes for pinning; `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values.
+- **Structured escalation requests** — the Phase 3 design doc describes structured output for escalation (`{"status": "needs_escalation", ...}`). The token-level blocking exists; the UI for structured approval flows is deferred.
 
 ---
 
@@ -124,22 +126,28 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Immediate Next Steps
 
-Start here, in this order. Items marked 🔴 are critical blockers — the Researcher agent cannot ship without them.
+### One-time production hardening (Phase 5.5 post-merge)
 
-1. 🔴 Add `tool_registry` table + `register_tool()` + `verify_tool_before_invocation()` to `security.py`
-2. 🔴 Add output sanitization on all external tool responses to `security.py`
-3. 🔴 Apply PII redaction to all outbound API calls, not just LangSmith (closes R-02)
-4. 🔴 Add capability boundary enforcement to `base_graph.py` (negative capability list)
-5. Add `threat_events` table to `database.py`
-6. Add pre-execution token cost estimation to `rate_limiter.py`
-7. Add model integrity hash check to `startup.sh`
-8. Add no-op security stubs to `base_graph.py` (`guardian_check`, `validate_acl_token`, `score_embedding_trust`)
-9. Build `src/agents/researcher.py`
-10. Write `tests/test_researcher.py` (integration test)
-11. Write smoke tests alongside every new component (see `CONTRIBUTING.md`)
+Run these once against a running PostgreSQL instance — they're idempotent:
 
-**→ Full task list:** [`PROJECT_STATUS.md — Immediate Next Steps`](./PROJECT_STATUS.md)
-**→ Full phase plan:** [`PHASE_PLAN.md — Phase 1`](./PHASE_PLAN.md)
+```bash
+make setup-db-roles    # provision legionforge_app restricted PostgreSQL user
+make verify-models     # print SHA256 of GGUF files, then pin in mac_m4_mini_16gb.yaml
+make build-analyzer    # build deny-default Docker analyzer image
+```
+
+### Phase 6 — PentestAgent
+
+The next development phase builds an air-gapped red-team bot that runs a structured attack suite against deployed agents. Results feed the Threat Analyst; undetected attacks become proposed Guardian rules.
+
+Key design constraints:
+- **Isolation:** air-gapped container, no production data access, synthetic environment only
+- **Trigger:** manual only — never autonomous
+- **Attack surface:** direct prompt injection, indirect injection via poisoned RAG documents, tool metadata poisoning, resource bombs, ACL privilege escalation, crystallized tool behavioral equivalence attacks
+- **Output:** structured pentest report at `/security/pentest/latest`; proposed Guardian rules for human review
+
+**→ Full Phase 6 spec:** [`PHASE_PLAN.md — Phase 6`](./PHASE_PLAN.md)
+**→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
 
 ---
 

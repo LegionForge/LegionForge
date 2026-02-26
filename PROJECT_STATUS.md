@@ -1,11 +1,11 @@
 # PROJECT_STATUS.md
 # LegionForge
 
-**Version:** 2.1.0
-**Last updated:** 2026-02-22
-**Branch:** `dev`
+**Version:** 5.5.0
+**Last updated:** 2026-02-26
+**Branch:** `main` (Phase 5.5 merged — PR #11)
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive
-**Status:** ✅ Phase 0 Complete — Infrastructure Operational. Phase 1 Active.
+**Status:** ✅ Phases 0–5.5 Complete. Phase 6 — PentestAgent is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -16,44 +16,69 @@
 
 ## Current State
 
-The framework infrastructure is fully built, verified, and operational. All services are running and all 23 smoke tests pass. The project is ready to build agents and begin Phase 1 security hardening.
+All phases through 5.5 are complete. The full crystallization pipeline is operational and the ten-vector security hardening sprint has been merged to main.
 
 ```
-make test-smoke    → 23/23 passing
+make test-smoke    → 200/200 passing (~2s, no services required)
 make health-server → localhost:8765 all components green
-git branch         → dev (pushed to origin)
+git branch         → main (PR #11 merged 2026-02-26)
+```
+
+### What's shipped (Phase 5 + 5.5 — PR #11)
+
+| Component | File(s) | Notes |
+|---|---|---|
+| Observer agent | `src/agents/observer.py` | Nominates crystallization candidates from audit_log |
+| Crystallizer agent | `src/agents/crystallizer.py` | Generates deterministic functions + test suites |
+| Pre-HITL Analyzer | `src/tools/crystallization_analyzer.py` | AST + security + behavioral diff; Docker > sandbox-exec > bare |
+| Ed25519 signing | `src/tools/signing.py` | Keypair in Keychain; Guardian verifies signature pre-invocation |
+| Review endpoints | `src/health.py` | `/crystallization/candidates` (list/detail/approve/reject/revise) |
+| Tool revocation | `src/health.py` + Guardian | `POST /tools/{id}/revoke`; Guardian TTL 10s; REVOKED status |
+| DB RBAC | `src/database.py` | Two-phase init; `legionforge_app` restricted runtime user |
+| AST hardening | `src/tools/crystallization_analyzer.py` | Subscript bypass, MRO traversal, `globals()`/`locals()` |
+| TOCTOU mitigation | `src/base_graph.py` | `approved_snapshot` + post-exec call_id verification |
+| Model integrity | `src/tools/model_integrity.py` | SHA256 GGUF streaming; `MODEL_INTEGRITY_MISMATCH` threat event |
+| Analyzer sandbox | `Dockerfile.analyzer` | Deny-default: `--network none --read-only --pids-limit 20` |
+
+### Post-merge one-time setup required
+
+```bash
+make setup-db-roles    # provision legionforge_app PostgreSQL role (idempotent)
+make verify-models     # compute SHA256 of GGUF files → pin in mac_m4_mini_16gb.yaml
+make build-analyzer    # build legionforge-analyzer:latest Docker image
 ```
 
 ---
 
-## What's Built (Phase 0 — Complete)
+## What's Built (Phases 0–5.5)
 
 ### Source Files (`src/`)
 
-| File | Purpose | Security Gaps |
-|---|---|---|
-| `database.py` | Async PostgreSQL connection pool, LangGraph checkpointer factory, pgvector similarity search, API usage tracking | No embedding-level trust scoring; no hash-chain audit log; no document provenance at ingestion |
-| `security.py` | macOS Keychain loader, PII redaction (email/phone/SSN/card/keys), prompt injection detection, I/O sanitizer | No tool registry or approval gate; no output sanitization on external tool responses; PII redaction not applied to all outbound API calls |
-| `safeguards.py` | Three-layer loop protection (step limit, action history, token budget), per-run LangSmith tracing toggle | Loop detection fires after damage; no pre-execution cost estimation; no capability boundary enforcement |
-| `rate_limiter.py` | Per-provider async rate limiting, daily token/cost alerts, hard cutoffs for paid APIs | No pre-flight token estimation |
-| `llm_factory.py` | Unified async LLM factory for Ollama/OpenAI/Anthropic, model warmup on startup | No model integrity hash verification at startup |
-| `observability.py` | JSON structured logging with daily rotation, in-memory metrics collector, LangSmith metric upload | Mutable log files; no tamper-evident hash chain; LangSmith trace content not audited for PII |
-| `health.py` | FastAPI server at `localhost:8765` — `/health`, `/status`, `/metrics`, `/usage` endpoints | Unauthenticated; exposes usage patterns; needs auth before any networked deployment |
-| `base_graph.py` | Async LangGraph template with all safeguards wired in — copy this for every new agent | Missing stub hooks for Guardian, ACL token validation, embedding trust score, capability boundary check |
+| File | Purpose |
+|---|---|
+| `database.py` | Async PostgreSQL (admin + restricted app pool), LangGraph checkpointer, pgvector, audit log hash chain, threat events, crystallization tables, tool revocation |
+| `security/core.py` | Keychain loader, CredentialStore (Keychain/env/file), PII redaction, injection detection, I/O sanitizer |
+| `security/guardian.py` | Guardian FastAPI sidecar (:9766) — 6-check deterministic pipeline; revocation; adaptive rules; 10s TTL |
+| `security/acl.py` | JWT task token issuance + validation; privilege escalation blocking |
+| `security/bom.py` | AI Bill of Materials assembly |
+| `safeguards.py` | Three-layer loop protection (step limit, action history, token budget) |
+| `rate_limiter.py` | Per-provider async rate limiting, daily caps, 80%/100% alert thresholds |
+| `llm_factory.py` | Unified async LLM factory for Ollama/OpenAI/Anthropic |
+| `observability.py` | JSON structured logging + LangSmith upload |
+| `health.py` | FastAPI server (:8765) — health, status, metrics, usage, BOM, threat rules, crystallization review, tool revocation. Bearer auth on all except `/health`. |
+| `base_graph.py` | LangGraph agent template — TOCTOU snapshot, Guardian check, SecureToolNode pipeline, injection threat events |
+| `agents/researcher.py` | Researcher agent (web fetch, document store, Ed25519-registered tools) |
+| `agents/orchestrator.py` | Orchestrator with master→derived JWT token hierarchy |
+| `agents/threat_analyst.py` | Threat Analyst (reads threat_events, proposes Guardian rules — cannot self-approve) |
+| `agents/observer.py` | Observer agent (reads audit_log, nominates crystallization candidates) |
+| `agents/crystallizer.py` | Crystallizer agent (generates deterministic functions + test suites) |
+| `tools/crystallization_analyzer.py` | Pre-HITL deterministic analyzer: AST guards (subscript, MRO, globals), Docker/sandbox-exec/bare sandbox, behavioral diff |
+| `tools/signing.py` | Ed25519 keypair management + tool manifest signing/verification |
+| `tools/model_integrity.py` | SHA256 streaming GGUF verification; `MODEL_INTEGRITY_MISMATCH` threat event |
 
 ### Tests (`tests/`)
-- `test_smoke.py` — 23 tests covering config, security, safeguards, rate limiting, observability. No running services required. Runs in ~0.1s.
+- `test_smoke.py` — 200 tests, no running services required, ~2s.
 - `conftest.py` — pytest configuration and shared fixtures
-
-### Config (`config/`)
-- `settings.py` — Pydantic config loader
-- `hardware_profiles/mac_m4_mini_16gb.yaml` — active profile
-- `hardware_profiles/mac_m5_mini_32gb.yaml` — template for future upgrade
-
-### Scripts (`scripts/`)
-- `check_mount.sh` — verifies external drive is mounted before any agent starts
-- `setup_postgres.sh` — one-time PostgreSQL setup (already run, do not re-run)
-- `com.jpc.check-agent-drive.plist` — macOS LaunchAgent for mount guard at login
 
 ---
 
@@ -67,7 +92,7 @@ git branch         → dev (pushed to origin)
 - **Password:** stored in macOS Keychain (`service: postgres, username: api_key`) and password manager
 - **Auto-start:** via `brew services` (starts at login)
 
-**Existing Tables:**
+**All Tables (as of Phase 5.5):**
 
 | Table | Purpose |
 |---|---|
@@ -76,20 +101,16 @@ git branch         → dev (pushed to origin)
 | `checkpoint_writes` | LangGraph pending writes |
 | `checkpoint_migrations` | LangGraph schema versions |
 | `documents` | Vector store for RAG (pgvector, 768-dim, HNSW index) |
-| `api_usage` | Token/call tracking for rate limiting and cost monitoring |
+| `api_usage` | Token/call tracking per provider/run |
 | `health_metrics` | Persisted health check snapshots |
-
-**Tables to be added (phased):**
-
-| Table | Phase | Purpose |
-|---|---|---|
-| `tool_registry` | **1** | Human-approved tool manifests with hashes, versions, source, approval record, status |
-| `threat_events` | **1** | Security anomalies from Guardian, security.py, capability boundary violations |
-| `document_provenance` | 2 | Trust scores, source metadata, embedding hash per RAG document |
-| `audit_log` | 2 | Append-only hash-chain tamper-evident event log |
-| `threat_rules` | 3 | Adaptive rule set maintained by Threat Analyst agent |
-| `task_tokens` | 3 | Ephemeral per-task ACL tokens for sub-agent privilege scoping |
-| `ai_bom` | 4 | AI Bill of Materials — models, tools, dependencies, CVE status |
+| `tool_registry` | Approved tool manifests with hashes, Ed25519 signatures, revocation columns |
+| `threat_events` | Structured security event log (INJECTION_DETECTED, TOOL_HASH_MISMATCH, TOOL_RESULT_INJECTION, MODEL_INTEGRITY_MISMATCH, TOOL_REVOKED, …) |
+| `audit_log` | Append-only SHA-256 hash-chain tamper-evident event log |
+| `agent_profiles` | Registered agent sequence contracts |
+| `threat_rules` | Adaptive rule set — PENDING/APPROVED/REJECTED; Guardian hot-reloads every 10s |
+| `crystallization_candidates` | Observer-nominated candidates (NOMINATED status) |
+| `crystallization_packages` | Crystallizer-generated packages + test suites (PENDING_ANALYSIS → READY_FOR_REVIEW) |
+| `crystallization_analyses` | Pre-HITL analysis reports (READY_FOR_REVIEW or REJECTED_BY_ANALYSIS) |
 
 ### pgvector
 - **Version:** 0.8.1
@@ -163,16 +184,19 @@ curl -s http://localhost:8765/status | python3 -m json.tool
 | Public release repo | https://github.com/jp-cruz/LegionForge (publish at v1.0) |
 | Release target | v1.0 |
 
-## Rename Roadmap
+## Rename History (all complete — archived for reference)
 
 | Phase | Description | Status |
 |---|---|---|
-| **Phase 1** | Display strings, titles, doc headings, `.env` LANGSMITH_PROJECT, code display names | ✅ Done |
-| **Phase 2** | Physical directory rename + venv rebuild + all absolute path updates + ~/.zshrc + PostgreSQL plist | ✅ Done — PR #2 merged |
-| **Phase 3** | Database rename → `legionforge` (pg_dump → create new DB → restore → update all code refs) | ✅ Done — PR #3 merged |
-| **Phase 4** | GitHub repo rename `jp-cruz/jpc-mac-agent-framework` → `LegionForge/LegionForge`, update git remote | ✅ Done |
+| **Phase 1** | Display strings, titles, doc headings | ✅ Done (PR #2) |
+| **Phase 2** | Directory rename + venv rebuild + all absolute path updates | ✅ Done (PR #2) |
+| **Phase 3** | Database rename → `legionforge` | ✅ Done (PR #3) |
+| **Phase 4** | GitHub repo rename → `LegionForge/LegionForge` | ✅ Done (PR #6) |
 
-### Phase 2 — Directory Copy & Path Update (do in order, verify each step before proceeding)
+The detailed step-by-step rename instructions have been removed — all steps are complete.
+See git log for the specific PRs.
+
+### Phase 2 — Directory Copy & Path Update (COMPLETE — archived)
 
 > **Strategy:** Copy the directory (do not rename/move). Old directory stays intact as a live rollback
 > until full verification passes. Delete it only at the cleanup gate at the end.
@@ -735,82 +759,40 @@ See `CONTRIBUTING.md` for full workflow.
 
 ---
 
-## Immediate Next Steps (Phase 1 — Start Here)
+## Immediate Next Steps — Phase 6
 
-These are ordered by dependency and risk. Items marked 🔴 must exist before the Researcher agent ships. Items marked 🟡 should be completed in Phase 1 but do not block the agent.
-
-### 🔴 Must complete before first external tool call
-
-**1. Tool Registry with human approval gate** (`src/security.py` + `database.py`)
-
-Create `tool_registry` table and `register_tool()` / `verify_tool_before_invocation()` functions. Every tool — internal or external — must have an explicit approval record before Guardian will allow it to execute. No tool runs without this.
-
-Fields per tool: `tool_id`, `source`, `version`, `description_hash`, `schema_hash`, `entrypoint_hash` (for local tools), `approved_by`, `approved_at`, `approval_notes`, `status` (APPROVED / SUSPENDED / REVOKED), `declared_side_effects`.
-
-Add `make verify-tool-registry` to the startup sequence — fails if any loaded tool is unregistered.
-
-**2. Output sanitization on all external tool responses** (`src/security.py`)
-
-The current sanitizer runs on inputs. Apply the same PII redaction and injection detection to everything returned by external tools before it enters agent context. One function, consistent application at every trust boundary.
-
-**3. PII and credential redaction on all outbound API calls** (`src/security.py`)
-
-Extend the existing PII patterns to cover all outbound calls — not just LangSmith traces. Every request leaving the machine passes through redaction. Close research item R-02 (LangSmith trace audit) as part of this.
-
-**4. Capability boundary enforcement in Guardian** (`src/base_graph.py` + future `guardian.py` stub)
-
-Add a negative capability list that no task token can override. No agent may: register a tool, write executable files, invoke an unregistered callable, modify its own task token, spawn agents outside the orchestrator pattern, or escalate its own scope. Implement as a Guardian stub now; wire to real Guardian in Phase 2.
-
-```python
-FORBIDDEN_CAPABILITIES = {
-    "register_tool", "write_executable", "invoke_unregistered",
-    "modify_registry", "escalate_scope", "spawn_agent_direct",
-    "modify_own_state",
-}
-```
-
-### 🔴 Core Phase 1 deliverables (unchanged from prior plan)
-
-**5. `threat_events` table** (`database.py`) — every security event writes here.
-
-**6. Tool description hash validation** (`security.py`) — hash at registration, verify on every invocation. Now extended: also hash `entrypoint_hash`, `dependency_hash`, `declared_side_effects`.
-
-**7. Pre-execution token cost estimation** (`rate_limiter.py`) — reject resource bombs before tokens are consumed.
-
-**8. Security stubs in `base_graph.py`** — `guardian_check()`, `validate_acl_token()`, `score_embedding_trust()`, `check_capability_boundary()`.
-
-**9. Build `src/agents/researcher.py`** — using `base_graph.py` as template, wired to `llama3.1:8b`.
-
-**10. Integration tests** — `tests/test_researcher.py`.
-
-### 🟡 Phase 1 additions from recent security discussion
-
-**11. Model integrity check at startup** (`startup.sh` + `src/security.py`)
-
-Hash the Ollama model files for registered models at startup. Store hashes in `tool_registry` alongside tool hashes. An unexpected model hash change halts startup and logs a `MODEL_INTEGRITY_FAILURE` threat event. This prevents silent behavioral drift from model updates.
+### Post-merge one-time ops (do now)
 
 ```bash
-make verify-model-integrity   # new Makefile target
+make setup-db-roles    # provision legionforge_app PostgreSQL role (idempotent)
+make verify-models     # print SHA256 of GGUF files → pin values in mac_m4_mini_16gb.yaml
+make build-analyzer    # build legionforge-analyzer:latest Docker image
 ```
 
-**12. Extend tool manifest to include behavioral contract** (`src/security.py`)
+### Phase 6 — PentestAgent
 
-At registration time, tools declare their side effects explicitly:
-```python
-declared_side_effects: list[str]
-# e.g. ["reads_web", "writes_db", "calls_external_api:api.search.example.com"]
-```
-Guardian enforces this contract at runtime. A tool declared `reads_web` that attempts a DB write is a `BEHAVIORAL_CONTRACT_VIOLATION` — logged to `threat_events` and halted.
+**File:** `src/agents/pentest_agent.py`
+**Branch:** `feature/phase-6-pentest-agent`
 
-**13. Audit LangSmith trace content** (`src/observability.py`)
+The PentestAgent runs a structured attack suite against deployed agents in an air-gapped environment. It must never touch production data and must always be manually triggered.
 
-Before any trace data is sent to LangSmith, run it through `sanitize_for_trace()`. Verify this is happening consistently. Add a test that injects synthetic PII into a trace payload and asserts it's redacted before upload. Close R-02.
+**Attack capabilities (all against synthetic targets):**
+- Direct prompt injection suite (20+ variants)
+- Indirect injection via synthetic poisoned RAG documents
+- Tool metadata poisoning (manifest hash bypass attempts)
+- Resource bomb patterns (token exhaustion, loop induction)
+- ACL privilege escalation attempts (token scope widening)
+- RAG poisoning via low-trust synthetic documents
+- Crystallized tool behavioral equivalence attacks (verify deterministic tool can't be tricked into security-relevant divergence from the AI baseline)
 
-### 🟡 Phase 1 technical debt cleanup
+**Exit criteria for Phase 6:**
+- PentestAgent runs full attack suite against Researcher agent in synthetic env
+- Results feed Threat Analyst as high-priority input
+- At least one new Guardian rule proposed from pentest findings
+- Structured pentest report at `/security/pentest/latest`
+- Smoke tests: 200 → ~220
 
-- Fix `AsyncConnectionPool` deprecation warning in `database.py`
-- Update PG16 path string in `setup_postgres.sh` to PG17
-- Add DB + Ollama integration tests
+**→ Full Phase 6 spec:** [`PHASE_PLAN.md — Phase 6`](./PHASE_PLAN.md)
 
 ---
 
