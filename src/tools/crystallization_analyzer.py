@@ -561,7 +561,7 @@ def _build_container_cmd(python_args: list[str]) -> list[str] | None:
         "none",
         "--read-only",
         "--tmpfs",
-        "/tmp:size=10m",
+        "/tmp:size=10m",  # nosec B108 — Docker tmpfs mount arg, not a Python tempfile path
         "--memory",
         "128m",
         "--cpus",

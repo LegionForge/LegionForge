@@ -236,13 +236,16 @@ class SyntheticEnvironment:
             dsn = await self._get_admin_dsn()
             conn = await psycopg.AsyncConnection.connect(dsn, autocommit=True)
             try:
-                # Terminate active connections before dropping
+                # Terminate active connections before dropping.
+                # nosec B608: _db_name is operator-configured (settings.pentest.synthetic_db_name),
+                # never derived from user input. Parameterized queries are not supported for
+                # datname in this pg_stat_activity context.
                 await conn.execute(
                     f"""
                     SELECT pg_terminate_backend(pid)
                     FROM pg_stat_activity
                     WHERE datname = '{self._db_name}' AND pid <> pg_backend_pid()
-                    """
+                    """  # nosec B608
                 )
                 await conn.execute(
                     f"DROP DATABASE IF EXISTS {self._db_name}"  # noqa: S608

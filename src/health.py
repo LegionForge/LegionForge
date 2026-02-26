@@ -1095,14 +1095,21 @@ async def approve_pentest_rule(
     """
     HITL gate: Approve a proposed rule generated from a pentest finding.
 
-    Bearer-protected. Updates status from PROPOSED → APPROVED in
-    pentest_proposed_rules. Returns the updated rule.
+    Phase 7 enhancement: after updating pentest_proposed_rules.status to
+    APPROVED, this endpoint promotes the rule into threat_rules so Guardian
+    enforces it within its next 10-second cache refresh cycle.
+
+    Bearer-protected. Returns the updated rule plus the new threat_rule_id.
     """
     if not _verify_bearer_token(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     try:
-        from src.database import get_pool
+        from src.database import (
+            append_audit_log,
+            get_pool,
+            promote_pentest_rule_to_threat_rule,
+        )
         from psycopg.rows import dict_row
 
         pool = get_pool()
@@ -1113,7 +1120,8 @@ async def approve_pentest_rule(
                 UPDATE pentest_proposed_rules
                 SET status = 'APPROVED'
                 WHERE id = %s AND status = 'PROPOSED'
-                RETURNING id, finding_id, rule_type, rule_content, rationale, status
+                RETURNING id, run_id::text, finding_id, rule_type,
+                          rule_content, rationale, status
                 """,
                 (finding_id,),
             )
@@ -1122,19 +1130,67 @@ async def approve_pentest_rule(
                     {"error": f"Rule {finding_id} not found or already processed"},
                     status_code=404,
                 )
-            rule = rows[0]
+        rule = rows[0]
+        logger.info(
+            f"[health] Pentest rule {finding_id} approved by '{body.approved_by}'"
+        )
+
+        # Phase 7: promote the approved rule into threat_rules so Guardian enforces it.
+        try:
+            threat_rule_id = await promote_pentest_rule_to_threat_rule(
+                finding_id=rule["id"],
+                rule_type=rule["rule_type"],
+                rule_content=rule["rule_content"],
+                rationale=rule["rationale"],
+                run_id=rule["run_id"],
+            )
             logger.info(
-                f"[health] Pentest rule {finding_id} approved by '{body.approved_by}'"
+                f"[health] Promoted pentest rule {finding_id} → "
+                f"threat_rule {threat_rule_id} (enforced within 10s)"
             )
-            return JSONResponse(
-                {
-                    "status": "approved",
-                    "rule_id": rule["id"],
+        except ValueError as ve:
+            # Unknown rule_type — return 422 rather than silently dropping
+            logger.warning(f"[health] Cannot promote pentest rule {finding_id}: {ve}")
+            return JSONResponse({"error": str(ve)}, status_code=422)
+        except Exception as promo_err:
+            # Promotion failed (e.g. DB unavailable) — log and continue;
+            # the pentest rule is still marked APPROVED in its table.
+            logger.error(
+                f"[health] promote_pentest_rule_to_threat_rule failed "
+                f"for finding {finding_id}: {promo_err}"
+            )
+            threat_rule_id = None
+
+        # Append an audit log entry for the promotion event.
+        try:
+            await append_audit_log(
+                event_type="PENTEST_RULE_PROMOTED",
+                agent_id=body.approved_by,
+                payload={
+                    "pentest_finding_id": finding_id,
+                    "threat_rule_id": threat_rule_id,
                     "rule_type": rule["rule_type"],
-                    "rule_content": rule["rule_content"],
-                    "approved_by": body.approved_by,
-                }
+                    "run_id": rule["run_id"],
+                },
             )
+        except Exception as audit_err:
+            logger.warning(
+                f"[health] audit_log write failed for rule {finding_id}: {audit_err}"
+            )
+
+        return JSONResponse(
+            {
+                "status": "approved",
+                "rule_id": rule["id"],
+                "rule_type": rule["rule_type"],
+                "rule_content": rule["rule_content"],
+                "approved_by": body.approved_by,
+                "threat_rule_id": threat_rule_id,
+                "enforcement": (
+                    "active_within_10s" if threat_rule_id else "promotion_failed"
+                ),
+            }
+        )
     except Exception as e:
         logger.error(f"[health] approve_pentest_rule failed for {finding_id}: {e}")
         return JSONResponse({"error": str(e)}, status_code=503)

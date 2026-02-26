@@ -3,7 +3,7 @@
 
 **Version:** 5.5.0
 **Last updated:** 2026-02-26
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ⬜ Planned
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -42,7 +42,8 @@ Phase 3    ✅  ACLs + Task Tokens + Sub-Agents    → DONE
 Phase 4    ✅  Adaptive Security                  → DONE    (weeks 11–14)
 Phase 5    ✅  Crystallization Pipeline           → DONE    (weeks 15–19)
 Phase 5.5  ✅  Security Hardening Sprint          → DONE    (10-vector hardening; 200 smoke tests)
-Phase 6    ⬜  Red Team + Pentest Bot             → NEXT    (weeks 20+)
+Phase 6    ✅  Red Team + Pentest Bot             → DONE    (PentestAgent; 228 smoke tests)
+Phase 7    ✅  Guardian Feedback Loop + v1.0     → DONE    (pentest→Guardian bridge; SECURITY.md; 242 smoke tests)
 ```
 
 Each phase is independently shippable. Phases do not block each other for core agent work — security layers are additive.
@@ -960,5 +961,59 @@ Phase 0 (Infrastructure)
 | 4 | ~2GB peak | ~5GB | Threat Analyst runs Ollama inference; scheduled, not concurrent |
 | 5 | ~2GB peak | ~10GB | Observer + Crystallizer run sequentially; crystallized tool containers are ephemeral and small; analysis is CPU-bound not RAM-bound |
 | 6 | ~3GB peak (air-gapped) | ~5GB | PentestAgent runs only on manual trigger |
+| 7 | ~0GB | ~1MB | Pure DB + logic work; no new containers or models |
 
-Total at full Phase 6 deployment, peak concurrent: ~8–9GB RAM. Within the 16GB envelope with Ollama model swap managed (one model loaded at a time).
+Total at full Phase 7 deployment, peak concurrent: ~8–9GB RAM. Within the 16GB envelope with Ollama model swap managed (one model loaded at a time).
+
+---
+
+## Phase 7 — Guardian Feedback Loop + v1.0 Readiness ✅ COMPLETE
+
+**Goal:** Complete Phase 6.2 (Pentest→Guardian bridge). Wire approved pentest rules into
+Guardian's enforcement pipeline. Document HITL halt policy. v1.0 housekeeping.
+
+**Duration:** 1 sprint
+**Dependencies:** Phase 6 complete; `threat_rules` + `_check_6_adaptive_rules()` in place (Phase 4)
+**Exit criteria:** Approved pentest rules promoted to `threat_rules`; Guardian enforces within 10s;
+SECURITY.md written; 242/242 smoke tests passing.
+
+### Component 7.1 — Pentest→Guardian Bridge
+
+**File:** `src/database.py`
+
+`promote_pentest_rule_to_threat_rule()` converts an approved `pentest_proposed_rules` row
+into a `threat_rules` row (status='APPROVED', approved_by='operator_hitl'). The type
+mapping is:
+
+| pentest type | Guardian type | Guardian check |
+|---|---|---|
+| `REGEX` | `INJECTION_PATTERN` | `_check_6_adaptive_rules()` — matches against arg strings |
+| `CAPABILITY` | `CAPABILITY_BLOCK` | `_check_6_adaptive_rules()` — blocks named tool_id |
+| `RATE_LIMIT` | `RATE_LIMIT_TIGHTEN` | stored; provider-side enforcement |
+
+**File:** `src/health.py`
+
+`POST /pentest/rules/{finding_id}/approve` now:
+1. Sets `pentest_proposed_rules.status = 'APPROVED'`
+2. Calls `promote_pentest_rule_to_threat_rule()` — bridges to `threat_rules`
+3. Calls `append_audit_log()` with event_type='PENTEST_RULE_PROMOTED'
+4. Returns `{..., "threat_rule_id": "...", "enforcement": "active_within_10s"}`
+
+Guardian picks up the new row on its next 10-second cache refresh. No Guardian restart needed.
+
+### Component 7.2 — SECURITY.md
+
+New `SECURITY.md` at repo root covering:
+- Full threat model (13 threats + defenses)
+- HITL halt vs log tier policy (NIST SP 800-61r3 + MITRE ATT&CK references)
+- Tier 1: HALT — injection in args, self-probe, privilege escalation, TOCTOU, Guardian unavailable
+- Tier 2: LOG+ALERT — injection in input, credential probe, rate limit, sequence violation
+- Tier 3: DEGRADE — non-critical failures, budget exhaustion
+- Pentest baseline (0 bypasses on clean deployment)
+- Responsible disclosure (90-day window, `[SECURITY]` tag, private channel)
+
+### Component 7.3 — v1.0 Housekeeping
+
+- `PHASE_PLAN.md`: Phase 6 + Phase 7 marked complete; Phase Overview updated
+- `placeholder_readme.md`: Phase 7 row; Known Gaps deduped; smoke test count 228 → 242
+- `tests/test_smoke.py`: +14 Phase 7 tests (228 → 242)

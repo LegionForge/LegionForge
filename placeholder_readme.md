@@ -76,8 +76,9 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, Ed25519-signed tools | ✅ Complete |
 | **5.5** | Security hardening: DB RBAC, AST bypass guards (subscript/MRO/globals), tool revocation, TOCTOU mitigation, Ollama model integrity | ✅ Complete |
 | **6** | PentestAgent — air-gapped red-team bot, 8 attack classes × 3 variants, stop-at-proof | ✅ Complete |
+| **7** | Guardian feedback loop, SECURITY.md, v1.0 readiness | ✅ Complete |
 
-**228/228 smoke tests passing.** No running services required. Runs in ~2 seconds.
+**242/242 smoke tests passing.** No running services required. Runs in ~2 seconds.
 
 ---
 
@@ -141,7 +142,7 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 228 smoke tests, ~2s, no services required
+make test-smoke      # 242 smoke tests, ~2s, no services required
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765
 make setup-db-roles  # Provision legionforge_app restricted PostgreSQL role (idempotent)
@@ -160,7 +161,6 @@ make pentest-report  # Print most recent pentest report (or RUN_ID=<uuid>)
 
 ## Known Gaps (Accepted Residual Risk)
 
-- **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
 - **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
 - **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. Accepted residual risk.
 - **GGUF hash pinning** — `make verify-models` prints hashes for pinning; `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values.

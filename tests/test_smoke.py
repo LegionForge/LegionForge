@@ -3127,3 +3127,123 @@ def test_pentest_report_module_importable():
         PentestFinding,
         PentestSummary,
     )  # noqa: F401
+
+
+# ── Phase 7: Guardian Feedback Loop ──────────────────────────────────────────
+
+
+def test_promote_pentest_rule_to_threat_rule_is_async():
+    """promote_pentest_rule_to_threat_rule() is an async function (coroutine)."""
+    import asyncio
+    from src.database import promote_pentest_rule_to_threat_rule
+
+    assert asyncio.iscoroutinefunction(promote_pentest_rule_to_threat_rule)
+
+
+def test_pentest_rule_type_map_has_all_3_types():
+    """_PENTEST_RULE_TYPE_MAP covers all three pentest rule types."""
+    from src.database import _PENTEST_RULE_TYPE_MAP
+
+    assert "REGEX" in _PENTEST_RULE_TYPE_MAP
+    assert "CAPABILITY" in _PENTEST_RULE_TYPE_MAP
+    assert "RATE_LIMIT" in _PENTEST_RULE_TYPE_MAP
+
+
+def test_pentest_regex_rule_converts_to_injection_pattern():
+    """REGEX pentest rule maps to INJECTION_PATTERN threat rule type."""
+    from src.database import _PENTEST_RULE_TYPE_MAP
+
+    assert _PENTEST_RULE_TYPE_MAP["REGEX"] == "INJECTION_PATTERN"
+
+
+def test_pentest_capability_rule_converts_to_capability_block():
+    """CAPABILITY pentest rule maps to CAPABILITY_BLOCK threat rule type."""
+    from src.database import _PENTEST_RULE_TYPE_MAP
+
+    assert _PENTEST_RULE_TYPE_MAP["CAPABILITY"] == "CAPABILITY_BLOCK"
+
+
+def test_pentest_rate_limit_rule_converts_to_rate_limit_tighten():
+    """RATE_LIMIT pentest rule maps to RATE_LIMIT_TIGHTEN threat rule type."""
+    from src.database import _PENTEST_RULE_TYPE_MAP
+
+    assert _PENTEST_RULE_TYPE_MAP["RATE_LIMIT"] == "RATE_LIMIT_TIGHTEN"
+
+
+def test_pentest_rule_def_includes_source_pentest():
+    """Every converted rule_def has source='pentest'."""
+    from src.database import _build_threat_rule_def
+
+    for rule_type in ("REGEX", "CAPABILITY", "RATE_LIMIT"):
+        rule_def = _build_threat_rule_def(rule_type, "test_content", None, 99)
+        assert (
+            rule_def.get("source") == "pentest"
+        ), f"rule_def for {rule_type} missing source='pentest'"
+
+
+def test_pentest_rule_def_includes_finding_id():
+    """Every converted rule_def includes the pentest_finding_id for traceability."""
+    from src.database import _build_threat_rule_def
+
+    rule_def = _build_threat_rule_def("REGEX", "pattern_x", None, 42)
+    assert rule_def.get("pentest_finding_id") == 42
+
+
+def test_pentest_rule_def_regex_has_pattern_key():
+    """REGEX rule_def has 'pattern' key containing the rule_content."""
+    from src.database import _build_threat_rule_def
+
+    rule_def = _build_threat_rule_def("REGEX", "ignore all previous", None, 1)
+    assert rule_def.get("pattern") == "ignore all previous"
+    assert "flags" in rule_def  # case-insensitive flag present
+
+
+def test_guardian_check_6_function_exists():
+    """Guardian exposes _check_6_adaptive_rules as a callable."""
+    from src.security.guardian import _check_6_adaptive_rules
+
+    assert callable(_check_6_adaptive_rules)
+
+
+def test_guardian_adaptive_rules_cache_is_list():
+    """Guardian's _adaptive_rules module-level cache is a list."""
+    import src.security.guardian as guardian_mod
+
+    assert isinstance(guardian_mod._adaptive_rules, list)
+
+
+def test_threat_rules_table_in_create_tables():
+    """threat_rules table DDL is present in _create_app_tables() source."""
+    import inspect
+    from src.database import _create_app_tables
+
+    source = inspect.getsource(_create_app_tables)
+    assert "threat_rules" in source, "_create_app_tables() missing threat_rules table"
+
+
+def test_security_md_exists():
+    """SECURITY.md exists at the repository root."""
+    from pathlib import Path
+
+    security_md = Path(__file__).parent.parent / "SECURITY.md"
+    assert security_md.exists(), "SECURITY.md not found at repo root"
+
+
+def test_security_md_has_hitl_section():
+    """SECURITY.md contains the HITL Halt vs Log Policy section."""
+    from pathlib import Path
+
+    security_md = Path(__file__).parent.parent / "SECURITY.md"
+    content = security_md.read_text()
+    assert (
+        "HITL Halt vs Log Policy" in content
+    ), "SECURITY.md missing 'HITL Halt vs Log Policy' section"
+
+
+def test_phase_plan_has_phase_7_entry():
+    """PHASE_PLAN.md contains a Phase 7 section."""
+    from pathlib import Path
+
+    phase_plan = Path(__file__).parent.parent / "PHASE_PLAN.md"
+    content = phase_plan.read_text()
+    assert "Phase 7" in content, "PHASE_PLAN.md missing Phase 7 entry"

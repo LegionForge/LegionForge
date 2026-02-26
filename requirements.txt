@@ -36,7 +36,7 @@ python-dotenv~=1.0
 PyJWT~=2.8
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
-cryptography~=42.0               # Ed25519; also transitive via PyJWT
+cryptography~=44.0               # Ed25519; also transitive via PyJWT. ≥44.0.1 resolves CVE Dependabot alerts (SECT curve subgroup + OpenSSL wheel vulns)
 
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7

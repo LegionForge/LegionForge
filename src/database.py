@@ -2337,3 +2337,131 @@ async def list_pentest_findings(run_id: str) -> list[dict]:
             """,
             (run_id,),
         )
+
+
+# ── Phase 7: Pentest → Guardian bridge ────────────────────────────────────────
+
+# Maps pentest_proposed_rules.rule_type → threat_rules.rule_type
+_PENTEST_RULE_TYPE_MAP: dict[str, str] = {
+    "REGEX": "INJECTION_PATTERN",
+    "CAPABILITY": "CAPABILITY_BLOCK",
+    "RATE_LIMIT": "RATE_LIMIT_TIGHTEN",
+}
+
+
+def _build_threat_rule_def(
+    rule_type: str,
+    rule_content: str,
+    rationale: str | None,
+    finding_id: int,
+) -> dict:
+    """
+    Convert a pentest proposed rule into a threat_rules rule_def JSONB payload.
+
+    Args:
+        rule_type:    One of 'REGEX', 'CAPABILITY', 'RATE_LIMIT'.
+        rule_content: Raw rule content string from pentest_proposed_rules.
+        rationale:    Human-readable reason (may be None).
+        finding_id:   pentest_findings.id for audit traceability.
+
+    Returns:
+        Dict suitable for insertion into threat_rules.rule_def (JSONB).
+    """
+    base = {
+        "source": "pentest",
+        "pentest_finding_id": finding_id,
+    }
+    if rule_type == "REGEX":
+        return {
+            **base,
+            "pattern": rule_content,
+            "flags": "i",  # case-insensitive — conservative default
+        }
+    if rule_type == "CAPABILITY":
+        return {
+            **base,
+            "tool_id": rule_content,
+            "reason": rationale or "pentest bypass detected",
+        }
+    # RATE_LIMIT
+    return {
+        **base,
+        "constraint": rule_content,
+    }
+
+
+async def promote_pentest_rule_to_threat_rule(
+    finding_id: int,
+    rule_type: str,
+    rule_content: str,
+    rationale: str | None,
+    run_id: str,
+) -> str:
+    """
+    Promote an approved pentest rule into threat_rules so Guardian enforces it.
+
+    This is the Phase 7 Pentest→Guardian bridge. When a human approves a pentest
+    proposed rule via ``POST /pentest/rules/{finding_id}/approve``, this function
+    converts it to the ``threat_rules`` schema and inserts it with
+    status='APPROVED' and approved_by='operator_hitl'.
+
+    The double-step (PENDING → APPROVED) used by the Threat Analyst is bypassed
+    here because the human already provided approval at the HITL endpoint — no
+    second gate is needed.
+
+    Guardian picks up the new rule within its 10-second cache refresh window via
+    ``_check_6_adaptive_rules()``.
+
+    Args:
+        finding_id:   pentest_findings.id (for traceability in rule_def).
+        rule_type:    One of 'REGEX', 'CAPABILITY', 'RATE_LIMIT'.
+        rule_content: Raw content from pentest_proposed_rules.rule_content.
+        rationale:    Human-readable rationale (may be None).
+        run_id:       UUID of the pentest run (stored as evidence_id).
+
+    Returns:
+        rule_id (UUID string) of the newly created threat_rules row.
+
+    Raises:
+        ValueError: If rule_type is not in _PENTEST_RULE_TYPE_MAP.
+    """
+    if rule_type not in _PENTEST_RULE_TYPE_MAP:
+        raise ValueError(
+            f"Unknown pentest rule_type '{rule_type}'. "
+            f"Valid types: {list(_PENTEST_RULE_TYPE_MAP)}"
+        )
+
+    threat_rule_type = _PENTEST_RULE_TYPE_MAP[rule_type]
+    rule_def = _build_threat_rule_def(rule_type, rule_content, rationale, finding_id)
+    justification = (
+        rationale or f"Promoted from pentest finding #{finding_id} (run {run_id[:8]})"
+    )
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO threat_rules
+                (proposed_by, rule_type, rule_def, justification, evidence_ids,
+                 status, approved_by, approved_at)
+            VALUES
+                ('pentest_agent', %s, %s::jsonb, %s, %s,
+                 'APPROVED', 'operator_hitl', NOW())
+            RETURNING rule_id::text
+            """,
+            (
+                threat_rule_type,
+                json.dumps(rule_def),
+                justification,
+                [run_id],
+            ),
+        )
+        row = await cur.fetchone()
+
+    rule_id = row["rule_id"]
+    logger.info(
+        f"[pentest→guardian] Promoted finding #{finding_id} → threat_rule "
+        f"rule_id={rule_id} type={threat_rule_type} (Guardian enforces within 10s)"
+    )
+    return rule_id
