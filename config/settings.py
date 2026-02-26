@@ -253,6 +253,31 @@ class SecurityConfig(BaseModel):
     model_integrity_strict: bool = False
 
 
+class PentestConfig(BaseModel):
+    """
+    Configuration for the Phase 6 PentestAgent (air-gapped red-team bot).
+
+    All fields have safe defaults so this block is optional in hardware YAML profiles.
+    Add a `pentest:` section to a profile to override individual fields.
+    """
+
+    enabled: bool = True
+    # "verify"     — stop-at-proof-of-concept (default, safe)
+    # "resilience" — continue past PoC to measure blast radius (explicit opt-in only)
+    default_mode: str = "verify"
+    # Maximum size (bytes) for attack payload strings stored in the DB.
+    max_payload_size_bytes: int = 4096
+    # Halt the entire run if a CRITICAL-severity bypass is confirmed.
+    stop_on_critical: bool = True
+    # Separate PostgreSQL database for synthetic pentest environment.
+    synthetic_db_name: str = "legionforge_pentest"
+    # Output format for the final report written to disk.
+    report_format: str = "json"  # "json" | "markdown" | "html"
+    # HTTP port for the deterministic stub Ollama responder.
+    # Must not overlap with the real Ollama port (default 11434).
+    stub_ollama_port: int = 11435
+
+
 class HardwareSettings(BaseModel):
     profile: ProfileMeta
     memory: MemoryConfig
@@ -263,6 +288,7 @@ class HardwareSettings(BaseModel):
     safeguards: SafeguardsConfig
     observability: ObservabilityConfig
     security: SecurityConfig
+    pentest: PentestConfig = PentestConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

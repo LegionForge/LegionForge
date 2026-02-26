@@ -86,3 +86,49 @@ services:
       - build-only
     # No ports, no restart — invoked per test case by _run_test_in_subprocess()
     # Security: --network none, --read-only, --memory 128m applied at invocation time
+
+  # Phase 6: pentest — air-gapped red-team container.
+  # Build-only profile: make build-pentest
+  # Run via: make pentest  or  make pentest-resilience
+  #
+  # CRITICAL security constraints (enforced at OS/Docker layer):
+  #   network_mode: none  — no outbound network; air-gap is NOT software policy
+  #   read_only: true     — immutable container filesystem
+  #   user: pentest       — non-root unprivileged process
+  #
+  # What is NOT in environment:
+  #   - No production API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+  #   - No LangSmith tracing (traces must not contaminate production project)
+  #   - No Keychain access (container is network-isolated anyway)
+  pentest:
+    build:
+      context: .
+      dockerfile: Dockerfile.pentest
+    image: legionforge-pentest:latest
+    profiles:
+      - pentest
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=10m
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges
+    pids_limit: 50
+    environment:
+      # Pentest DB — isolated from production legionforge DB
+      POSTGRES_HOST: host.docker.internal
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      PENTEST_DB: legionforge_pentest
+      # Task token signing secret — needed for privilege escalation tests
+      TASK_TOKEN_SECRET: ${TASK_TOKEN_SECRET:-pentest-stub-secret}
+      # Hardware profile — must be set for config/settings.py to load
+      AGENT_HARDWARE_PROFILE: ${AGENT_HARDWARE_PROFILE:-mac_m4_mini_16gb}
+      PYTHONPATH: /pentest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # No ports — pentest runs are one-shot jobs, not persistent services
+    # No restart policy — runs once and exits

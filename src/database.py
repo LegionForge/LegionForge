@@ -801,6 +801,64 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS revocation_reason TEXT"
     )
 
+    # Phase 6: PentestAgent — air-gapped red-team run tracking
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pentest_runs (
+            run_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            mode        TEXT NOT NULL DEFAULT 'verify',
+            git_ref     TEXT,
+            summary     JSONB,
+            status      TEXT NOT NULL DEFAULT 'running'
+                            CHECK (status IN ('running','complete','error'))
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS pentest_runs_started_idx "
+        "ON pentest_runs (started_at DESC)"
+    )
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pentest_findings (
+            id              BIGSERIAL PRIMARY KEY,
+            run_id          UUID NOT NULL REFERENCES pentest_runs(run_id),
+            attack_class    TEXT NOT NULL,
+            variant         TEXT NOT NULL,
+            severity        TEXT NOT NULL
+                                CHECK (severity IN ('CRITICAL','HIGH','MEDIUM','LOW','PASS')),
+            defense_held    BOOLEAN NOT NULL,
+            detail          TEXT,
+            payload         TEXT,
+            logged_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS pentest_findings_run_idx "
+        "ON pentest_findings (run_id, logged_at DESC)"
+    )
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pentest_proposed_rules (
+            id              BIGSERIAL PRIMARY KEY,
+            run_id          UUID NOT NULL REFERENCES pentest_runs(run_id),
+            finding_id      BIGINT REFERENCES pentest_findings(id),
+            rule_type       TEXT NOT NULL
+                                CHECK (rule_type IN ('REGEX','CAPABILITY','RATE_LIMIT')),
+            rule_content    TEXT NOT NULL,
+            rationale       TEXT,
+            status          TEXT NOT NULL DEFAULT 'PROPOSED'
+                                CHECK (status IN ('PROPOSED','APPROVED','REJECTED')),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+    )
+
     logger.info("Application tables verified")
 
 
@@ -998,6 +1056,13 @@ THREAT_TYPES = {
     "TOOL_REVOKED",  # tool is in REVOKED status — Guardian halts the call
     "TOOL_RESULT_INJECTION",  # injection pattern detected in a tool's return value
     "MODEL_INTEGRITY_MISMATCH",  # GGUF file SHA256 does not match pinned hash
+    # Phase 6: PentestAgent bypass events — logged when a defense is defeated
+    "PENTEST_INJECTION_BYPASS",  # prompt injection slipped past detect_injection()
+    "PENTEST_RAG_POISONING_BYPASS",  # poisoned doc reached agent context
+    "PENTEST_TOOL_POISONING_BYPASS",  # tampered tool hash not caught pre-invocation
+    "PENTEST_RESOURCE_BOMB_BYPASS",  # preflight budget or rate limiter not triggered
+    "PENTEST_PRIVILEGE_ESCALATION_BYPASS",  # child token exceeded parent scope
+    "PENTEST_CRYSTALLIZATION_BYPASS",  # forbidden AST construct passed the analyzer
 }
 
 # Valid action_taken values
@@ -2130,3 +2195,145 @@ async def get_revoked_tools() -> list[str]:
     except Exception as e:
         logger.warning(f"[revocation] get_revoked_tools failed: {e}")
         return []
+
+
+# ── Phase 6: PentestAgent — run tracking ─────────────────────────────────────
+
+
+async def create_pentest_run(mode: str = "verify", git_ref: str | None = None) -> str:
+    """
+    Insert a new pentest_runs row and return the run_id (UUID string).
+
+    Args:
+        mode:    "verify" (stop-at-proof) or "resilience" (measure blast radius).
+        git_ref: Optional git SHA or branch name for traceability.
+
+    Returns:
+        UUID string for the new run.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        row = await conn.fetchone(
+            """
+            INSERT INTO pentest_runs (mode, git_ref)
+            VALUES (%s, %s)
+            RETURNING run_id::text
+            """,
+            (mode, git_ref),
+        )
+        run_id = row[0]
+        logger.info(f"[pentest] Run created: run_id={run_id} mode={mode}")
+        return run_id
+
+
+async def log_pentest_finding(
+    run_id: str,
+    attack_class: str,
+    variant: str,
+    severity: str,
+    defense_held: bool,
+    detail: str = "",
+    payload: str | None = None,
+) -> int:
+    """
+    Insert a finding row into pentest_findings.
+
+    Args:
+        run_id:       UUID of the active pentest_runs row.
+        attack_class: e.g. "PROMPT_INJECTION", "RAG_POISONING".
+        variant:      e.g. "direct_injection", "nested_instruction_override".
+        severity:     One of CRITICAL / HIGH / MEDIUM / LOW / PASS.
+        defense_held: True if the defense blocked the attack; False = bypass found.
+        detail:       Human-readable description of the result.
+        payload:      The attack string used (truncated to 4 KB if needed).
+
+    Returns:
+        Integer primary key of the new finding row.
+    """
+    valid_severities = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "PASS"}
+    if severity not in valid_severities:
+        raise ValueError(
+            f"severity must be one of {valid_severities}, got {severity!r}"
+        )
+
+    if payload and len(payload) > 4096:
+        payload = payload[:4096]
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        row = await conn.fetchone(
+            """
+            INSERT INTO pentest_findings
+                (run_id, attack_class, variant, severity, defense_held, detail, payload)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (run_id, attack_class, variant, severity, defense_held, detail, payload),
+        )
+        finding_id = row[0]
+        status_icon = "✅" if defense_held else "❌"
+        logger.info(
+            f"[pentest] {status_icon} {attack_class}/{variant} "
+            f"severity={severity} defense_held={defense_held} id={finding_id}"
+        )
+        return finding_id
+
+
+async def finish_pentest_run(run_id: str, summary: dict) -> None:
+    """
+    Mark a pentest run complete and store its summary JSONB.
+
+    Args:
+        run_id:  UUID of the run to close.
+        summary: Dict with keys: total, passed, bypasses, by_severity, by_class.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE pentest_runs
+            SET finished_at = NOW(),
+                status      = 'complete',
+                summary     = %s
+            WHERE run_id = %s
+            """,
+            (json.dumps(summary), run_id),
+        )
+    logger.info(f"[pentest] Run finished: run_id={run_id} summary={summary}")
+
+
+async def get_pentest_run(run_id: str) -> dict | None:
+    """
+    Fetch a single pentest_runs row by run_id.
+
+    Returns:
+        Dict with run fields, or None if not found.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        rows = await conn.fetchall(
+            "SELECT * FROM pentest_runs WHERE run_id = %s::uuid",
+            (run_id,),
+        )
+    return rows[0] if rows else None
+
+
+async def list_pentest_findings(run_id: str) -> list[dict]:
+    """
+    Return all pentest_findings rows for a given run_id, ordered by logged_at.
+
+    Returns:
+        List of dicts (empty list if no findings or run not found).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        return await conn.fetchall(
+            """
+            SELECT * FROM pentest_findings
+            WHERE run_id = %s::uuid
+            ORDER BY logged_at ASC
+            """,
+            (run_id,),
+        )

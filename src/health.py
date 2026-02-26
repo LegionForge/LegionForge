@@ -789,6 +789,357 @@ async def revoke_tool_endpoint(
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
+# ── Phase 6: PentestAgent endpoints ──────────────────────────────────────────
+
+
+class StartPentestRequest(BaseModel):
+    mode: str = "verify"  # "verify" | "resilience"
+    classes: list[str] = []  # empty = all 8 attack classes
+
+
+@app.post("/pentest/run")
+async def start_pentest_run(
+    body: StartPentestRequest, request: Request
+) -> JSONResponse:
+    """
+    Start a new pentest run asynchronously.
+
+    Bearer-protected. The run executes in a background task; poll
+    GET /pentest/runs/{run_id} for status.
+
+    Body: {"mode": "verify", "classes": ["PROMPT_INJECTION", ...]}
+    Returns: {"run_id": "...", "status": "started", "mode": "verify"}
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    valid_modes = {"verify", "resilience"}
+    if body.mode not in valid_modes:
+        return JSONResponse(
+            {"error": f"mode must be one of {sorted(valid_modes)}"},
+            status_code=400,
+        )
+
+    try:
+        import asyncio
+        import subprocess as _sp
+
+        from src.database import create_pentest_run
+
+        try:
+            git_ref = (
+                _sp.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"], stderr=_sp.DEVNULL
+                )
+                .decode()
+                .strip()
+            )
+        except Exception:
+            git_ref = "unknown"
+
+        run_id = await create_pentest_run(mode=body.mode, git_ref=git_ref)
+
+        # Fire-and-forget background task
+        async def _run_pentest() -> None:
+            from src.agents.synthetic_env import SyntheticEnvironment
+            from src.agents.pentest_agent import build_pentest_graph
+            from src.tools.pentest_tools import ALL_ATTACK_CLASSES
+            from datetime import datetime, timezone
+
+            attack_queue = body.classes if body.classes else list(ALL_ATTACK_CLASSES)
+            initial_state = {
+                "run_id": run_id,
+                "mode": body.mode,
+                "attack_queue": attack_queue,
+                "current_class": None,
+                "results": [],
+                "critical_found": False,
+                "force_end": False,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                async with SyntheticEnvironment() as env:
+                    compiled = build_pentest_graph(env)
+                    await compiled.ainvoke(initial_state)
+            except Exception as exc:
+                logger.error(f"[health] Background pentest run {run_id} failed: {exc}")
+
+        asyncio.get_event_loop().create_task(_run_pentest())
+
+        return JSONResponse({"run_id": run_id, "status": "started", "mode": body.mode})
+
+    except Exception as e:
+        logger.error(f"[health] start_pentest_run failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.get("/pentest/runs")
+async def list_pentest_runs(request: Request) -> JSONResponse:
+    """
+    List the 10 most recent pentest runs.
+
+    Bearer-protected. Returns run_id, mode, status, started_at, summary.
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from src.database import get_pool
+        from psycopg.rows import dict_row
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            conn.row_factory = dict_row
+            rows = await conn.fetchall(
+                """
+                SELECT run_id::text, mode, status, started_at, finished_at, summary, git_ref
+                FROM pentest_runs
+                ORDER BY started_at DESC
+                LIMIT 10
+                """
+            )
+        return JSONResponse(
+            [
+                {
+                    "run_id": str(r["run_id"]),
+                    "mode": r["mode"],
+                    "status": r["status"],
+                    "started_at": (
+                        r["started_at"].isoformat() if r["started_at"] else None
+                    ),
+                    "finished_at": (
+                        r["finished_at"].isoformat() if r["finished_at"] else None
+                    ),
+                    "git_ref": r.get("git_ref"),
+                    "summary": r.get("summary"),
+                }
+                for r in rows
+            ]
+        )
+    except Exception as e:
+        logger.error(f"[health] list_pentest_runs failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.get("/pentest/runs/{run_id}")
+async def get_pentest_run_status(run_id: str, request: Request) -> JSONResponse:
+    """
+    Get status and summary for a specific pentest run.
+
+    Bearer-protected.
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from src.database import get_pentest_run
+
+        run = await get_pentest_run(run_id)
+        if not run:
+            return JSONResponse({"error": f"Run {run_id} not found"}, status_code=404)
+
+        return JSONResponse(
+            {
+                "run_id": str(run["run_id"]),
+                "mode": run["mode"],
+                "status": run["status"],
+                "started_at": (
+                    run["started_at"].isoformat() if run.get("started_at") else None
+                ),
+                "finished_at": (
+                    run["finished_at"].isoformat() if run.get("finished_at") else None
+                ),
+                "git_ref": run.get("git_ref"),
+                "summary": run.get("summary"),
+            }
+        )
+    except Exception as e:
+        logger.error(f"[health] get_pentest_run_status failed for {run_id}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.get("/pentest/runs/{run_id}/findings")
+async def get_pentest_run_findings(run_id: str, request: Request) -> JSONResponse:
+    """
+    Return all findings for a specific pentest run.
+
+    Bearer-protected. Returns list of {attack_class, variant, severity, defense_held, detail}.
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from src.database import list_pentest_findings
+
+        findings = await list_pentest_findings(run_id)
+        return JSONResponse(
+            [
+                {
+                    "id": f["id"],
+                    "attack_class": f["attack_class"],
+                    "variant": f["variant"],
+                    "severity": f["severity"],
+                    "defense_held": f["defense_held"],
+                    "detail": f.get("detail"),
+                    "payload": f.get("payload"),
+                    "logged_at": (
+                        f["logged_at"].isoformat() if f.get("logged_at") else None
+                    ),
+                }
+                for f in findings
+            ]
+        )
+    except Exception as e:
+        logger.error(f"[health] get_pentest_run_findings failed for {run_id}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.get("/pentest/runs/{run_id}/report")
+async def get_pentest_run_report(
+    run_id: str, request: Request, format: str = "json"
+) -> JSONResponse:
+    """
+    Return the full pentest report for a run.
+
+    Bearer-protected. Query param: ?format=json|markdown|html (default: json).
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    valid_formats = {"json", "markdown", "html"}
+    if format not in valid_formats:
+        return JSONResponse(
+            {"error": f"format must be one of {sorted(valid_formats)}"},
+            status_code=400,
+        )
+
+    try:
+        from datetime import datetime, timezone
+        from src.database import get_pentest_run, list_pentest_findings
+        from src.agents.pentest_report import (
+            PentestFinding,
+            PentestReport,
+            PentestSummary,
+        )
+
+        run = await get_pentest_run(run_id)
+        if not run:
+            return JSONResponse({"error": f"Run {run_id} not found"}, status_code=404)
+
+        raw_findings = await list_pentest_findings(run_id)
+        findings = [
+            PentestFinding(
+                attack_class=f["attack_class"],
+                variant=f["variant"],
+                severity=f["severity"],
+                defense_held=f["defense_held"],
+                detail=f.get("detail") or "",
+                payload=f.get("payload"),
+            )
+            for f in raw_findings
+        ]
+
+        total = len(findings)
+        passed = sum(1 for f in findings if f.defense_held)
+        bypasses = total - passed
+        by_severity: dict = {}
+        by_class: dict = {}
+        for f in findings:
+            by_severity[f.severity] = by_severity.get(f.severity, 0) + 1
+            if f.attack_class not in by_class:
+                by_class[f.attack_class] = {"passed": 0, "bypassed": 0}
+            if f.defense_held:
+                by_class[f.attack_class]["passed"] += 1
+            else:
+                by_class[f.attack_class]["bypassed"] += 1
+
+        report = PentestReport(
+            run_id=run_id,
+            mode=run.get("mode", "unknown"),
+            started_at=run.get("started_at", datetime.now(timezone.utc)),
+            finished_at=run.get("finished_at", datetime.now(timezone.utc)),
+            git_ref=run.get("git_ref", "unknown"),
+            findings=findings,
+            summary=PentestSummary(
+                total_tests=total,
+                defenses_held=passed,
+                bypasses_found=bypasses,
+                by_severity=by_severity,
+                by_class=by_class,
+                proposed_rules_count=0,
+            ),
+        )
+
+        if format == "json":
+            return JSONResponse(content={"report": report.to_json()})
+        else:
+            content_type = "text/markdown" if format == "markdown" else "text/html"
+            from fastapi.responses import Response
+
+            renderer = report.to_markdown if format == "markdown" else report.to_html
+            return Response(content=renderer(), media_type=content_type)
+
+    except Exception as e:
+        logger.error(f"[health] get_pentest_run_report failed for {run_id}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+class ApproveRuleRequest(BaseModel):
+    approved_by: str = "operator"
+
+
+@app.post("/pentest/rules/{finding_id}/approve")
+async def approve_pentest_rule(
+    finding_id: int, body: ApproveRuleRequest, request: Request
+) -> JSONResponse:
+    """
+    HITL gate: Approve a proposed rule generated from a pentest finding.
+
+    Bearer-protected. Updates status from PROPOSED → APPROVED in
+    pentest_proposed_rules. Returns the updated rule.
+    """
+    if not _verify_bearer_token(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from src.database import get_pool
+        from psycopg.rows import dict_row
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            conn.row_factory = dict_row
+            rows = await conn.fetchall(
+                """
+                UPDATE pentest_proposed_rules
+                SET status = 'APPROVED'
+                WHERE id = %s AND status = 'PROPOSED'
+                RETURNING id, finding_id, rule_type, rule_content, rationale, status
+                """,
+                (finding_id,),
+            )
+            if not rows:
+                return JSONResponse(
+                    {"error": f"Rule {finding_id} not found or already processed"},
+                    status_code=404,
+                )
+            rule = rows[0]
+            logger.info(
+                f"[health] Pentest rule {finding_id} approved by '{body.approved_by}'"
+            )
+            return JSONResponse(
+                {
+                    "status": "approved",
+                    "rule_id": rule["id"],
+                    "rule_type": rule["rule_type"],
+                    "rule_content": rule["rule_content"],
+                    "approved_by": body.approved_by,
+                }
+            )
+    except Exception as e:
+        logger.error(f"[health] approve_pentest_rule failed for {finding_id}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
 # ── Server runner ─────────────────────────────────────────────────────────────
 
 

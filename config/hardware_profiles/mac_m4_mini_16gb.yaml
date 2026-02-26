@@ -195,3 +195,13 @@ security:
   analyzer_container_enabled: true
   # Phase 6: Model integrity strict mode (raise on SHA256 mismatch)
   model_integrity_strict: false
+
+# ── Pentest (Phase 6 — PentestAgent) ────────────────────────────────────────
+pentest:
+  enabled: true
+  default_mode: "verify"           # "verify" = stop-at-proof; "resilience" = measure blast radius
+  max_payload_size_bytes: 4096
+  stop_on_critical: true           # halt run on CRITICAL bypass; notify operator
+  synthetic_db_name: "legionforge_pentest"
+  report_format: "json"            # "json" | "markdown" | "html"
+  stub_ollama_port: 11435          # separate port from real Ollama (11434)

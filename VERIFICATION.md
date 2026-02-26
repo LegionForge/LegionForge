@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 200 tests (Phase 5.5). Count should never
+**Expected:** All tests pass. Current baseline is 228 tests (Phase 6). Count should never
 go below the previous passing count.
 
 ```
@@ -75,7 +75,7 @@ tests/test_smoke.py::test_settings_load PASSED
 tests/test_smoke.py::test_memory_budget_is_valid PASSED
 tests/test_smoke.py::test_injection_detection_positive PASSED
 ...
-========= 200 passed in 2.0s =========
+========= 228 passed in 2.0s =========
 ```
 
 If any test fails, the output will tell you exactly which assertion failed.
@@ -195,6 +195,7 @@ All tests should still pass. ✅
 | Phase 4 | 110 |
 | Phase 5 | 143 |
 | Phase 5.5 | 200 |
+| Phase 6 | 228 |
 
 ---
 
@@ -256,7 +257,44 @@ If any component shows "error", the detail field will tell you why. ✅
 
 ---
 
-## Step 11 — Create dev Branch
+## Step 11 — Run PentestAgent (Phase 6)
+
+Build the air-gapped pentest container and run the red-team suite:
+
+```bash
+# Build the container (one-time, ~2 min)
+make build-pentest
+
+# Run in verify mode (stop-at-proof, default)
+# Requires: PostgreSQL running, POSTGRES_PASSWORD set
+make pentest
+```
+
+**Expected output ends with:**
+```
+✅ Pentest complete — 24 tests, 24 defences held, 0 bypasses found
+   Report: reports/pentest-<run_id>.json
+```
+
+If any bypass is found, the output will say `❌` next to the count and list the attack class.
+
+**View the report:**
+```bash
+make pentest-report
+# or: make pentest-report RUN_ID=<uuid>
+```
+
+**Verify findings in DB (optional):**
+```bash
+psql -U "${POSTGRES_USER:-$(whoami)}" -d legionforge \
+  -c "SELECT attack_class, variant, severity, defense_held FROM pentest_findings ORDER BY logged_at DESC LIMIT 5;"
+```
+
+Should show 24 rows with `defense_held = true`. ✅
+
+---
+
+## Step 12 — Create dev Branch
 
 ```bash
 cd ${LEGIONFORGE_HOME}

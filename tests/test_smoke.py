@@ -2795,3 +2795,335 @@ def test_guardian_check_1_checks_revocation_first():
     assert (
         revoke_pos < approved_pos
     ), "_revoked_tools check must come BEFORE _approved_tools check in _check_1_tool_registry"
+
+
+# =============================================================================
+# Phase 6 — PentestAgent (225 total)
+# Tests cover: DB tables, THREAT_TYPES, PentestConfig, SyntheticEnvironment,
+# attack tools, PentestAgent state machine, Dockerfile, docker-compose, report.
+# =============================================================================
+
+
+# ── DB tables ─────────────────────────────────────────────────────────────────
+
+
+def test_pentest_runs_table_in_create_tables():
+    """_create_app_tables includes the pentest_runs table."""
+    import inspect
+    import src.database as db_module
+
+    source = inspect.getsource(db_module._create_app_tables)
+    assert "pentest_runs" in source, "pentest_runs table not in _create_app_tables"
+
+
+def test_pentest_findings_table_in_create_tables():
+    """_create_app_tables includes the pentest_findings table."""
+    import inspect
+    import src.database as db_module
+
+    source = inspect.getsource(db_module._create_app_tables)
+    assert (
+        "pentest_findings" in source
+    ), "pentest_findings table not in _create_app_tables"
+
+
+def test_pentest_proposed_rules_table_in_create_tables():
+    """_create_app_tables includes the pentest_proposed_rules table."""
+    import inspect
+    import src.database as db_module
+
+    source = inspect.getsource(db_module._create_app_tables)
+    assert (
+        "pentest_proposed_rules" in source
+    ), "pentest_proposed_rules table not in _create_app_tables"
+
+
+def test_create_pentest_run_is_async():
+    """create_pentest_run is an async function."""
+    import asyncio
+    import src.database as db_module
+
+    assert hasattr(
+        db_module, "create_pentest_run"
+    ), "create_pentest_run not in database.py"
+    assert asyncio.iscoroutinefunction(
+        db_module.create_pentest_run
+    ), "create_pentest_run must be async"
+
+
+def test_log_pentest_finding_is_async():
+    """log_pentest_finding is an async function."""
+    import asyncio
+    import src.database as db_module
+
+    assert hasattr(
+        db_module, "log_pentest_finding"
+    ), "log_pentest_finding not in database.py"
+    assert asyncio.iscoroutinefunction(
+        db_module.log_pentest_finding
+    ), "log_pentest_finding must be async"
+
+
+# ── THREAT_TYPES ──────────────────────────────────────────────────────────────
+
+
+def test_threat_types_has_pentest_injection_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_INJECTION_BYPASS" in THREAT_TYPES
+    ), "PENTEST_INJECTION_BYPASS missing from THREAT_TYPES"
+
+
+def test_threat_types_has_pentest_rag_poisoning_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_RAG_POISONING_BYPASS" in THREAT_TYPES
+    ), "PENTEST_RAG_POISONING_BYPASS missing from THREAT_TYPES"
+
+
+def test_threat_types_has_pentest_tool_poisoning_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_TOOL_POISONING_BYPASS" in THREAT_TYPES
+    ), "PENTEST_TOOL_POISONING_BYPASS missing from THREAT_TYPES"
+
+
+def test_threat_types_has_pentest_resource_bomb_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_RESOURCE_BOMB_BYPASS" in THREAT_TYPES
+    ), "PENTEST_RESOURCE_BOMB_BYPASS missing from THREAT_TYPES"
+
+
+def test_threat_types_has_pentest_privilege_escalation_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_PRIVILEGE_ESCALATION_BYPASS" in THREAT_TYPES
+    ), "PENTEST_PRIVILEGE_ESCALATION_BYPASS missing from THREAT_TYPES"
+
+
+def test_threat_types_has_pentest_crystallization_bypass():
+    from src.database import THREAT_TYPES
+
+    assert (
+        "PENTEST_CRYSTALLIZATION_BYPASS" in THREAT_TYPES
+    ), "PENTEST_CRYSTALLIZATION_BYPASS missing from THREAT_TYPES"
+
+
+# ── PentestConfig ─────────────────────────────────────────────────────────────
+
+
+def test_settings_has_pentest_config():
+    """settings.pentest is a PentestConfig instance."""
+    from config.settings import settings, PentestConfig
+
+    assert hasattr(settings, "pentest"), "settings.pentest not found"
+    assert isinstance(
+        settings.pentest, PentestConfig
+    ), f"settings.pentest is {type(settings.pentest)}, expected PentestConfig"
+
+
+def test_pentest_config_default_mode_is_verify():
+    """settings.pentest.default_mode defaults to 'verify'."""
+    from config.settings import settings
+
+    assert (
+        settings.pentest.default_mode == "verify"
+    ), f"default_mode={settings.pentest.default_mode!r}, expected 'verify'"
+
+
+def test_pentest_config_stop_on_critical_defaults_true():
+    """settings.pentest.stop_on_critical defaults to True."""
+    from config.settings import settings
+
+    assert (
+        settings.pentest.stop_on_critical is True
+    ), "stop_on_critical must default True — CRITICAL bypass must halt the run"
+
+
+def test_pentest_config_synthetic_db_name():
+    """settings.pentest.synthetic_db_name is a non-empty string."""
+    from config.settings import settings
+
+    db_name = settings.pentest.synthetic_db_name
+    assert (
+        isinstance(db_name, str) and db_name
+    ), f"synthetic_db_name must be a non-empty string, got {db_name!r}"
+    assert db_name != "legionforge", (
+        "synthetic_db_name must NOT be 'legionforge' (production DB) — "
+        "pentest must use a separate isolated database"
+    )
+
+
+# ── SyntheticEnvironment ──────────────────────────────────────────────────────
+
+
+def test_synthetic_env_module_importable():
+    """src.agents.synthetic_env is importable."""
+    from src.agents import synthetic_env  # noqa: F401
+
+
+def test_synthetic_env_is_async_context_manager():
+    """SyntheticEnvironment has __aenter__ and __aexit__."""
+    from src.agents.synthetic_env import SyntheticEnvironment
+
+    assert hasattr(
+        SyntheticEnvironment, "__aenter__"
+    ), "SyntheticEnvironment must have __aenter__ for async context manager"
+    assert hasattr(
+        SyntheticEnvironment, "__aexit__"
+    ), "SyntheticEnvironment must have __aexit__ for async context manager"
+
+
+def test_synthetic_env_has_get_stub_credentials():
+    """SyntheticEnvironment.get_stub_credentials returns a dict with stub keys."""
+    from src.agents.synthetic_env import SyntheticEnvironment, _STUB_CREDS
+
+    env = SyntheticEnvironment()
+    creds = env.get_stub_credentials()
+    assert isinstance(creds, dict), "get_stub_credentials() must return a dict"
+    assert "openai" in creds, "stub creds must include 'openai' key"
+    assert "anthropic" in creds, "stub creds must include 'anthropic' key"
+    # Stubs must NOT be empty or look like real keys
+    for name, val in creds.items():
+        assert val, f"stub credential '{name}' must not be empty"
+        assert (
+            "STUB" in val
+        ), f"stub credential '{name}' must contain 'STUB' to prevent accidental real-key use"
+
+
+# ── Attack tools ──────────────────────────────────────────────────────────────
+
+
+def test_pentest_tools_module_importable():
+    """src.tools.pentest_tools is importable."""
+    from src.tools import pentest_tools  # noqa: F401
+
+
+def test_pentest_result_dataclass_exists():
+    """PentestResult is a dataclass with required fields."""
+    import dataclasses
+    from src.tools.pentest_tools import PentestResult
+
+    fields = {f.name for f in dataclasses.fields(PentestResult)}
+    required = {"attack_class", "variant", "defense_held", "severity", "detail"}
+    assert required <= fields, f"PentestResult missing fields: {required - fields}"
+
+
+def test_all_8_attack_classes_have_test_functions():
+    """ATTACK_CLASS_REGISTRY has exactly 8 attack classes."""
+    from src.tools.pentest_tools import ATTACK_CLASS_REGISTRY, ALL_ATTACK_CLASSES
+
+    assert (
+        len(ATTACK_CLASS_REGISTRY) == 8
+    ), f"Expected 8 attack classes in registry, got {len(ATTACK_CLASS_REGISTRY)}"
+    for cls in ALL_ATTACK_CLASSES:
+        assert (
+            cls in ATTACK_CLASS_REGISTRY
+        ), f"Attack class '{cls}' in ALL_ATTACK_CLASSES but not in ATTACK_CLASS_REGISTRY"
+
+
+def test_each_attack_class_has_3_variants():
+    """Each attack class has exactly 3 variant test functions."""
+    from src.tools.pentest_tools import ATTACK_CLASS_REGISTRY
+
+    for cls, variants in ATTACK_CLASS_REGISTRY.items():
+        assert (
+            len(variants) == 3
+        ), f"Attack class '{cls}' has {len(variants)} variants, expected 3"
+        for variant_name, fn in variants:
+            import asyncio
+
+            assert asyncio.iscoroutinefunction(
+                fn
+            ), f"Variant '{variant_name}' in class '{cls}' must be an async coroutine"
+
+
+# ── PentestAgent ──────────────────────────────────────────────────────────────
+
+
+def test_pentest_agent_module_importable():
+    """src.agents.pentest_agent is importable."""
+    from src.agents import pentest_agent  # noqa: F401
+
+
+def test_pentest_state_typeddict_has_required_fields():
+    """PentestState TypedDict has all required keys."""
+    from src.agents.pentest_agent import PentestState
+    import typing
+
+    hints = typing.get_type_hints(PentestState)
+    required_keys = {
+        "run_id",
+        "mode",
+        "attack_queue",
+        "current_class",
+        "results",
+        "critical_found",
+        "force_end",
+        "started_at",
+    }
+    assert required_keys <= set(
+        hints.keys()
+    ), f"PentestState missing keys: {required_keys - set(hints.keys())}"
+
+
+def test_build_pentest_graph_is_callable():
+    """build_pentest_graph is callable and returns a compiled graph when given a mock env."""
+    import inspect
+    from src.agents.pentest_agent import build_pentest_graph
+
+    assert callable(build_pentest_graph), "build_pentest_graph must be callable"
+    # Check it accepts an env argument
+    sig = inspect.signature(build_pentest_graph)
+    params = list(sig.parameters.keys())
+    assert (
+        "env" in params
+    ), f"build_pentest_graph must accept an 'env' parameter, got: {params}"
+
+
+# ── Dockerfile + infra ────────────────────────────────────────────────────────
+
+
+def test_dockerfile_pentest_exists():
+    """Dockerfile.pentest exists at the project root."""
+    from pathlib import Path
+
+    dockerfile = Path(__file__).parent.parent / "Dockerfile.pentest"
+    assert (
+        dockerfile.exists()
+    ), f"Dockerfile.pentest not found at {dockerfile}. Run Step 8."
+
+
+def test_docker_compose_has_pentest_service():
+    """docker-compose.yml includes a 'pentest' service under the pentest profile."""
+    from pathlib import Path
+
+    compose_file = Path(__file__).parent.parent / "docker-compose.yml"
+    assert compose_file.exists(), "docker-compose.yml not found"
+
+    content = compose_file.read_text()
+    assert (
+        "pentest:" in content
+    ), "'pentest:' service block not found in docker-compose.yml"
+    assert (
+        "network_mode: none" in content
+    ), "network_mode: none not set in pentest service — air-gap is required"
+    assert (
+        "Dockerfile.pentest" in content
+    ), "Dockerfile.pentest not referenced in docker-compose.yml pentest service"
+
+
+def test_pentest_report_module_importable():
+    """src.agents.pentest_report is importable."""
+    from src.agents import pentest_report  # noqa: F401
+    from src.agents.pentest_report import (
+        PentestReport,
+        PentestFinding,
+        PentestSummary,
+    )  # noqa: F401

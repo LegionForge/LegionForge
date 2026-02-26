@@ -53,6 +53,10 @@ help:
 	@echo "  make verify-models   — compute SHA256 of GGUF files for hash pinning (Phase 6)"
 	@echo "  make build-analyzer  — build legionforge-analyzer:latest Docker image (Phase 6)"
 	@echo "  make revoke-tool     — revoke a tool: make revoke-tool TOOL_ID=<id> (Phase 6)"
+	@echo "  make build-pentest   — build legionforge-pentest:latest Docker image (Phase 6)"
+	@echo "  make pentest         — run pentest in verify mode (stop-at-proof) (Phase 6)"
+	@echo "  make pentest-resilience — run pentest in resilience mode, explicit opt-in (Phase 6)"
+	@echo "  make pentest-report  — print latest pentest report (Phase 6)"
 	@echo "  make guardian-start — start Guardian container"
 	@echo "  make guardian-stop  — stop Guardian container"
 	@echo "  make guardian-logs  — tail Guardian container logs"
@@ -661,6 +665,85 @@ revoke-tool:
 		http://localhost:8765/tools/$(TOOL_ID)/revoke \
 		| python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing."
+
+# ── Phase 6: PentestAgent ─────────────────────────────────────────────────────
+
+# Build the air-gapped pentest container image.
+# Must be run before make pentest or make pentest-resilience.
+.PHONY: build-pentest
+build-pentest:
+	@echo "🐳 Building legionforge-pentest:latest container..."
+	@cd $(BASE) && docker build -f Dockerfile.pentest -t legionforge-pentest:latest .
+	@echo "✅ legionforge-pentest:latest built"
+	@echo "   Container is air-gapped (--network none). No production keys in scope."
+
+# Run pentest in verify mode (stop-at-proof-of-concept, default).
+# Each of the 8 attack classes is tested independently — a bypass in one
+# class does NOT feed into the next attack (no cross-test chaining).
+#
+# Prerequisites: make build-pentest
+.PHONY: pentest
+pentest:
+	@echo "🔍 Starting LegionForge PentestAgent — verify mode (stop-at-proof)"
+	@docker run --rm \
+		--network none \
+		--read-only \
+		--tmpfs /tmp:size=10m \
+		--memory 512m \
+		--cpus 1.0 \
+		--security-opt no-new-privileges \
+		--pids-limit 50 \
+		-e POSTGRES_HOST=host.docker.internal \
+		-e POSTGRES_PORT=5432 \
+		-e POSTGRES_USER=$${POSTGRES_USER:-$(shell whoami)} \
+		-e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-} \
+		-e TASK_TOKEN_SECRET=$${TASK_TOKEN_SECRET:-pentest-stub-secret} \
+		-e AGENT_HARDWARE_PROFILE=$${AGENT_HARDWARE_PROFILE:-mac_m4_mini_16gb} \
+		-e PYTHONPATH=/pentest \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-pentest:latest \
+		python -m src.agents.pentest_agent --mode=verify
+	@echo ""
+	@echo "📊 Run 'make pentest-report' to view the latest report."
+
+# Run pentest in resilience mode — explicit opt-in only.
+# Continues past proof-of-concept to measure blast radius.
+# Prompts for confirmation before starting.
+# ⚠️  This mode is intentionally harder to trigger than verify mode.
+.PHONY: pentest-resilience
+pentest-resilience:
+	@echo "⚠️  Resilience mode: the agent will continue past confirmed bypasses"
+	@echo "   to measure blast radius. ONLY synthetic environment is used."
+	@echo "   No production data, credentials, or services are touched."
+	@echo ""
+	@read -p "Continue with resilience mode? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	@echo ""
+	@echo "🔴 Starting LegionForge PentestAgent — resilience mode"
+	@docker run --rm \
+		--network none \
+		--read-only \
+		--tmpfs /tmp:size=10m \
+		--memory 512m \
+		--cpus 1.0 \
+		--security-opt no-new-privileges \
+		--pids-limit 50 \
+		-e POSTGRES_HOST=host.docker.internal \
+		-e POSTGRES_PORT=5432 \
+		-e POSTGRES_USER=$${POSTGRES_USER:-$(shell whoami)} \
+		-e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-} \
+		-e TASK_TOKEN_SECRET=$${TASK_TOKEN_SECRET:-pentest-stub-secret} \
+		-e AGENT_HARDWARE_PROFILE=$${AGENT_HARDWARE_PROFILE:-mac_m4_mini_16gb} \
+		-e PYTHONPATH=/pentest \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-pentest:latest \
+		python -m src.agents.pentest_agent --mode=resilience
+
+# Print the most recent pentest report.
+# Optional: make pentest-report RUN_ID=<uuid> (default: latest)
+.PHONY: pentest-report
+pentest-report:
+	@cd $(BASE) && source venv/bin/activate && \
+	python -m src.agents.pentest_report $(if $(RUN_ID),--run-id $(RUN_ID),--latest) --format markdown
 
 # ── Agent sequence registration ───────────────────────────────
 .PHONY: register-agent-sequences
