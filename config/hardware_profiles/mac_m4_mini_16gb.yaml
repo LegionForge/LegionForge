@@ -99,7 +99,7 @@ models:
       - writing
       - analysis
     quantization: "q4_K_M"
-    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
+    gguf_sha256: "667b0c1932bc6ffc593ed1d03f895bf2dc8dc6df21db3042284a6f4416b06a29"
 
   router:
     provider: "ollama"
@@ -110,7 +110,7 @@ models:
       - classification
       - supervisor
     quantization: "q4_K_M"
-    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
+    gguf_sha256: "5ee4f07cdb9beadbbb293e85803c569b01bd37ed059d2715faa7bb405f31caa6"
 
   embeddings:
     provider: "ollama"
@@ -120,7 +120,7 @@ models:
       - embeddings
       - rag
       - semantic_search
-    gguf_sha256: ""   # Phase 6: pin after first run with: make verify-models
+    gguf_sha256: "970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6"
 
   cloud_fallback:
     # Used when local model is insufficient for the task

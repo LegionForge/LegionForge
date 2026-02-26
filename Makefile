@@ -9,6 +9,71 @@ PYTHON  := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
 PYTEST  := $(VENV)/bin/pytest
 
+# ── Inline Python scripts ──────────────────────────────────────
+# Used by targets that need async code with nested blocks.
+# Python's -c flag can't express nested compound statements (async def + async with)
+# when lines are joined by Make's \ continuation. These define blocks pass the
+# script to Python via stdin instead: echo "$$_SCRIPT_VAR" | $(PYTHON)
+
+define _SETUP_DB_ROLES_PY
+import asyncio, os, psycopg
+from src.database import _get_postgres_password, _setup_db_roles
+
+async def run():
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db   = os.environ.get("POSTGRES_DB", "legionforge")
+    user = os.environ.get("POSTGRES_USER", os.environ.get("USER", "postgres"))
+    pw   = _get_postgres_password()
+    dsn  = f"host={host} port={port} dbname={db} user={user} password={pw}"
+    conn = await psycopg.AsyncConnection.connect(dsn, autocommit=True)
+    await _setup_db_roles(conn)
+    await conn.close()
+    print("✅ legionforge_app role + grants configured")
+
+asyncio.run(run())
+endef
+export _SETUP_DB_ROLES_PY
+
+define _VERIFY_MODELS_PY
+import asyncio
+from src.tools.model_integrity import compute_model_hashes
+from config.settings import settings
+
+async def run():
+    hashes = await compute_model_hashes(settings)
+    print()
+    print("Pin these values in config/hardware_profiles/mac_m4_mini_16gb.yaml:")
+    for model_id, h in hashes.items():
+        if h:
+            print(f"  {model_id}: {h}")
+        else:
+            print(f"  {model_id}: NOT FOUND")
+
+asyncio.run(run())
+endef
+export _VERIFY_MODELS_PY
+
+define _REGISTER_SEQUENCES_PY
+import asyncio
+from src.database import init_db, register_agent_sequences
+from src.agents.researcher import RESEARCHER_EXPECTED_SEQUENCES
+from src.agents.observer import OBSERVER_EXPECTED_SEQUENCES
+from src.agents.crystallizer import CRYSTALLIZER_EXPECTED_SEQUENCES
+
+async def run():
+    await init_db()
+    await register_agent_sequences("researcher", RESEARCHER_EXPECTED_SEQUENCES)
+    print(f"  ✅ researcher: {len(RESEARCHER_EXPECTED_SEQUENCES)} sequences")
+    await register_agent_sequences("observer", OBSERVER_EXPECTED_SEQUENCES)
+    print(f"  ✅ observer:   {len(OBSERVER_EXPECTED_SEQUENCES)} sequences")
+    await register_agent_sequences("crystallizer", CRYSTALLIZER_EXPECTED_SEQUENCES)
+    print(f"  ✅ crystallizer: {len(CRYSTALLIZER_EXPECTED_SEQUENCES)} sequences")
+
+asyncio.run(run())
+endef
+export _REGISTER_SEQUENCES_PY
+
 .DEFAULT_GOAL := help
 
 # ── Help ──────────────────────────────────────────────────────
@@ -609,17 +674,7 @@ install-launch-agent:
 .PHONY: setup-db-roles
 setup-db-roles:
 	@echo "🔐 Setting up legionforge_app PostgreSQL role + grants..."
-	@cd $(BASE) && $(PYTHON) -c "\
-import asyncio, psycopg; \
-from src.database import _get_or_generate_app_password, _setup_db_roles; \
-from config.settings import settings; \
-async def run(): \
-    pwd = _get_or_generate_app_password(); \
-    dsn = f'postgresql://{settings.database.user}:{settings.database.password}@{settings.database.host}:{settings.database.port}/{settings.database.name}'; \
-    async with await psycopg.AsyncConnection.connect(dsn, autocommit=True) as conn: \
-        await _setup_db_roles(conn); \
-    print('✅ legionforge_app role + grants configured'); \
-asyncio.run(run())"
+	@cd $(BASE) && echo "$$_SETUP_DB_ROLES_PY" | $(PYTHON)
 
 # Compute SHA256 hashes for all configured GGUF model files.
 # Run this after downloading models to get the hash values for pinning in
@@ -628,18 +683,7 @@ asyncio.run(run())"
 verify-models:
 	@echo "🔒 Computing SHA256 hashes for installed GGUF models..."
 	@echo "   (This may take 30-120 seconds for large GGUF files)"
-	@cd $(BASE) && $(PYTHON) -c "\
-import asyncio; \
-from src.tools.model_integrity import compute_model_hashes; \
-from config.settings import settings; \
-async def run(): \
-    hashes = await compute_model_hashes(settings); \
-    print(); \
-    print('Pin these values in config/hardware_profiles/mac_m4_mini_16gb.yaml:'); \
-    for model_id, h in hashes.items(): \
-        if h: print(f'  {model_id}: {h}'); \
-        else: print(f'  {model_id}: NOT FOUND'); \
-asyncio.run(run())"
+	@cd $(BASE) && echo "$$_VERIFY_MODELS_PY" | $(PYTHON)
 
 # Build the deny-default analyzer container image.
 # Must be run before the Docker-backed analyzer sandbox is available.
@@ -749,21 +793,8 @@ pentest-report:
 .PHONY: register-agent-sequences
 register-agent-sequences:
 	@echo "Registering all agent expected sequences..."
-	@cd $(BASE) && $(PYTHON) -c "\
-import asyncio; \
-from src.database import init_db, register_agent_sequences; \
-from src.agents.researcher import RESEARCHER_EXPECTED_SEQUENCES; \
-from src.agents.observer import OBSERVER_EXPECTED_SEQUENCES; \
-from src.agents.crystallizer import CRYSTALLIZER_EXPECTED_SEQUENCES; \
-async def run(): \
-    await init_db(); \
-    await register_agent_sequences('researcher', RESEARCHER_EXPECTED_SEQUENCES); \
-    print(f'✅ researcher: {len(RESEARCHER_EXPECTED_SEQUENCES)} sequences'); \
-    await register_agent_sequences('observer', OBSERVER_EXPECTED_SEQUENCES); \
-    print(f'✅ observer:   {len(OBSERVER_EXPECTED_SEQUENCES)} sequences'); \
-    await register_agent_sequences('crystallizer', CRYSTALLIZER_EXPECTED_SEQUENCES); \
-    print(f'✅ crystallizer: {len(CRYSTALLIZER_EXPECTED_SEQUENCES)} sequences'); \
-asyncio.run(run())"
+	@cd $(BASE) && echo "$$_REGISTER_SEQUENCES_PY" | $(PYTHON)
+	@echo "✅ All agent sequences registered"
 
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status

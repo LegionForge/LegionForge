@@ -2714,13 +2714,16 @@ def test_analyzer_container_enabled_config_exists():
 
 
 def test_model_entry_has_gguf_sha256_field():
-    """ModelEntry has gguf_sha256 field with default empty string."""
+    """ModelEntry has gguf_sha256 field — empty string (unpinned) or 64-char SHA256 hex (pinned)."""
     from config.settings import settings
 
     assert hasattr(settings.models.primary, "gguf_sha256")
-    assert isinstance(settings.models.primary.gguf_sha256, str)
-    # Default should be empty (skip verification until user pins hashes)
-    assert settings.models.primary.gguf_sha256 == ""
+    h = settings.models.primary.gguf_sha256
+    assert isinstance(h, str)
+    # Accept either unpinned ("") or a valid 64-char lowercase SHA256 hex digest
+    assert h == "" or (
+        len(h) == 64 and all(c in "0123456789abcdef" for c in h)
+    ), f"gguf_sha256 must be empty or a 64-char SHA256 hex string, got: {h!r}"
 
 
 def test_model_integrity_module_importable():
