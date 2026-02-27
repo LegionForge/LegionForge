@@ -43,7 +43,9 @@ services:
       TASK_TOKEN_SECRET: ${TASK_TOKEN_SECRET:-}
       # Ollama (native, Metal GPU) via host.docker.internal
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      # Guardian config
+      # Guardian config — auth enabled by default; override with GUARDIAN_REQUIRE_AUTH=false
+      # only in dev environments without a configured TASK_TOKEN_SECRET.
+      GUARDIAN_REQUIRE_AUTH: "true"
       PYTHONPATH: /app
       LOG_LEVEL: info
     extra_hosts:

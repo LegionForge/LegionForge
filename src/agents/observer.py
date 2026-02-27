@@ -461,10 +461,45 @@ async def run_observer(
         "and nominate any patterns that meet all six crystallization criteria."
     )
 
-    task, sanitize_meta = sanitize_text(task)
-
-    init = SafeguardedState.initial(tracing_enabled=tracing_enabled)
+    # Build initial state first — run_id needed for threat logging.
+    # ORDERING RULE: always call SafeguardedState.initial() before sanitize_text()
+    # so the run_id is available for DB logging if injection is detected.
+    # agent_id MUST match the agent_id in issue_task_token() below.
+    init = SafeguardedState.initial(
+        tracing_enabled=tracing_enabled,
+        agent_id="observer",
+    )
     run_id = init["run_id"]
+
+    # Sanitize input — after init so run_id is available for DB logging.
+    # check_injection is gated by prompt_injection_guard setting so dev/test
+    # environments can disable user-input scanning without affecting tool-arg
+    # detection (SecureToolNode always-on regardless of this setting).
+    task, sanitize_meta = sanitize_text(
+        task,
+        check_injection=settings.security.prompt_injection_guard,
+    )
+    if sanitize_meta.get("injection_detected"):
+        logger.warning("Injection pattern detected in observer task input — sanitized.")
+        try:
+            from src.database import log_threat_event
+
+            await log_threat_event(
+                agent_id="observer",
+                run_id=run_id,
+                threat_type="INJECTION_DETECTED",
+                action_taken="LOGGED",
+                confidence=0.8,
+                raw_input=task[:200],
+                metadata={
+                    "patterns": sanitize_meta.get("injection_patterns", []),
+                    "source": "task_input",
+                },
+            )
+        except Exception as _db_err:
+            logger.debug(
+                f"[run_observer] Could not log INJECTION_DETECTED to DB: {_db_err}"
+            )
 
     if task_token is None:
         try:

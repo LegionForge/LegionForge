@@ -1,8 +1,8 @@
 # TLDR.md
 # LegionForge — What Is This and What Are We Building?
 
-**Version:** 1.2.0
-**Last updated:** 2026-02-26
+**Version:** 1.0.0
+**Last updated:** 2026-02-27
 
 ---
 
@@ -16,15 +16,17 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–5.5 are complete.** The full crystallization pipeline is operational (Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signed tool), and a ten-vector security hardening sprint has closed the major attack surface identified during adversarial threat-model review.
+✅ **Phases 0–7 are complete. v1.0.0 is shipped.**
 
-**200/200 smoke tests passing.** Database RBAC, AST bypass guards, tool revocation, TOCTOU prevention, and Ollama model integrity are all in production.
+The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline (Observer → Crystallizer → Pre-HITL Analyzer → human gate → Ed25519-signed tool), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), and the pentest→Guardian feedback loop (approved findings hot-reload into enforcement within 10 seconds).
 
-⬜ **Next:** Phase 6 — PentestAgent (air-gapped red-team bot, continuous security regression).
+**271/271 smoke tests passing** (~1s, no external services required).
+
+⬜ **Next:** Phase 8 — Gateway service, task queue, SSE streaming, web UI, and A2A/MCP interoperability.
 
 ---
 
-## The Big Picture — Six Phases (+ Security Hardening Sprint)
+## The Big Picture — Phases 0–7 Complete, Phase 8 Next
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -35,7 +37,9 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 | **4** | Threat Analyst agent + adaptive Guardian rules + AI-BOM | ✅ Done |
 | **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, signed tools | ✅ Done |
 | **5.5** | Security hardening: DB RBAC, AST bypass guards, tool revocation, TOCTOU, model integrity | ✅ Done |
-| **6** | PentestAgent — air-gapped red-team bot, continuous security regression | ⬜ Next |
+| **6** | PentestAgent — air-gapped red-team bot, 24 attack functions, 0 bypasses | ✅ Done |
+| **7** | Guardian feedback loop — pentest→Guardian bridge, SECURITY.md, pre-release hardening | ✅ Done |
+| **8** | Gateway service, task queue, SSE streaming, web UI, A2A + MCP interoperability | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -89,22 +93,35 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## What We Are NOT Building (and Why)
+## What We Are (and Are Not) Building
 
-- **We are not building another OpenClaw.** OpenClaw is a personal assistant interface. We are building the security infrastructure layer that frameworks like OpenClaw need but don't ship with.
-- **We are not building a supercomputer workload.** Full Phase 6 deployment peaks at ~8–9GB RAM on the M4. Stays within the 16GB envelope with model swapping.
-- **We are not automating human judgment.** Security rule changes, tool promotions, privilege escalations, and crystallization approvals always require explicit human approval.
-- **We are not fine-tuning models yet.** Using pre-trained Ollama models only. Fine-tuning introduces backdoor risks that require a separate security process.
+**We are building** a secure, self-hosted, multi-user agent platform — the thing OpenClaw proved people want, built with the security foundations OpenClaw proved are necessary. The platform exposes a gateway API, a streaming web UI, and messaging-channel connectors (Discord, Signal, etc.) so users can submit tasks to agents and watch them execute in real time.
+
+**We are also building** the security infrastructure layer (Guardian, audit log, crystallization) as a separable product that other agent frameworks can plug into.
+
+**We are not** automating human judgment. Security rule changes, tool promotions, privilege escalations, and crystallization approvals always require explicit human approval.
+
+**We are not** fine-tuning models. Pre-trained Ollama models only. Fine-tuning introduces backdoor risks that require a separate security process.
+
+**We are not** targeting supercomputer workloads. Full Phase 7 deployment peaks at ~12–14GB RAM on an M4 Mini 16GB. Phase 8 adds the gateway and UI services; a 24GB M4 Pro Mini is recommended for comfortable multi-user operation.
 
 ---
 
-## What We Are Missing (Known Gaps)
+## Known Gaps (as of v1.0)
 
-- **Automated red-teaming** — Phase 6 PentestAgent will run a full attack suite against deployed agents (prompt injection, RAG poisoning, privilege escalation, resource bombs, crystallized tool behavioral attacks). Manual trigger only.
-- **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level remains an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
-- **pip-audit / dependency hash pinning** — supply chain hygiene for our own Python dependencies. Supply chain attacks via transitive deps remain an accepted residual risk.
-- **GGUF hash pinning** — `make verify-models` prints hashes for pinning; `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values.
-- **Structured escalation requests** — the Phase 3 design doc describes structured output for escalation (`{"status": "needs_escalation", ...}`). The token-level blocking exists; the UI for structured approval flows is deferred.
+**No user-facing interface.** There is no way for a user to submit a task without the CLI. Phase 8 builds the gateway, SSE streaming, and web UI.
+
+**Agents run serially, not in parallel.** The orchestrator spawns one sub-agent at a time. Parallel fan-out requires `asyncio.gather()` or LangGraph `Send()` — Phase 8+.
+
+**Tool library is narrow.** Only web search, web fetch, and document summarize exist. Phase 9 adds file I/O, structured data query, HTTP API calls, and sandboxed code execution.
+
+**Tool args not forwarded to Guardian.** Guardian currently receives `args: {}` — checks 3 and 6 (destructive patterns, adaptive rules) never see actual tool arguments. Phase 8 closes this gap.
+
+**Guardian action field is hardcoded.** `action="invoke"` always — capability boundary check 2 never fires for non-invoke actions. Phase 8.
+
+**Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
+
+**GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values after running `make verify-models`.
 
 ---
 
@@ -126,27 +143,41 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Immediate Next Steps
 
-### One-time production hardening (Phase 5.5 post-merge)
+### Phase 8 — Gateway, Streaming, Task Queue, and Web UI
 
-Run these once against a running PostgreSQL instance — they're idempotent:
+The next development phase makes LegionForge accessible to users — not just operators with CLI access.
 
-```bash
-make setup-db-roles    # provision legionforge_app restricted PostgreSQL user
-make verify-models     # print SHA256 of GGUF files, then pin in mac_m4_mini_16gb.yaml
-make build-analyzer    # build deny-default Docker analyzer image
-```
+**Build order** (each step unblocks the next):
 
-### Phase 6 — PentestAgent
+1. **Gateway API contract** — finalize the API surface before writing any code:
+   ```
+   POST /tasks               → { task_id, status: "queued" }
+   GET  /tasks/{id}/stream   → SSE event stream
+   GET  /tasks/{id}          → final result
+   GET  /tasks               → task history for this user
+   GET  /.well-known/agent.json → A2A Agent Card
+   POST /a2a/tasks           → A2A-compatible task endpoint
+   ```
 
-The next development phase builds an air-gapped red-team bot that runs a structured attack suite against deployed agents. Results feed the Threat Analyst; undetected attacks become proposed Guardian rules.
+2. **Task queue schema** — new `tasks` table in existing PostgreSQL:
+   `task_id`, `user_id`, `status`, `input`, `result`, `agent_type`,
+   `created_at`, `updated_at`, `stream_events` (JSONB).
 
-Key design constraints:
-- **Isolation:** air-gapped container, no production data access, synthetic environment only
-- **Trigger:** manual only — never autonomous
-- **Attack surface:** direct prompt injection, indirect injection via poisoned RAG documents, tool metadata poisoning, resource bombs, ACL privilege escalation, crystallized tool behavioral equivalence attacks
-- **Output:** structured pentest report at `/security/pentest/latest`; proposed Guardian rules for human review
+3. **Gateway service** (`src/gateway/`) — new FastAPI app on `:8080`. Bearer auth,
+   task submission, SSE stream wrapping LangGraph `astream_events()`, A2A + MCP endpoints.
 
-**→ Full Phase 6 spec:** [`PHASE_PLAN.md — Phase 6`](./PHASE_PLAN.md)
+4. **Wire LangGraph streaming** — switch `graph.ainvoke()` → `graph.astream_events()`
+   in all `run_*` functions. Forward typed events (`on_tool_start`, `on_chat_model_stream`,
+   `on_chain_end`, etc.) as SSE to the gateway.
+
+5. **Minimal web UI** — one HTML page: textarea + submit + live SSE log panel.
+   No framework. Prove the architecture before investing in polish.
+
+6. **First channel connector** — Discord (easiest). Thin service: listen for messages →
+   POST /tasks → subscribe SSE → post updates back to channel.
+
+**→ Full Phase 8 spec:** [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md)
+**→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
 
 ---
@@ -156,8 +187,13 @@ Key design constraints:
 | File | What It Is |
 |---|---|
 | **TLDR.md** (this file) | Start here. Orientation and summary. |
-| [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) | Current build state, infrastructure details, known issues, immediate todos |
+| [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) | Current build state, infrastructure details, known issues |
 | [`PHASE_PLAN.md`](./PHASE_PLAN.md) | Full phased roadmap with components, dependencies, and exit criteria |
 | [`RESEARCH.md`](./RESEARCH.md) | Threat taxonomy, design theory, open questions, competitive context |
+| [`SECURITY.md`](./SECURITY.md) | Threat model, HITL halt/log policy, injection detection architecture |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Branch strategy, commit conventions, smoke test requirements |
 | [`VERIFICATION.md`](./VERIFICATION.md) | Step-by-step setup and verification guide |
+| [`docs/VISION.md`](./docs/VISION.md) | Product vision, target architecture, hardware reality, Phase 8+ roadmap |
+| [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md) | Phase 8 gateway API contract, schema, and implementation plan |
+| [`docs/A2A_CONFORMANCE.md`](./docs/A2A_CONFORMANCE.md) | A2A protocol conformance checklist and gap analysis |
+| [`docs/architecture.md`](./docs/architecture.md) | Implementation-level technical reference (modules, patterns, data flow) |

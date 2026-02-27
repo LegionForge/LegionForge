@@ -66,8 +66,19 @@ class SafeguardedState(dict):
         cls,
         tracing_enabled: bool = True,
         max_steps: int | None = None,
+        agent_id: str = "base_agent",
     ) -> dict:
-        """Create a fresh initial state with all safeguard fields populated."""
+        """Create a fresh initial state with all safeguard fields populated.
+
+        Args:
+            tracing_enabled: Set False to disable LangSmith for this run.
+            max_steps:       Override the profile's default recursion limit.
+            agent_id:        Identifies which agent owns this run.
+                             MUST match the agent_id used in issue_task_token()
+                             in the same run_* function — divergence causes
+                             threat events and task token audit trails to
+                             disagree on identity.
+        """
         return {
             "step_count": 0,
             "max_steps": max_steps or settings.safeguards.default_recursion_limit,
@@ -79,6 +90,7 @@ class SafeguardedState(dict):
             "run_id": str(uuid.uuid4()),
             "tracing_enabled": tracing_enabled,
             "messages": [],
+            "agent_id": agent_id,
         }
 
 

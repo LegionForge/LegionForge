@@ -519,9 +519,17 @@ async def run_threat_analyst(
 
     task = f"Analyze threat events from the last {analysis_window_hours} hours. Fetch events, review the BOM, identify patterns, propose rules for any novel threats, and produce a threat digest."
 
+    # No sanitize_text() call here — intentional by design.
+    # The task string above is synthesized internally from a validated integer
+    # parameter (analysis_window_hours). No user-controlled text reaches this
+    # path at this stage. Scanning would add noise with zero security value.
+    # All agent inputs that arrive from user-controlled strings (orchestrator,
+    # researcher, etc.) do call sanitize_text() before passing tasks here.
+    # agent_id MUST match the agent_id in issue_task_token() below.
     init = SafeguardedState.initial(
         tracing_enabled=tracing_enabled,
         max_steps=max_steps,
+        agent_id="threat_analyst",
     )
     run_id = init["run_id"]
 

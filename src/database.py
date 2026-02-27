@@ -266,6 +266,8 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "threat_rules",
         "agent_profiles",
         "tool_registry",
+        "tasks",  # Phase 8: gateway task queue
+        "gateway_users",  # Phase 8: gateway users
     ]:
         try:
             await admin_conn.execute(
@@ -426,25 +428,32 @@ async def init_db() -> None:
         )
         await _pool.wait()
 
-    # Verify audit log chain integrity (warn-only — empty chain on first run is valid)
+    # Verify audit log chain integrity. An empty chain is valid on first run.
+    # A broken chain (verified_rows > 0 + hash mismatch) means tamper — halt.
+    # Continuing with a tampered audit log would make all subsequent forensic
+    # data unreliable and could mask an active intrusion.
     chain_ok, verified_rows, error_msg = await verify_audit_log_chain()
     if not chain_ok and verified_rows > 0:
-        logger.warning(
+        logger.critical(
             f"[audit-log] Chain integrity check FAILED at row {verified_rows}: {error_msg}. "
-            "Logging threat event and continuing — investigate before trusting audit data."
+            "Audit log has been tampered with — halting startup to protect forensic integrity."
         )
         try:
             await log_threat_event(
                 agent_id="database",
                 run_id="startup",
                 threat_type="AUDIT_LOG_TAMPER",
-                action_taken="LOGGED",
+                action_taken="BLOCKED",
                 confidence=1.0,
                 raw_input=error_msg[:200] if error_msg else None,
                 metadata={"verified_rows": verified_rows},
             )
         except Exception:
             pass
+        raise RuntimeError(
+            f"[audit-log] AUDIT LOG TAMPER DETECTED at row {verified_rows}: {error_msg}. "
+            "Startup halted. Investigate the audit_log table before restarting."
+        )
     elif chain_ok:
         logger.info(f"[audit-log] Chain valid ({verified_rows} rows verified)")
 
@@ -859,6 +868,56 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     """
     )
 
+    # ── Phase 8: Gateway task queue ───────────────────────────────────────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            task_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id         TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'queued'
+                                CHECK (status IN ('queued','running','complete','failed','cancelled')),
+            agent_type      TEXT NOT NULL DEFAULT 'orchestrator'
+                                CHECK (agent_type IN ('orchestrator','researcher','base_agent')),
+            input           TEXT NOT NULL,
+            result          TEXT,
+            error           TEXT,
+            config          JSONB NOT NULL DEFAULT '{}',
+            run_id          UUID,
+            steps           INTEGER,
+            tokens          JSONB,
+            stream_events   JSONB NOT NULL DEFAULT '[]',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completed_at    TIMESTAMPTZ
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_user_id    ON tasks (user_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks (status)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at DESC)"
+    )
+
+    # ── Phase 8: Gateway users ────────────────────────────────────────────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gateway_users (
+            user_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username        TEXT NOT NULL UNIQUE,
+            api_key_hash    TEXT NOT NULL UNIQUE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            is_active       BOOLEAN NOT NULL DEFAULT true
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gateway_users_username ON gateway_users (username)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -1063,6 +1122,7 @@ THREAT_TYPES = {
     "PENTEST_RESOURCE_BOMB_BYPASS",  # preflight budget or rate limiter not triggered
     "PENTEST_PRIVILEGE_ESCALATION_BYPASS",  # child token exceeded parent scope
     "PENTEST_CRYSTALLIZATION_BYPASS",  # forbidden AST construct passed the analyzer
+    "TOOL_ARG_INJECTION",  # injection pattern in LLM-generated tool call args (Phase 8)
 }
 
 # Valid action_taken values
@@ -2465,3 +2525,255 @@ async def promote_pentest_rule_to_threat_rule(
         f"rule_id={rule_id} type={threat_rule_type} (Guardian enforces within 10s)"
     )
     return rule_id
+
+
+# ── Phase 8: Gateway task queue ───────────────────────────────────────────────
+
+
+VALID_TASK_STATUSES = {"queued", "running", "complete", "failed", "cancelled"}
+VALID_AGENT_TYPES = {"orchestrator", "researcher", "base_agent"}
+
+
+async def create_task(
+    user_id: str,
+    input_text: str,
+    agent_type: str = "orchestrator",
+    config: dict | None = None,
+) -> dict:
+    """Insert a new task row and return it with task_id and status='queued'."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO tasks (user_id, input, agent_type, config)
+            VALUES (%s, %s, %s, %s::jsonb)
+            RETURNING task_id::text, status, created_at, agent_type
+            """,
+            (user_id, input_text, agent_type, json.dumps(config or {})),
+        )
+        row = await cur.fetchone()
+    return dict(row)
+
+
+async def get_task(task_id: str, user_id: str | None = None) -> dict | None:
+    """
+    Fetch a task by task_id.
+    If user_id is provided, returns None if the task belongs to a different user
+    (404 semantics — do not reveal task existence to unauthorized callers).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM tasks WHERE task_id = %s::uuid",
+            (task_id,),
+        )
+        row = await cur.fetchone()
+
+    if row is None:
+        return None
+    if user_id is not None and row["user_id"] != user_id:
+        return None  # 404, not 403 — don't confirm existence
+    return dict(row)
+
+
+async def list_tasks(
+    user_id: str,
+    limit: int = 20,
+    offset: int = 0,
+    status: str | None = None,
+) -> dict:
+    """Return paginated task list for a user with total count."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+
+        where = "WHERE user_id = %s"
+        params: list = [user_id]
+        if status:
+            where += " AND status = %s"
+            params.append(status)
+
+        cur = await conn.execute(
+            f"SELECT COUNT(*) AS cnt FROM tasks {where}",
+            params,
+        )
+        total = (await cur.fetchone())["cnt"]
+
+        cur = await conn.execute(
+            f"""
+            SELECT task_id::text, user_id, status, agent_type, input,
+                   result, error, steps, tokens, created_at, updated_at, completed_at
+            FROM tasks {where}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            params + [limit, offset],
+        )
+        rows = await cur.fetchall()
+
+    return {
+        "tasks": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+async def claim_next_queued_task() -> dict | None:
+    """
+    Atomically claim the oldest queued task by setting status='running'.
+    Returns the claimed task row, or None if queue is empty.
+    Uses UPDATE ... RETURNING with FOR UPDATE SKIP LOCKED for safe concurrent access.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'running', updated_at = now()
+            WHERE task_id = (
+                SELECT task_id FROM tasks
+                WHERE status = 'queued'
+                ORDER BY created_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            RETURNING *
+            """
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def mark_task_running(task_id: str, run_id: str) -> None:
+    """Record the LangGraph run_id against a task that is already 'running'."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET run_id = %s::uuid, updated_at = now()
+            WHERE task_id = %s::uuid
+            """,
+            (run_id, task_id),
+        )
+
+
+async def mark_task_complete(
+    task_id: str,
+    result: str,
+    steps: int | None = None,
+    tokens: dict | None = None,
+    stream_events: list | None = None,
+) -> None:
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'complete', result = %s,
+                steps = %s, tokens = %s::jsonb,
+                stream_events = %s::jsonb,
+                completed_at = now(), updated_at = now()
+            WHERE task_id = %s::uuid
+            """,
+            (
+                result,
+                steps,
+                json.dumps(tokens or {}),
+                json.dumps(stream_events or []),
+                task_id,
+            ),
+        )
+
+
+async def mark_task_failed(task_id: str, error: str) -> None:
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'failed', error = %s,
+                completed_at = now(), updated_at = now()
+            WHERE task_id = %s::uuid
+            """,
+            (error, task_id),
+        )
+
+
+async def mark_task_cancelled(task_id: str, user_id: str) -> bool:
+    """
+    Cancel a task if it is still queued and belongs to the requesting user.
+    Returns True if a row was updated, False if not found / wrong owner / not queued.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'cancelled', completed_at = now(), updated_at = now()
+            WHERE task_id = %s::uuid AND user_id = %s AND status = 'queued'
+            """,
+            (task_id, user_id),
+        )
+        return cur.rowcount == 1
+
+
+# ── Phase 8: Gateway user management ─────────────────────────────────────────
+
+
+async def create_gateway_user(username: str, api_key_hash: str) -> dict:
+    """
+    Insert a new gateway user. api_key_hash must be a bcrypt hash of the raw key.
+    Returns the created user row (without the raw key — it is never stored).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO gateway_users (username, api_key_hash)
+            VALUES (%s, %s)
+            RETURNING user_id::text, username, created_at, is_active
+            """,
+            (username, api_key_hash),
+        )
+        row = await cur.fetchone()
+    return dict(row)
+
+
+async def get_gateway_user_by_username(username: str) -> dict | None:
+    """Fetch a gateway_users row by username (for CLI management)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM gateway_users WHERE username = %s AND is_active = true",
+            (username,),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_gateway_user_for_auth(username: str) -> dict | None:
+    """
+    Fetch the api_key_hash for a username so the caller can verify a raw token.
+    Returns the full row including api_key_hash, or None if not found / inactive.
+    Called only from auth.py — not exposed on any API endpoint.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT user_id::text, username, api_key_hash, is_active
+            FROM gateway_users
+            WHERE is_active = true
+            """,
+        )
+        rows = await cur.fetchall()
+    # Return all active users for hash comparison (small table at this scale)
+    return [dict(r) for r in rows]

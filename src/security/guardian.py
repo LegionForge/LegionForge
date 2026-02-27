@@ -109,11 +109,15 @@ _CACHE_TTL_SECONDS: float = (
 # TASK_TOKEN_SECRET is injected via docker-compose.yml environment section.
 # /health is always unauthenticated (required for Docker healthcheck).
 #
-# Default: false (backward compatible). Set to "true" in production.
+# Default: true (production default — fail-safe).
+# Set GUARDIAN_REQUIRE_AUTH=false only for local dev without a configured
+# TASK_TOKEN_SECRET. When true and TASK_TOKEN_SECRET is empty, the endpoint
+# warns and allows the request (see _check_bearer_auth). Configure
+# TASK_TOKEN_SECRET via make guardian-start (loads from macOS Keychain).
 
 _GUARDIAN_AUTH_TOKEN: str = os.environ.get("TASK_TOKEN_SECRET", "")
 _GUARDIAN_REQUIRE_AUTH: bool = (
-    os.environ.get("GUARDIAN_REQUIRE_AUTH", "false").lower() == "true"
+    os.environ.get("GUARDIAN_REQUIRE_AUTH", "true").lower() == "true"
 )
 
 

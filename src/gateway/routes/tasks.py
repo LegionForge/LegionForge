@@ -1,0 +1,169 @@
+"""
+src/gateway/routes/tasks.py
+────────────────────────────
+Core task API:
+
+    POST   /tasks               — submit a task
+    GET    /tasks               — list tasks (authenticated user's own)
+    GET    /tasks/{task_id}     — get a single task result
+    DELETE /tasks/{task_id}     — cancel a queued task
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, field_validator
+
+from src.database import (
+    create_task,
+    get_task,
+    list_tasks,
+    mark_task_cancelled,
+    VALID_AGENT_TYPES,
+    VALID_TASK_STATUSES,
+)
+from src.gateway.auth import create_stream_token, require_user
+from src.security.core import sanitize_text
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+# ── Request / response models ──────────────────────────────────────────────────
+
+
+class TaskConfig(BaseModel):
+    tracing_enabled: bool = True
+    max_steps: int | None = None
+
+
+class TaskRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=4000)
+    agent_type: str = Field(default="orchestrator")
+    config: TaskConfig = Field(default_factory=TaskConfig)
+
+    @field_validator("task")
+    @classmethod
+    def task_must_not_be_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("task must not be blank")
+        return v
+
+    @field_validator("agent_type")
+    @classmethod
+    def agent_type_must_be_valid(cls, v: str) -> str:
+        if v not in VALID_AGENT_TYPES:
+            raise ValueError(f"agent_type must be one of {sorted(VALID_AGENT_TYPES)}")
+        return v
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
+async def submit_task(
+    body: TaskRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Submit a task to the agent queue.
+
+    The task text is sanitized through sanitize_text() before storage.
+    Injection detected → 400 (not 401 — don't leak that detection happened).
+    """
+    # Sanitize input at the gateway boundary
+    sanitized, injection_meta = sanitize_text(body.task, check_injection=True)
+
+    if injection_meta.get("injection_detected"):
+        logger.warning(
+            "[gateway] Injection detected in task submission "
+            f"user={user['username']} pattern_count={injection_meta.get('pattern_count', 0)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Task rejected: invalid input",
+        )
+
+    row = await create_task(
+        user_id=user["user_id"],
+        input_text=sanitized,
+        agent_type=body.agent_type,
+        config=body.config.model_dump(),
+    )
+
+    task_id = row["task_id"]
+    stream_token = create_stream_token(task_id, user["user_id"])
+
+    logger.info(
+        f"[gateway] Task queued task_id={task_id} "
+        f"agent={body.agent_type} user={user['username']}"
+    )
+
+    return {
+        "task_id": task_id,
+        "status": "queued",
+        "created_at": row["created_at"],
+        "stream_url": f"/tasks/{task_id}/stream",
+        "stream_token": stream_token,
+    }
+
+
+@router.get("")
+async def list_user_tasks(
+    user: dict = Depends(require_user),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> dict:
+    """Return paginated task history for the authenticated user."""
+    if status_filter and status_filter not in VALID_TASK_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"status must be one of {sorted(VALID_TASK_STATUSES)}",
+        )
+
+    return await list_tasks(
+        user_id=user["user_id"],
+        limit=limit,
+        offset=offset,
+        status=status_filter,
+    )
+
+
+@router.get("/{task_id}")
+async def get_task_result(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Return a task's full result.
+    Returns 404 for unknown task_id OR task belonging to a different user
+    (do not confirm existence to unauthorized callers).
+    """
+    row = await get_task(task_id, user_id=user["user_id"])
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
+    return row
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_task(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> None:
+    """
+    Cancel a queued task.  Only queued tasks can be cancelled — running tasks
+    cannot be interrupted in Phase 8.
+    """
+    cancelled = await mark_task_cancelled(task_id, user["user_id"])
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found, not queued, or not owned by this user",
+        )

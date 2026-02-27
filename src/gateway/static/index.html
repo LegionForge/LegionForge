@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegionForge</title>
+  <style>
+    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; }
+    textarea { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; padding: 8px; border-radius: 6px; resize: vertical; }
+    button { margin-top: 8px; padding: 8px 20px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    button:disabled { background: #3d4450; cursor: not-allowed; }
+    #log { background: #161b22; border: 1px solid #30363d; padding: 12px; border-radius: 6px; min-height: 300px; white-space: pre-wrap; word-break: break-word; margin-top: 16px; }
+    .tool-call { color: #f0883e; }
+    .error { color: #f85149; }
+    .status { color: #8b949e; font-style: italic; }
+    input[type=text] { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 8px; border-radius: 6px; margin-bottom: 8px; }
+    label { font-size: 0.85em; color: #8b949e; }
+  </style>
+</head>
+<body>
+  <h1>LegionForge</h1>
+
+  <label for="api-key">API Key</label>
+  <input type="text" id="api-key" placeholder="Paste your API key here" autocomplete="off">
+
+  <label for="task">Task</label>
+  <textarea id="task" rows="4" placeholder="Enter a research task or question..."></textarea>
+
+  <br>
+  <button id="submit-btn" onclick="submitTask()">Submit</button>
+  <button onclick="clearLog()" style="margin-left:8px;background:#21262d;">Clear</button>
+
+  <pre id="log"><span class="status">Ready.</span></pre>
+
+  <script>
+    const log = document.getElementById('log');
+    const btn = document.getElementById('submit-btn');
+    let activeES = null;
+
+    function appendLog(text, cls) {
+      const span = document.createElement('span');
+      if (cls) span.className = cls;
+      span.textContent = text;
+      log.appendChild(span);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearLog() {
+      log.innerHTML = '<span class="status">Ready.</span>';
+    }
+
+    async function submitTask() {
+      const apiKey = document.getElementById('api-key').value.trim();
+      const task = document.getElementById('task').value.trim();
+      if (!apiKey) { appendLog('\n[error] Enter your API key first.\n', 'error'); return; }
+      if (!task)   { appendLog('\n[error] Enter a task first.\n', 'error'); return; }
+
+      if (activeES) { activeES.close(); activeES = null; }
+      log.innerHTML = '';
+      btn.disabled = true;
+
+      appendLog('[submitting task...]\n', 'status');
+
+      let taskId, streamToken;
+      try {
+        const res = await fetch('/tasks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({ task }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          appendLog(`[error ${res.status}] ${err.detail || JSON.stringify(err)}\n`, 'error');
+          btn.disabled = false;
+          return;
+        }
+
+        const data = await res.json();
+        taskId = data.task_id;
+        streamToken = data.stream_token;
+        appendLog(`[task queued: ${taskId}]\n`, 'status');
+      } catch (e) {
+        appendLog(`[network error] ${e}\n`, 'error');
+        btn.disabled = false;
+        return;
+      }
+
+      // Subscribe to SSE stream using stream_token (no Authorization header needed)
+      const streamUrl = `/tasks/${taskId}/stream?stream_token=${encodeURIComponent(streamToken)}`;
+      const es = new EventSource(streamUrl);
+      activeES = es;
+
+      es.addEventListener('task_start', () => {
+        appendLog('[agent started]\n', 'status');
+      });
+
+      es.addEventListener('chain_start', e => {
+        const d = JSON.parse(e.data);
+        appendLog(`[node: ${d.node}]\n`, 'status');
+      });
+
+      es.addEventListener('tool_start', e => {
+        const d = JSON.parse(e.data);
+        appendLog(`\n[tool: ${d.tool}] `, 'tool-call');
+      });
+
+      es.addEventListener('tool_end', e => {
+        const d = JSON.parse(e.data);
+        appendLog(`[done]\n`, 'tool-call');
+      });
+
+      es.addEventListener('token', e => {
+        const d = JSON.parse(e.data);
+        appendLog(d.delta);
+      });
+
+      es.addEventListener('task_complete', e => {
+        appendLog('\n\n[task complete]\n', 'status');
+        es.close();
+        activeES = null;
+        btn.disabled = false;
+      });
+
+      es.addEventListener('task_error', e => {
+        const d = JSON.parse(e.data);
+        appendLog(`\n[error] ${d.error}\n`, 'error');
+        es.close();
+        activeES = null;
+        btn.disabled = false;
+      });
+
+      es.addEventListener('task_cancelled', () => {
+        appendLog('\n[task cancelled]\n', 'status');
+        es.close();
+        activeES = null;
+        btn.disabled = false;
+      });
+
+      es.onerror = () => {
+        appendLog('\n[stream disconnected]\n', 'error');
+        es.close();
+        activeES = null;
+        btn.disabled = false;
+      };
+    }
+  </script>
+</body>
+</html>

@@ -190,7 +190,7 @@ security:
   db_app_user: "legionforge_app"
   db_app_password_service: "legionforge_db_app"
   # Phase 6: Tool result injection halt
-  halt_on_tool_result_injection: false
+  halt_on_tool_result_injection: true
   # Phase 6: Analyzer Docker container (deny-default); falls back to sandbox-exec
   analyzer_container_enabled: true
   # Phase 6: Model integrity strict mode (raise on SHA256 mismatch)

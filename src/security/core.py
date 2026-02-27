@@ -229,6 +229,47 @@ _COMPILED_PATTERNS = [
     re.compile(p, re.IGNORECASE | re.MULTILINE) for p in _INJECTION_PATTERNS
 ]
 
+# ── Injection pattern tiering ─────────────────────────────────────────────────
+# Tier 1 (HALT-WORTHY): Unambiguous injection; essentially zero legitimate use in
+# tool arguments. SecureToolNode halts the run immediately on a Tier 1 match.
+# Tier 2 (LOG-ONLY): Real injection signals that also appear in legitimate research
+# or educational content. SecureToolNode logs a LOGGED threat event and continues.
+# See SECURITY.md §"Injection Detection Architecture" for the full decision record.
+_HALT_ON_INJECTION_PATTERNS: frozenset[str] = frozenset(
+    p
+    for p in _INJECTION_PATTERNS
+    if p
+    in {
+        r"ignore\s+(all\s+)?previous\s+instructions?",
+        r"disregard\s+(all\s+)?previous",
+        r"forget\s+(all\s+)?previous\s+instructions?",
+        r"override\s+(all\s+)?(previous\s+)?instructions?",
+        r"jailbreak",
+        r"dan\s+mode",
+        r"dan\s*\d+\.?\d*",
+        r"(enable|activate|unlock)\s+(dan|developer|god|unrestricted|jailbreak)\s+mode",
+        r"(reveal|show|print|output|display)\s+(your\s+)?(system\s+)?prompt",
+        r"(what\s+(are|were)\s+your\s+instructions)",
+        r"<\s*(?:system|instruction|prompt)\s*>",
+        r"\[INST\]|\[\/INST\]",
+        r"<\|im_start\|>|<\|im_end\|>",
+    }
+)
+
+
+def has_halt_worthy_injection(matched_patterns: list[str]) -> bool:
+    """
+    Return True if any matched injection pattern is Tier 1 (halt-worthy).
+
+    Tier 1 = unambiguous injection attempts that have no legitimate use in tool
+    arguments. Tier 2 patterns (educational framing, hypothetical, etc.) are real
+    injection signals but also appear in legitimate research queries, so they are
+    logged without halting.
+
+    See SECURITY.md §"Injection Detection Architecture" for the full decision record.
+    """
+    return bool(set(matched_patterns) & _HALT_ON_INJECTION_PATTERNS)
+
 
 def detect_injection(text: str) -> tuple[bool, list[str]]:
     """

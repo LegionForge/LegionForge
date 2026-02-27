@@ -58,6 +58,7 @@ from src.security import (
     Guardian,
     FORBIDDEN_CAPABILITIES,
     SecurityError,
+    has_halt_worthy_injection,
     # Phase 3: task token ACL
     validate_task_token,
     EscalationRequest,
@@ -95,6 +96,9 @@ class AgentState(TypedDict):
     token_count: int
     run_id: str
     tracing_enabled: bool
+    # Identifies which agent owns this run (set by SafeguardedState.initial).
+    # Must match the agent_id used in issue_task_token() in the same run_* function.
+    agent_id: str
 
     # ── Security: tool call sequence tracking ─────────────────────────────────
     # Maintained by SecureToolNode; passed to Guardian /check for sequence validation.
@@ -622,6 +626,74 @@ class SecureToolNode:
                 # 4a. Outbound sanitization — strip PII / detect injection in args
                 clean_arg, san_meta = sanitize_tool_input(arg_value, tool_id=tool_id)
 
+                # 4a-inject: Pattern-tiered response when LLM-generated tool args
+                # contain injection patterns.
+                # Tier 1 (halt-worthy): unambiguous jailbreak/override patterns —
+                #   the agent context is likely compromised. Force-end the run.
+                # Tier 2 (soft): patterns that also appear in legitimate research
+                #   content (educational framing, hypothetical, etc.) — log and
+                #   continue so valid research queries are not blocked.
+                # See SECURITY.md §"Injection Detection Architecture".
+                if san_meta.get("injection_detected"):
+                    matched = san_meta.get("injection_patterns", [])
+                    if has_halt_worthy_injection(matched):
+                        # Tier 1: halt. Unambiguous injection pattern in tool arg.
+                        logger.error(
+                            f"[SecureToolNode] TOOL_ARG_INJECTION (Tier 1) in "
+                            f"'{tool_id}' arg='{arg_name}' — agent context may be "
+                            "compromised. Halting."
+                        )
+                        try:
+                            from src.database import log_threat_event
+
+                            await log_threat_event(
+                                agent_id=state.get("agent_id", "unknown"),
+                                run_id=state.get("run_id", "unknown"),
+                                threat_type="TOOL_ARG_INJECTION",
+                                action_taken="BLOCKED",
+                                confidence=0.9,
+                                raw_input=arg_value[:200],
+                                metadata={
+                                    "tool_id": tool_id,
+                                    "arg_name": arg_name,
+                                    "patterns": matched,
+                                    "tier": "halt",
+                                },
+                            )
+                        except Exception as _db_err:
+                            logger.debug(
+                                f"[SecureToolNode] Could not log TOOL_ARG_INJECTION: {_db_err}"
+                            )
+                        return {"force_end": True, "loop_detected": False}
+                    else:
+                        # Tier 2: soft pattern — log event and continue.
+                        # These patterns appear in legitimate research content.
+                        logger.warning(
+                            f"[SecureToolNode] Soft injection pattern (Tier 2) in "
+                            f"'{tool_id}' arg='{arg_name}' — logging, not halting."
+                        )
+                        try:
+                            from src.database import log_threat_event
+
+                            await log_threat_event(
+                                agent_id=state.get("agent_id", "unknown"),
+                                run_id=state.get("run_id", "unknown"),
+                                threat_type="INJECTION_DETECTED",
+                                action_taken="LOGGED",
+                                confidence=0.5,
+                                raw_input=arg_value[:200],
+                                metadata={
+                                    "tool_id": tool_id,
+                                    "arg_name": arg_name,
+                                    "patterns": matched,
+                                    "tier": "soft",
+                                },
+                            )
+                        except Exception as _db_err:
+                            logger.debug(
+                                f"[SecureToolNode] Could not log soft injection: {_db_err}"
+                            )
+
                 # 4b. Async SSRF prevention for any argument that looks like a URL
                 if arg_name in ("url", "uri", "endpoint", "href", "src"):
                     try:
@@ -718,9 +790,7 @@ class SecureToolNode:
                         from src.database import log_threat_event
 
                         await log_threat_event(
-                            agent_id=state.get(
-                                "agent_id", state.get("run_id", "unknown")
-                            ),
+                            agent_id=state.get("agent_id", "unknown"),
                             run_id=state.get("run_id", "unknown"),
                             threat_type="CAPABILITY_VIOLATION",
                             confidence=1.0,
@@ -739,10 +809,18 @@ class SecureToolNode:
         if sandbox_messages:
             result["messages"] = list(result.get("messages", [])) + sandbox_messages
 
-        # 6. Sanitize tool output before it enters agent context
-        # Only sanitize inner results — sandbox messages are system-generated
-        # Phase 6: emit TOOL_RESULT_INJECTION threat event when injection detected;
-        # optionally halt if settings.security.halt_on_tool_result_injection = True.
+        # 6. Sanitize tool output before it enters agent context.
+        # Only sanitize inner results — sandbox messages are system-generated.
+        #
+        # Tiered response mirrors step 4a (tool args):
+        #   Tier 1 (halt-worthy patterns): log TOOL_RESULT_INJECTION action=BLOCKED,
+        #     confidence=0.9. If halt_on_tool_result_injection=True, force-end the run.
+        #   Tier 2 (soft/research patterns): log TOOL_RESULT_INJECTION action=LOGGED,
+        #     confidence=0.5. Never halt — the content has already been sanitized before
+        #     it enters context, so the risk is significantly reduced.
+        #
+        # This prevents halt_on_tool_result_injection=True from firing on every
+        # security research page that mentions "for educational purposes" etc.
         if "messages" in result:
             sanitized_msgs = []
             for msg in result["messages"]:
@@ -753,27 +831,38 @@ class SecureToolNode:
                 if hasattr(msg, "content") and isinstance(msg.content, str):
                     clean_content, meta = sanitize_output(msg.content)
                     if meta.get("injection_detected"):
-                        logger.warning(
-                            "[SecureToolNode] Injection pattern in tool output — sanitized. "
-                            "Logging TOOL_RESULT_INJECTION threat event."
-                        )
+                        matched = meta.get("injection_patterns", [])
                         _tool_id_for_msg = getattr(msg, "name", "unknown_tool")
+                        _is_tier1 = has_halt_worthy_injection(matched)
+
+                        if _is_tier1:
+                            logger.warning(
+                                f"[SecureToolNode] Tier 1 injection pattern in tool "
+                                f"result from '{_tool_id_for_msg}' — content sanitized, "
+                                "logging TOOL_RESULT_INJECTION (BLOCKED)."
+                            )
+                        else:
+                            logger.debug(
+                                f"[SecureToolNode] Soft injection pattern (Tier 2) in "
+                                f"tool result from '{_tool_id_for_msg}' — content "
+                                "sanitized, logging TOOL_RESULT_INJECTION (LOGGED)."
+                            )
+
                         try:
                             from src.database import log_threat_event
 
                             await log_threat_event(
-                                agent_id=state.get(
-                                    "agent_id", state.get("run_id", "unknown")
-                                ),
+                                agent_id=state.get("agent_id", "unknown"),
                                 run_id=state.get("run_id", "unknown"),
                                 threat_type="TOOL_RESULT_INJECTION",
-                                confidence=0.9,
+                                confidence=0.9 if _is_tier1 else 0.5,
                                 raw_input=msg.content[:500],
-                                action_taken="LOGGED",
+                                action_taken="BLOCKED" if _is_tier1 else "LOGGED",
                                 metadata={
                                     "tool_id": _tool_id_for_msg,
-                                    "patterns": meta.get("patterns", []),
+                                    "patterns": matched,
                                     "sanitized": True,
+                                    "tier": "halt" if _is_tier1 else "soft",
                                 },
                             )
                         except Exception as _db_err:
@@ -781,18 +870,21 @@ class SecureToolNode:
                                 f"[SecureToolNode] Could not log TOOL_RESULT_INJECTION: {_db_err}"
                             )
 
-                        # Optional halt (non-breaking default: False)
-                        if getattr(
+                        # Halt only on Tier 1 patterns when the setting is enabled.
+                        # Tier 2 patterns never halt — they appear in legitimate research
+                        # content, and the content has already been sanitized anyway.
+                        if _is_tier1 and getattr(
                             settings.security, "halt_on_tool_result_injection", False
                         ):
                             logger.error(
-                                "[SecureToolNode] Halting run due to injection in tool result "
+                                f"[SecureToolNode] Halting run: Tier 1 injection pattern "
+                                f"in result from '{_tool_id_for_msg}' "
                                 "(halt_on_tool_result_injection=True)"
                             )
                             return {
                                 **state,
                                 "force_end": True,
-                                "result": "Halted: injection detected in tool result",
+                                "result": "Halted: Tier 1 injection detected in tool result",
                             }
 
                     try:
@@ -863,18 +955,48 @@ async def run_agent(
     Returns:
         dict with 'result', 'steps', 'tokens', 'run_id' keys.
     """
-    # Sanitize input
-    task, sanitize_meta = sanitize_text(task)
-    if sanitize_meta.get("injection_detected"):
-        logger.warning(
-            f"Injection patterns detected in task input. Proceeding with sanitized input."
-        )
-
-    # Build initial state
+    # Build initial state first — run_id needed for threat logging.
+    # ORDERING RULE: always call SafeguardedState.initial() before sanitize_text()
+    # so the run_id is available for DB logging if injection is detected.
+    # agent_id MUST match the agent_id in issue_task_token() below.
     init = SafeguardedState.initial(
         tracing_enabled=tracing_enabled,
         max_steps=max_steps,
+        agent_id="base_agent",
     )
+
+    # Sanitize input — after init so run_id is available for DB logging.
+    # check_injection is gated by prompt_injection_guard setting so dev/test
+    # environments can disable user-input scanning without affecting tool-arg
+    # detection (SecureToolNode always-on regardless of this setting).
+    task, sanitize_meta = sanitize_text(
+        task,
+        check_injection=settings.security.prompt_injection_guard,
+    )
+    if sanitize_meta.get("injection_detected"):
+        logger.warning(
+            "Injection patterns detected in task input. Proceeding with sanitized input."
+        )
+        try:
+            from src.database import log_threat_event
+
+            await log_threat_event(
+                agent_id="base_agent",
+                run_id=init["run_id"],
+                threat_type="INJECTION_DETECTED",
+                action_taken="LOGGED",
+                confidence=0.8,
+                raw_input=task[:200],
+                metadata={
+                    "patterns": sanitize_meta.get("injection_patterns", []),
+                    "source": "task_input",
+                },
+            )
+        except Exception as _db_err:
+            logger.debug(
+                f"[run_agent] Could not log INJECTION_DETECTED to DB: {_db_err}"
+            )
+
     state: AgentState = {
         **init,
         "task": task,

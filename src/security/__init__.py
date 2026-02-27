@@ -35,6 +35,8 @@ from src.security.core import (
     detect_injection,
     _INJECTION_PATTERNS,
     _COMPILED_PATTERNS,
+    _HALT_ON_INJECTION_PATTERNS,
+    has_halt_worthy_injection,
     # Sanitization
     sanitize_text,
     sanitize_for_trace,
@@ -92,6 +94,8 @@ __all__ = [
     "detect_injection",
     "_INJECTION_PATTERNS",
     "_COMPILED_PATTERNS",
+    "_HALT_ON_INJECTION_PATTERNS",
+    "has_halt_worthy_injection",
     "sanitize_text",
     "sanitize_for_trace",
     "sanitize_output",

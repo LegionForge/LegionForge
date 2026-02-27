@@ -1,9 +1,9 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 5.5.0
-**Last updated:** 2026-02-26
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅
+**Version:** 1.0.0
+**Last updated:** 2026-02-27
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ⬜
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary

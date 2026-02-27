@@ -14,7 +14,7 @@ actively defended against in the codebase:
 | Threat | Defense | Implementation |
 |---|---|---|
 | **Direct prompt injection** | 24-pattern regex detector + adaptive Guardian rules | `src/security/core.py:detect_injection()`, Guardian `_check_6` |
-| **Indirect prompt injection** | RAG provenance scoring, trust threshold enforcement | `src/database.py:store_document_with_provenance()` |
+| **Indirect prompt injection** | RAG provenance scoring, trust threshold; `document_summarize` uses delimited content (`<external_content>` tags + SystemMessage boundary) | `src/database.py:store_document_with_provenance()`, `src/agents/researcher.py:document_summarize()` |
 | **Tool poisoning / rug-pull** | SHA-256 hash validation at registration + Ed25519 signing | `src/security/core.py:verify_tool_before_invocation()` |
 | **Tool revocation bypass** | 10-second TTL revocation cache in Guardian sidecar | `src/security/guardian.py:_check_0_tool_revocation()` |
 | **Capability amplification** | Negative capability list enforced by Guardian | `src/security/guardian.py:_check_2_capability_boundary()` |
@@ -22,7 +22,7 @@ actively defended against in the codebase:
 | **TOCTOU (time-of-check / time-of-use)** | `approved_snapshot` verified post-execution in `SecureToolNode` | `src/base_graph.py:SecureToolNode` |
 | **Resource bomb / economic DOS** | Pre-execution token cost estimator + rate limiter | `src/rate_limiter.py`, `src/safeguards.py` |
 | **Credential theft** | macOS Keychain storage; PII redaction from all outbound calls | `src/security/core.py:sanitize_output()` |
-| **Audit log tampering** | SHA-256 hash chain on `audit_log` table; verified on startup | `src/database.py:verify_audit_log_chain()` |
+| **Audit log tampering** | SHA-256 hash chain on `audit_log` table; verified on startup — **tamper detection halts startup** (`RuntimeError`) | `src/database.py:verify_audit_log_chain()`, `init_db()` |
 | **Supply chain** | AI-BOM; Ed25519-signed crystallized tool manifests | `src/tools/signing.py` |
 | **Agent sequence violation** | Sequence contracts registered per-agent; checked at every tool call | `src/security/guardian.py:_check_4_sequence()` |
 | **Crystallization bypass** | AST guards (subscript, MRO traversal, globals) in pre-HITL analyzer | `src/tools/crystallization_analyzer.py` |
@@ -34,6 +34,11 @@ actively defended against in the codebase:
   anomaly detection is deferred.
 - **Transitive Python dependency vulnerabilities** — `pip-audit` / hash pinning is accepted
   residual risk; remediation via Dependabot alerts.
+- **Dependabot #4 — `langchain-core` SSRF (LOW, accepted risk)** — CVE affects
+  `ChatOpenAI.get_num_tokens_from_messages()` when called with `image_url` message parts.
+  LegionForge never calls this method with image content (text-only agents). Fix requires
+  migrating the entire langchain stack from 0.3.x → 1.x, which is a planned Phase 9 upgrade.
+  Risk is accepted for Phase 8; tracked in PHASE_PLAN.md Phase 9 prerequisites.
 - **GGUF model integrity** — `make verify-models` prints SHA256 hashes for pinning.
   `gguf_sha256: ""` in the hardware profile skips model integrity until the operator pins.
 
@@ -153,8 +158,134 @@ If you discover a security vulnerability in LegionForge:
 
 ---
 
+---
+
+## Injection Detection Architecture
+
+### Pattern Tiering
+
+Injection detection uses a two-tier model for tool argument scanning
+(`SecureToolNode` step 4a). User-input scanning (`run_*` functions) is
+separate and controlled by `prompt_injection_guard`.
+
+**Tier 1 — HALT-WORTHY** (force_end=True):
+Unambiguous injection attempts with essentially zero legitimate use in tool arguments.
+Any of these in an LLM-generated tool arg indicates the agent context is compromised.
+
+| Pattern | Example trigger |
+|---|---|
+| `ignore all previous instructions` | Classic override |
+| `disregard all previous` | Override variant |
+| `forget all previous instructions` | Override variant |
+| `override all previous instructions` | Override variant |
+| `jailbreak` | Literal jailbreak keyword |
+| `dan mode` | DAN activation |
+| `dan 2.0`, `dan 11.0`, etc. | Numbered DAN variants |
+| `enable/activate/unlock … mode` | Mode activation |
+| `reveal/show/print your system prompt` | System prompt exfiltration |
+| `what are your instructions` | Self-probe |
+| `<system>`, `<instruction>` | XML injection delimiters |
+| `[INST]`, `[/INST]` | Llama-format injection |
+| `<\|im_start\|>`, `<\|im_end\|>` | ChatML injection |
+
+**Tier 2 — LOG-ONLY** (INJECTION_DETECTED, action_taken=LOGGED, confidence=0.5):
+Real injection signals that also appear in legitimate research and educational
+content. The event is logged to `threat_events` and the run continues.
+
+Examples: `act as`, `pretend you are`, `simulate being`, `roleplay as`,
+`developer mode`, `from now on you must`, `hypothetically speaking`,
+`for educational/research purposes`, `imagine you were`, `decode from base64`.
+
+**Trade-off accepted:** Tier 2 false positives are possible (e.g., a legitimate
+research query about why LLMs comply with adversarial instructions could contain
+"hypothetically speaking"). Phase 8 will replace this with a context-aware
+classifier that considers query intent and surrounding context.
+
+**Implementation:**
+- `src/security/core.py:_HALT_ON_INJECTION_PATTERNS` — frozenset of Tier 1 patterns
+- `src/security/core.py:has_halt_worthy_injection()` — predicate used by `SecureToolNode`
+
+---
+
+### `prompt_injection_guard` Setting
+
+**Location:** `config/hardware_profiles/<profile>.yaml` → `security.prompt_injection_guard`
+
+**What it controls:** Whether user-supplied task inputs (`run_*` functions) are
+scanned for injection patterns before being passed to the agent graph.
+
+```yaml
+security:
+  prompt_injection_guard: true   # production default — scan all task inputs
+  prompt_injection_guard: false  # dev/test only — skip user-input scan
+```
+
+**What it does NOT control:**
+- `SecureToolNode` tool-arg injection detection is **always-on** regardless of this
+  setting. It cannot be disabled via config. This is intentional — tool args come
+  from LLM output (not directly from the user), and a compromised context that
+  generates Tier 1 patterns must be halted regardless of environment.
+
+**Affected run functions:** `run_agent()`, `run_researcher()`, `run_orchestrator()`,
+`run_observer()`, `run_crystallizer()`. Not `run_threat_analyst()` — that agent's
+task is synthesized internally (see below).
+
+---
+
+### `agent_id` Consistency Invariant
+
+Every `run_*` function calls both:
+1. `SafeguardedState.initial(agent_id="<name>")` — sets `state["agent_id"]`
+2. `issue_task_token(agent_id="<name>", ...)` — embeds identity in the JWT
+
+**The string passed to both MUST be identical.** If they diverge, threat events
+in `threat_events` and the JWT audit trail in `audit_log` will attribute the same
+run to different identities, making forensic reconstruction unreliable.
+
+| Agent | `agent_id` string |
+|---|---|
+| base_graph.py | `"base_agent"` |
+| researcher.py | `"researcher"` |
+| orchestrator.py | `"orchestrator"` |
+| observer.py | `"observer"` |
+| crystallizer.py | `"crystallizer"` |
+| threat_analyst.py | `"threat_analyst"` |
+
+New agents MUST add a row to this table and verify consistency before merging.
+
+---
+
+### `run_id` Ordering Rule
+
+**Rule:** `SafeguardedState.initial()` MUST be called BEFORE `sanitize_text()` in
+every `run_*` function.
+
+**Why:** `initial()` generates the `run_id` UUID. If injection is detected in the
+task input, `log_threat_event()` needs `run_id` to attach the event to the correct
+run. Calling `sanitize_text()` first means injection events are logged with
+`run_id=None` or a stale value — forensically useless.
+
+```python
+# CORRECT — run_id available for DB logging
+init = SafeguardedState.initial(agent_id="my_agent")
+task, meta = sanitize_text(task, check_injection=settings.security.prompt_injection_guard)
+if meta["injection_detected"]:
+    await log_threat_event(run_id=init["run_id"], ...)
+
+# WRONG — run_id not yet generated when injection is detected
+task, meta = sanitize_text(task)
+init = SafeguardedState.initial()
+```
+
+**Exception:** `run_threat_analyst()` has no `sanitize_text()` call. Its task string
+is synthesized internally from a validated integer — not user-controlled text.
+
+---
+
 ## Changelog
 
 | Date | Change |
 |---|---|
 | 2026-02-26 | Initial SECURITY.md — v1.0, covers Phases 0–7 |
+| 2026-02-26 | Added §"Injection Detection Architecture" — pattern tiering, prompt_injection_guard, agent_id invariant, run_id ordering rule |
+| 2026-02-26 | Session 1 hardening: tool-result injection tiering (Fix 1); `document_summarize` content delimiter (Fix 2); `GUARDIAN_REQUIRE_AUTH` default → true (Fix 3); audit log tamper → RuntimeError halt (Fix 4) |

@@ -184,6 +184,29 @@ health-server:
 	@echo "Starting health server at http://localhost:8765 ..."
 	@cd $(BASE) && $(PYTHON) -m src.health
 
+# ── Gateway (Phase 8) ──────────────────────────────────────────
+.PHONY: gateway-start
+gateway-start:
+	@echo "Starting LegionForge gateway at http://localhost:8080 ..."
+	@cd $(BASE) && $(PYTHON) -m src.gateway.app
+
+.PHONY: create-user
+create-user:
+	@if [ -z "$(USERNAME)" ]; then echo "Usage: make create-user USERNAME=<name>"; exit 1; fi
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio, secrets, sys; \
+from src.gateway.auth import hash_api_key; \
+from src.database import init_db, create_gateway_user; \
+async def run(): \
+    await init_db(); \
+    raw = secrets.token_urlsafe(32); \
+    hashed = hash_api_key(raw); \
+    user = await create_gateway_user('$(USERNAME)', hashed); \
+    print(f'Created user: $(USERNAME)'); \
+    print(f'API key (save this — it will not be shown again):'); \
+    print(f'  {raw}'); \
+asyncio.run(run())"
+
 .PHONY: health-token
 health-token:
 	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
@@ -465,7 +488,12 @@ print('✅ Orchestrator tools registered')"
 # ── Run agents ───────────────────────────────────────────────
 # Usage: make run-researcher TASK="summarise what LangGraph is"
 #        make run-researcher          (uses default task)
+# TASK= is the public interface; RESEARCHER_TASK is the internal variable.
+# If TASK is set on the command line it takes priority over RESEARCHER_TASK.
 RESEARCHER_TASK ?= What is LangGraph and how does it relate to LangChain? Give a brief summary.
+ifdef TASK
+RESEARCHER_TASK := $(TASK)
+endif
 
 .PHONY: run-researcher
 run-researcher:

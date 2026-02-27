@@ -36,7 +36,7 @@ python-dotenv~=1.0
 PyJWT~=2.8
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
-cryptography~=44.0               # Ed25519; also transitive via PyJWT. ≥44.0.1 resolves CVE Dependabot alerts (SECT curve subgroup + OpenSSL wheel vulns)
+cryptography>=46.0.5,<47          # Ed25519 + PyJWT. ≥46.0.5 fixes CVE: SECT curve subgroup attack (Dependabot #7, HIGH). APIs used (ed25519, serialization) are stable across 44→46.
 
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
@@ -51,6 +51,10 @@ aiohttp~=3.9
 tenacity~=8.0                    # Retry logic for API calls
 fastapi~=0.132                   # Health/status endpoint
 uvicorn~=0.41                    # ASGI server for health endpoint
+
+# ── Gateway (Phase 8) ────────────────────────────────────────
+sse-starlette~=2.0              # Server-Sent Events for LangGraph streaming
+bcrypt~=4.0                     # API key hashing (bcrypt; passlib 1.7 incompatible with bcrypt 5.x)
 
 # ── Dev / Testing ────────────────────────────────────────────
 pytest~=8.0
