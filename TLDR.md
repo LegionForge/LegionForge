@@ -20,7 +20,7 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline (Observer → Crystallizer → Pre-HITL Analyzer → human gate → Ed25519-signed tool), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), and the pentest→Guardian feedback loop (approved findings hot-reload into enforcement within 10 seconds).
 
-**312/312 smoke tests passing** (~1s, no external services required).
+**323/323 smoke tests passing** (~1s, no external services required).
 
 ✅ **Phase 8 complete:** Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP endpoints, Guardian arg-forwarding gaps closed.
 
@@ -144,13 +144,11 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 **Priority order:**
 
-1. **Discord connector** (`src/connectors/discord.py`) — last Phase 8 item still outstanding. Bridge Discord messages → `POST /tasks` → SSE → channel replies.
+1. **langchain 0.3.x → 1.x migration** — closes Dependabot #4 (LOW SSRF), unlocks new LangGraph features. All langchain-* pins must upgrade together.
 
-2. **langchain 0.3.x → 1.x migration** — closes Dependabot #4 (LOW SSRF), unlocks new LangGraph features. All langchain-* pins must upgrade together.
+2. **Tool library expansion** — file I/O, structured data query, HTTP API calls, sandboxed code execution. Each new tool requires: Ed25519 registration + Guardian capability entry + smoke tests.
 
-3. **Tool library expansion** — file I/O, structured data query, HTTP API calls, sandboxed code execution. Each new tool requires: Ed25519 registration + Guardian capability entry + smoke tests.
-
-4. **Parallel agent fan-out** — orchestrator currently spawns sub-agents serially. Add `asyncio.gather()` / LangGraph `Send()` for parallel task execution.
+3. **Parallel agent fan-out** — orchestrator currently spawns sub-agents serially. Add `asyncio.gather()` / LangGraph `Send()` for parallel task execution.
 
 **→ Full Phase 8 spec (complete):** [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md)
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)

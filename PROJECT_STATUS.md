@@ -20,15 +20,16 @@
 All phases through 8 are complete. The full security stack is operational and the user-facing gateway is live.
 
 ```
-make test-smoke    → 312/312 passing (~1s, no external services required)
+make test-smoke    → 323/323 passing (~1s, no external services required)
 make health-server → localhost:8765 all components green
 make gateway-start → localhost:8080 gateway API + streaming UI
-git log --oneline -1 → a8dfd55 security: close Guardian arg-forwarding gaps (Gap 1 + Gap 2)
+make discord-start → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
+git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connectors/discord.py)
 ```
 
 ---
 
-## What's Shipped (Phases 0–7 + injection detection hardening)
+## What's Shipped (Phases 0–8)
 
 ### Source Files (`src/`)
 
@@ -58,6 +59,16 @@ git log --oneline -1 → a8dfd55 security: close Guardian arg-forwarding gaps (G
 | `tools/model_integrity.py` | SHA256 streaming GGUF verification; `MODEL_INTEGRITY_MISMATCH` threat event | 5.5 |
 | `tools/crystallization_analyzer.py` | Pre-HITL AST analyzer (subscript/MRO/globals guards), Docker/sandbox/bare sandboxes | 5 |
 | `tools/pentest_tools.py` | 24 attack functions (8 classes × 3 variants) | 6 |
+| `gateway/app.py` | FastAPI gateway (:8080) — task queue, SSE streaming, Web UI, CORS, lifespan | 8 |
+| `gateway/auth.py` | Bearer token auth, bcrypt API key hashing, stream tokens (30-min TTL) | 8 |
+| `gateway/events.py` | LangGraph→SSE event mapping, in-process pub/sub queues | 8 |
+| `gateway/worker.py` | Embedded asyncio task worker — polls queue, streams events to subscribers | 8 |
+| `gateway/routes/tasks.py` | `POST/GET /tasks`, `GET /tasks/{id}`, `DELETE /tasks/{id}` | 8 |
+| `gateway/routes/stream.py` | `GET /tasks/{id}/stream` — SSE via EventSourceResponse | 8 |
+| `gateway/routes/a2a.py` | `/.well-known/agent.json`, `/a2a/tasks` — A2A protocol conformance | 8 |
+| `gateway/routes/mcp.py` | `GET /mcp/tools`, `POST /mcp/tools/invoke` (501 stub, Phase 9) | 8 |
+| `gateway/static/index.html` | Minimal streaming Web UI (dark theme, EventSource, token deltas) | 8 |
+| `connectors/discord.py` | Discord bot — `!<task>` → gateway POST → SSE → reply edits every 2s | 8 |
 
 ### Guardian — 7 Checks
 
@@ -81,7 +92,7 @@ git log --oneline -1 → a8dfd55 security: close Guardian arg-forwarding gaps (G
 
 ### Tests
 
-- `tests/test_smoke.py` — **312 tests**, no running services required, ~1s
+- `tests/test_smoke.py` — **323 tests**, no running services required, ~1s
 - `tests/conftest.py` — pytest configuration and shared fixtures
 
 ---
@@ -143,6 +154,8 @@ git log --oneline -1 → a8dfd55 security: close Guardian arg-forwarding gaps (G
 | `legionforge_health` | Bearer token for `/status`, `/metrics`, `/usage` |
 | `legionforge_task_token` | TASK_TOKEN_SECRET for JWT signing |
 | `legionforge_signing_key` | Ed25519 private key for tool signing |
+| `legionforge_discord_token` | Discord bot token (Phase 8 connector) |
+| `legionforge_discord_api_key` | Gateway API key for the `discord-bot` gateway user |
 
 ---
 
@@ -154,7 +167,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 312 tests, ~1s
+make test-smoke                          # 323 tests, ~1s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 

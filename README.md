@@ -27,7 +27,7 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 5.5 — Security Hardening | ✅ Complete | DB RBAC, AST subscript+MRO guards, tool revocation, TOCTOU, model integrity |
 | 6 — PentestAgent | ⬜ Planned | Air-gapped red-team bot, continuous security regression |
 
-**312/312 smoke tests passing. Full security stack + gateway API operational.**
+**323/323 smoke tests passing. Full security stack + gateway API operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -205,7 +205,7 @@ curl http://localhost:9766/health
 ### Step 9 — Verify Everything
 
 ```bash
-# Run all 312 smoke tests (no external services required — runs in ~2s)
+# Run all 323 smoke tests (no external services required — runs in ~2s)
 make test-smoke
 
 # Run the full system check (drive, venv, Keychain, Ollama, Guardian)
@@ -250,7 +250,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 312 smoke tests, ~2s, no services required
+make test-smoke            # 323 smoke tests, ~2s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -301,7 +301,7 @@ make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s 
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
 **`make test-smoke` shows fewer than 200 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 8 (commit referencing 312 smoke tests).
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 8 (commit referencing 323 smoke tests, Discord connector).
 
 ---
 

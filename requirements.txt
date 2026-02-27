@@ -56,6 +56,9 @@ uvicorn~=0.41                    # ASGI server for health endpoint
 sse-starlette~=2.0              # Server-Sent Events for LangGraph streaming
 bcrypt~=4.0                     # API key hashing (bcrypt; passlib 1.7 incompatible with bcrypt 5.x)
 
+# ── Channel Connectors (Phase 8) ─────────────────────────────
+discord.py~=2.3                 # Discord bot connector
+
 # ── Dev / Testing ────────────────────────────────────────────
 pytest~=8.0
 pytest-asyncio~=0.23

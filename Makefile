@@ -207,6 +207,12 @@ async def run(): \
     print(f'  {raw}'); \
 asyncio.run(run())"
 
+# ── Discord Connector (Phase 8) ────────────────────────────────
+.PHONY: discord-start
+discord-start:
+	@echo "Starting Discord connector (gateway=$(DISCORD_GATEWAY_URL:-http://localhost:8080)) ..."
+	@cd $(BASE) && $(PYTHON) -m src.connectors.discord
+
 .PHONY: health-token
 health-token:
 	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \

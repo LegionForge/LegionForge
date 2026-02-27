@@ -4074,3 +4074,150 @@ def test_guardian_check2_tool_id_covers_all_forbidden_capabilities():
         assert (
             resp is not None and not resp.allowed
         ), f"FORBIDDEN_CAPABILITY '{cap}' not blocked when used as tool_id"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Discord Connector (Phase 8)
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def test_discord_connector_importable():
+    """src.connectors.discord imports without error (discord.py must be installed)."""
+    import src.connectors.discord  # noqa: F401
+
+
+def test_discord_connector_config_defaults():
+    """Discord connector uses safe defaults when env vars are absent."""
+    import importlib
+    import sys
+    import os
+
+    # Remove cached module to re-evaluate env-time constants fresh
+    for key in list(sys.modules):
+        if "connectors.discord" in key:
+            del sys.modules[key]
+
+    env_backup = {}
+    for var in (
+        "DISCORD_GATEWAY_URL",
+        "DISCORD_ALLOWED_CHANNELS",
+        "DISCORD_PREFIX",
+        "DISCORD_MAX_EDIT_INTERVAL",
+        "DISCORD_AGENT_TYPE",
+    ):
+        env_backup[var] = os.environ.pop(var, None)
+
+    try:
+        mod = importlib.import_module("src.connectors.discord")
+        assert mod.GATEWAY_URL == "http://localhost:8080"
+        assert mod.PREFIX == "!"
+        assert mod.MAX_EDIT_INTERVAL == 2.0
+        assert mod.AGENT_TYPE == "orchestrator"
+        assert mod.ALLOWED_CHANNELS == set()  # empty = all channels
+    finally:
+        for var, val in env_backup.items():
+            if val is not None:
+                os.environ[var] = val
+        for key in list(sys.modules):
+            if "connectors.discord" in key:
+                del sys.modules[key]
+
+
+def test_discord_connector_allowed_channels_parsed():
+    """DISCORD_ALLOWED_CHANNELS is parsed as a set of ints."""
+    import importlib
+    import sys
+    import os
+
+    for key in list(sys.modules):
+        if "connectors.discord" in key:
+            del sys.modules[key]
+
+    os.environ["DISCORD_ALLOWED_CHANNELS"] = "111,222, 333 ,notanint,"
+    try:
+        mod = importlib.import_module("src.connectors.discord")
+        assert mod.ALLOWED_CHANNELS == {111, 222, 333}  # non-digits dropped
+    finally:
+        del os.environ["DISCORD_ALLOWED_CHANNELS"]
+        for key in list(sys.modules):
+            if "connectors.discord" in key:
+                del sys.modules[key]
+
+
+def test_discord_connector_length_constants():
+    """Discord connector uses correct length caps for Discord (2000) and gateway (4000)."""
+    import src.connectors.discord as dc
+
+    assert dc._DISCORD_MAX_LEN == 2000
+    assert dc._TASK_MAX_LEN == 4000
+
+
+def test_discord_bot_class_exists():
+    """LegionForgeBot is a discord.Client subclass."""
+    import discord
+    from src.connectors.discord import LegionForgeBot
+
+    assert issubclass(LegionForgeBot, discord.Client)
+
+
+def test_discord_load_secret_prefers_env_fallback(monkeypatch):
+    """_load_secret falls back to env var when Keychain lookup fails."""
+    import subprocess
+    from src.connectors.discord import _load_secret
+
+    # Patch subprocess.run to simulate Keychain miss
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(44, "security")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("TEST_SECRET_VAR", "my-test-secret")
+
+    result = _load_secret("nonexistent_keychain_service", "TEST_SECRET_VAR")
+    assert result == "my-test-secret"
+
+
+def test_discord_load_secret_raises_when_missing(monkeypatch):
+    """_load_secret raises RuntimeError when neither Keychain nor env has the value."""
+    import subprocess
+    from src.connectors.discord import _load_secret
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(44, "security")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.delenv("MISSING_ENV_VAR", raising=False)
+
+    try:
+        _load_secret("nonexistent_service", "MISSING_ENV_VAR")
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as exc:
+        assert "nonexistent_service" in str(exc)
+
+
+def test_discord_sse_consumer_is_async_generator():
+    """_consume_sse is an async generator function."""
+    import inspect
+    from src.connectors.discord import _consume_sse
+
+    assert inspect.isasyncgenfunction(_consume_sse)
+
+
+def test_discord_run_task_and_stream_is_coroutine():
+    """_run_task_and_stream is a coroutine function."""
+    import inspect
+    from src.connectors.discord import _run_task_and_stream
+
+    assert inspect.iscoroutinefunction(_run_task_and_stream)
+
+
+def test_discord_stream_to_discord_is_coroutine():
+    """_stream_to_discord is a coroutine function."""
+    import inspect
+    from src.connectors.discord import _stream_to_discord
+
+    assert inspect.iscoroutinefunction(_stream_to_discord)
+
+
+def test_discord_connectors_package_importable():
+    """src.connectors package imports cleanly."""
+    import src.connectors  # noqa: F401

@@ -2585,32 +2585,34 @@ async def list_tasks(
     status: str | None = None,
 ) -> dict:
     """Return paginated task list for a user with total count."""
+    if status is not None and status not in VALID_TASK_STATUSES:
+        raise ValueError(f"Invalid status filter: {status!r}")
     pool = get_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
 
+        # `where` is assembled from hardcoded string fragments only;
+        # all user values go into parameterised `params` — no injection risk.
         where = "WHERE user_id = %s"
         params: list = [user_id]
         if status:
             where += " AND status = %s"
             params.append(status)
 
-        cur = await conn.execute(
-            f"SELECT COUNT(*) AS cnt FROM tasks {where}",
-            params,
-        )
+        # `where` is assembled from hardcoded string fragments only; all user
+        # values go into parameterised `params` — no injection risk.
+        _count_q = f"SELECT COUNT(*) AS cnt FROM tasks {where}"  # nosec B608
+        cur = await conn.execute(_count_q, params)
         total = (await cur.fetchone())["cnt"]
 
-        cur = await conn.execute(
-            f"""
+        _list_q = f"""
             SELECT task_id::text, user_id, status, agent_type, input,
                    result, error, steps, tokens, created_at, updated_at, completed_at
             FROM tasks {where}
             ORDER BY created_at DESC
             LIMIT %s OFFSET %s
-            """,
-            params + [limit, offset],
-        )
+            """  # nosec B608
+        cur = await conn.execute(_list_q, params + [limit, offset])
         rows = await cur.fetchall()
 
     return {

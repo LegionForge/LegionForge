@@ -700,12 +700,13 @@ How a tool gets from "code" to "allowed to run inside an agent".
   boundary fix           │  Guardian Gap 1+2 closed
   Guardian args fixed    │  312 smoke tests
 
-  Phase 8 ✅  Gateway + Streaming + Task Queue + Web UI
+  Phase 8 ✅  Gateway + Streaming + Task Queue + Web UI + Discord Connector
   ─────────────────────────────────────────────────────────────────
   Gateway service :8080  │  SSE streaming (astream_events)
   Task queue (tasks tbl) │  Minimal web UI (GET /ui)
   A2A + MCP endpoints    │  Per-user Bearer auth + stream tokens
-  Guardian Gap 1+2 fixed │  312 smoke tests
+  Guardian Gap 1+2 fixed │  Discord connector (src/connectors/)
+  323 smoke tests        │
   → Spec: docs/PHASE_8_GATEWAY_SPEC.md
 
   Phase 9 ⬜  Tool Expansion + langchain 1.x + Parallel Fan-Out
