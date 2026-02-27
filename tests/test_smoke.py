@@ -1342,7 +1342,9 @@ def test_guardian_check_offline_returns_guardian_check_response():
 
     # guardian_enabled=False in test settings — offline path runs
     result = asyncio.run(
-        guardian_check("web_search", {"run_id": "smoke-test", "sequence_so_far": []})
+        guardian_check(
+            "web_search", {}, {"run_id": "smoke-test", "sequence_so_far": []}
+        )
     )
     assert isinstance(
         result, GuardianCheckResponse
@@ -3881,3 +3883,194 @@ def test_gateway_tasks_sql_is_idempotent():
     ).read_text()
     assert "CREATE TABLE IF NOT EXISTS" in sql
     assert "CREATE INDEX IF NOT EXISTS" in sql
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Guardian Gap Fixes — args forwarding (Gap 1) + capability boundary (Gap 2)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── Gap 1: guardian_check now accepts args parameter ─────────────────────────
+
+
+def test_guardian_check_signature_accepts_args_parameter():
+    """guardian_check() takes tool_id, args, state — not tool_id, state (Gap 1 fix)."""
+    import inspect
+    from src.base_graph import guardian_check
+
+    sig = inspect.signature(guardian_check)
+    params = list(sig.parameters.keys())
+    assert "args" in params, "guardian_check must have an 'args' parameter"
+    # args must come before state
+    assert params.index("args") < params.index("state")
+
+
+def test_guardian_check_payload_uses_real_args(monkeypatch):
+    """guardian_check() puts the passed args dict into the Guardian payload (Gap 1 fix)."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.base_graph import guardian_check
+    from src.security.guardian import GuardianCheckResponse
+
+    captured = {}
+
+    async def fake_post(url, json=None, headers=None, timeout=None):
+        captured["payload"] = json
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "allowed": True,
+            "tier": "allow",
+            "reason": "ok",
+            "threat_type": None,
+            "confidence": 1.0,
+        }
+        mock_resp.raise_for_status = lambda: None
+        return mock_resp
+
+    real_args = {"query": "SELECT * FROM users", "limit": 10}
+    state = {"agent_id": "test", "run_id": "r1", "sequence_so_far": []}
+
+    with patch("src.base_graph.settings") as mock_settings:
+        mock_settings.security.guardian_enabled = True
+        mock_settings.security.guardian_url = "http://localhost:9766"
+        mock_settings.security.guardian_timeout_seconds = 5
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(side_effect=fake_post)
+            mock_client_cls.return_value = mock_client
+
+            asyncio.run(guardian_check("web_search", real_args, state))
+
+    assert (
+        captured.get("payload", {}).get("args") == real_args
+    ), "guardian_check must forward real args to Guardian payload"
+
+
+def test_guardian_check_payload_action_from_state(monkeypatch):
+    """guardian_check() reads action from state, defaulting to 'invoke' (Gap 2 fix)."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.base_graph import guardian_check
+
+    captured = {}
+
+    async def fake_post(url, json=None, headers=None, timeout=None):
+        captured["payload"] = json
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "allowed": True,
+            "tier": "allow",
+            "reason": "ok",
+            "threat_type": None,
+            "confidence": 1.0,
+        }
+        mock_resp.raise_for_status = lambda: None
+        return mock_resp
+
+    state_with_action = {
+        "agent_id": "test",
+        "run_id": "r1",
+        "sequence_so_far": [],
+        "action": "a2a",
+    }
+
+    with patch("src.base_graph.settings") as mock_settings:
+        mock_settings.security.guardian_enabled = True
+        mock_settings.security.guardian_url = "http://localhost:9766"
+        mock_settings.security.guardian_timeout_seconds = 5
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(side_effect=fake_post)
+            mock_client_cls.return_value = mock_client
+
+            asyncio.run(guardian_check("web_search", {}, state_with_action))
+
+    assert captured.get("payload", {}).get("action") == "a2a"
+
+
+def test_guardian_check_default_action_is_invoke(monkeypatch):
+    """guardian_check() defaults action to 'invoke' when not in state."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.base_graph import guardian_check
+
+    captured = {}
+
+    async def fake_post(url, json=None, headers=None, timeout=None):
+        captured["payload"] = json
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "allowed": True,
+            "tier": "allow",
+            "reason": "ok",
+            "threat_type": None,
+            "confidence": 1.0,
+        }
+        mock_resp.raise_for_status = lambda: None
+        return mock_resp
+
+    state_no_action = {"agent_id": "test", "run_id": "r1", "sequence_so_far": []}
+
+    with patch("src.base_graph.settings") as mock_settings:
+        mock_settings.security.guardian_enabled = True
+        mock_settings.security.guardian_url = "http://localhost:9766"
+        mock_settings.security.guardian_timeout_seconds = 5
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(side_effect=fake_post)
+            mock_client_cls.return_value = mock_client
+
+            asyncio.run(guardian_check("web_search", {}, state_no_action))
+
+    assert captured.get("payload", {}).get("action") == "invoke"
+
+
+# ── Gap 2: check_2 now also blocks forbidden tool_id ─────────────────────────
+
+
+def test_guardian_check2_blocks_forbidden_action():
+    """_check_2_capability_boundary halts on a forbidden action string."""
+    from src.security.guardian import _check_2_capability_boundary
+
+    resp = _check_2_capability_boundary("spawn_agent_direct", "some_tool")
+    assert resp is not None
+    assert resp.allowed is False
+    assert resp.tier == "halt"
+    assert "spawn_agent_direct" in resp.reason
+
+
+def test_guardian_check2_blocks_forbidden_tool_id():
+    """_check_2_capability_boundary halts when tool_id is a forbidden capability (Gap 2 fix)."""
+    from src.security.guardian import _check_2_capability_boundary
+
+    resp = _check_2_capability_boundary("invoke", "register_tool")
+    assert resp is not None
+    assert resp.allowed is False
+    assert resp.tier == "halt"
+    assert "register_tool" in resp.reason
+
+
+def test_guardian_check2_allows_normal_invoke():
+    """_check_2_capability_boundary allows a normal tool invocation."""
+    from src.security.guardian import _check_2_capability_boundary
+
+    resp = _check_2_capability_boundary("invoke", "web_search")
+    assert resp is None  # None means allowed — no block
+
+
+def test_guardian_check2_tool_id_covers_all_forbidden_capabilities():
+    """_check_2_capability_boundary blocks every entry in FORBIDDEN_CAPABILITIES as tool_id."""
+    from src.security.core import FORBIDDEN_CAPABILITIES
+    from src.security.guardian import _check_2_capability_boundary
+
+    for cap in FORBIDDEN_CAPABILITIES:
+        resp = _check_2_capability_boundary("invoke", cap)
+        assert (
+            resp is not None and not resp.allowed
+        ), f"FORBIDDEN_CAPABILITY '{cap}' not blocked when used as tool_id"

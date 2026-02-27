@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-27
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–7 complete. Phase 8 — Gateway + Streaming is next.
+**Status:** ✅ Phases 0–8 complete + Guardian gap fixes. Phase 9 — Tool expansion + langchain 1.x migration is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,12 +17,13 @@
 
 ## Current State
 
-All phases through 7 are complete. The full security stack is operational.
+All phases through 8 are complete. The full security stack is operational and the user-facing gateway is live.
 
 ```
-make test-smoke    → 271/271 passing (~1s, no external services required)
+make test-smoke    → 312/312 passing (~1s, no external services required)
 make health-server → localhost:8765 all components green
-git log --oneline -1 → f90f2c0 fix: guardian-start now loads TASK_TOKEN_SECRET from Keychain
+make gateway-start → localhost:8080 gateway API + streaming UI
+git log --oneline -1 → a8dfd55 security: close Guardian arg-forwarding gaps (Gap 1 + Gap 2)
 ```
 
 ---
@@ -80,7 +81,7 @@ git log --oneline -1 → f90f2c0 fix: guardian-start now loads TASK_TOKEN_SECRET
 
 ### Tests
 
-- `tests/test_smoke.py` — **271 tests**, no running services required, ~1s
+- `tests/test_smoke.py` — **312 tests**, no running services required, ~1s
 - `tests/conftest.py` — pytest configuration and shared fixtures
 
 ---
@@ -153,7 +154,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 271 tests, ~1s
+make test-smoke                          # 312 tests, ~1s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -189,8 +190,8 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | No integration tests | Medium | Smoke tests pass without services; add DB + Ollama required integration tests |
 | `INTERVAL hours` not validated | Medium | `get_usage_summary()` / `get_threat_summary()` — `hours` must be bounded 1–8760 before query |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin the values |
-| Guardian tool args gap | Low | Guardian receives `args: {}` — checks 3 and 6 never see actual tool arguments. Phase 8 closes this. |
-| Guardian action field hardcoded | Low | `action="invoke"` always — capability boundary check 2 never fires for non-invoke actions. Phase 8. |
+| Guardian tool args gap | ✅ Fixed | `guardian_check()` now forwards real `tool_input`; checks 3, 5, 6 see actual arguments. |
+| Guardian action field hardcoded | ✅ Fixed | `check_2` now also blocks forbidden `tool_id`; `action` read from state (default `"invoke"`). |
 
 ### Accepted / By Design
 

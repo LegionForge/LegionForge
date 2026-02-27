@@ -1,9 +1,8 @@
 # Phase 8 — Gateway, Streaming, Task Queue, and Web UI
 
-**Status:** Planning — not started
+**Status:** ✅ Complete (committed `1e4ea02` + `a8dfd55`, merged to `main` in PR #20)
 **Target:** Make LegionForge accessible to users, not just CLI operators
-**Blocked on:** User auth model decision (see §Auth)
-**Smoke test target:** 271 → ~295
+**Smoke tests:** 271 → 312 actual (target was ~295)
 
 ---
 
@@ -581,13 +580,15 @@ Discord message → POST /tasks → poll SSE → post chunks back to channel
 
 ---
 
-## Guardian Gaps Closed in Phase 8
+## Guardian Gaps Closed in Phase 8 ✅
 
-Phase 8 provides the infrastructure to close two known Guardian gaps:
+Both gaps were closed alongside Phase 8 (commit `a8dfd55`):
 
-**Gap 1: Guardian receives `args: {}`** — Currently `SecureToolNode` sends `args={}` to Guardian because tool args aren't yet forwarded. Phase 8: pass the actual tool args dict in the Guardian check call. This enables checks 3 and 6 to see real arguments.
+**Gap 1: Guardian receives `args: {}`** — ✅ Fixed. `guardian_check()` now accepts an explicit `args: dict` parameter. `SecureToolNode` passes `tool_input` (the real tool call arguments). Checks 3 (destructive patterns), 5 (hash tamper), and 6 (adaptive regex rules) now see actual tool arguments.
 
-**Gap 2: Guardian `action` field is hardcoded to `"invoke"`** — Phase 8: emit the actual action type when the gateway submits tasks (different action types for A2A vs direct API vs Discord).
+**Gap 2: Guardian `action` field is hardcoded to `"invoke"`** — ✅ Fixed (two sub-fixes):
+- `_check_2_capability_boundary()` now also checks `tool_id` against `FORBIDDEN_CAPABILITIES` — blocks any attempt to invoke a tool whose name is a forbidden capability (e.g. `"register_tool"`).
+- `action` is read from `state.get("action", "invoke")` so gateway-submitted A2A and Discord tasks can carry their real source action type.
 
 ---
 

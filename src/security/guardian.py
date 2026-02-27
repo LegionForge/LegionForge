@@ -377,13 +377,32 @@ def _check_1_tool_registry(tool_id: str) -> GuardianCheckResponse | None:
     return None
 
 
-def _check_2_capability_boundary(action: str) -> GuardianCheckResponse | None:
-    """Check 2: Is the action in the forbidden capabilities list?"""
+def _check_2_capability_boundary(
+    action: str, tool_id: str = ""
+) -> GuardianCheckResponse | None:
+    """
+    Check 2: Is the action or tool_id in the forbidden capabilities list?
+
+    Two sub-checks:
+      a. action in FORBIDDEN_CAPABILITIES — blocks when the action TYPE is forbidden
+         (e.g., action="spawn_agent_direct" submitted by gateway or sub-agent)
+      b. tool_id in FORBIDDEN_CAPABILITIES — blocks when an agent attempts to INVOKE
+         a tool whose name matches a forbidden capability
+         (Gap 2 fix: was unreachable because action was always "invoke")
+    """
     if action in FORBIDDEN_CAPABILITIES:
         return GuardianCheckResponse(
             allowed=False,
             tier="halt",
             reason=f"Action '{action}' is in the forbidden capabilities list",
+            threat_type="CAPABILITY_VIOLATION",
+            confidence=1.0,
+        )
+    if tool_id and tool_id in FORBIDDEN_CAPABILITIES:
+        return GuardianCheckResponse(
+            allowed=False,
+            tier="halt",
+            reason=f"Tool '{tool_id}' is a forbidden capability and cannot be invoked",
             threat_type="CAPABILITY_VIOLATION",
             confidence=1.0,
         )
@@ -641,12 +660,12 @@ async def check(
         )
         return resp
 
-    # 2. Capability boundary
-    resp = _check_2_capability_boundary(request.action)
+    # 2. Capability boundary (Gap 2 fix: also pass tool_id)
+    resp = _check_2_capability_boundary(request.action, request.tool_id)
     if resp:
         logger.warning(
             f"[guardian/check] HALT check=2 action={request.action!r} "
-            f"agent={request.agent_id!r}"
+            f"tool={request.tool_id!r} agent={request.agent_id!r}"
         )
         return resp
 

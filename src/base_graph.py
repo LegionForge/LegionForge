@@ -255,7 +255,9 @@ async def validate_fetch_url_async(url: str) -> None:
     await loop.run_in_executor(None, validate_fetch_url, url)
 
 
-async def guardian_check(tool_id: str, state: dict) -> GuardianCheckResponse:
+async def guardian_check(
+    tool_id: str, args: dict, state: dict
+) -> GuardianCheckResponse:
     """
     Phase 3: Call the Guardian sidecar service for capability enforcement.
 
@@ -269,6 +271,12 @@ async def guardian_check(tool_id: str, state: dict) -> GuardianCheckResponse:
 
     Guardian unavailability is a FAIL-SAFE: any connection error or timeout
     returns tier="halt". Never fail-open.
+
+    Args:
+        tool_id: The name/id of the tool being invoked.
+        args:    The actual tool arguments dict (was previously always {} — Gap 1 fix).
+                 Guardian checks 3, 5, and 6 pattern-match against this.
+        state:   Current agent state dict.
     """
     if not settings.security.guardian_enabled:
         # Offline fallback — return a proper GuardianCheckResponse
@@ -290,10 +298,14 @@ async def guardian_check(tool_id: str, state: dict) -> GuardianCheckResponse:
         sequence_so_far = state.get("sequence_so_far", [])
         task_token = state.get("task_token")
 
+        # Gap 2 fix: derive action from state (gateway sets action="a2a"/"discord"/etc.
+        # for non-invoke contexts). Standard tool calls remain "invoke" — correct.
+        action = state.get("action", "invoke")
+
         payload = {
             "tool_id": tool_id,
-            "action": "invoke",
-            "args": {},
+            "action": action,
+            "args": args,  # Gap 1 fix: real args, not {}. Enables checks 3, 5, 6.
             "agent_id": agent_id,
             "run_id": run_id,
             "sequence_so_far": sequence_so_far,
@@ -560,8 +572,9 @@ class SecureToolNode:
 
             # 2b. Guardian capability boundary + sequence check (Phase 3)
             # Now returns GuardianCheckResponse so we can branch on tier.
+            # Pass real tool_input so checks 3, 5, 6 see actual arguments (Gap 1 fix).
             state_with_seq = {**state, "sequence_so_far": sequence_so_far}
-            guardian_resp = await guardian_check(tool_id, state_with_seq)
+            guardian_resp = await guardian_check(tool_id, tool_input, state_with_seq)
 
             if not guardian_resp.allowed:
                 if guardian_resp.tier == "sandbox":

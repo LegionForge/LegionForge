@@ -697,15 +697,22 @@ How a tool gets from "code" to "allowed to run inside an agent".
   Pattern tiering (29)   │  audit log tamper → RuntimeError halt
   agent_id in state      │  GUARDIAN_REQUIRE_AUTH default → true
   document_summarize     │  <external_content> injection boundary
-  boundary fix           │  271 smoke tests
+  boundary fix           │  Guardian Gap 1+2 closed
+  Guardian args fixed    │  312 smoke tests
 
-  Phase 8 ⬜  Gateway + Streaming + Task Queue + Web UI
+  Phase 8 ✅  Gateway + Streaming + Task Queue + Web UI
   ─────────────────────────────────────────────────────────────────
   Gateway service :8080  │  SSE streaming (astream_events)
-  Task queue (tasks tbl) │  Minimal web UI
-  A2A + MCP endpoints    │  Discord connector
-  Per-user Bearer auth   │  ~295 smoke tests target
+  Task queue (tasks tbl) │  Minimal web UI (GET /ui)
+  A2A + MCP endpoints    │  Per-user Bearer auth + stream tokens
+  Guardian Gap 1+2 fixed │  312 smoke tests
   → Spec: docs/PHASE_8_GATEWAY_SPEC.md
+
+  Phase 9 ⬜  Tool Expansion + langchain 1.x + Parallel Fan-Out
+  ─────────────────────────────────────────────────────────────────
+  File I/O, HTTP, code   │  langchain 0.3→1.x migration
+  execution tools        │  asyncio.gather() fan-out
+  Discord connector      │  Closes Dependabot #4 (LOW SSRF)
 ```
 
 ---

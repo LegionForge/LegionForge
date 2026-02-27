@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 228 tests (Phase 6). Count should never
+**Expected:** All tests pass. Current baseline is 312 tests (Phase 8). Count should never
 go below the previous passing count.
 
 ```
@@ -75,7 +75,7 @@ tests/test_smoke.py::test_settings_load PASSED
 tests/test_smoke.py::test_memory_budget_is_valid PASSED
 tests/test_smoke.py::test_injection_detection_positive PASSED
 ...
-========= 228 passed in 2.0s =========
+========= 312 passed in 2.0s =========
 ```
 
 If any test fails, the output will tell you exactly which assertion failed.
@@ -196,6 +196,8 @@ All tests should still pass. ✅
 | Phase 5 | 143 |
 | Phase 5.5 | 200 |
 | Phase 6 | 228 |
+| Phase 7 | 242 |
+| Phase 8 | 312 |
 
 ---
 

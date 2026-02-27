@@ -20,13 +20,13 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline (Observer → Crystallizer → Pre-HITL Analyzer → human gate → Ed25519-signed tool), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), and the pentest→Guardian feedback loop (approved findings hot-reload into enforcement within 10 seconds).
 
-**271/271 smoke tests passing** (~1s, no external services required).
+**312/312 smoke tests passing** (~1s, no external services required).
 
-⬜ **Next:** Phase 8 — Gateway service, task queue, SSE streaming, web UI, and A2A/MCP interoperability.
+✅ **Phase 8 complete:** Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP endpoints, Guardian arg-forwarding gaps closed.
 
 ---
 
-## The Big Picture — Phases 0–7 Complete, Phase 8 Next
+## The Big Picture — Phases 0–8 Complete
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -39,7 +39,8 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 | **5.5** | Security hardening: DB RBAC, AST bypass guards, tool revocation, TOCTOU, model integrity | ✅ Done |
 | **6** | PentestAgent — air-gapped red-team bot, 24 attack functions, 0 bypasses | ✅ Done |
 | **7** | Guardian feedback loop — pentest→Guardian bridge, SECURITY.md, pre-release hardening | ✅ Done |
-| **8** | Gateway service, task queue, SSE streaming, web UI, A2A + MCP interoperability | ⬜ Next |
+| **8** | Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP, Guardian gap fixes | ✅ Done |
+| **9** | Tool library expansion, langchain 1.x migration, parallel agent fan-out | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -107,17 +108,13 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of v1.0)
+## Known Gaps (as of Phase 8)
 
-**No user-facing interface.** There is no way for a user to submit a task without the CLI. Phase 8 builds the gateway, SSE streaming, and web UI.
-
-**Agents run serially, not in parallel.** The orchestrator spawns one sub-agent at a time. Parallel fan-out requires `asyncio.gather()` or LangGraph `Send()` — Phase 8+.
+**Agents run serially, not in parallel.** The orchestrator spawns one sub-agent at a time. Parallel fan-out requires `asyncio.gather()` or LangGraph `Send()` — Phase 9.
 
 **Tool library is narrow.** Only web search, web fetch, and document summarize exist. Phase 9 adds file I/O, structured data query, HTTP API calls, and sandboxed code execution.
 
-**Tool args not forwarded to Guardian.** Guardian currently receives `args: {}` — checks 3 and 6 (destructive patterns, adaptive rules) never see actual tool arguments. Phase 8 closes this gap.
-
-**Guardian action field is hardcoded.** `action="invoke"` always — capability boundary check 2 never fires for non-invoke actions. Phase 8.
+**langchain-core SSRF (Dependabot #4, LOW — accepted risk).** Fix requires migrating the full langchain stack from 0.3.x → 1.x. We never call the vulnerable method (`ChatOpenAI.get_num_tokens_from_messages` with image URLs). Planned for Phase 9.
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
@@ -143,40 +140,19 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Immediate Next Steps
 
-### Phase 8 — Gateway, Streaming, Task Queue, and Web UI
+### Phase 9 — Tool Expansion, langchain 1.x Migration, Parallel Fan-Out
 
-The next development phase makes LegionForge accessible to users — not just operators with CLI access.
+**Priority order:**
 
-**Build order** (each step unblocks the next):
+1. **Discord connector** (`src/connectors/discord.py`) — last Phase 8 item still outstanding. Bridge Discord messages → `POST /tasks` → SSE → channel replies.
 
-1. **Gateway API contract** — finalize the API surface before writing any code:
-   ```
-   POST /tasks               → { task_id, status: "queued" }
-   GET  /tasks/{id}/stream   → SSE event stream
-   GET  /tasks/{id}          → final result
-   GET  /tasks               → task history for this user
-   GET  /.well-known/agent.json → A2A Agent Card
-   POST /a2a/tasks           → A2A-compatible task endpoint
-   ```
+2. **langchain 0.3.x → 1.x migration** — closes Dependabot #4 (LOW SSRF), unlocks new LangGraph features. All langchain-* pins must upgrade together.
 
-2. **Task queue schema** — new `tasks` table in existing PostgreSQL:
-   `task_id`, `user_id`, `status`, `input`, `result`, `agent_type`,
-   `created_at`, `updated_at`, `stream_events` (JSONB).
+3. **Tool library expansion** — file I/O, structured data query, HTTP API calls, sandboxed code execution. Each new tool requires: Ed25519 registration + Guardian capability entry + smoke tests.
 
-3. **Gateway service** (`src/gateway/`) — new FastAPI app on `:8080`. Bearer auth,
-   task submission, SSE stream wrapping LangGraph `astream_events()`, A2A + MCP endpoints.
+4. **Parallel agent fan-out** — orchestrator currently spawns sub-agents serially. Add `asyncio.gather()` / LangGraph `Send()` for parallel task execution.
 
-4. **Wire LangGraph streaming** — switch `graph.ainvoke()` → `graph.astream_events()`
-   in all `run_*` functions. Forward typed events (`on_tool_start`, `on_chat_model_stream`,
-   `on_chain_end`, etc.) as SSE to the gateway.
-
-5. **Minimal web UI** — one HTML page: textarea + submit + live SSE log panel.
-   No framework. Prove the architecture before investing in polish.
-
-6. **First channel connector** — Discord (easiest). Thin service: listen for messages →
-   POST /tasks → subscribe SSE → post updates back to channel.
-
-**→ Full Phase 8 spec:** [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md)
+**→ Full Phase 8 spec (complete):** [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md)
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
 
