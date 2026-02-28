@@ -1,0 +1,9 @@
+# requirements-testclient.txt
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependencies for the LegionForge gateway test client (Dockerfile.testclient).
+#
+# This is intentionally minimal — the test client makes only HTTP requests
+# and requires no LegionForge source dependencies.
+# ─────────────────────────────────────────────────────────────────────────────
+
+httpx~=0.27      # Async HTTP client for all suite requests

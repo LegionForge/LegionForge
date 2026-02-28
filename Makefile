@@ -341,6 +341,76 @@ gateway-start-docker:  ## Run gateway in Docker (requires POSTGRES_PASSWORD + TA
 		legionforge-gateway:latest
 	@echo "✅ legionforge-gateway container started on :8080"
 
+## ── Gateway test client (Phase 12) ────────────────────────────
+# Requires: GATEWAY_URL, GATEWAY_API_KEY (and optionally GATEWAY_API_KEY_2)
+# Example:
+#   export GATEWAY_URL=http://localhost:8080
+#   export GATEWAY_API_KEY=lf_your_key_here
+#   make test-gateway-all
+
+.PHONY: build-testclient
+build-testclient:  ## Build legionforge-testclient:latest Docker image
+	docker build -f Dockerfile.testclient -t legionforge-testclient:latest .
+	@echo "✅ legionforge-testclient:latest built"
+
+.PHONY: test-gateway-basic
+test-gateway-basic:  ## Run Suite 1 — functional correctness (14 tests)
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		-e GATEWAY_API_KEY_2="$${GATEWAY_API_KEY_2:-}" \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest --suite basic
+
+.PHONY: test-gateway-load
+test-gateway-load:  ## Run Suite 2 — load and DOS resilience (8 tests)
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		-e LOAD_CONCURRENCY=$${LOAD_CONCURRENCY:-20} \
+		-e LOAD_ITERATIONS=$${LOAD_ITERATIONS:-50} \
+		-e HEALTH_SLA_MS=$${HEALTH_SLA_MS:-2000} \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest --suite load
+
+.PHONY: test-gateway-security
+test-gateway-security:  ## Run Suite 3 — authorized security verification (12 tests)
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		-e GATEWAY_API_KEY_2="$${GATEWAY_API_KEY_2:-}" \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest --suite pentest
+
+.PHONY: test-gateway-injection
+test-gateway-injection:  ## Run Suite 4 — injection and malicious input tests (35+ tests)
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest --suite injection
+
+.PHONY: test-gateway-all
+test-gateway-all:  ## Run all four gateway test suites
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		-e GATEWAY_API_KEY_2="$${GATEWAY_API_KEY_2:-}" \
+		-e LOAD_CONCURRENCY=$${LOAD_CONCURRENCY:-20} \
+		-e LOAD_ITERATIONS=$${LOAD_ITERATIONS:-50} \
+		-e HEALTH_SLA_MS=$${HEALTH_SLA_MS:-2000} \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest
+
+.PHONY: test-gateway-all-json
+test-gateway-all-json:  ## Run all suites; emit JSON report (for CI)
+	docker run --rm \
+		-e GATEWAY_URL=$${GATEWAY_URL:-http://host.docker.internal:8080} \
+		-e GATEWAY_API_KEY="$${GATEWAY_API_KEY}" \
+		-e GATEWAY_API_KEY_2="$${GATEWAY_API_KEY_2:-}" \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-testclient:latest --json
+
 # ── Code Quality ──────────────────────────────────────────────
 .PHONY: lint
 lint:
