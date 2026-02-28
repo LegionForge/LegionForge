@@ -1,6 +1,6 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 13 complete
+**Version:** 1.0.0 — Phase 14 complete
 **Last updated:** 2026-02-28
 
 ---
@@ -746,7 +746,7 @@ How a tool gets from "code" to "allowed to run inside an agent".
   OIDCBackend           │  JWKS/discovery; covers Google, Okta, Auth0, Keycloak, Azure AD, Cognito
   GitHubOAuthBackend    │  /user API flow; opaque token support
   LDAPBackend           │  bind+search+rebind; OpenLDAP + Active Directory
-  KerberosBackend       │  Scaffold only; raises NotImplementedError (Phase 13+)
+  KerberosBackend       │  Real GSSAPI flow (Phase 13); graceful None when gssapi absent
   require_user          │  Multi-scheme: Bearer / Basic / Negotiate
   load_backend_from_settings │  Factory; maps auth_provider string → backend instance
   OIDCConfig/LDAPConfig │  Pydantic sub-models in GatewayConfig; oidc/ldap sections in YAML
@@ -765,6 +765,17 @@ How a tool gets from "code" to "allowed to run inside an agent".
   config/nginx/         │  nginx.multi-instance.conf; round-robin, SSE buffering off
   redis[asyncio]        │  redis 5.x (asyncio built-in); fakeredis for smoke tests
   453 smoke tests        │  +10 from Phase 13
+
+  Phase 14 ✅  Redis Budget Counters + Prometheus Metrics + Request Trace IDs
+  ─────────────────────────────────────────────────────────────────
+  state.py additions    │  redis_budget_check_and_reserve(), redis_budget_release(), redis_budget_get()
+  rate_limiter.py       │  per_user_budget_check() delegates to Redis INCRBY when redis_mode() is True
+  src/gateway/metrics.py │  Prometheus text formatter (no new deps); inc_counter(), set_gauge(), prometheus_text()
+  src/gateway/middleware.py │  RequestIDMiddleware (X-Request-ID header/UUID4 gen); MetricsMiddleware (request counters)
+  app.py GET /metrics   │  Prometheus text endpoint; also sets legionforge_redis_connected gauge
+  health.py _check_redis() │  Independent Redis PING in /status; redis component added when configured
+  tests/test_kerberos_integration.py │  Integration skeleton (5 tests); skip unless KERBEROS_TEST_KDC=1
+  463 smoke tests        │  +10 from Phase 14
 ```
 
 ---

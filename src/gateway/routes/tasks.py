@@ -26,6 +26,7 @@ from src.database import (
     VALID_TASK_STATUSES,
 )
 from src.gateway.auth import create_stream_token, require_user
+from src.gateway.metrics import inc_counter
 from src.rate_limiter import per_user_budget_check
 from src.security.core import sanitize_text
 
@@ -131,6 +132,8 @@ async def submit_task(
 
     task_id = row["task_id"]
     stream_token = await create_stream_token(task_id, user["user_id"])
+
+    inc_counter("legionforge_tasks_submitted_total")
 
     logger.info(
         f"[gateway] Task queued task_id={task_id} "

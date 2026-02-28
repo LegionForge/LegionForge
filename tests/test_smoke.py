@@ -5920,3 +5920,176 @@ def test_p13_scaling_md_mentions_redis():
     assert (
         "KerberosBackend" in content or "Kerberos" in content
     ), "SCALING.md must mention Kerberos setup"
+
+
+# ── Phase 14: Redis budget counters, gateway metrics, request-ID middleware ───
+
+
+@pytest.mark.asyncio
+async def test_p14_redis_budget_check_and_reserve_ok():
+    """Redis INCRBY reserves tokens and allows under-limit requests."""
+    import fakeredis.aioredis
+    from src.gateway import state as gw_state
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    original = gw_state._redis
+    gw_state._redis = fake
+    try:
+        await gw_state.redis_budget_check_and_reserve("user-budget-ok", 100, 1000)
+        count = await gw_state.redis_budget_get("user-budget-ok")
+        assert count == 100
+    finally:
+        gw_state._redis = original
+        await fake.aclose()
+
+
+@pytest.mark.asyncio
+async def test_p14_redis_budget_exceeds_limit_raises():
+    """Redis budget check raises RuntimeError when estimated tokens would exceed limit."""
+    import fakeredis.aioredis
+    from src.gateway import state as gw_state
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    original = gw_state._redis
+    gw_state._redis = fake
+    try:
+        # First reservation uses 900 of 1000 limit
+        await gw_state.redis_budget_check_and_reserve("user-budget-over", 900, 1000)
+        # Second should exceed
+        with pytest.raises(RuntimeError, match="budget exceeded"):
+            await gw_state.redis_budget_check_and_reserve("user-budget-over", 200, 1000)
+        # Counter should still be 900 (rollback happened)
+        count = await gw_state.redis_budget_get("user-budget-over")
+        assert count == 900
+    finally:
+        gw_state._redis = original
+        await fake.aclose()
+
+
+@pytest.mark.asyncio
+async def test_p14_redis_budget_release_corrects_count():
+    """redis_budget_release adjusts the counter from estimated to actual tokens."""
+    import fakeredis.aioredis
+    from src.gateway import state as gw_state
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    original = gw_state._redis
+    gw_state._redis = fake
+    try:
+        await gw_state.redis_budget_check_and_reserve("user-release", 500, 10000)
+        # Actual was only 300 — release the 200-token over-reservation
+        await gw_state.redis_budget_release("user-release", 500, 300)
+        count = await gw_state.redis_budget_get("user-release")
+        assert count == 300
+    finally:
+        gw_state._redis = original
+        await fake.aclose()
+
+
+@pytest.mark.asyncio
+async def test_p14_redis_budget_key_format():
+    """Budget counter key uses the expected lf:budget:{user_id}:{date} format."""
+    import fakeredis.aioredis
+    from datetime import date
+    from src.gateway import state as gw_state
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    original = gw_state._redis
+    gw_state._redis = fake
+    try:
+        await gw_state.redis_budget_check_and_reserve("uid-123", 50, 9999)
+        today = date.today().isoformat()
+        expected_key = f"lf:budget:uid-123:{today}"
+        val = await fake.get(expected_key)
+        assert (
+            val == "50"
+        ), f"Expected key {expected_key!r} with value '50', got {val!r}"
+    finally:
+        gw_state._redis = original
+        await fake.aclose()
+
+
+def test_p14_gateway_metrics_module_importable():
+    """src.gateway.metrics is importable and exposes expected public API."""
+    from src.gateway.metrics import inc_counter, set_gauge, prometheus_text, get_counter
+
+    assert callable(inc_counter)
+    assert callable(set_gauge)
+    assert callable(prometheus_text)
+    assert callable(get_counter)
+
+
+def test_p14_prometheus_text_contains_counter_type():
+    """prometheus_text() emits '# TYPE ... counter' lines for counters."""
+    from src.gateway import metrics as m
+
+    m.reset()
+    m.inc_counter("legionforge_test_counter", {"env": "smoke"}, 3.0)
+    text = m.prometheus_text()
+    assert "# TYPE legionforge_test_counter counter" in text
+    assert 'env="smoke"' in text
+    assert "3" in text
+    m.reset()
+
+
+def test_p14_prometheus_text_contains_gauge_type():
+    """prometheus_text() emits '# TYPE ... gauge' lines for gauges."""
+    from src.gateway import metrics as m
+
+    m.reset()
+    m.set_gauge("legionforge_redis_connected", 1.0)
+    text = m.prometheus_text()
+    assert "# TYPE legionforge_redis_connected gauge" in text
+    assert "1.0" in text
+    m.reset()
+
+
+def test_p14_gateway_middleware_importable():
+    """src.gateway.middleware is importable and exposes expected middleware classes."""
+    from src.gateway.middleware import RequestIDMiddleware, MetricsMiddleware
+
+    assert RequestIDMiddleware is not None
+    assert MetricsMiddleware is not None
+
+
+@pytest.mark.asyncio
+async def test_p14_request_id_middleware_generates_uuid():
+    """RequestIDMiddleware sets request.state.request_id to a UUID when header is absent."""
+    import uuid
+    from starlette.testclient import TestClient
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from src.gateway.middleware import RequestIDMiddleware
+
+    captured: list[str] = []
+
+    async def homepage(request: Request) -> PlainTextResponse:
+        captured.append(getattr(request.state, "request_id", ""))
+        return PlainTextResponse("ok")
+
+    test_app = Starlette(routes=[Route("/", homepage)])
+    test_app.add_middleware(RequestIDMiddleware)
+
+    client = TestClient(test_app, raise_server_exceptions=True)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "x-request-id" in response.headers
+    rid = response.headers["x-request-id"]
+    # Must be a valid UUID
+    parsed = uuid.UUID(rid)
+    assert str(parsed) == rid
+    assert captured and captured[0] == rid
+
+
+def test_p14_kerberos_integration_skeleton_exists():
+    """tests/test_kerberos_integration.py exists and has the skip guard."""
+    from pathlib import Path
+
+    test_file = Path(__file__).parent / "test_kerberos_integration.py"
+    assert test_file.exists(), "tests/test_kerberos_integration.py not found"
+    content = test_file.read_text()
+    assert "KERBEROS_TEST_KDC" in content, "Missing skip guard env var"
+    assert "skip_without_kdc" in content, "Missing skip marker"
+    assert "test_kerberos_spnego_accept_context" in content, "Missing SPNEGO test"

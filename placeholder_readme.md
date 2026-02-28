@@ -82,8 +82,10 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Complete |
 | **11** | SecureToolNode security fix, integration tests (35), `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
 | **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold | ✅ Complete |
+| **13** | Kerberos GSSAPI real impl, Redis-backed stream tokens, `KerberosConfig`, multi-instance docker-compose + Nginx | ✅ Complete |
+| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware, Redis health in `/status`, Kerberos integration skeleton | ✅ Complete |
 
-**453/453 smoke tests passing.** 35 integration tests passing. No running services required for smoke tests. Runs in ~2 seconds.
+**463/463 smoke tests passing.** 35 integration tests passing. No running services required for smoke tests. Runs in ~2 seconds.
 
 ---
 
@@ -147,7 +149,7 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 453 smoke tests, ~3s, no services required
+make test-smoke      # 463 smoke tests, ~3s, no services required
 make test-integration  # 35 integration tests (requires PostgreSQL)
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765

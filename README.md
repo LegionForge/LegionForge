@@ -34,7 +34,7 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 12 — Multi-Provider Auth Registry | ✅ Complete | `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold; multi-scheme `require_user`; `load_backend_from_settings()` |
 | 13 — Redis State Layer + Kerberos + Multi-Instance | ✅ Complete | Real GSSAPI `KerberosBackend`; optional Redis stream tokens (`state.py`); `docker-compose.multi-instance.yml` + Nginx config |
 
-**453/453 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway + multi-provider auth operational.**
+**463/463 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway + multi-provider auth operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -221,7 +221,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-453 passed in ~3.3s
+463 passed in ~3.2s
 ```
 
 ---
@@ -257,7 +257,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 453 smoke tests, ~3.3s, no services required
+make test-smoke            # 463 smoke tests, ~3.2s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -308,7 +308,7 @@ make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s 
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
 **`make test-smoke` shows fewer than 453 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 12 (commit referencing 453 smoke tests).
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 14 (commit referencing 463 smoke tests).
 
 ---
 
