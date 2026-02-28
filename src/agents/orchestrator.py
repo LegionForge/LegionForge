@@ -3,12 +3,16 @@ src/agents/orchestrator.py
 ──────────────────────────
 Orchestrator agent — coordinates sub-agents with privilege-narrowing token derivation.
 
-Key design principles (Phase 3):
+Key design principles (Phase 3 / Phase 9):
     1. Master token: issued at run start with the union of all sub-agent tool IDs.
     2. Derived tokens: each sub-agent receives a token ⊆ master (child never exceeds
        parent scope — enforced by derive_task_token's PrivilegeEscalationError guard).
     3. No direct agent-to-agent comms: all inter-agent traffic routes through here.
     4. Sub-agent results are returned as structured dicts, not raw message injection.
+
+Tools:
+    spawn_researcher(sub_task)           — serial: one researcher at a time.
+    fan_out_researchers(sub_tasks_json)  — parallel: N researchers via asyncio.gather().
 
 Startup:
     await register_orchestrator_tools()   # call once at application startup
@@ -148,10 +152,11 @@ async def _spawn_researcher_sub_agent(sub_task: str, derived_token: str | None) 
 
 # ── Tools ──────────────────────────────────────────────────────────────────────
 
-# Module-level token ref populated at run start so the spawn_researcher closure
-# can access the master JWT without needing state injection.
-# Using a mutable dict (not bare str) so the reference persists across Python calls.
+# Module-level refs populated at run start so tool closures can access
+# the master JWT and run_id without state injection.
+# Mutable dicts (not bare str/None) so references persist across Python calls.
 _master_token_ref: dict[str, str | None] = {"token": None}
+_run_id_ref: dict[str, str] = {"run_id": "unknown"}
 
 
 @tool
@@ -181,25 +186,91 @@ async def spawn_researcher(sub_task: str) -> str:
     return summary
 
 
-ORCHESTRATOR_TOOLS = [spawn_researcher]
+@tool
+async def fan_out_researchers(sub_tasks_json: str) -> str:
+    """
+    Dispatch multiple independent research tasks to Researcher sub-agents IN PARALLEL.
+
+    sub_tasks_json: JSON array of task strings (max 10), e.g.:
+        '["Summarize LangGraph docs", "Find LangChain changelog", "Check httpx API"]'
+
+    Use this instead of sequential spawn_researcher calls when tasks are independent.
+    Each branch runs concurrently (up to 5 at a time) and receives its own derived
+    task token scoped to public data only.  Returns a structured summary of all results.
+    """
+    import json
+    from src.agents.fan_out import SubTask, fan_out, aggregate_results
+    from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
+
+    try:
+        raw = json.loads(sub_tasks_json)
+    except json.JSONDecodeError as exc:
+        return f"[fan_out_researchers] Invalid JSON: {exc}"
+
+    if not isinstance(raw, list) or not raw:
+        return "[fan_out_researchers] Expected a non-empty JSON array of task strings."
+
+    if len(raw) > 10:
+        return "[fan_out_researchers] Maximum 10 tasks per fan-out batch."
+
+    researcher_tools = [m.tool_id for m in RESEARCHER_TOOL_MANIFESTS]
+    tasks = [
+        SubTask(
+            task_id=f"branch_{i}",
+            task=str(t),
+            granted_tools=researcher_tools,
+            granted_data_classes=["public"],
+        )
+        for i, t in enumerate(raw)
+    ]
+
+    master_jwt = _master_token_ref.get("token")
+    run_id = _run_id_ref.get("run_id", "unknown")
+
+    async def _runner(task: str, token: str | None, branch_run_id: str) -> dict:
+        return await _spawn_researcher_sub_agent(task, token)
+
+    results = await fan_out(
+        tasks,
+        parent_jwt=master_jwt,
+        run_id=run_id,
+        agent_runner=_runner,
+    )
+    return aggregate_results(results)
+
+
+ORCHESTRATOR_TOOLS = [spawn_researcher, fan_out_researchers]
 
 # ── Tool manifests ─────────────────────────────────────────────────────────────
 
 ORCHESTRATOR_TOOL_MANIFESTS = [
     ToolManifest(
         tool_id="spawn_researcher",
-        description="Delegate a bounded research task to the Researcher sub-agent",
+        description="Delegate a bounded research task to the Researcher sub-agent (serial)",
         input_schema={"sub_task": "str"},
         declared_side_effects=["spawns_sub_agent:researcher"],
         source="local",
         entrypoint_func=spawn_researcher,
+    ),
+    ToolManifest(
+        tool_id="fan_out_researchers",
+        description=(
+            "Dispatch multiple independent research tasks to Researcher sub-agents "
+            "IN PARALLEL (asyncio.gather, max 10 tasks, each gets a derived token)"
+        ),
+        input_schema={"sub_tasks_json": "str"},
+        declared_side_effects=["spawns_sub_agent:researcher", "parallel_dispatch"],
+        source="local",
+        entrypoint_func=fan_out_researchers,
     ),
 ]
 
 # ── Approved tool-call sequences ───────────────────────────────────────────────
 ORCHESTRATOR_EXPECTED_SEQUENCES: list[list[str]] = [
     ["spawn_researcher"],
-    ["spawn_researcher", "spawn_researcher"],  # multi-step research
+    ["spawn_researcher", "spawn_researcher"],  # serial multi-step research
+    ["fan_out_researchers"],  # single parallel batch
+    ["fan_out_researchers", "spawn_researcher"],  # parallel batch then serial follow-up
 ]
 
 
@@ -212,7 +283,7 @@ async def register_orchestrator_tools() -> None:
         await register_tool(
             manifest,
             approved_by="operator",
-            approval_notes="Phase 3 orchestrator tools",
+            approval_notes="Phase 9 orchestrator tools (serial + parallel fan-out)",
         )
     logger.info("[orchestrator] All tools registered.")
 
@@ -416,14 +487,19 @@ async def run_orchestrator(
     # Sub-agents get derived (narrower) tokens — privilege flows strictly downward.
     from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
 
+    # Master token covers all orchestrator tools (spawn_researcher +
+    # fan_out_researchers) plus all researcher tools — sub-agents always
+    # receive a derived subset, never an escalation.
     all_tool_ids = [m.tool_id for m in ORCHESTRATOR_TOOL_MANIFESTS] + [
         m.tool_id for m in RESEARCHER_TOOL_MANIFESTS
     ]
 
     master_token = _issue_master_token(run_id, all_tool_ids)
 
-    # Populate module-level closure ref so spawn_researcher tool can derive tokens.
+    # Populate module-level closure refs so tool closures can access the
+    # master JWT and run_id without state injection into every tool call.
     _master_token_ref["token"] = master_token
+    _run_id_ref["run_id"] = run_id
 
     logger.debug(
         f"[orchestrator] Master token {'issued' if master_token else 'absent'} "

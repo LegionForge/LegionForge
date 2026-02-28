@@ -1458,11 +1458,12 @@ def test_orchestrator_state_has_required_fields():
 
 
 def test_orchestrator_tool_manifests_valid():
-    """ORCHESTRATOR_TOOL_MANIFESTS has exactly one tool: spawn_researcher."""
+    """ORCHESTRATOR_TOOL_MANIFESTS contains spawn_researcher and fan_out_researchers."""
     from src.agents.orchestrator import ORCHESTRATOR_TOOL_MANIFESTS
 
-    assert len(ORCHESTRATOR_TOOL_MANIFESTS) == 1
-    assert ORCHESTRATOR_TOOL_MANIFESTS[0].tool_id == "spawn_researcher"
+    ids = {m.tool_id for m in ORCHESTRATOR_TOOL_MANIFESTS}
+    assert "spawn_researcher" in ids
+    assert "fan_out_researchers" in ids
 
 
 def test_orchestrator_expected_sequences_use_registered_tools():
@@ -4574,3 +4575,245 @@ def test_dockerfile_sandbox_drops_to_nonroot():
     content = open(dockerfile).read()
     assert "sandbox" in content
     assert "USER sandbox" in content
+
+
+# ── Phase 9 — Parallel Fan-Out ─────────────────────────────────────────────────
+
+
+def test_fan_out_module_importable():
+    """src.agents.fan_out imports without error."""
+    import src.agents.fan_out  # noqa: F401
+
+
+def test_subtask_dataclass():
+    """SubTask dataclass has expected fields."""
+    from src.agents.fan_out import SubTask
+
+    t = SubTask(
+        task_id="branch_0",
+        task="Do something",
+        granted_tools=["web_fetch"],
+        granted_data_classes=["public"],
+    )
+    assert t.task_id == "branch_0"
+    assert t.task == "Do something"
+    assert t.granted_tools == ["web_fetch"]
+    assert t.granted_data_classes == ["public"]
+
+
+def test_subtask_result_dataclass():
+    """SubTaskResult dataclass has expected fields and defaults."""
+    from src.agents.fan_out import SubTaskResult
+
+    r = SubTaskResult(
+        task_id="branch_0", task="Do something", result="done", success=True
+    )
+    assert r.success is True
+    assert r.error is None
+    assert r.duration_ms == 0.0
+
+
+def test_fan_out_empty_tasks():
+    """fan_out returns an empty list when given no tasks."""
+    import asyncio
+    from src.agents.fan_out import fan_out
+
+    async def _dummy_runner(task, token, branch_run_id):
+        return {"result": "ok"}
+
+    results = asyncio.run(
+        fan_out([], parent_jwt=None, run_id="test-run", agent_runner=_dummy_runner)
+    )
+    assert results == []
+
+
+def test_fan_out_parallel_results_in_order():
+    """fan_out returns results in the same order as input tasks."""
+    import asyncio
+    from src.agents.fan_out import SubTask, fan_out
+
+    tasks = [
+        SubTask("b0", "task zero", ["web_fetch"], ["public"]),
+        SubTask("b1", "task one", ["web_fetch"], ["public"]),
+        SubTask("b2", "task two", ["web_fetch"], ["public"]),
+    ]
+
+    async def _runner(task, token, branch_run_id):
+        # Simulate different completion delays: last task "finishes" first
+        delays = {"task zero": 0.03, "task one": 0.02, "task two": 0.01}
+        await asyncio.sleep(delays.get(task, 0))
+        return {"result": f"result_for_{task}"}
+
+    results = asyncio.run(
+        fan_out(tasks, parent_jwt=None, run_id="test-run", agent_runner=_runner)
+    )
+    assert len(results) == 3
+    assert results[0].task_id == "b0"
+    assert results[1].task_id == "b1"
+    assert results[2].task_id == "b2"
+    assert "task zero" in results[0].result
+    assert "task one" in results[1].result
+    assert "task two" in results[2].result
+
+
+def test_fan_out_error_isolation():
+    """A failing branch does not cancel sibling branches."""
+    import asyncio
+    from src.agents.fan_out import SubTask, fan_out
+
+    tasks = [
+        SubTask("ok", "good task", ["web_fetch"], ["public"]),
+        SubTask("bad", "bad task", ["web_fetch"], ["public"]),
+    ]
+
+    async def _runner(task, token, branch_run_id):
+        if task == "bad task":
+            raise RuntimeError("deliberate failure")
+        return {"result": "success"}
+
+    results = asyncio.run(
+        fan_out(tasks, parent_jwt=None, run_id="test-run", agent_runner=_runner)
+    )
+    ok = next(r for r in results if r.task_id == "ok")
+    bad = next(r for r in results if r.task_id == "bad")
+    assert ok.success is True
+    assert bad.success is False
+    assert "deliberate failure" in bad.error
+
+
+def test_fan_out_concurrency_cap():
+    """fan_out clamps concurrency to _ABSOLUTE_MAX_CONCURRENCY."""
+    import asyncio
+    from src.agents.fan_out import fan_out, _ABSOLUTE_MAX_CONCURRENCY
+
+    async def _runner(task, token, branch_run_id):
+        return {"result": "ok"}
+
+    # Passing a huge concurrency value should not raise
+    results = asyncio.run(
+        fan_out(
+            [],
+            parent_jwt=None,
+            run_id="test-run",
+            agent_runner=_runner,
+            max_concurrency=9999,
+        )
+    )
+    assert results == []
+    assert _ABSOLUTE_MAX_CONCURRENCY <= 10
+
+
+def test_fan_out_records_duration():
+    """SubTaskResult.duration_ms is populated after a successful branch."""
+    import asyncio
+    from src.agents.fan_out import SubTask, fan_out
+
+    tasks = [SubTask("b0", "quick task", ["web_fetch"], ["public"])]
+
+    async def _runner(task, token, branch_run_id):
+        return {"result": "done"}
+
+    results = asyncio.run(
+        fan_out(tasks, parent_jwt=None, run_id="test-run", agent_runner=_runner)
+    )
+    assert results[0].duration_ms >= 0
+
+
+def test_aggregate_results_all_success():
+    """aggregate_results produces correct header for all-success case."""
+    from src.agents.fan_out import SubTaskResult, aggregate_results
+
+    results = [
+        SubTaskResult("b0", "task 0", "result 0", success=True),
+        SubTaskResult("b1", "task 1", "result 1", success=True),
+    ]
+    summary = aggregate_results(results)
+    assert "2 branches" in summary
+    assert "2 succeeded" in summary
+    assert "✓ b0" in summary
+    assert "result 0" in summary
+
+
+def test_aggregate_results_partial_failure():
+    """aggregate_results flags failed branches and shows error message."""
+    from src.agents.fan_out import SubTaskResult, aggregate_results
+
+    results = [
+        SubTaskResult("b0", "task 0", "result 0", success=True),
+        SubTaskResult("b1", "task 1", "", success=False, error="boom"),
+    ]
+    summary = aggregate_results(results)
+    assert "1 succeeded" in summary
+    assert "1 failed" in summary
+    assert "✗ b1" in summary
+    assert "boom" in summary
+
+
+def test_orchestrator_has_fan_out_tool():
+    """fan_out_researchers is in ORCHESTRATOR_TOOLS."""
+    from src.agents.orchestrator import ORCHESTRATOR_TOOLS
+
+    tool_names = [t.name for t in ORCHESTRATOR_TOOLS]
+    assert "fan_out_researchers" in tool_names
+
+
+def test_orchestrator_fan_out_manifest_defined():
+    """ORCHESTRATOR_TOOL_MANIFESTS includes fan_out_researchers."""
+    from src.agents.orchestrator import ORCHESTRATOR_TOOL_MANIFESTS
+
+    ids = {m.tool_id for m in ORCHESTRATOR_TOOL_MANIFESTS}
+    assert "fan_out_researchers" in ids
+
+
+def test_orchestrator_fan_out_manifest_side_effects():
+    """fan_out_researchers manifest declares parallel_dispatch side effect."""
+    from src.agents.orchestrator import ORCHESTRATOR_TOOL_MANIFESTS
+
+    m = next(
+        m for m in ORCHESTRATOR_TOOL_MANIFESTS if m.tool_id == "fan_out_researchers"
+    )
+    assert "parallel_dispatch" in m.declared_side_effects
+
+
+def test_orchestrator_fan_out_sequences_defined():
+    """ORCHESTRATOR_EXPECTED_SEQUENCES includes fan_out_researchers sequences."""
+    from src.agents.orchestrator import ORCHESTRATOR_EXPECTED_SEQUENCES
+
+    flat = [tool for seq in ORCHESTRATOR_EXPECTED_SEQUENCES for tool in seq]
+    assert "fan_out_researchers" in flat
+
+
+def test_fan_out_researchers_tool_is_async():
+    """fan_out_researchers is an async LangChain tool."""
+    import inspect
+    from src.agents.orchestrator import fan_out_researchers
+
+    assert inspect.iscoroutinefunction(fan_out_researchers.coroutine)
+
+
+def test_fan_out_researchers_rejects_invalid_json():
+    """fan_out_researchers returns an error string for malformed JSON."""
+    import asyncio
+    from src.agents.orchestrator import fan_out_researchers
+
+    result = asyncio.run(fan_out_researchers.ainvoke({"sub_tasks_json": "not-json"}))
+    assert "Invalid JSON" in result or "invalid" in result.lower()
+
+
+def test_fan_out_researchers_rejects_empty_list():
+    """fan_out_researchers returns an error for an empty JSON array."""
+    import asyncio
+    from src.agents.orchestrator import fan_out_researchers
+
+    result = asyncio.run(fan_out_researchers.ainvoke({"sub_tasks_json": "[]"}))
+    assert "non-empty" in result or "empty" in result.lower()
+
+
+def test_fan_out_researchers_rejects_too_many_tasks():
+    """fan_out_researchers rejects batches larger than 10 tasks."""
+    import asyncio, json
+    from src.agents.orchestrator import fan_out_researchers
+
+    big = json.dumps([f"task {i}" for i in range(11)])
+    result = asyncio.run(fan_out_researchers.ainvoke({"sub_tasks_json": big}))
+    assert "Maximum 10" in result or "maximum" in result.lower()
