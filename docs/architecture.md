@@ -1,6 +1,6 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 11 complete
+**Version:** 1.0.0 — Phase 12 complete
 **Last updated:** 2026-02-28
 
 ---
@@ -739,6 +739,19 @@ How a tool gets from "code" to "allowed to run inside an agent".
   /usage/me on gateway   │  Moved to gateway app (port 8080) with require_user
   dict_row fixes         │  row["col"] throughout get_user_*_today functions
   430 smoke tests        │  +8 from Phase 11
+
+  Phase 12 ✅  Multi-Provider Auth Backend Registry
+  ─────────────────────────────────────────────────────────────────
+  src/gateway/backends/ │  8-file package: base, api_key, oidc, github, ldap, kerberos, registry, __init__
+  OIDCBackend           │  JWKS/discovery; covers Google, Okta, Auth0, Keycloak, Azure AD, Cognito
+  GitHubOAuthBackend    │  /user API flow; opaque token support
+  LDAPBackend           │  bind+search+rebind; OpenLDAP + Active Directory
+  KerberosBackend       │  Scaffold only; raises NotImplementedError (Phase 13+)
+  require_user          │  Multi-scheme: Bearer / Basic / Negotiate
+  load_backend_from_settings │  Factory; maps auth_provider string → backend instance
+  OIDCConfig/LDAPConfig │  Pydantic sub-models in GatewayConfig; oidc/ldap sections in YAML
+  PyJWT[crypto]         │  RS256/ES256 JWKS decode; ldap3 added for LDAP
+  443 smoke tests        │  +13 from Phase 12
 ```
 
 ---

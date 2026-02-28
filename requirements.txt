@@ -32,8 +32,8 @@ pyyaml~=6.0
 keyring~=25.0
 python-dotenv~=1.0
 
-# ── JWT / Task Tokens (Phase 3) ───────────────────────────────
-PyJWT~=2.8
+# ── JWT / Task Tokens (Phase 3) + OIDC JWKS validation (Phase 12) ────────────
+PyJWT[crypto]~=2.8          # [crypto] extra adds cryptography dep for RS256/ES256 JWKS decode
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
 cryptography>=46.0.5,<47          # Ed25519 + PyJWT. ≥46.0.5 fixes CVE: SECT curve subgroup attack (Dependabot #7, HIGH). APIs used (ed25519, serialization) are stable across 44→46.
@@ -55,6 +55,9 @@ uvicorn~=0.41                    # ASGI server for health endpoint
 # ── Gateway (Phase 8) ────────────────────────────────────────
 sse-starlette~=2.0              # Server-Sent Events for LangGraph streaming
 bcrypt~=4.0                     # API key hashing (bcrypt; passlib 1.7 incompatible with bcrypt 5.x)
+
+# ── Auth Backends (Phase 12) ──────────────────────────────────
+ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 
 # ── Channel Connectors (Phase 8) ─────────────────────────────
 discord.py~=2.3                 # Discord bot connector

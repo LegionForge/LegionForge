@@ -1,32 +1,37 @@
 """
 src/gateway/auth.py
 ────────────────────
-Bearer-token authentication for the Phase 8 gateway.
+Authentication layer for the LegionForge gateway.
 
-Each gateway user has a long-lived API key (random hex string) that is stored
-only as a bcrypt hash in gateway_users.api_key_hash.  On every request the raw
-key is passed as  Authorization: Bearer <key>, extracted here, and compared
-against the stored hashes.
+Phase 8–11: Bearer-token (bcrypt API keys) only.
+Phase 12:   Multi-scheme: Bearer (api_key / OIDC / GitHub), Basic (LDAP),
+            Negotiate (Kerberos scaffold).  The active backend is selected by
+            ``settings.gateway.auth_provider`` and wired in the app lifespan.
 
 Stream tokens:
   EventSource (browser SSE) cannot set Authorization headers.  After POST /tasks
   the response includes a short-lived stream_token (30-minute TTL).  The SSE
   endpoint accepts either the Bearer token or a stream_token query param.
-  Stream tokens are stored in an in-memory dict (sufficient at household scale).
+  Stream tokens are stored in the stream_tokens DB table (survive restarts).
 
-Key API:
-    extract_bearer_token(header: str | None) -> str | None
-    authenticate(raw_key: str) -> dict | None          # returns user row
-    require_user(request) -> dict                      # FastAPI dependency
+Public API:
+    AuthBackend                          — Protocol (re-exported from backends)
+    ApiKeyBackend                        — Default backend (re-exported from backends)
+    get_auth_backend() -> AuthBackend    — Return active backend (lazy init)
+    set_auth_backend(backend) -> None    — Swap backend at startup
+    extract_bearer_token(header) -> str | None
+    authenticate(credential, scheme) -> dict | None
+    require_user(request) -> dict        — FastAPI dependency (multi-scheme)
     create_stream_token(task_id, user_id) -> str
-    resolve_stream_token(token) -> tuple[str,str]|None # (task_id, user_id)
+    resolve_stream_token(token) -> tuple[str,str]|None
 """
 
 from __future__ import annotations
 
+import base64
 import secrets
 import logging
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -40,47 +45,21 @@ from src.database import (
     delete_stream_token as _db_delete_stream_token,
 )
 
+# Re-export from backends package so existing imports continue to work:
+#   from src.gateway.auth import AuthBackend, ApiKeyBackend
+from src.gateway.backends.base import AuthBackend  # noqa: F401
+from src.gateway.backends.api_key import ApiKeyBackend  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 
-# ── Auth backend protocol ──────────────────────────────────────────────────────
-
-
-@runtime_checkable
-class AuthBackend(Protocol):
-    """
-    Auth backend protocol. Implement to add OAuth, LDAP, JWT, or other schemes.
-    See docs/SCALING.md for the OAuth integration pattern.
-
-    The returned user dict must include:
-        user_id, username, is_active (implicit True), daily_token_limit
-    """
-
-    async def authenticate(self, api_key: str) -> dict | None:
-        """Verify credentials. Returns user dict or None on failure."""
-        ...
-
-
-class ApiKeyBackend:
-    """Default backend: bcrypt-hashed API keys in the gateway_users table."""
-
-    async def authenticate(self, api_key: str) -> dict | None:
-        rows = await get_gateway_user_for_auth(api_key)
-        for row in rows:
-            if verify_api_key(api_key, row["api_key_hash"]):
-                return {
-                    "user_id": row["user_id"],
-                    "username": row["username"],
-                    "daily_token_limit": row.get("daily_token_limit", 100000),
-                }
-        return None
-
+# ── Active backend singleton ───────────────────────────────────────────────────
 
 _auth_backend: AuthBackend | None = None
 
 
 def get_auth_backend() -> AuthBackend:
-    """Return the active auth backend (default: ApiKeyBackend)."""
+    """Return the active auth backend (default: ApiKeyBackend on lazy init)."""
     global _auth_backend
     if _auth_backend is None:
         _auth_backend = ApiKeyBackend()
@@ -89,11 +68,15 @@ def get_auth_backend() -> AuthBackend:
 
 def set_auth_backend(backend: AuthBackend) -> None:
     """
-    Inject a custom auth backend at startup. Example::
+    Inject a custom auth backend at startup.
 
-        set_auth_backend(GitHubOAuthBackend(client_id=..., client_secret=...))
+    Called automatically by the gateway lifespan using
+    ``load_backend_from_settings(settings)``.  Can also be called directly
+    for testing or custom integrations::
 
-    See docs/SCALING.md for the OAuth integration pattern.
+        set_auth_backend(GitHubOAuthBackend())
+
+    See docs/SCALING.md for integration examples.
     """
     global _auth_backend
     _auth_backend = backend
@@ -122,7 +105,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 def extract_bearer_token(authorization: str | None) -> str | None:
     """
-    Extract the raw token from an Authorization header value.
+    Extract the raw token from a Bearer Authorization header value.
 
     Returns None for missing or malformed headers.
     Accepted format: "Bearer <token>"
@@ -139,15 +122,15 @@ def extract_bearer_token(authorization: str | None) -> str | None:
 # ── User lookup ───────────────────────────────────────────────────────────────
 
 
-async def authenticate(raw_key: str) -> dict | None:
+async def authenticate(credential: str, scheme: str = "bearer") -> dict | None:
     """
-    Verify a raw API key via the active auth backend.
+    Verify a credential via the active auth backend.
 
-    Delegates to get_auth_backend().authenticate(). The default backend
-    (ApiKeyBackend) checks bcrypt-hashed keys in the gateway_users table.
-    Swap backends via set_auth_backend() at startup to add OAuth, LDAP, etc.
+    Delegates to get_auth_backend().authenticate(credential, scheme=scheme).
+    The default backend (ApiKeyBackend) checks bcrypt-hashed keys in the
+    gateway_users table.  Swap backends via set_auth_backend() at startup.
     """
-    return await get_auth_backend().authenticate(raw_key)
+    return await get_auth_backend().authenticate(credential, scheme=scheme)
 
 
 # ── FastAPI dependency ────────────────────────────────────────────────────────
@@ -158,29 +141,68 @@ async def require_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> dict:
     """
-    FastAPI dependency: extract and verify Bearer token.
-    Raises 401 on missing/invalid token.
+    FastAPI dependency: extract and verify credentials from the Authorization header.
+
+    Handles three schemes:
+      Bearer    — OAuth access tokens, JWT access tokens, or API keys.
+                  Authorization: Bearer <token>
+      Basic     — LDAP username/password (base64-encoded "user:pass").
+                  Authorization: Basic <base64>
+      Negotiate — Kerberos/GSSAPI SPNEGO token (scaffold; Phase 13+).
+                  Authorization: Negotiate <base64>
+
+    The active auth backend (configured via ``settings.gateway.auth_provider``)
+    must accept the presented scheme or it returns None → 401.
+
+    Raises:
+        HTTPException 401: Missing/unsupported header or invalid credentials.
     """
-    raw_key: str | None = None
+    auth_header: str = request.headers.get("authorization", "")
+    lower = auth_header.lower()
 
-    if credentials:
-        raw_key = credentials.credentials
+    if lower.startswith("bearer "):
+        credential = auth_header[7:].strip()
+        scheme = "bearer"
+    elif lower.startswith("basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:].strip()).decode(
+                "utf-8", errors="replace"
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed Basic authorization header",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        credential = decoded
+        scheme = "basic"
+    elif lower.startswith("negotiate "):
+        credential = auth_header[10:].strip()
+        scheme = "negotiate"
     else:
-        # Fallback: check Authorization header manually (handles edge cases)
-        raw_key = extract_bearer_token(request.headers.get("authorization"))
+        # Legacy fallback: HTTPBearer already extracted a Bearer token
+        if credentials:
+            credential = credentials.credentials
+            scheme = "bearer"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing or unsupported Authorization header",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    if not raw_key:
+    if not credential:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or malformed Authorization header",
+            detail="Empty credential in Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = await authenticate(raw_key)
+    user = await authenticate(credential, scheme=scheme)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
+            detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

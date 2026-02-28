@@ -253,9 +253,67 @@ class SecurityConfig(BaseModel):
     model_integrity_strict: bool = False
 
 
+class OIDCConfig(BaseModel):
+    """
+    Configuration for the Phase 12 OIDCBackend.
+
+    Covers any OIDC-compliant IdP: Google, Okta, Auth0, Keycloak, Azure AD,
+    Ping, Cognito, etc.  All fields default to empty (OIDC disabled) so the
+    profile YAML can omit this section entirely when using api_key auth.
+
+    Fields:
+        issuer_url          — Base URL of the IdP, e.g. https://accounts.google.com
+                              Used to build the discovery doc URL:
+                              <issuer_url>/.well-known/openid-configuration
+        client_id           — OAuth2 client ID registered with the IdP.
+        audience            — Expected ``aud`` claim in the access token.
+                              Defaults to ``client_id`` if left empty.
+        userinfo_endpoint   — Override the userinfo URL from the discovery doc.
+                              Empty = use the URL advertised by the discovery doc.
+        jwks_cache_ttl      — Seconds to cache JWKS public keys (default 300).
+    """
+
+    issuer_url: str = ""
+    client_id: str = ""
+    audience: str = ""
+    userinfo_endpoint: str = ""
+    jwks_cache_ttl: int = 300
+
+
+class LDAPConfig(BaseModel):
+    """
+    Configuration for the Phase 12 LDAPBackend.
+
+    Supports OpenLDAP (uid={username}) and Active Directory
+    (sAMAccountName={username}) via a configurable search filter.
+    All fields default to empty (LDAP disabled) so hardware profiles that
+    use api_key auth can omit this section.
+
+    Fields:
+        url                — LDAP server URL, e.g. ldap://ldap.example.com:389
+                             or ldaps://ldap.example.com:636 (StartTLS / LDAPS).
+        bind_dn            — Service-account DN used to search the directory,
+                             e.g. cn=svc-legionforge,ou=services,dc=example,dc=com
+        user_search_base   — Base DN for user searches,
+                             e.g. ou=users,dc=example,dc=com
+        user_search_filter — LDAP filter template; ``{username}`` is substituted.
+                             OpenLDAP:  (uid={username})
+                             AD:        (sAMAccountName={username})
+        daily_token_limit  — Default token budget for LDAP-authenticated users.
+
+    Keychain: legionforge_ldap_bind_password (service account password).
+    """
+
+    url: str = ""
+    bind_dn: str = ""
+    user_search_base: str = ""
+    user_search_filter: str = "(uid={username})"
+    daily_token_limit: int = 100000
+
+
 class GatewayConfig(BaseModel):
     """
-    Configuration for Phase 10 gateway multi-user features.
+    Configuration for Phase 10+ gateway multi-user and auth features.
     All fields have safe defaults — add a ``gateway:`` section to your hardware
     profile YAML to override individual fields.
     """
@@ -264,10 +322,19 @@ class GatewayConfig(BaseModel):
     # Override per-user via CLI: python -m src.cli.manage_users set-quota --username ...
     default_daily_token_limit: int = 100000
 
-    # Auth backend to use for API key verification.
-    # "api_key" — default; bcrypt-hashed keys in gateway_users table.
-    # Future: "oauth_github", "keycloak", etc. (plugged in via set_auth_backend()).
+    # Auth backend to use for incoming requests.
+    # "api_key"   — default; bcrypt-hashed keys in gateway_users table.
+    # "oidc"      — OIDC/JWKS for Google, Okta, Auth0, Keycloak, Azure AD…
+    # "github"    — GitHub OAuth opaque token → /user API.
+    # "ldap"      — LDAP / Active Directory bind+search+rebind (Basic auth).
+    # "kerberos"  — Kerberos/GSSAPI scaffold (Phase 13+; raises NotImplementedError).
     auth_provider: str = "api_key"
+
+    # Phase 12: OIDC provider configuration (required when auth_provider="oidc").
+    oidc: OIDCConfig = OIDCConfig()
+
+    # Phase 12: LDAP / Active Directory configuration (required when auth_provider="ldap").
+    ldap: LDAPConfig = LDAPConfig()
 
 
 class PentestConfig(BaseModel):

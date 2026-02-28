@@ -31,8 +31,9 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 9 — Tool Library + Fan-Out | ✅ Complete | langchain 1.x, 5 production tools, parallel fan-out, 9.5 hardening sprint |
 | 10 — Multi-User Auth | ✅ Complete | DB-backed stream tokens, per-user budgets, `/usage/me`, user management CLI |
 | 11 — Security Fix + Integration Tests | ✅ Complete | SecureToolNode fix, 35 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` |
+| 12 — Multi-Provider Auth Registry | ✅ Complete | `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold; multi-scheme `require_user`; `load_backend_from_settings()` |
 
-**430/430 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway operational.**
+**443/443 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway + multi-provider auth operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -219,7 +220,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-422 passed in ~1.5s
+443 passed in ~2.1s
 ```
 
 ---
@@ -255,7 +256,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 422 smoke tests, ~1.5s, no services required
+make test-smoke            # 443 smoke tests, ~2.1s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -305,8 +306,8 @@ make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s 
 **Ollama models not found**
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
-**`make test-smoke` shows fewer than 422 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 10 (commit referencing 422 smoke tests).
+**`make test-smoke` shows fewer than 443 tests**
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 12 (commit referencing 443 smoke tests).
 
 ---
 

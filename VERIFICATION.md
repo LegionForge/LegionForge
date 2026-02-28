@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 430 tests (Phase 11). Count should never
+**Expected:** All tests pass. Current baseline is 443 tests (Phase 12). Count should never
 go below the previous passing count.
 
 ```
@@ -75,7 +75,7 @@ tests/test_smoke.py::test_settings_load PASSED
 tests/test_smoke.py::test_memory_budget_is_valid PASSED
 tests/test_smoke.py::test_injection_detection_positive PASSED
 ...
-========= 430 passed in 1.5s =========
+========= 443 passed in 2.1s =========
 ```
 
 If any test fails, the output will tell you exactly which assertion failed.
@@ -203,6 +203,7 @@ All tests should still pass. ✅
 | Phase 9.5 hardening sprint | 397 |
 | Phase 10 (multi-user, stream tokens, per-user budgets) | 422 |
 | Phase 11 (SecureToolNode fix, integration tests, AuthBackend, Dockerfile.gateway) | 430 |
+| Phase 12 (Multi-provider auth registry: OIDC, GitHub, LDAP, Kerberos scaffold) | 443 |
 
 ---
 

@@ -47,8 +47,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB and start the background task worker on startup."""
+    """Initialize DB, wire auth backend, and start the background task worker."""
     await init_db()
+
+    # Wire auth backend from settings (no-op if auth_provider not changed from default)
+    from src.gateway.backends.registry import load_backend_from_settings
+    from src.gateway.auth import set_auth_backend
+    from config.settings import settings as _settings
+
+    set_auth_backend(load_backend_from_settings(_settings))
+    logger.info(f"[gateway] Auth backend: {_settings.gateway.auth_provider}")
+
     worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
     logger.info("[gateway] Startup complete — worker running")
     try:
