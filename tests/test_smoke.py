@@ -342,32 +342,24 @@ def test_usage_summary_rejects_invalid_hours():
 
 
 def test_rate_limiter_hard_limit():
-    """Hard daily limit raises RuntimeError."""
-    from src.rate_limiter import RateLimiter, ProviderLimits
-
-    limiter = RateLimiter.__new__(RateLimiter)
-    from aiolimiter import AsyncLimiter
-    from src.rate_limiter import DailyCounter
-
-    limiter._provider = "test"
-    limiter._limits = ProviderLimits(
-        name="test",
-        tokens_per_day_hard_limit=1000,
-        max_tokens_per_call=500,
-    )
-    limiter._call_limiter = AsyncLimiter(60, 60)
+    """Hard daily limit raises RuntimeError (via check_and_reserve)."""
+    import asyncio
     from datetime import date
+    from src.rate_limiter import DailyCounter, ProviderLimits
 
-    limiter._daily = DailyCounter(provider="test")
-    limiter._daily.date_str = date.today().isoformat()
-    limiter._daily.total_tokens = 950  # Close to limit
+    limits = ProviderLimits(
+        name="test", tokens_per_day_hard_limit=1000, max_tokens_per_call=500
+    )
+    dc = DailyCounter(provider="test")
+    dc.date_str = date.today().isoformat()
+    dc.total_tokens = 950  # Close to limit
 
     with pytest.raises(RuntimeError):
-        limiter._check_hard_limits(estimated_tokens=100)  # 950 + 100 > 1000
+        asyncio.run(dc.check_and_reserve(100, limits))  # 950 + 100 > 1000
 
 
 def test_rate_limiter_per_call_limit():
-    """Single call exceeding per-call limit raises RuntimeError."""
+    """Single call exceeding per-call limit raises RuntimeError (_check_per_call_limit)."""
     from src.rate_limiter import RateLimiter, ProviderLimits
     from aiolimiter import AsyncLimiter
     from src.rate_limiter import DailyCounter
@@ -383,7 +375,7 @@ def test_rate_limiter_per_call_limit():
     limiter._daily = DailyCounter(provider="test")
 
     with pytest.raises(RuntimeError):
-        limiter._check_hard_limits(estimated_tokens=2000)
+        limiter._check_per_call_limit(estimated_tokens=2000)
 
 
 # ── Observability tests ───────────────────────────────────────────────────────
@@ -4817,3 +4809,258 @@ def test_fan_out_researchers_rejects_too_many_tasks():
     big = json.dumps([f"task {i}" for i in range(11)])
     result = asyncio.run(fan_out_researchers.ainvoke({"sub_tasks_json": big}))
     assert "Maximum 10" in result or "maximum" in result.lower()
+
+
+# ── Phase 9.5 — Hardening Sprint ──────────────────────────────────────────────
+
+
+# ── Fix 1: Rate limiter race condition ────────────────────────────────────────
+
+
+def test_daily_counter_has_reserved_tokens_field():
+    """DailyCounter exposes _reserved_tokens for atomic check+reserve."""
+    from src.rate_limiter import DailyCounter
+
+    dc = DailyCounter(provider="test")
+    assert hasattr(dc, "_reserved_tokens")
+    assert dc._reserved_tokens == 0
+
+
+def test_daily_counter_check_and_reserve_blocks_over_limit():
+    """check_and_reserve raises RuntimeError when reservation would exceed hard limit."""
+    import asyncio
+    from datetime import date
+    from src.rate_limiter import DailyCounter, ProviderLimits
+
+    limits = ProviderLimits(name="test", tokens_per_day_hard_limit=1000)
+    dc = DailyCounter(provider="test")
+    dc.date_str = (
+        date.today().isoformat()
+    )  # prevent reset_if_new_day() from zeroing tokens
+    dc.total_tokens = 900
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(dc.check_and_reserve(200, limits))  # 900 + 200 > 1000
+
+
+def test_daily_counter_check_and_reserve_allows_under_limit():
+    """check_and_reserve succeeds and sets _reserved_tokens when under limit."""
+    import asyncio
+    from datetime import date
+    from src.rate_limiter import DailyCounter, ProviderLimits
+
+    limits = ProviderLimits(name="test", tokens_per_day_hard_limit=1000)
+    dc = DailyCounter(provider="test")
+    dc.date_str = date.today().isoformat()
+    dc.total_tokens = 500
+
+    asyncio.run(dc.check_and_reserve(400, limits))  # 500 + 400 = 900 <= 1000
+    assert dc._reserved_tokens == 400
+
+
+def test_daily_counter_concurrent_reservations_respect_limit():
+    """Two concurrent check_and_reserve calls cannot both exceed the hard limit."""
+    import asyncio
+    from datetime import date
+    from src.rate_limiter import DailyCounter, ProviderLimits
+
+    limits = ProviderLimits(name="test", tokens_per_day_hard_limit=1000)
+    dc = DailyCounter(provider="test")
+    dc.date_str = date.today().isoformat()
+    dc.total_tokens = 700  # 300 headroom
+
+    errors = []
+
+    async def try_reserve(amount):
+        try:
+            await dc.check_and_reserve(amount, limits)
+        except RuntimeError as e:
+            errors.append(str(e))
+
+    async def run():
+        # Both try to reserve 300 simultaneously; only one should succeed
+        await asyncio.gather(try_reserve(300), try_reserve(300))
+
+    asyncio.run(run())
+    # Exactly one should have been blocked
+    assert len(errors) == 1
+    assert dc._reserved_tokens == 300  # only one reservation committed
+
+
+def test_daily_counter_release_reservation():
+    """release_reservation decrements _reserved_tokens correctly."""
+    import asyncio
+    from src.rate_limiter import DailyCounter
+
+    dc = DailyCounter(provider="test")
+    dc._reserved_tokens = 500
+
+    asyncio.run(dc.release_reservation(200))
+    assert dc._reserved_tokens == 300
+
+
+def test_daily_counter_release_reservation_floors_at_zero():
+    """release_reservation never makes _reserved_tokens negative."""
+    import asyncio
+    from src.rate_limiter import DailyCounter
+
+    dc = DailyCounter(provider="test")
+    dc._reserved_tokens = 100
+
+    asyncio.run(dc.release_reservation(999))
+    assert dc._reserved_tokens == 0
+
+
+def test_rate_limiter_guard_is_async_context_manager():
+    """RateLimiter.guard() is an async context manager (asynccontextmanager)."""
+    import inspect
+    from src.rate_limiter import RateLimiter
+
+    limiter = RateLimiter("ollama")
+    # guard() returns an async context manager — check it has __aenter__
+    cm = limiter.guard(estimated_tokens=100)
+    assert hasattr(cm, "__aenter__")
+    assert hasattr(cm, "__aexit__")
+
+
+def test_preflight_includes_reserved_tokens():
+    """preflight_budget_check accounts for reserved tokens in its snapshot check."""
+    from src.rate_limiter import get_limiter, preflight_budget_check
+
+    limiter = get_limiter("ollama")
+    # Reset state for this test
+    limiter._daily.total_tokens = 0
+    limiter._daily._reserved_tokens = 0
+    # Should not raise — Ollama has a very high hard limit
+    preflight_budget_check(100, "ollama")
+
+
+# ── Fix 2: /status TTL cache ──────────────────────────────────────────────────
+
+
+def test_status_cache_constants_defined():
+    """health.py defines the status cache TTL and storage variables."""
+    import src.health as health_mod
+
+    assert hasattr(health_mod, "_STATUS_CACHE_TTL")
+    assert health_mod._STATUS_CACHE_TTL > 0
+    assert hasattr(health_mod, "_status_cache")
+    assert hasattr(health_mod, "_status_cache_ts")
+    assert hasattr(health_mod, "_status_cache_lock")
+
+
+def test_status_cache_ttl_is_reasonable():
+    """_STATUS_CACHE_TTL is between 10 and 120 seconds."""
+    import src.health as health_mod
+
+    assert 10 <= health_mod._STATUS_CACHE_TTL <= 120
+
+
+# ── Fix 3: PII patterns ───────────────────────────────────────────────────────
+
+
+def test_pii_patterns_count():
+    """_PII_PATTERNS has at least 8 entries (5 original + 3 new)."""
+    from src.security import _PII_PATTERNS
+
+    assert (
+        len(_PII_PATTERNS) >= 8
+    ), f"Expected >= 8 PII patterns, got {len(_PII_PATTERNS)}"
+
+
+def test_pii_redacts_private_ipv4_rfc1918():
+    """PII redaction replaces RFC 1918 private IPs with [PRIVATE_IP]."""
+    from src.security import sanitize_text
+
+    text, meta = sanitize_text(
+        "Found server at 192.168.1.100 in the logs.", redact_pii=True
+    )
+    assert "[PRIVATE_IP]" in text
+    assert "192.168.1.100" not in text
+    assert meta.get("pii_redacted") is True
+
+
+def test_pii_redacts_loopback_ip():
+    """PII redaction replaces loopback addresses with [PRIVATE_IP]."""
+    from src.security import sanitize_text
+
+    text, meta = sanitize_text(
+        "Connect to 127.0.0.1:5432 for the database.", redact_pii=True
+    )
+    assert "[PRIVATE_IP]" in text
+    assert "127.0.0.1" not in text
+
+
+def test_pii_redacts_db_dsn_with_credentials():
+    """PII redaction replaces DSNs containing credentials with [DB_DSN]."""
+    from src.security import sanitize_text
+
+    dsn = "postgresql://admin:s3cr3t@192.168.1.10:5432/legionforge"
+    text, meta = sanitize_text(f"Connect via {dsn}", redact_pii=True)
+    assert "[DB_DSN]" in text or "[PRIVATE_IP]" in text
+    assert "s3cr3t" not in text
+    assert meta.get("pii_redacted") is True
+
+
+def test_pii_redacts_home_path_macos():
+    """PII redaction replaces /Users/<name>/... paths with [HOME_PATH]."""
+    from src.security import sanitize_text
+
+    text, meta = sanitize_text(
+        "Config loaded from /Users/jpcruz/.aws/credentials", redact_pii=True
+    )
+    assert "[HOME_PATH]" in text
+    assert "jpcruz" not in text
+    assert meta.get("pii_redacted") is True
+
+
+def test_pii_redacts_home_path_linux():
+    """PII redaction replaces /home/<name>/... paths with [HOME_PATH]."""
+    from src.security import sanitize_text
+
+    text, meta = sanitize_text("Key found at /home/deploy/.ssh/id_rsa", redact_pii=True)
+    assert "[HOME_PATH]" in text
+    assert "deploy" not in text
+
+
+def test_pii_does_not_redact_public_ip():
+    """PII redaction does NOT redact public (non-private) IPv4 addresses."""
+    from src.security import sanitize_text
+
+    text, meta = sanitize_text("Server responded from 8.8.8.8", redact_pii=True)
+    # 8.8.8.8 is a public IP — should not be redacted
+    assert "8.8.8.8" in text
+
+
+# ── Fix 4: Safeguards checkpoint resume documentation ─────────────────────────
+
+
+def test_safeguards_initial_docstring_mentions_checkpoint_resume():
+    """SafeguardedState.initial() docstring documents checkpoint resume behaviour."""
+    from src.safeguards import SafeguardedState
+    import inspect
+
+    doc = inspect.getdoc(SafeguardedState.initial)
+    assert doc is not None
+    assert "checkpoint" in doc.lower() or "resume" in doc.lower()
+
+
+def test_safeguards_initial_always_returns_zero_step_count():
+    """SafeguardedState.initial() produces step_count=0 (fresh run only)."""
+    from src.safeguards import SafeguardedState
+
+    state = SafeguardedState.initial()
+    assert state["step_count"] == 0
+    assert state["action_history"] == []
+    assert state["token_count"] == 0
+
+
+def test_safeguards_initial_run_id_is_unique():
+    """Each call to SafeguardedState.initial() produces a distinct run_id."""
+    from src.safeguards import SafeguardedState
+    import uuid
+
+    ids = {SafeguardedState.initial()["run_id"] for _ in range(10)}
+    assert len(ids) == 10
+    for id_ in ids:
+        uuid.UUID(id_)  # raises ValueError if not a valid UUID

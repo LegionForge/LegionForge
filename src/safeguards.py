@@ -78,6 +78,19 @@ class SafeguardedState(dict):
                              in the same run_* function — divergence causes
                              threat events and task token audit trails to
                              disagree on identity.
+
+        Checkpoint resume behaviour:
+            This method is called ONCE at run start.  When a LangGraph graph is
+            resumed from a checkpoint (e.g. after an interruption), LangGraph
+            hydrates the full state dict from the checkpoint store — it does NOT
+            call initial() again.  As a result, step_count, action_history, and
+            token_count all persist correctly across resume.
+
+            The only edge case is if a caller constructs a new initial() dict
+            and passes it as the state for a resumed thread_id.  In that case
+            the counters would reset.  To resume correctly, pass only the
+            thread_id in config and let LangGraph reload state from the
+            checkpoint — do not pass a new initial() state.
         """
         return {
             "step_count": 0,

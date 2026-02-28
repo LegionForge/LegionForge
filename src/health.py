@@ -127,6 +127,18 @@ def _get_health_token() -> str:
     return _health_token
 
 
+# ── /status TTL cache ─────────────────────────────────────────────────────────
+# Each /status hit spawns a DB connection, Ollama call, and subprocess.
+# Cache the result for _STATUS_CACHE_TTL seconds to prevent resource storms
+# from rapid-fire or monitoring tool hammering.
+
+_STATUS_CACHE_TTL: float = 30.0  # seconds
+
+_status_cache: dict[str, Any] = {}
+_status_cache_ts: float = 0.0
+_status_cache_lock: asyncio.Lock = asyncio.Lock()
+
+
 def _verify_bearer_token(request: Request) -> bool:
     """
     Check the Authorization header for a valid Bearer token.
@@ -345,9 +357,26 @@ async def status(request: Request) -> JSONResponse:
     Full system status. Checks all components.
     Requires Bearer token (Authorization: Bearer <token>).
     Use this for human inspection via curl or make status.
+
+    Results are cached for 30 seconds (_STATUS_CACHE_TTL) to prevent resource
+    storms from rapid-fire requests.  Each uncached hit spawns a DB connection,
+    an Ollama HTTP call, and a vm_stat subprocess — the cache bounds this cost.
     """
     if not _verify_bearer_token(request):
         return _unauthorized()
+
+    global _status_cache, _status_cache_ts
+
+    now = time.monotonic()
+    async with _status_cache_lock:
+        if _status_cache and (now - _status_cache_ts) < _STATUS_CACHE_TTL:
+            cached = _status_cache
+            return JSONResponse(
+                content=cached["content"],
+                status_code=cached["status_code"],
+                headers={"X-Status-Cache": "hit"},
+            )
+
     # Run all checks concurrently
     ollama_task = asyncio.create_task(_check_ollama())
     postgres_task = asyncio.create_task(_check_postgres())
@@ -407,18 +436,26 @@ async def status(request: Request) -> JSONResponse:
     except Exception:
         pass  # DB not running — show empty, don't degrade overall status
 
+    response_content = {
+        "status": overall,
+        "ts": datetime.now(tz=timezone.utc).isoformat(),
+        "uptime_seconds": int(time.monotonic() - _startup_time),
+        "profile": settings.profile.name,
+        "chip": settings.profile.chip_model,
+        "components": components,
+        "rate_limits": get_all_daily_status(),
+        "escalation_events": escalation_events,  # [] when no violations or DB offline
+    }
+    response_status = 200 if all_ok else 503
+
+    async with _status_cache_lock:
+        _status_cache = {"content": response_content, "status_code": response_status}
+        _status_cache_ts = time.monotonic()
+
     return JSONResponse(
-        content={
-            "status": overall,
-            "ts": datetime.now(tz=timezone.utc).isoformat(),
-            "uptime_seconds": int(time.monotonic() - _startup_time),
-            "profile": settings.profile.name,
-            "chip": settings.profile.chip_model,
-            "components": components,
-            "rate_limits": get_all_daily_status(),
-            "escalation_events": escalation_events,  # [] when no violations or DB offline
-        },
-        status_code=200 if all_ok else 503,
+        content=response_content,
+        status_code=response_status,
+        headers={"X-Status-Cache": "miss"},
     )
 
 

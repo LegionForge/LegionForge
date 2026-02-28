@@ -103,6 +103,10 @@ class DailyCounter:
     total_calls: int = 0
     estimated_cost_usd: float = 0.0
     alert_sent: bool = False
+    # Tokens reserved by in-flight guard() calls but not yet committed.
+    # Included in hard-limit checks so concurrent callers can't both slip
+    # through the check window before either has incremented total_tokens.
+    _reserved_tokens: int = 0
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def reset_if_new_day(self) -> None:
@@ -115,6 +119,36 @@ class DailyCounter:
             self.total_calls = 0
             self.estimated_cost_usd = 0.0
             self.alert_sent = False
+            self._reserved_tokens = 0
+
+    async def check_and_reserve(
+        self, estimated_tokens: int, limits: ProviderLimits
+    ) -> None:
+        """
+        Atomically check hard limits and reserve the estimated token budget.
+
+        Both the check and the reservation happen under the same lock, so
+        concurrent guard() callers cannot both pass the check before either
+        has incremented the counter (the classic TOCTOU race).
+
+        Raises RuntimeError if the call would exceed a hard limit.
+        Call release_reservation() if the guarded operation is cancelled or fails.
+        """
+        async with self._lock:
+            self.reset_if_new_day()
+            effective = self.total_tokens + self._reserved_tokens
+            if effective + estimated_tokens > limits.tokens_per_day_hard_limit:
+                raise RuntimeError(
+                    f"Hard daily token limit reached for '{self.provider}'.\n"
+                    f"  Committed: {self.total_tokens:,} | Reserved: {self._reserved_tokens:,} | "
+                    f"Limit: {limits.tokens_per_day_hard_limit:,}"
+                )
+            self._reserved_tokens += estimated_tokens
+
+    async def release_reservation(self, estimated_tokens: int) -> None:
+        """Release a previously reserved budget (call in finally after guard())."""
+        async with self._lock:
+            self._reserved_tokens = max(0, self._reserved_tokens - estimated_tokens)
 
     async def add(
         self,
@@ -167,21 +201,8 @@ class RateLimiter:
     def limits(self) -> ProviderLimits:
         return self._limits
 
-    def _check_hard_limits(self, estimated_tokens: int) -> None:
-        """Raise if daily hard limits would be exceeded."""
-        self._daily.reset_if_new_day()
-
-        if (
-            self._daily.total_tokens + estimated_tokens
-            > self._limits.tokens_per_day_hard_limit
-        ):
-            raise RuntimeError(
-                f"🚫 Hard daily token limit reached for '{self._provider}'.\n"
-                f"   Used: {self._daily.total_tokens:,} / "
-                f"{self._limits.tokens_per_day_hard_limit:,} tokens today.\n"
-                f"   Reset at midnight or increase limit in rate_limiter.py."
-            )
-
+    def _check_per_call_limit(self, estimated_tokens: int) -> None:
+        """Raise if the per-call estimate exceeds the single-call cap."""
         if estimated_tokens > self._limits.max_tokens_per_call:
             raise RuntimeError(
                 f"🚫 Single call token estimate ({estimated_tokens:,}) exceeds "
@@ -230,22 +251,38 @@ class RateLimiter:
         Usage:
             async with limiter.guard(estimated_tokens=500):
                 response = await llm.ainvoke(prompt)
+
+        Race-condition fix (Phase 9.5):
+            check_and_reserve() atomically checks the daily hard limit AND
+            reserves the estimated budget under the DailyCounter lock, so
+            concurrent callers cannot both pass the check before either has
+            incremented the counter.  The reservation is always released in
+            finally — record_actual_usage() commits the real token count
+            independently and does not double-count the reservation.
         """
-        # Check hard limits BEFORE acquiring the rate limiter
-        self._check_hard_limits(estimated_tokens)
+        # Per-call limit is a simple synchronous check — no race risk.
+        self._check_per_call_limit(estimated_tokens)
+
+        # Atomic daily-cap check + reservation (fixes TOCTOU race).
+        await self._daily.check_and_reserve(estimated_tokens, self._limits)
         self._check_soft_alerts()
 
-        # Acquire the per-minute call token
-        async with self._call_limiter:
-            start = time.monotonic()
-            try:
-                yield
-            finally:
-                elapsed_ms = int((time.monotonic() - start) * 1000)
-                logger.debug(
-                    f"[{self._provider}] call completed in {elapsed_ms}ms "
-                    f"(estimated {estimated_tokens} tokens)"
-                )
+        # Acquire the per-minute call token.
+        try:
+            async with self._call_limiter:
+                start = time.monotonic()
+                try:
+                    yield
+                finally:
+                    elapsed_ms = int((time.monotonic() - start) * 1000)
+                    logger.debug(
+                        f"[{self._provider}] call completed in {elapsed_ms}ms "
+                        f"(estimated {estimated_tokens} tokens)"
+                    )
+        finally:
+            # Always release the reservation — record_actual_usage() will
+            # commit the real token count to total_tokens separately.
+            await self._daily.release_reservation(estimated_tokens)
 
     async def record_actual_usage(
         self,
@@ -349,6 +386,8 @@ def preflight_budget_check(estimated_tokens: int, provider: str) -> None:
     estimate would exceed the provider's hard daily or per-call limit.
 
     Call this immediately before every llm.ainvoke() in agent nodes.
+    Note: this is a best-effort synchronous snapshot — use guard() for the
+    atomic reservation that prevents the concurrent-caller race condition.
 
     Args:
         estimated_tokens: Token estimate for the upcoming call (input only is fine).
@@ -356,7 +395,21 @@ def preflight_budget_check(estimated_tokens: int, provider: str) -> None:
     """
     limiter = get_limiter(provider)
     try:
-        limiter._check_hard_limits(estimated_tokens)
+        limiter._check_per_call_limit(estimated_tokens)
+        # Snapshot check (not atomic) — guards against obvious budget bombs.
+        limiter._daily.reset_if_new_day()
+        if (
+            limiter._daily.total_tokens
+            + limiter._daily._reserved_tokens
+            + estimated_tokens
+            > limiter._limits.tokens_per_day_hard_limit
+        ):
+            raise RuntimeError(
+                f"Hard daily token limit reached for '{provider}'.\n"
+                f"  Used: {limiter._daily.total_tokens:,} | "
+                f"Reserved: {limiter._daily._reserved_tokens:,} | "
+                f"Limit: {limiter._limits.tokens_per_day_hard_limit:,}"
+            )
     except RuntimeError as e:
         logger.error(
             f"[preflight] PREFLIGHT_BUDGET_EXCEEDED for provider='{provider}' "

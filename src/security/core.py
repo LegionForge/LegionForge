@@ -288,7 +288,8 @@ def detect_injection(text: str) -> tuple[bool, list[str]]:
 
 # ── Input / Output Sanitization ───────────────────────────────────────────────
 
-# PII patterns to redact before sending to LangSmith traces
+# PII patterns to redact before sending to LangSmith traces or external APIs.
+# Ordered from most specific to least to minimise false positives.
 _PII_PATTERNS = [
     # Email addresses
     (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"), "[EMAIL]"),
@@ -300,6 +301,36 @@ _PII_PATTERNS = [
     (re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b"), "[CARD]"),
     # API keys / tokens (long hex/base64 strings that look like secrets)
     (re.compile(r"\b(?:sk-|ls__|pk_|rk_|Bearer\s+)[A-Za-z0-9_\-]{16,}\b"), "[API_KEY]"),
+    # Database connection strings (postgresql://, mysql://, mongodb://, redis://)
+    # Matched before the IP pattern so credentials embedded in DSNs are caught first.
+    (
+        re.compile(
+            r"(?:postgresql|postgres|mysql|mongodb|redis|sqlite)://"
+            r"[A-Za-z0-9_.%+\-]*(?::[^@\s]{1,64})?@[^\s\"'`]+"
+        ),
+        "[DB_DSN]",
+    ),
+    # Private IPv4 addresses (RFC 1918 + loopback + link-local).
+    # Internal infrastructure IPs must not appear in traces or external API calls.
+    #   10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16
+    (
+        re.compile(
+            r"\b(?:"
+            r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+            r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+            r"|192\.168\.\d{1,3}\.\d{1,3}"
+            r"|127\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+            r"|169\.254\.\d{1,3}\.\d{1,3}"
+            r")\b"
+        ),
+        "[PRIVATE_IP]",
+    ),
+    # Unix home directory paths that expose usernames.
+    # Matches /Users/<name>/... (macOS) and /home/<name>/... (Linux).
+    (
+        re.compile(r"(?:/(?:Users|home)/)[A-Za-z0-9._\-]+(?:/[^\s\"'`]*)?"),
+        "[HOME_PATH]",
+    ),
 ]
 
 # Maximum length for a single field before truncation
