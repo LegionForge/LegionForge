@@ -219,6 +219,12 @@ tools:
   sandbox_cpus: 0.5
   sandbox_max_output_bytes: 10240  # 10 KB
 
+# ── Gateway (Phase 10 — Multi-User) ─────────────────────────────────────────
+gateway:
+  # Default daily token budget for new gateway users (100k tokens/day).
+  # Override per-user via: python -m src.cli.manage_users set-quota --username ...
+  default_daily_token_limit: 100000
+
 # ── Pentest (Phase 6 — PentestAgent) ────────────────────────────────────────
 pentest:
   enabled: true

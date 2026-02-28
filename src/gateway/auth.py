@@ -25,7 +25,6 @@ Key API:
 from __future__ import annotations
 
 import secrets
-import time
 import logging
 from typing import Optional
 
@@ -34,7 +33,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 import bcrypt as _bcrypt
 
-from src.database import get_gateway_user_for_auth
+from src.database import (
+    get_gateway_user_for_auth,
+    create_stream_token as _db_create_stream_token,
+    resolve_stream_token as _db_resolve_stream_token,
+    delete_stream_token as _db_delete_stream_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,11 @@ async def authenticate(raw_key: str) -> dict | None:
     rows = await get_gateway_user_for_auth(raw_key)
     for row in rows:
         if verify_api_key(raw_key, row["api_key_hash"]):
-            return {"user_id": row["user_id"], "username": row["username"]}
+            return {
+                "user_id": row["user_id"],
+                "username": row["username"],
+                "daily_token_limit": row.get("daily_token_limit", 100000),
+            }
     return None
 
 
@@ -132,44 +140,50 @@ async def require_user(
     return user
 
 
-# ── Stream tokens (in-memory, 30-minute TTL) ──────────────────────────────────
-# At household scale a dict is sufficient.  Phase 10 moves this to Redis when
-# multiple gateway workers are needed.
+# ── Stream tokens (DB-backed, 30-minute TTL) ──────────────────────────────────
+# Phase 10 migrated stream tokens from an in-memory dict to the stream_tokens
+# DB table so they survive gateway restarts.  The worker heartbeat purges
+# expired rows every 10 minutes via purge_expired_stream_tokens().
 
-_stream_tokens: dict[str, tuple[str, str, float]] = (
-    {}
-)  # token → (task_id, user_id, expiry)
-
-_STREAM_TOKEN_TTL = 30 * 60  # 30 minutes
+_STREAM_TOKEN_TTL = 30 * 60  # 30 minutes, in seconds
 
 
-def create_stream_token(task_id: str, user_id: str) -> str:
-    """Issue a short-lived stream token for SSE access from browser clients."""
+async def create_stream_token(task_id: str, user_id: str) -> str:
+    """
+    Issue a short-lived stream token for SSE access from browser clients.
+
+    The token is persisted in the stream_tokens DB table so it survives a
+    gateway restart.  TTL is enforced by comparing expires_at to NOW() on
+    every resolve call.
+
+    Args:
+        task_id: The task this token grants access to stream.
+        user_id: The user who submitted the task.
+
+    Returns:
+        URL-safe random token string (32 bytes of entropy).
+    """
     token = secrets.token_urlsafe(32)
-    expiry = time.monotonic() + _STREAM_TOKEN_TTL
-    _stream_tokens[token] = (task_id, user_id, expiry)
-    _purge_expired_stream_tokens()
+    await _db_create_stream_token(token, task_id, user_id, _STREAM_TOKEN_TTL)
     return token
 
 
-def resolve_stream_token(token: str) -> tuple[str, str] | None:
+async def resolve_stream_token(token: str) -> tuple[str, str] | None:
     """
-    Resolve a stream token to (task_id, user_id).
-    Returns None if not found or expired.  Does NOT consume (single-use removed
-    for simplicity since SSE clients may reconnect).
+    Resolve a DB-backed stream token to (task_id, user_id).
+
+    Returns None if the token is unknown or has expired.  Does NOT consume
+    (delete) the token so EventSource clients can reconnect within the TTL.
+
+    Args:
+        token: Raw stream token string from the query param.
+
+    Returns:
+        (task_id, user_id) tuple, or None if invalid/expired.
     """
-    entry = _stream_tokens.get(token)
-    if not entry:
-        return None
-    task_id, user_id, expiry = entry
-    if time.monotonic() > expiry:
-        del _stream_tokens[token]
-        return None
-    return task_id, user_id
+    return await _db_resolve_stream_token(token)
 
 
-def _purge_expired_stream_tokens() -> None:
-    now = time.monotonic()
-    expired = [t for t, (_, _, exp) in _stream_tokens.items() if now > exp]
-    for t in expired:
-        del _stream_tokens[t]
+async def delete_stream_token(token: str) -> None:
+    """Explicitly delete a stream token (e.g. on task cancellation)."""
+    await _db_delete_stream_token(token)

@@ -26,7 +26,16 @@ from src.database import (
     VALID_TASK_STATUSES,
 )
 from src.gateway.auth import create_stream_token, require_user
+from src.rate_limiter import per_user_budget_check
 from src.security.core import sanitize_text
+
+# Maps agent_type → LLM provider (used for per-user budget tracking).
+# All current agents run on Ollama; update this if cloud agents are added.
+_AGENT_TYPE_TO_PROVIDER: dict[str, str] = {
+    "orchestrator": "ollama",
+    "researcher": "ollama",
+    "base_agent": "ollama",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +97,40 @@ async def submit_task(
             detail="Task rejected: invalid input",
         )
 
+    # Estimate token cost for budget check (conservative: word count × 1.3 + 500
+    # for system prompt / response overhead).  Actual usage replaces this on
+    # task completion via api_usage with user_id set.
+    estimated_tokens = int(len(sanitized.split()) * 1.3 + 500)
+    provider = _AGENT_TYPE_TO_PROVIDER.get(body.agent_type, "ollama")
+    daily_limit = user.get("daily_token_limit", 100000)
+
+    try:
+        await per_user_budget_check(
+            user_id=user["user_id"],
+            provider=provider,
+            estimated_tokens=estimated_tokens,
+            daily_limit=daily_limit,
+        )
+    except RuntimeError as budget_err:
+        logger.warning(
+            f"[gateway] Per-user budget exceeded: user={user['username']} "
+            f"estimated={estimated_tokens} limit={daily_limit}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily token budget exceeded. Try again tomorrow.",
+        ) from budget_err
+
     row = await create_task(
         user_id=user["user_id"],
         input_text=sanitized,
         agent_type=body.agent_type,
         config=body.config.model_dump(),
+        estimated_tokens=estimated_tokens,
     )
 
     task_id = row["task_id"]
-    stream_token = create_stream_token(task_id, user["user_id"])
+    stream_token = await create_stream_token(task_id, user["user_id"])
 
     logger.info(
         f"[gateway] Task queued task_id={task_id} "

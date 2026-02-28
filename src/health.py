@@ -1233,6 +1233,75 @@ async def approve_pentest_rule(
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
+# ── Phase 10: Per-user token usage ────────────────────────────────────────────
+
+
+@app.get("/usage/me")
+async def get_my_usage(request: Request) -> JSONResponse:
+    """
+    Return today's token usage for the authenticated gateway user.
+
+    Requires Authorization: Bearer <api_key>.
+
+    Response:
+        {
+          "user_id":     "...",
+          "username":    "...",
+          "daily_limit": 100000,
+          "today": {
+            "tokens_used":      12500,
+            "tokens_in_flight": 3000,
+            "tokens_remaining": 84500
+          },
+          "providers": {"ollama": 10000, "openai": 2500}
+        }
+    """
+    # ── Auth ──────────────────────────────────────────────────────────────
+    auth_header = request.headers.get("authorization")
+    if not auth_header:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    from src.gateway.auth import authenticate, extract_bearer_token
+
+    raw_key = extract_bearer_token(auth_header)
+    if not raw_key:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    user = await authenticate(raw_key)
+    if user is None:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    # ── Usage ─────────────────────────────────────────────────────────────
+    try:
+        from src.database import (
+            get_user_usage_summary_today,
+            get_gateway_user_by_username,
+        )
+
+        usage = await get_user_usage_summary_today(user["user_id"])
+        daily_limit = user.get("daily_token_limit", 100000)
+        tokens_used = usage["today"]["tokens_used"]
+        tokens_in_flight = usage["today"]["tokens_in_flight"]
+        tokens_remaining = max(0, daily_limit - tokens_used - tokens_in_flight)
+
+        return JSONResponse(
+            {
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "daily_limit": daily_limit,
+                "today": {
+                    "tokens_used": tokens_used,
+                    "tokens_in_flight": tokens_in_flight,
+                    "tokens_remaining": tokens_remaining,
+                },
+                "providers": usage["providers"],
+            }
+        )
+    except Exception as e:
+        logger.error(f"[health] /usage/me failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
 # ── Server runner ─────────────────────────────────────────────────────────────
 
 

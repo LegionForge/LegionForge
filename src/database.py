@@ -268,6 +268,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "tool_registry",
         "tasks",  # Phase 8: gateway task queue
         "gateway_users",  # Phase 8: gateway users
+        "stream_tokens",  # Phase 10: DB-backed SSE stream tokens
     ]:
         try:
             await admin_conn.execute(
@@ -279,6 +280,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         except Exception as e:
             # Table might not exist yet on very first run — non-fatal
             logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
+
+    # stream_tokens also needs DELETE (purge removes expired rows)
+    try:
+        await admin_conn.execute(
+            pgsql.SQL("GRANT DELETE ON stream_tokens TO {user_id}").format(
+                user_id=pgsql.Identifier(app_user),
+            )
+        )
+    except Exception as e:
+        logger.debug(f"[db-rbac] GRANT DELETE on stream_tokens skipped: {e}")
 
     # LangGraph checkpoint tables — full CRUD required by LangGraph internals
     for tbl in [
@@ -918,6 +929,43 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_gateway_users_username ON gateway_users (username)"
     )
 
+    # ── Phase 10: Multi-user schema additions (idempotent) ────────────────────
+
+    # Per-user daily token budget.  Default 100k; overridable per-user via CLI.
+    await conn.execute(
+        "ALTER TABLE gateway_users "
+        "ADD COLUMN IF NOT EXISTS daily_token_limit INTEGER NOT NULL DEFAULT 100000"
+    )
+
+    # Estimated token cost recorded at submission time for in-flight TOCTOU safety.
+    await conn.execute(
+        "ALTER TABLE tasks "
+        "ADD COLUMN IF NOT EXISTS estimated_tokens INTEGER NOT NULL DEFAULT 0"
+    )
+
+    # User attribution on api_usage — written by the worker after task completion.
+    await conn.execute("ALTER TABLE api_usage ADD COLUMN IF NOT EXISTS user_id TEXT")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_usage_user_id ON api_usage (user_id)"
+    )
+
+    # Stream tokens — DB-backed so they survive gateway restarts.
+    # Low-volume (one row per active SSE session); purged by the worker heartbeat.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stream_tokens (
+            token       TEXT PRIMARY KEY,
+            task_id     TEXT NOT NULL,
+            user_id     TEXT NOT NULL,
+            expires_at  TIMESTAMPTZ NOT NULL
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stream_tokens_expires "
+        "ON stream_tokens (expires_at)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -1030,6 +1078,7 @@ async def record_api_usage(
     agent_name: str | None = None,
     success: bool = True,
     latency_ms: int | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Record an API call for rate limiting and cost tracking."""
     pool = get_pool()
@@ -1038,8 +1087,8 @@ async def record_api_usage(
             """
             INSERT INTO api_usage
                 (provider, model, input_tokens, output_tokens,
-                 total_tokens, run_id, agent_name, success, latency_ms)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 total_tokens, run_id, agent_name, success, latency_ms, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 provider,
@@ -1051,6 +1100,7 @@ async def record_api_usage(
                 agent_name,
                 success,
                 latency_ms,
+                user_id,
             ),
         )
 
@@ -2539,6 +2589,7 @@ async def create_task(
     input_text: str,
     agent_type: str = "orchestrator",
     config: dict | None = None,
+    estimated_tokens: int = 0,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'."""
     pool = get_pool()
@@ -2546,11 +2597,17 @@ async def create_task(
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            INSERT INTO tasks (user_id, input, agent_type, config)
-            VALUES (%s, %s, %s, %s::jsonb)
+            INSERT INTO tasks (user_id, input, agent_type, config, estimated_tokens)
+            VALUES (%s, %s, %s, %s::jsonb, %s)
             RETURNING task_id::text, status, created_at, agent_type
             """,
-            (user_id, input_text, agent_type, json.dumps(config or {})),
+            (
+                user_id,
+                input_text,
+                agent_type,
+                json.dumps(config or {}),
+                estimated_tokens,
+            ),
         )
         row = await cur.fetchone()
     return dict(row)
@@ -2763,15 +2820,17 @@ async def get_gateway_user_by_username(username: str) -> dict | None:
 async def get_gateway_user_for_auth(username: str) -> dict | None:
     """
     Fetch the api_key_hash for a username so the caller can verify a raw token.
-    Returns the full row including api_key_hash, or None if not found / inactive.
-    Called only from auth.py — not exposed on any API endpoint.
+    Returns the full row including api_key_hash and daily_token_limit, or None
+    if not found / inactive.  Called only from auth.py — not exposed on any
+    API endpoint.
     """
     pool = get_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            SELECT user_id::text, username, api_key_hash, is_active
+            SELECT user_id::text, username, api_key_hash, is_active,
+                   daily_token_limit
             FROM gateway_users
             WHERE is_active = true
             """,
@@ -2779,3 +2838,257 @@ async def get_gateway_user_for_auth(username: str) -> dict | None:
         rows = await cur.fetchall()
     # Return all active users for hash comparison (small table at this scale)
     return [dict(r) for r in rows]
+
+
+async def deactivate_gateway_user(username: str) -> bool:
+    """
+    Deactivate a gateway user so they can no longer authenticate.
+    Returns True if a row was updated, False if the user was not found.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE gateway_users SET is_active = false
+            WHERE username = %s AND is_active = true
+            """,
+            (username,),
+        )
+        return cur.rowcount == 1
+
+
+async def set_gateway_user_quota(username: str, daily_token_limit: int) -> bool:
+    """
+    Update the per-user daily token limit.
+    Returns True if a row was updated, False if the user was not found.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE gateway_users SET daily_token_limit = %s
+            WHERE username = %s AND is_active = true
+            """,
+            (daily_token_limit, username),
+        )
+        return cur.rowcount == 1
+
+
+async def list_gateway_users() -> list[dict]:
+    """Return all gateway users (active and inactive) for CLI listing."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT user_id::text, username, is_active, daily_token_limit, created_at
+            FROM gateway_users
+            ORDER BY created_at ASC
+            """
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Phase 10: DB-backed stream tokens ────────────────────────────────────────
+
+
+async def create_stream_token(
+    token: str,
+    task_id: str,
+    user_id: str,
+    ttl_seconds: int = 1800,
+) -> None:
+    """
+    Persist a stream token to the DB with a TTL-based expiry timestamp.
+
+    Stream tokens survive gateway restarts because they are stored in the DB
+    rather than an in-memory dict.  The auth.py wrapper generates the token
+    string and calls this function to persist it.
+
+    Args:
+        token:       URL-safe random token string (generated by auth.py).
+        task_id:     The task this token grants access to stream.
+        user_id:     The user who submitted the task.
+        ttl_seconds: Token lifetime in seconds (default 30 min).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO stream_tokens (token, task_id, user_id, expires_at)
+            VALUES (%s, %s, %s, NOW() + make_interval(secs => %s))
+            ON CONFLICT (token) DO NOTHING
+            """,
+            (token, task_id, user_id, ttl_seconds),
+        )
+
+
+async def resolve_stream_token(token: str) -> tuple[str, str] | None:
+    """
+    Resolve a stream token to (task_id, user_id).
+
+    Returns None if the token is unknown or has expired.  Does NOT consume
+    (delete) the token so EventSource clients can reconnect within the TTL.
+
+    Args:
+        token: Raw stream token string from the query param.
+
+    Returns:
+        (task_id, user_id) tuple, or None if invalid/expired.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT task_id, user_id FROM stream_tokens
+            WHERE token = %s AND expires_at > NOW()
+            """,
+            (token,),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    return row["task_id"], row["user_id"]
+
+
+async def delete_stream_token(token: str) -> None:
+    """Delete a specific stream token (call on explicit logout or task cancellation)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "DELETE FROM stream_tokens WHERE token = %s",
+            (token,),
+        )
+
+
+async def purge_expired_stream_tokens() -> int:
+    """
+    Delete all expired stream tokens.  Called opportunistically by the worker
+    heartbeat every 10 minutes — not a hot path.
+
+    Returns:
+        Number of rows deleted.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute("DELETE FROM stream_tokens WHERE expires_at <= NOW()")
+        deleted = cur.rowcount
+    if deleted:
+        logger.debug(f"[stream-tokens] Purged {deleted} expired token(s)")
+    return deleted
+
+
+# ── Phase 10: Per-user budget queries ─────────────────────────────────────────
+
+
+async def get_user_actual_usage_today(user_id: str, provider: str) -> int:
+    """
+    Return total tokens consumed by a user for a provider today.
+
+    Counts only rows where user_id IS NOT NULL (written by the worker after
+    task completion) to avoid double-counting agent-internal LLM calls.
+
+    Args:
+        user_id:  UUID string of the gateway user.
+        provider: LLM provider name (e.g. "ollama", "openai").
+
+    Returns:
+        Total token count (0 if none).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT COALESCE(SUM(total_tokens), 0) AS total
+            FROM api_usage
+            WHERE user_id = %s
+              AND provider = %s
+              AND DATE(ts) = CURRENT_DATE
+            """,
+            (user_id, provider),
+        )
+        row = await cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+async def get_user_inflight_tokens(user_id: str) -> int:
+    """
+    Return the sum of estimated_tokens for all queued or running tasks for
+    a user today.
+
+    This represents the tokens that are reserved but not yet committed to
+    api_usage.  Combined with get_user_actual_usage_today, it gives the
+    total effective token spend for TOCTOU-safe budget enforcement.
+
+    Args:
+        user_id: UUID string of the gateway user.
+
+    Returns:
+        Total in-flight token estimate (0 if none).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT COALESCE(SUM(estimated_tokens), 0) AS total
+            FROM tasks
+            WHERE user_id = %s
+              AND status IN ('queued', 'running')
+              AND DATE(created_at) = CURRENT_DATE
+            """,
+            (user_id,),
+        )
+        row = await cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+async def get_user_usage_summary_today(user_id: str) -> dict:
+    """
+    Return a per-provider token usage summary for a user today.
+
+    Used by the /usage/me health endpoint.
+
+    Returns:
+        Dict with keys: user_id, today (tokens_used, tokens_in_flight), providers.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        # Per-provider breakdown
+        cur = await conn.execute(
+            """
+            SELECT provider, COALESCE(SUM(total_tokens), 0) AS tokens
+            FROM api_usage
+            WHERE user_id = %s AND DATE(ts) = CURRENT_DATE
+            GROUP BY provider
+            ORDER BY tokens DESC
+            """,
+            (user_id,),
+        )
+        provider_rows = await cur.fetchall()
+
+        # In-flight tokens across all providers
+        cur2 = await conn.execute(
+            """
+            SELECT COALESCE(SUM(estimated_tokens), 0) AS total
+            FROM tasks
+            WHERE user_id = %s
+              AND status IN ('queued', 'running')
+              AND DATE(created_at) = CURRENT_DATE
+            """,
+            (user_id,),
+        )
+        inflight_row = await cur2.fetchone()
+
+    tokens_used = sum(r[1] for r in provider_rows)
+    tokens_in_flight = int(inflight_row[0]) if inflight_row else 0
+
+    return {
+        "user_id": user_id,
+        "today": {
+            "tokens_used": int(tokens_used),
+            "tokens_in_flight": tokens_in_flight,
+        },
+        "providers": {r[0]: int(r[1]) for r in provider_rows},
+    }

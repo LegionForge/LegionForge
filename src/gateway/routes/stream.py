@@ -45,7 +45,7 @@ async def _resolve_user_for_stream(
     """
     # ── stream_token path ──────────────────────────────────────────────────
     if stream_token:
-        resolved = resolve_stream_token(stream_token)
+        resolved = await resolve_stream_token(stream_token)
         if resolved is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

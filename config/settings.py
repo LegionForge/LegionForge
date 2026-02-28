@@ -253,6 +253,18 @@ class SecurityConfig(BaseModel):
     model_integrity_strict: bool = False
 
 
+class GatewayConfig(BaseModel):
+    """
+    Configuration for Phase 10 gateway multi-user features.
+    All fields have safe defaults — add a ``gateway:`` section to your hardware
+    profile YAML to override individual fields.
+    """
+
+    # Default daily token budget for new gateway users.
+    # Override per-user via CLI: python -m src.cli.manage_users set-quota --username ...
+    default_daily_token_limit: int = 100000
+
+
 class PentestConfig(BaseModel):
     """
     Configuration for the Phase 6 PentestAgent (air-gapped red-team bot).
@@ -316,6 +328,7 @@ class HardwareSettings(BaseModel):
     security: SecurityConfig
     pentest: PentestConfig = PentestConfig()
     tools: ToolsConfig = ToolsConfig()
+    gateway: GatewayConfig = GatewayConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)
