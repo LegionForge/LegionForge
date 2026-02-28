@@ -20,7 +20,7 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with Redis/DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, containerized gateway, multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos), Redis-backed state layer, multi-instance docker-compose, Redis global budget counters, Prometheus metrics endpoint, and request trace IDs.
 
-**463/463 smoke tests passing** (~3.2s, no external services required).
+**471/471 smoke tests passing** (~3.4s, no external services required).
 **35 integration tests** (PostgreSQL required — `make test-integration`).
 
 ✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
@@ -29,6 +29,7 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 ✅ **Phase 12 complete:** Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` (scaffold); multi-scheme `require_user` (Bearer/Basic/Negotiate); `load_backend_from_settings()` factory; `OIDCConfig`/`LDAPConfig` in settings.
 ✅ **Phase 13 complete:** Kerberos real GSSAPI implementation (graceful None fallback when gssapi absent); optional Redis-backed stream tokens (`src/gateway/state.py`); `KerberosConfig` + `redis_url` in settings; `docker-compose.multi-instance.yml`; Nginx LB config; SCALING.md Redis + Kerberos setup guide.
 ✅ **Phase 14 complete:** Redis global budget counters (`redis_budget_check_and_reserve`/`redis_budget_release` in `state.py`; `per_user_budget_check()` auto-delegates to Redis when active); Prometheus-format `/metrics` endpoint on gateway (`src/gateway/metrics.py` — no new deps); `X-Request-ID` middleware (`src/gateway/middleware.py`); Redis health in operator `/status`; Kerberos integration test skeleton (`tests/test_kerberos_integration.py`, skip unless `KERBEROS_TEST_KDC=1`).
+✅ **Phase 15 complete:** Full web UI rewrite (`src/gateway/static/index.html`) — localStorage API key persistence, agent type selector, cancel button (`DELETE /tasks/{id}`), styled tool call blocks, live elapsed timer, token count on complete, 20-entry localStorage history with click-to-restore, copy output to clipboard, `Cmd/Ctrl+Enter` submit shortcut, auto-resize textarea, SSE retry-on-disconnect, connection status dot.
 
 ---
 
@@ -52,7 +53,8 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 | **12** | Multi-provider auth registry: OIDC, GitHub OAuth, LDAP/AD, Kerberos scaffold; multi-scheme `require_user` | ✅ Done |
 | **13** | Kerberos GSSAPI real implementation, Redis-backed stream tokens, multi-instance docker-compose | ✅ Done |
 | **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware, Redis `/status` health, Kerberos integration skeleton | ✅ Done |
-| **15** | Channel connectors + web UI polish | ⬜ Next |
+| **15** | Polished web UI — localStorage key+history, cancel, tool blocks, timer, copy, keyboard shortcut | ✅ Done |
+| **16** | Channel connectors (Telegram / Signal / WhatsApp) | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 

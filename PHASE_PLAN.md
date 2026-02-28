@@ -3,7 +3,7 @@
 
 **Version:** 1.0.0
 **Last updated:** 2026-02-28
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ⬜
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ✅ | Phase 15 ⬜
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1400,4 +1400,84 @@ test_p14_kerberos_integration_skeleton_exists
 
 ---
 
-## Phase 15 — Channel Connectors + Web UI Polish ⬜ Next
+## Phase 15 — Polished Web UI ✅ Complete
+
+**Goal:** Replace the minimal single-page demo with a fully usable web interface.
+No framework. Single HTML file. All vanilla JS.
+
+### 15.1 Features
+
+| Feature | Detail |
+|---|---|
+| **Persistent API key** | Stored in `localStorage`; show/hide toggle; clear button |
+| **Agent type selector** | Dropdown: `orchestrator` / `researcher` / `base_agent` |
+| **Cancel button** | Appears while task is running; calls `DELETE /tasks/{id}` |
+| **Tool call blocks** | `tool_start` / `tool_end` rendered as styled labelled blocks |
+| **Status bar** | Live elapsed timer during run; token estimate + final status on complete |
+| **Task result fetch** | `GET /tasks/{id}` called on complete to display full structured result |
+| **Session history** | Last 20 tasks persisted in `localStorage`; sidebar with status badges; click to restore output |
+| **Copy output** | One-click copy of the full output to clipboard |
+| **Keyboard shortcut** | `Ctrl+Enter` / `Cmd+Enter` submits the task |
+| **Auto-resize textarea** | Grows with content; max 300 px before scrolling |
+| **Heartbeat indicator** | Connection dot pulses while SSE is live |
+| **Stream reconnect** | On unexpected SSE disconnect, retries once with same stream token |
+
+### 15.2 SSE Event Mapping
+
+| SSE event | UI action |
+|---|---|
+| `task_start` | Status bar → "Running…"; start elapsed timer; show Cancel |
+| `chain_start` | Append node label (dim text) |
+| `token` | Append delta to output (fast inline streaming) |
+| `tool_start` | Open tool block: `▶ tool_name` |
+| `tool_end` | Close tool block: `✓ tool_name` |
+| `task_complete` | Stop timer; fetch `GET /tasks/{id}` for token count; status → "✓ Complete"; hide Cancel; save to history |
+| `task_error` | Status → "✗ Error: …"; hide Cancel |
+| `task_cancelled` | Status → "⊘ Cancelled"; hide Cancel |
+| `heartbeat` | Pulse the connection dot |
+
+### 15.3 Layout
+
+```
+┌─ LegionForge ─────────────────────── ● ─┐
+│                                          │
+│  API Key [••••••••] [Show] [✕]          │
+│  Agent   [Orchestrator ▾]               │
+│                                          │
+│  ┌──────────── Task ───────────────────┐ │
+│  │ (auto-resize textarea)              │ │
+│  └─────────────────────────────────────┘ │
+│  [▶ Submit  ⌘↵]  [✕ Cancel]  [Clear]   │
+│                                          │
+├─ Output ─────────────────────── [Copy] ─┤
+│  ● Running…  task abc-123       3.2s    │
+│  ──────────────────────────────────────  │
+│  [node: researcher]                      │
+│  ▶ web_search ──────────────────────── ✓│
+│  Based on my research…                   │
+│  ✓ Complete · 1,247 tokens · 8.3s       │
+│                                          │
+├─ History (20) ──────────────────────── ─┤
+│  ✓ abc-123  researcher  "Research AI…"  │
+│  ✗ def-456  orchestrator "Write code…"  │
+└──────────────────────────────────────────┘
+```
+
+### 15.4 Test Delta
+
+```
+test_p15_ui_file_exists
+test_p15_ui_has_api_key_input
+test_p15_ui_has_agent_type_selector
+test_p15_ui_has_cancel_function
+test_p15_ui_persists_api_key_in_localstorage
+test_p15_ui_has_history_rendering
+test_p15_ui_has_keyboard_shortcut
+test_p15_ui_has_copy_function
+```
+
+**Test delta:** 463 → 471 smoke tests (+8 Phase 15 tests).
+
+---
+
+## Phase 16 — Channel Connectors ⬜ Next

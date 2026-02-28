@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 463 tests (Phase 14). Count should never
+**Expected:** All tests pass. Current baseline is 471 tests (Phase 15). Count should never
 go below the previous passing count.
 
 ```
@@ -206,6 +206,7 @@ All tests should still pass. ✅
 | Phase 12 (Multi-provider auth registry: OIDC, GitHub, LDAP, Kerberos scaffold) | 443 |
 | Phase 13 (Kerberos real impl, Redis state layer, multi-instance compose) | 453 |
 | Phase 14 (Redis budget counters, Prometheus metrics, request-ID middleware) | 463 |
+| Phase 15 (Polished web UI) | 471 |
 
 ---
 
