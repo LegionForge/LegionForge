@@ -219,13 +219,33 @@ tools:
   sandbox_cpus: 0.5
   sandbox_max_output_bytes: 10240  # 10 KB
 
-# ── Gateway (Phase 10 — Multi-User) ─────────────────────────────────────────
+# ── Gateway (Phase 10/12 — Multi-User + Auth Backends) ───────────────────────
 gateway:
   # Default daily token budget for new gateway users (100k tokens/day).
   # Override per-user via: python -m src.cli.manage_users set-quota --username ...
   default_daily_token_limit: 100000
-  # Auth backend: "api_key" (default). Swap to "oauth_github" etc. via set_auth_backend().
+  # Auth backend: "api_key" (default) | "oidc" | "github" | "ldap" | "kerberos"
+  # Switch by changing this value and restarting the gateway.
   auth_provider: api_key
+
+  # ── OIDC (Phase 12) ────────────────────────────────────────────────────────
+  # Required when auth_provider: oidc.  Covers Google, Okta, Auth0, Keycloak,
+  # Azure AD, Cognito, and any OIDC-compliant IdP.
+  oidc:
+    issuer_url: ""          # e.g. https://accounts.google.com
+    client_id: ""           # OAuth2 client ID from your IdP
+    audience: ""            # Expected aud claim (defaults to client_id if empty)
+    jwks_cache_ttl: 300     # Seconds to cache JWKS public keys
+    userinfo_endpoint: ""   # Override discovery doc; empty = use discovery
+
+  # ── LDAP / Active Directory (Phase 12) ────────────────────────────────────
+  # Required when auth_provider: ldap.  Supports OpenLDAP and AD.
+  ldap:
+    url: ""                                   # ldap://ldap.example.com:389
+    bind_dn: ""                               # Service account DN
+    user_search_base: ""                      # ou=users,dc=example,dc=com
+    user_search_filter: "(uid={username})"    # Use (sAMAccountName={username}) for AD
+    daily_token_limit: 100000                 # Default budget for LDAP users
 
 # ── Pentest (Phase 6 — PentestAgent) ────────────────────────────────────────
 pentest:

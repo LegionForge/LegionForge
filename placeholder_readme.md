@@ -80,8 +80,10 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **8** | Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP, Discord connector | ✅ Complete |
 | **9** | langchain 1.x migration, tool library (5 tools), parallel fan-out, Phase 9.5 hardening sprint | ✅ Complete |
 | **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Complete |
+| **11** | SecureToolNode security fix, integration tests (35), `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
+| **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold | ✅ Complete |
 
-**422/422 smoke tests passing.** No running services required. Runs in ~2 seconds.
+**443/443 smoke tests passing.** 35 integration tests passing. No running services required for smoke tests. Runs in ~2 seconds.
 
 ---
 
@@ -145,7 +147,8 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 422 smoke tests, ~2s, no services required
+make test-smoke      # 443 smoke tests, ~2s, no services required
+make test-integration  # 35 integration tests (requires PostgreSQL)
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765
 make setup-db-roles  # Provision legionforge_app restricted PostgreSQL role (idempotent)

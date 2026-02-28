@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–11 complete. Phase 12 — OAuth, Redis-backed state, multi-datacenter is next.
+**Status:** ✅ Phases 0–12 complete. Phase 13 — Kerberos full implementation, Redis-backed state, multi-datacenter is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,21 +17,21 @@
 
 ## Current State
 
-All phases through 11 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, and containerized gateway are operational.
+All phases through 12 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, and multi-provider auth registry are operational.
 
 ```
-make test-smoke        → ~430/430 passing (~1.5s, no external services required)
-make test-integration  → ~35 passed (requires PostgreSQL)
+make test-smoke        → 443/443 passing (~2.1s, no external services required)
+make test-integration  → 35 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green
 make gateway-start     → localhost:8080 gateway API + streaming UI
 make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 11 — integration tests, modular auth, Dockerfile.gateway
+git log --oneline -1 → Phase 12 — multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos scaffold)
 ```
 
 ---
 
-## What's Shipped (Phases 0–10)
+## What's Shipped (Phases 0–11)
 
 ### Source Files (`src/`)
 
@@ -102,8 +102,8 @@ git log --oneline -1 → Phase 11 — integration tests, modular auth, Dockerfil
 
 ### Tests
 
-- `tests/test_smoke.py` — **~430 tests**, no running services required, ~1.5s
-- `tests/test_integration.py` — **~35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
+- `tests/test_smoke.py` — **430 tests**, no running services required, ~1.5s
+- `tests/test_integration.py` — **35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
 
 ---
@@ -179,7 +179,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 422 tests, ~1.5s
+make test-smoke                          # 430 tests, ~1.5s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -210,7 +210,16 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 |---|---|---|
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
-| No output sanitization on external tool responses | Medium | Input-side sanitization exists; output-side (tool result content) sanitization deferred to Phase 12 |
+| Kerberos full implementation | Low | Phase 13+; `KerberosBackend` is scaffolded (raises `NotImplementedError` with setup docs); requires OS-level KDC + `gssapi` package |
+
+### Fixed (Phase 12)
+
+| Item | Fix |
+|---|---|
+| OAuth / LDAP auth not available | `src/gateway/backends/` package: `OIDCBackend` (JWKS/OIDC), `GitHubOAuthBackend` (opaque tokens), `LDAPBackend` (bind+search+rebind); set `gateway.auth_provider` in YAML |
+| Wrong "output sanitization deferred" docs | Removed from `TLDR.md` and `PROJECT_STATUS.md`; `sanitize_output()` was fully implemented in Phase 9 |
+| `require_user` Bearer-only | Updated to parse Bearer / Basic / Negotiate; delegates scheme to the active backend |
+| `PyJWT` missing `[crypto]` extra | `PyJWT[crypto]~=2.8` — RS256/ES256 JWKS decode now works; `ldap3~=2.9` added |
 
 ### Fixed (Phase 11)
 

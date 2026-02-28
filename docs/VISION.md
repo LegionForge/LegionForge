@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Active planning — Phases 8+
+**Status:** Phases 0–12 complete — Phase 13 (Kerberos full implementation, Redis, multi-datacenter) is next
 **Source:** Architecture retrospective and requirements session
 
 ---

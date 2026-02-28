@@ -2,8 +2,8 @@
 # LegionForge — Phased Roadmap
 
 **Version:** 1.0.0
-**Last updated:** 2026-02-27
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ⬜
+**Last updated:** 2026-02-28
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ⬜
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1084,3 +1084,108 @@ make create-user USERNAME=alice
 `GatewayConfig` model with `default_daily_token_limit: int = 100000`. `gateway:` section in `mac_m4_mini_16gb.yaml`.
 
 **Explicitly deferred to Phase 11:** Redis, load balancer, multiple gateway processes, OAuth, integration tests.
+
+---
+
+## Phase 11 — SecureToolNode Fix, Integration Tests, Modular Auth, Gateway Containerization ✅ COMPLETE
+
+**Completed:** 2026-02-28 — 430/430 smoke tests passing (+8 Phase 11 tests). 35 integration tests passing (3 Ollama-scaffolded).
+
+**Goal:** Close the four open issues from Phase 10: critical security fix in SecureToolNode, end-to-end integration test suite, modular auth architecture for OAuth readiness, and containerized gateway.
+
+**What was built:**
+
+### SecureToolNode silent-failure fix (`src/base_graph.py`)
+When both `model_copy()` and `copy()` fail on a tool result message, the original code had a bare `pass` — allowing unsanitized content into agent context. Fixed by synthesizing a new `ToolMessage` with sanitized content when both copy paths fail, preserving `tool_call_id` and `name` for graph coherence. This is a critical security fix: the agent *always* sees sanitized content regardless of message object type.
+
+### Modular auth architecture (`src/gateway/auth.py`)
+Extracted `AuthBackend` protocol (`@runtime_checkable`) and `ApiKeyBackend` class. Added `get_auth_backend()` / `set_auth_backend()`. OAuth, LDAP, or JWT backends can now be plugged in at startup without changing `require_user` or any route code. See `docs/SCALING.md` for the OAuth integration pattern.
+
+### `GatewayConfig.auth_provider` (`config/settings.py` + YAML)
+Added `auth_provider: str = "api_key"` to `GatewayConfig`. YAML profile has `auth_provider: api_key` under `gateway:`. Provides a config hook for the Phase 12 OAuth switch.
+
+### Integration test suite (`tests/test_integration.py`)
+35 tests, `@pytest.mark.integration`, require PostgreSQL. 3 Ollama-dependent tests are scaffolded with `pytest.skip()`. Groups:
+- DB Schema (6): column existence, init_db idempotency, is_active default
+- Auth (4): correct/wrong/inactive key, missing Authorization header
+- Stream tokens (5): create, resolve, expired, unknown, purge
+- Task submission (8): 202, injection 400, invalid agent 422, owner 200, cross-user 404, list, cancel 204, blank 422
+- Budget enforcement (4): passes under limit, 429 on exceeded, zero usage, inflight count
+- Usage endpoint (4): shape, daily_limit match, 401 without auth, tokens_remaining
+- User CLI (4): create_user callable, deactivate_user, set_quota, list_users
+
+Test fixtures use direct psycopg admin connections for all cleanup DELETEs (`legionforge_app` has no DELETE on `tasks`/`api_usage`/`gateway_users` by RBAC design).
+
+### `Dockerfile.gateway`
+Containerized gateway: `python:3.11-slim`, non-root `gateway` user (uid 1001), `EXPOSE 8080`. Multi-worker safe (DB-backed queue + `FOR UPDATE SKIP LOCKED`). Build: `make build-gateway`. Run: `make gateway-start-docker`.
+
+### `docs/SCALING.md`
+Horizontal scaling guide: multi-worker uvicorn, nginx/Caddy load balancer configs, `AuthBackend` OAuth integration pattern, Redis decision guide (when to add it), pre-multi-instance checklist.
+
+### `/usage/me` on gateway (`src/gateway/app.py`)
+Moved `GET /usage/me` to the gateway app (`:8080`) via `require_user` dependency. The endpoint remains on the health app as well; the gateway version is the canonical user-facing path.
+
+### dict_row production fix (`src/database.py`)
+Fixed `row[0]` / `r[0]` integer-index access in `get_user_actual_usage_today`, `get_user_inflight_tokens`, `get_user_usage_summary_today`. All three functions use `dict_row` pool — column name access is required (`row["total"]`, `r["tokens"]`, etc.).
+
+### `list_users()` return value (`src/cli/manage_users.py`)
+`list_users()` now returns the users list in addition to printing, enabling programmatic use (tests + scripting).
+
+### Makefile additions
+`test-integration`, `test-all`, `build-gateway`, `gateway-start-docker`.
+
+**Test delta:** 422 → 430 smoke tests (+8). Integration test suite: 35 passed, 3 skipped.
+
+---
+
+## Phase 12 — Multi-Provider Auth Backend Registry ✅ COMPLETE
+
+**Completed:** 2026-02-28 — 443/443 smoke tests passing (+13 Phase 12 tests).
+
+**Goal:** Build the full auth backend registry: OIDC (covers Google, Okta, Auth0, Keycloak, Azure AD), GitHub OAuth (opaque token flow), LDAP/Active Directory, and Kerberos (scaffolded). Fix incorrect docs claiming output sanitization was deferred to Phase 12 (it was fully implemented in Phase 9). Redis explicitly deferred (household scale, no need yet).
+
+**What was built:**
+
+### `src/gateway/backends/` package (8 files)
+New auth backend registry: `base.py` (updated `AuthBackend` protocol + `SCHEME_BEARER`/`SCHEME_BASIC`/`SCHEME_NEGOTIATE` constants), `api_key.py` (moved from `auth.py`), `oidc.py`, `github.py`, `ldap_backend.py`, `kerberos.py` (scaffold), `registry.py`, `__init__.py`.
+
+### Updated `AuthBackend` protocol (`src/gateway/backends/base.py`)
+Added `scheme: str = "bearer"` parameter to `authenticate()`. Backward compatible — existing callers passing only a credential string continue to work. Three scheme constants exported: `SCHEME_BEARER`, `SCHEME_BASIC`, `SCHEME_NEGOTIATE`.
+
+### `OIDCBackend` (`src/gateway/backends/oidc.py`)
+Validates JWT access tokens via JWKS (PyJWT, async httpx fetching). Discovery doc + JWKS cached in-process (1h + configurable TTL). Falls back to userinfo endpoint for opaque tokens. Auto-provisions `gateway_users` row on first login (`api_key_hash='[OAUTH-NO-KEY]'` sentinel). Covers: Google, Okta, Auth0, Keycloak, Azure AD, Ping, Cognito, any OIDC IdP.
+
+### `GitHubOAuthBackend` (`src/gateway/backends/github.py`)
+GitHub OAuth apps issue opaque tokens — OIDC JWKS flow doesn't apply. Validates by calling `GET https://api.github.com/user`. Auto-provisions on first login. Returns `user_id="github:<id>"`.
+
+### `LDAPBackend` (`src/gateway/backends/ldap_backend.py`)
+Service-account bind → user search → user-credential rebind. Supports OpenLDAP (`uid={username}`) and Active Directory (`sAMAccountName={username}`) via configurable search filter. Bind password from Keychain (`legionforge_ldap_bind_password`). Auto-provisions on first login. Returns `user_id="ldap:<dn>"`. Accepts `scheme="basic"` only.
+
+### `KerberosBackend` (`src/gateway/backends/kerberos.py`)
+Scaffold only. Instantiates safely; `authenticate()` raises `NotImplementedError` with actionable setup instructions (KDC, service principal, keytab, `gssapi` package). Phase 13+ implementation.
+
+### `BackendRegistry` (`src/gateway/backends/registry.py`)
+`load_backend_from_settings(settings)` factory: maps `settings.gateway.auth_provider` → backend instance. Supported: `api_key`, `oidc`, `github`, `ldap`, `kerberos`. Raises `ValueError` for unknown values.
+
+### Multi-scheme `require_user` (`src/gateway/auth.py`)
+Parses three Authorization schemes: `Bearer` (api_key / OIDC / GitHub), `Basic` (LDAP, base64-decoded), `Negotiate` (Kerberos). Delegates to the active backend's `authenticate(credential, scheme=scheme)`. Returns 401 on any failure.
+
+### `OIDCConfig` + `LDAPConfig` (`config/settings.py`)
+New Pydantic sub-models added to `GatewayConfig`. All fields default to empty (disabled). `auth_provider` field now documents all five options.
+
+### Hardware profile additions (`config/hardware_profiles/mac_m4_mini_16gb.yaml`)
+`gateway.oidc` and `gateway.ldap` sections added with commented documentation. `auth_provider: api_key` remains the default.
+
+### Gateway lifespan wiring (`src/gateway/app.py`)
+`load_backend_from_settings(settings)` called in the lifespan context manager; logs the active provider name on startup.
+
+### requirements.txt
+`PyJWT~=2.8` → `PyJWT[crypto]~=2.8` (adds `cryptography` dep for RS256/ES256 JWKS decode). Added `ldap3~=2.9`.
+
+### Doc correction
+Removed incorrect "No output sanitization deferred to Phase 12" claim from `TLDR.md` and `PROJECT_STATUS.md`. Output sanitization (`sanitize_output()`) was fully implemented in Phase 9.
+
+### New Keychain items (documented)
+`legionforge_oidc_client_secret`, `legionforge_github_client_secret`, `legionforge_ldap_bind_password`.
+
+**Test delta:** 430 → 443 smoke tests (+13 Phase 12 tests).

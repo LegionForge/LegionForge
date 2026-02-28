@@ -16,20 +16,21 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–11 are complete. v1.0.0 is shipped.**
+✅ **Phases 0–12 are complete. v1.0.0 is shipped.**
 
-The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, and containerized gateway (`Dockerfile.gateway`).
+The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, containerized gateway, and multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos scaffold).
 
-**~430/430 smoke tests passing** (~1.5s, no external services required).
-**~35 integration tests** (PostgreSQL required — `make test-integration`).
+**443/443 smoke tests passing** (~2.1s, no external services required).
+**35 integration tests** (PostgreSQL required — `make test-integration`).
 
 ✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
 ✅ **Phase 10 complete:** DB-backed stream tokens, per-user daily token budgets, `/usage/me` endpoint, user management CLI (`src/cli/manage_users.py`).
 ✅ **Phase 11 complete:** SecureToolNode copy-failure fix (critical security), integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md`.
+✅ **Phase 12 complete:** Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` (scaffold); multi-scheme `require_user` (Bearer/Basic/Negotiate); `load_backend_from_settings()` factory; `OIDCConfig`/`LDAPConfig` in settings.
 
 ---
 
-## The Big Picture — Phases 0–10 Complete
+## The Big Picture — Phases 0–11 Complete
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -46,7 +47,8 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 | **9** | langchain 1.x migration, tool library (5 tools), parallel fan-out, Phase 9.5 hardening sprint | ✅ Done |
 | **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Done |
 | **11** | SecureToolNode fix, integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `SCALING.md` | ✅ Done |
-| **12** | OAuth (GitHub/Keycloak), Redis-backed state (multi-datacenter), multi-datacenter deployment | ⬜ Next |
+| **12** | Multi-provider auth registry: OIDC, GitHub OAuth, LDAP/AD, Kerberos scaffold; multi-scheme `require_user` | ✅ Done |
+| **13** | Kerberos full implementation, Redis-backed state, multi-datacenter deployment | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -122,9 +124,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 **GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values after running `make verify-models`.
 
-**No output sanitization on external tool responses.** Input-side sanitization exists; output-side (tool result content leaving the sandbox boundary) is deferred to Phase 12.
-
-**OAuth not implemented.** `AuthBackend` protocol is in place; plug in `GitHubOAuthBackend` or Keycloak in Phase 12 per `docs/SCALING.md`.
+**OAuth / LDAP not yet wired by default.** Phase 12 ships `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` (scaffold). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
 
 ---
 

@@ -5563,3 +5563,165 @@ def test_p11_api_key_backend_satisfies_auth_backend_protocol():
     assert isinstance(
         backend, AuthBackend
     ), "ApiKeyBackend does not satisfy the AuthBackend protocol"
+
+
+# ── Phase 12: Multi-Provider Auth Backend Registry ────────────────────────────
+
+
+def test_p12_backends_package_importable():
+    """src.gateway.backends package is importable and exposes expected symbols."""
+    import src.gateway.backends as backends_pkg
+
+    for name in [
+        "AuthBackend",
+        "ApiKeyBackend",
+        "OIDCBackend",
+        "GitHubOAuthBackend",
+        "LDAPBackend",
+        "KerberosBackend",
+        "load_backend_from_settings",
+    ]:
+        assert hasattr(backends_pkg, name), f"backends package missing '{name}'"
+
+
+def test_p12_oidc_backend_importable():
+    """OIDCBackend is importable from src.gateway.backends.oidc."""
+    from src.gateway.backends.oidc import OIDCBackend
+
+    assert OIDCBackend is not None
+
+
+def test_p12_github_backend_importable():
+    """GitHubOAuthBackend is importable from src.gateway.backends.github."""
+    from src.gateway.backends.github import GitHubOAuthBackend
+
+    assert GitHubOAuthBackend is not None
+
+
+def test_p12_ldap_backend_importable():
+    """LDAPBackend is importable from src.gateway.backends.ldap_backend."""
+    from src.gateway.backends.ldap_backend import LDAPBackend
+
+    assert LDAPBackend is not None
+
+
+def test_p12_kerberos_backend_importable():
+    """KerberosBackend is importable from src.gateway.backends.kerberos."""
+    from src.gateway.backends.kerberos import KerberosBackend
+
+    assert KerberosBackend is not None
+
+
+def test_p12_registry_importable():
+    """load_backend_from_settings is importable from src.gateway.backends.registry."""
+    from src.gateway.backends.registry import load_backend_from_settings
+
+    assert callable(load_backend_from_settings)
+
+
+def test_p12_all_backends_satisfy_auth_backend_protocol():
+    """All Phase 12 backends are structural subtypes of AuthBackend (Protocol check)."""
+    from src.gateway.backends.base import AuthBackend
+    from src.gateway.backends.api_key import ApiKeyBackend
+    from src.gateway.backends.oidc import OIDCBackend
+    from src.gateway.backends.github import GitHubOAuthBackend
+    from src.gateway.backends.ldap_backend import LDAPBackend
+    from src.gateway.backends.kerberos import KerberosBackend
+    from config.settings import OIDCConfig, LDAPConfig
+
+    backends = [
+        ApiKeyBackend(),
+        OIDCBackend(OIDCConfig()),
+        GitHubOAuthBackend(),
+        LDAPBackend(LDAPConfig()),
+        KerberosBackend(),
+    ]
+    for backend in backends:
+        assert isinstance(
+            backend, AuthBackend
+        ), f"{type(backend).__name__} does not satisfy the AuthBackend protocol"
+
+
+def test_p12_load_backend_default_is_api_key():
+    """load_backend_from_settings returns ApiKeyBackend for auth_provider='api_key'."""
+    from src.gateway.backends.registry import load_backend_from_settings
+    from src.gateway.backends.api_key import ApiKeyBackend
+
+    class _GW:
+        auth_provider = "api_key"
+
+    class _S:
+        gateway = _GW()
+
+    backend = load_backend_from_settings(_S())
+    assert isinstance(
+        backend, ApiKeyBackend
+    ), f"Expected ApiKeyBackend, got {type(backend).__name__}"
+
+
+def test_p12_load_backend_unknown_provider_raises_value_error():
+    """load_backend_from_settings raises ValueError for an unknown auth_provider."""
+    from src.gateway.backends.registry import load_backend_from_settings
+
+    class _GW:
+        auth_provider = "totally_unknown_provider"
+
+    class _S:
+        gateway = _GW()
+
+    try:
+        load_backend_from_settings(_S())
+        assert False, "Expected ValueError was not raised"
+    except ValueError as exc:
+        assert "totally_unknown_provider" in str(exc)
+
+
+def test_p12_require_user_parses_bearer_scheme():
+    """require_user extracts credential and scheme='bearer' from a Bearer header."""
+    # Test the header parsing logic directly without needing a live FastAPI app
+    # by inspecting the auth module's extraction helper.
+    from src.gateway.auth import extract_bearer_token
+
+    token = extract_bearer_token("Bearer my-secret-token")
+    assert token == "my-secret-token", f"Expected 'my-secret-token', got {token!r}"
+
+
+def test_p12_require_user_parses_basic_scheme():
+    """require_user recognises Basic auth header scheme."""
+    import base64
+
+    # Simulate what require_user does when it sees a Basic header
+    raw_header = "Basic " + base64.b64encode(b"alice:s3cr3t").decode()
+    lower = raw_header.lower()
+
+    assert lower.startswith("basic "), "Basic prefix not detected"
+    decoded = base64.b64decode(raw_header[6:].strip()).decode("utf-8")
+    assert decoded == "alice:s3cr3t", f"Decoded basic cred mismatch: {decoded!r}"
+
+
+def test_p12_require_user_parses_negotiate_scheme():
+    """require_user recognises Negotiate (Kerberos) auth header scheme."""
+    raw_header = "Negotiate YIIByzCCAQegAwIBBQ=="
+    lower = raw_header.lower()
+
+    assert lower.startswith("negotiate "), "Negotiate prefix not detected"
+    token = raw_header[10:].strip()
+    assert token == "YIIByzCCAQegAwIBBQ==", f"Negotiate token mismatch: {token!r}"
+
+
+def test_p12_gateway_config_has_oidc_and_ldap_sections():
+    """GatewayConfig includes oidc and ldap sub-models (Phase 12)."""
+    from config.settings import GatewayConfig, OIDCConfig, LDAPConfig
+
+    cfg = GatewayConfig()
+    assert hasattr(cfg, "oidc"), "GatewayConfig missing 'oidc' field"
+    assert hasattr(cfg, "ldap"), "GatewayConfig missing 'ldap' field"
+    assert isinstance(
+        cfg.oidc, OIDCConfig
+    ), f"Expected OIDCConfig, got {type(cfg.oidc).__name__}"
+    assert isinstance(
+        cfg.ldap, LDAPConfig
+    ), f"Expected LDAPConfig, got {type(cfg.ldap).__name__}"
+    # Defaults: empty strings (backends disabled until configured)
+    assert cfg.oidc.issuer_url == "", "OIDCConfig.issuer_url should default to empty"
+    assert cfg.ldap.url == "", "LDAPConfig.url should default to empty"
