@@ -3,7 +3,7 @@
 
 **Version:** 1.0.0
 **Last updated:** 2026-02-28
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ⬜
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ⬜
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1189,3 +1189,139 @@ Removed incorrect "No output sanitization deferred to Phase 12" claim from `TLDR
 `legionforge_oidc_client_secret`, `legionforge_github_client_secret`, `legionforge_ldap_bind_password`.
 
 **Test delta:** 430 → 443 smoke tests (+13 Phase 12 tests).
+
+---
+
+## Phase 13 — Kerberos Full Implementation, Redis-Backed State, Multi-Datacenter ✅ COMPLETE
+
+**Completed:** 2026-02-28 — 453/453 smoke tests passing (+10 Phase 13 tests).
+
+**Goal:** Close the last three Phase 12 deferred items:
+1. **Kerberos** — Replace `NotImplementedError` scaffold with real GSSAPI Negotiate flow
+   (graceful `None` fallback when `gssapi` package not installed; no crash).
+2. **Redis-backed state** — Optional Redis layer for stream tokens and rate-limiter counters,
+   activated by `settings.gateway.redis_url`; transparent DB fallback when empty.
+3. **Multi-datacenter** — `docker-compose.multi-instance.yml` (2 gateway replicas + Redis +
+   Nginx); update `docs/SCALING.md` with concrete Redis integration steps.
+
+### 13.1 Kerberos Real Implementation (`src/gateway/backends/kerberos.py`)
+
+**Before (Phase 12 scaffold):** `authenticate()` always raises `NotImplementedError`.
+**After (Phase 13):** Real GSSAPI accept-security-context flow with graceful fallback.
+
+```
+Flow (when gssapi installed + KDC configured):
+  1. Decode base64 SPNEGO token from the Negotiate credential.
+  2. Acquire server credentials from the keytab file
+     (path: settings.gateway.kerberos.keytab_path, default /etc/legionforge/http.keytab).
+  3. Call gssapi.SecurityContext.step(token) to verify the SPNEGO exchange.
+  4. Extract client principal name (e.g. alice@EXAMPLE.COM).
+  5. Strip realm → username = "alice".
+  6. Upsert gateway_users row with api_key_hash='[KERBEROS-NO-KEY]' sentinel.
+  7. Return {user_id: "kerberos:{principal}", username, daily_token_limit}.
+
+Graceful fallback (when gssapi not installed):
+  - Log a WARNING on first call.
+  - Return None (not raise) → caller gets 401, not 500.
+  - Smoke tests verify this path without a real KDC.
+```
+
+`KerberosConfig` added to `GatewayConfig`:
+```yaml
+gateway:
+  kerberos:
+    keytab_path: /etc/legionforge/http.keytab  # service keytab
+    service_name: HTTP                          # GSSAPI service name
+    realm: ""                                  # e.g. EXAMPLE.COM — empty = KDC default
+```
+
+### 13.2 Redis-Backed Stream Token Store (`src/gateway/state.py`)
+
+`src/gateway/state.py` provides an optional Redis layer for the three operations that
+need to be globally consistent across multiple gateway instances:
+
+| Operation | DB path (current) | Redis path (new, opt-in) |
+|---|---|---|
+| `create_stream_token` | `INSERT INTO stream_tokens` | `SETEX stream_token:{tok} 1800 "{task_id}:{user_id}"` |
+| `resolve_stream_token` | `SELECT … WHERE expires_at > NOW()` | `GET stream_token:{tok}` |
+| `delete_stream_token` | `DELETE FROM stream_tokens` | `DEL stream_token:{tok}` |
+
+Activation: set `gateway.redis_url: redis://localhost:6379/0` in the hardware YAML
+(or `REDIS_URL` env var). When empty, the existing DB path is used unchanged — no
+performance impact for single-instance deployments.
+
+`GatewayConfig` additions:
+```python
+redis_url: str = ""      # empty = DB mode; "redis://..." = Redis mode
+```
+
+### 13.3 Multi-Datacenter Deployment (`docker-compose.multi-instance.yml`)
+
+```
+┌─────────┐    ┌─────────┐
+│Gateway 1│    │Gateway 2│   ← Two replicas behind Nginx
+└────┬────┘    └────┬────┘
+     │              │
+     └──────┬───────┘
+            ▼
+      ┌──────────┐
+      │  Redis   │  ← Shared stream tokens + rate counters
+      └────┬─────┘
+           │
+     ┌─────▼──────┐
+     │ PostgreSQL │  ← Tasks, users, audit, checkpoints
+     └────────────┘
+```
+
+`SCALING.md` updated with:
+- Redis install + connection string
+- How to set `redis_url` in the hardware profile
+- Load balancer sticky-session note (not needed — stream tokens are Redis-global)
+- Health check probe for Redis in lifespan
+
+### 13.4 New/Modified Files
+
+| File | Change |
+|---|---|
+| `src/gateway/backends/kerberos.py` | Real GSSAPI flow + graceful fallback |
+| `src/gateway/state.py` | Redis stream token store (opt-in) |
+| `src/gateway/auth.py` | Use `state.create/resolve/delete_stream_token` |
+| `src/gateway/app.py` | Redis connect/close in lifespan |
+| `config/settings.py` | `KerberosConfig`, `redis_url` in `GatewayConfig` |
+| `config/hardware_profiles/mac_m4_mini_16gb.yaml` | `kerberos:` + `redis_url:` sections |
+| `requirements.txt` | `redis[asyncio]~=5.0`, `fakeredis~=2.23` |
+| `docker-compose.multi-instance.yml` | 2-replica example |
+| `docs/SCALING.md` | Redis setup guide |
+| `tests/test_smoke.py` | +10 tests → 453 |
+
+### 13.5 New Keychain Items
+
+| Service | Purpose |
+|---|---|
+| `legionforge_kerberos_keytab_path` | Path to the HTTP service keytab file |
+
+### 13.6 Smoke Tests (+10 → 453)
+
+```
+test_p13_gateway_state_importable
+test_p13_redis_stream_token_create_resolve_delete   (fakeredis)
+test_p13_redis_stream_token_expired_returns_none    (fakeredis)
+test_p13_db_stream_token_store_importable
+test_p13_kerberos_backend_graceful_when_no_gssapi
+test_p13_kerberos_backend_returns_none_not_raises
+test_p13_kerberos_config_in_gateway_config
+test_p13_gateway_config_has_redis_url
+test_p13_multi_instance_compose_exists
+test_p13_scaling_md_mentions_redis
+```
+
+**Test delta:** 443 → 453 smoke tests (+10 Phase 13 tests).
+
+---
+
+## Phase 14 — Rate-Limiter Redis Counters, Kerberos Live KDC, Advanced Observability ⬜ Next
+
+**Goal:**
+1. **Rate-limiter Redis counters** — Per-user daily budget checks via Redis `INCRBY` with daily TTL key; eliminates per-instance counter drift under concurrent load across replicas.
+2. **Kerberos with live KDC** — End-to-end integration test using MIT Kerberos or Heimdal; verify keytab load, SPNEGO accept, principal extraction, user provisioning.
+3. **Advanced observability** — Per-instance metrics endpoint (Prometheus format), Redis connection health in `/status`, request trace IDs propagated through LangGraph runs.

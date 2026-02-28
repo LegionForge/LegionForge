@@ -27,9 +27,10 @@ Supported ``auth_provider`` values
                 Requires settings.gateway.ldap to be configured.
                 Uses Basic auth (Authorization: Basic <base64>).
 
-  "kerberos"  — KerberosBackend (scaffold)
-                Raises NotImplementedError on every auth call until
-                Phase 13 completes the GSSAPI implementation.
+  "kerberos"  — KerberosBackend (Phase 13)
+                Real GSSAPI Negotiate token validation against a service keytab.
+                Requires settings.gateway.kerberos to be configured.
+                Gracefully returns None (not crash) when gssapi not installed.
 
 Usage (in gateway lifespan)
 ────────────────────────────
@@ -81,6 +82,13 @@ def load_backend_from_settings(settings: object) -> AuthBackend:
             ldap_cfg = getattr(getattr(settings, "gateway", None), "ldap", None)
             return LDAPBackend(ldap_cfg)
         case "kerberos":
+            krb_cfg = getattr(getattr(settings, "gateway", None), "kerberos", None)
+            if krb_cfg is not None:
+                return KerberosBackend(
+                    keytab_path=krb_cfg.keytab_path,
+                    service_name=krb_cfg.service_name,
+                    realm=krb_cfg.realm,
+                )
             return KerberosBackend()
         case _:
             raise ValueError(

@@ -9,7 +9,7 @@ Public exports:
   OIDCBackend        — OIDC/JWKS for Google, Okta, Auth0, Keycloak, Azure AD…
   GitHubOAuthBackend — GitHub opaque OAuth token → /user API
   LDAPBackend        — LDAP / Active Directory bind+search+rebind
-  KerberosBackend    — Kerberos/GSSAPI scaffold (Phase 13+)
+  KerberosBackend    — Kerberos/GSSAPI real implementation (Phase 13; graceful fallback)
 
   load_backend_from_settings — factory: reads settings.gateway.auth_provider
 """

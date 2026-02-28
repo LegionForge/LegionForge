@@ -164,6 +164,71 @@ replaced globally — no routes need changes.
 
 ---
 
+## Kerberos / GSSAPI Setup (Phase 13)
+
+To enable Kerberos authentication (`auth_provider: kerberos`):
+
+**1. Prerequisites:**
+```bash
+# macOS — install MIT Kerberos tools
+brew install krb5
+
+# Linux (Debian/Ubuntu)
+apt-get install krb5-user libkrb5-dev
+
+# Install gssapi Python package (after Kerberos dev libs are present)
+pip install gssapi
+```
+
+**2. Configure `/etc/krb5.conf`** (all gateway hosts):
+```ini
+[libdefaults]
+    default_realm = EXAMPLE.COM
+    dns_lookup_realm = false
+    dns_lookup_kdc = true
+
+[realms]
+    EXAMPLE.COM = {
+        kdc = kdc.example.com
+        admin_server = kdc.example.com
+    }
+
+[domain_realm]
+    .example.com = EXAMPLE.COM
+    example.com  = EXAMPLE.COM
+```
+
+**3. Create the HTTP service principal and keytab:**
+```bash
+# On the KDC server (MIT krb5):
+kadmin.local -q "addprinc -randkey HTTP/legionforge.example.com@EXAMPLE.COM"
+kadmin.local -q "ktadd -k /etc/legionforge/http.keytab HTTP/legionforge.example.com@EXAMPLE.COM"
+
+# Copy the keytab to all gateway hosts at /etc/legionforge/http.keytab
+# (owner: root:gateway, mode: 0640)
+```
+
+**4. Update the hardware profile YAML:**
+```yaml
+gateway:
+  auth_provider: kerberos
+  kerberos:
+    keytab_path: /etc/legionforge/http.keytab
+    service_name: HTTP
+    realm: EXAMPLE.COM
+    daily_token_limit: 100000
+```
+
+**5. Restart the gateway.** Clients presenting a valid Kerberos ticket via
+`Authorization: Negotiate <token>` will be authenticated and provisioned
+automatically on first login.
+
+**Graceful fallback:** When `gssapi` is not installed, `KerberosBackend.authenticate()`
+logs one WARNING and returns `None` (caller receives 401, not 500).  This allows
+the gateway to start safely on hosts without Kerberos infrastructure.
+
+---
+
 ## When to Add Redis
 
 The current DB-backed approach is correct for:
@@ -176,15 +241,106 @@ Add Redis when:
   lock contention becomes measurable (profile first with `pg_stat_activity`)
 - You want sub-millisecond stream token lookups at high volume
 
-### What Changes with Redis
+### What Changes with Redis (Phase 13)
 
 | Component | Without Redis (current) | With Redis |
 |-----------|------------------------|------------|
-| `stream_tokens` | PostgreSQL table, 30-min TTL via `expires_at` | `SETEX stream:{token} 1800 "{task_id}:{user_id}"` |
-| `DailyCounter._reserved_tokens` | Per-process asyncio lock | Redis `INCR/DECR` with TTL key per `(provider, date)` |
-| Per-user budget check | `SUM(tokens) FROM api_usage WHERE user_id=... AND date=today` | Redis `INCRBY usage:{user_id}:{date}` with daily TTL |
+| `stream_tokens` | PostgreSQL table, 30-min TTL via `expires_at` | `SETEX lf:stream_token:{tok} 1800 "{task_id}:{user_id}"` |
+| Per-user budget check | `SUM(tokens) FROM api_usage WHERE user_id=... AND date=today` | PostgreSQL (unchanged; Redis for counters is Phase 14+) |
 
 The rest of the stack (auth, task queue, checkpoints, Guardian) is unaffected.
+
+### Activating Redis (Phase 13)
+
+**1. Install and start Redis:**
+```bash
+# macOS
+brew install redis
+brew services start redis
+
+# Docker
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+```
+
+**2. Set the connection URL** (choose one):
+
+Option A — Hardware profile YAML (`config/hardware_profiles/mac_m4_mini_16gb.yaml`):
+```yaml
+gateway:
+  redis_url: redis://localhost:6379/0
+```
+
+Option B — Environment variable (overrides YAML):
+```bash
+export REDIS_URL=redis://localhost:6379/0
+```
+
+**3. Restart the gateway** (`make gateway-start` or `docker compose up -d`).
+
+The gateway logs `[state] Redis connected: redis://...` on startup when the
+connection succeeds.  It logs `[state] Redis URL not configured` and falls
+back to DB-backed tokens when the URL is empty.
+
+**4. Verify:**
+```bash
+redis-cli keys "lf:stream_token:*"  # shows active stream tokens
+```
+
+---
+
+## Multi-Instance Deployment (Phase 13)
+
+A complete 2-replica example ships in `docker-compose.multi-instance.yml`:
+
+```bash
+# Build the gateway image (if not already done)
+make build-gateway
+
+# Set required secrets
+export POSTGRES_PASSWORD=<your-db-password>
+export TASK_TOKEN_SECRET=<shared-secret-same-on-all-instances>
+
+# Start: 2× gateway replicas + Redis + Nginx load balancer
+docker compose -f docker-compose.multi-instance.yml up -d
+
+# Scale to 3 replicas
+docker compose -f docker-compose.multi-instance.yml up -d --scale gateway=3
+
+# Health check through the load balancer
+curl http://localhost/health
+```
+
+The Nginx config (`config/nginx/nginx.multi-instance.conf`) uses round-robin
+across all gateway replicas.  **No sticky sessions are needed** because stream
+tokens are stored in shared Redis — any replica can serve any client's SSE stream.
+
+### Architecture
+
+```
+                     ┌─────────────────────┐
+                     │  Nginx :80 / :443   │
+                     │  (round-robin)      │
+                     └─────────┬───────────┘
+                               │
+                 ┌─────────────┴──────────────┐
+                 ▼                            ▼
+        ┌─────────────────┐        ┌─────────────────┐
+        │  Gateway :8080  │        │  Gateway :8080  │
+        │  (replica 1)    │        │  (replica 2)    │
+        └────────┬────────┘        └────────┬────────┘
+                 │                          │
+                 └──────────┬───────────────┘
+                            │
+            ┌───────────────┼───────────────┐
+            ▼               ▼               ▼
+     ┌──────────┐   ┌──────────────┐  ┌──────────────┐
+     │  Redis   │   │  PostgreSQL  │  │   Guardian   │
+     │ :6379    │   │  :5432       │  │   :9766      │
+     │ (tokens) │   │  (tasks,     │  │  (one per    │
+     └──────────┘   │   users,     │  │   host or    │
+                    │   audit)     │  │   shared)    │
+                    └──────────────┘  └──────────────┘
+```
 
 ---
 
@@ -192,7 +348,9 @@ The rest of the stack (auth, task queue, checkpoints, Guardian) is unaffected.
 
 - [ ] `TASK_TOKEN_SECRET` is the same value on all instances (JWT validation)
 - [ ] `POSTGRES_PASSWORD` points to the same DB on all instances
+- [ ] `REDIS_URL` (or `gateway.redis_url` in YAML) points to shared Redis
 - [ ] All instances can reach PostgreSQL (connection pool per process)
-- [ ] Load balancer has SSE buffering disabled (`proxy_buffering off` / `flush_interval -1`)
+- [ ] Nginx (or other LB) has SSE buffering disabled (`proxy_buffering off`)
 - [ ] `make db-init` was run once (idempotent — safe to run again on new instances)
 - [ ] Guardian sidecar (:9766) is reachable from all instances (or deploy one per host)
+- [ ] Redis is persistent (AOF / RDB) if stream token loss on restart is unacceptable

@@ -5725,3 +5725,198 @@ def test_p12_gateway_config_has_oidc_and_ldap_sections():
     # Defaults: empty strings (backends disabled until configured)
     assert cfg.oidc.issuer_url == "", "OIDCConfig.issuer_url should default to empty"
     assert cfg.ldap.url == "", "LDAPConfig.url should default to empty"
+
+
+# ── Phase 13 smoke tests ──────────────────────────────────────────────────────
+
+
+def test_p13_gateway_state_importable():
+    """src.gateway.state module imports cleanly (Phase 13 Redis state layer)."""
+    import src.gateway.state as state
+
+    assert hasattr(state, "init_redis"), "state missing init_redis"
+    assert hasattr(state, "close_redis"), "state missing close_redis"
+    assert hasattr(state, "create_stream_token"), "state missing create_stream_token"
+    assert hasattr(state, "resolve_stream_token"), "state missing resolve_stream_token"
+    assert hasattr(state, "delete_stream_token"), "state missing delete_stream_token"
+    assert hasattr(state, "redis_mode"), "state missing redis_mode"
+    # Default mode: DB (no Redis configured at module load)
+    assert (
+        state.redis_mode() is False
+    ), "redis_mode() should be False before init_redis()"
+
+
+def test_p13_redis_stream_token_create_resolve_delete():
+    """Redis-backed stream token round-trip works with fakeredis (no daemon required)."""
+    import asyncio
+    import fakeredis.aioredis as fakeredis_async
+    import src.gateway.state as state
+
+    async def _run():
+        fake = fakeredis_async.FakeRedis(decode_responses=True)
+        # Manually inject fakeredis client for test isolation
+        state._redis = fake
+        try:
+            token = await state.create_stream_token("task-abc", "user-xyz")
+            assert (
+                isinstance(token, str) and len(token) > 0
+            ), "Token must be non-empty string"
+
+            result = await state.resolve_stream_token(token)
+            assert (
+                result is not None
+            ), "resolve_stream_token returned None for valid token"
+            task_id, user_id = result
+            assert task_id == "task-abc", f"task_id mismatch: {task_id!r}"
+            assert user_id == "user-xyz", f"user_id mismatch: {user_id!r}"
+
+            await state.delete_stream_token(token)
+            after_delete = await state.resolve_stream_token(token)
+            assert after_delete is None, "Token should be None after deletion"
+        finally:
+            state._redis = None  # restore DB mode
+            await fake.aclose()
+
+    asyncio.run(_run())
+
+
+def test_p13_redis_stream_token_expired_returns_none():
+    """Expired Redis stream tokens (TTL=1s) resolve to None."""
+    import asyncio
+    import time
+    import fakeredis.aioredis as fakeredis_async
+    import src.gateway.state as state
+
+    async def _run():
+        fake = fakeredis_async.FakeRedis(decode_responses=True)
+        state._redis = fake
+        original_ttl = state._STREAM_TOKEN_TTL
+        state._STREAM_TOKEN_TTL = 1  # 1 second for test
+        try:
+            token = await state.create_stream_token("task-exp", "user-exp")
+            # Verify it resolves before expiry
+            result = await state.resolve_stream_token(token)
+            assert result is not None, "Token should resolve before TTL"
+
+            # Wait for TTL to expire in fakeredis
+            await asyncio.sleep(1.1)
+            expired = await state.resolve_stream_token(token)
+            assert expired is None, "Token should be None after TTL expiry"
+        finally:
+            state._STREAM_TOKEN_TTL = original_ttl
+            state._redis = None
+            await fake.aclose()
+
+    asyncio.run(_run())
+
+
+def test_p13_db_stream_token_store_importable():
+    """DB stream token functions are importable from src.database (DB fallback path)."""
+    from src.database import (
+        create_stream_token,
+        resolve_stream_token,
+        delete_stream_token,
+    )
+
+    assert callable(create_stream_token), "create_stream_token must be callable"
+    assert callable(resolve_stream_token), "resolve_stream_token must be callable"
+    assert callable(delete_stream_token), "delete_stream_token must be callable"
+
+
+def test_p13_kerberos_backend_graceful_when_no_gssapi():
+    """KerberosBackend returns None (not raises) when gssapi package is absent."""
+    import asyncio
+    from src.gateway.backends.kerberos import KerberosBackend, _GSSAPI_AVAILABLE
+
+    # This test verifies the graceful fallback path.
+    # If gssapi IS installed, the test still passes (just tests a different branch).
+    if not _GSSAPI_AVAILABLE:
+        kb = KerberosBackend()
+        result = asyncio.run(kb.authenticate("faketoken", scheme="negotiate"))
+        assert (
+            result is None
+        ), f"KerberosBackend must return None when gssapi absent, got {result!r}"
+    else:
+        # gssapi is installed — attempt with garbage token (should return None, not crash)
+        import pytest
+
+        kb = KerberosBackend(keytab_path="/nonexistent/keytab")
+        result = asyncio.run(kb.authenticate("aW52YWxpZA==", scheme="negotiate"))
+        assert (
+            result is None
+        ), f"KerberosBackend must return None on bad token/keytab, got {result!r}"
+
+
+def test_p13_kerberos_backend_returns_none_not_raises():
+    """KerberosBackend.authenticate() never raises; always returns dict or None."""
+    import asyncio
+    from src.gateway.backends.kerberos import KerberosBackend
+
+    kb = KerberosBackend()
+    # Wrong scheme → None (not raise)
+    result = asyncio.run(kb.authenticate("sometoken", scheme="bearer"))
+    assert result is None, f"Wrong scheme must return None, got {result!r}"
+
+    # Empty credential → None (not raise)
+    result2 = asyncio.run(kb.authenticate("", scheme="negotiate"))
+    assert result2 is None, f"Empty credential must return None, got {result2!r}"
+
+    # Malformed base64 → None (not raise)
+    result3 = asyncio.run(kb.authenticate("!!! not base64 !!!", scheme="negotiate"))
+    assert result3 is None, f"Bad base64 must return None, got {result3!r}"
+
+
+def test_p13_kerberos_config_in_gateway_config():
+    """GatewayConfig includes kerberos sub-model with expected defaults (Phase 13)."""
+    from config.settings import GatewayConfig, KerberosConfig
+
+    cfg = GatewayConfig()
+    assert hasattr(cfg, "kerberos"), "GatewayConfig missing 'kerberos' field"
+    assert isinstance(
+        cfg.kerberos, KerberosConfig
+    ), f"Expected KerberosConfig, got {type(cfg.kerberos).__name__}"
+    assert (
+        cfg.kerberos.keytab_path == "/etc/legionforge/http.keytab"
+    ), f"Unexpected default keytab_path: {cfg.kerberos.keytab_path!r}"
+    assert (
+        cfg.kerberos.service_name == "HTTP"
+    ), f"Unexpected default service_name: {cfg.kerberos.service_name!r}"
+    assert cfg.kerberos.daily_token_limit == 100000
+
+
+def test_p13_gateway_config_has_redis_url():
+    """GatewayConfig includes redis_url field defaulting to empty string (Phase 13)."""
+    from config.settings import GatewayConfig
+
+    cfg = GatewayConfig()
+    assert hasattr(cfg, "redis_url"), "GatewayConfig missing 'redis_url' field"
+    assert (
+        cfg.redis_url == ""
+    ), f"redis_url should default to empty string, got {cfg.redis_url!r}"
+
+
+def test_p13_multi_instance_compose_exists():
+    """docker-compose.multi-instance.yml exists and contains the gateway service."""
+    from pathlib import Path
+
+    compose = Path(__file__).parent.parent / "docker-compose.multi-instance.yml"
+    assert compose.exists(), f"docker-compose.multi-instance.yml not found at {compose}"
+    content = compose.read_text()
+    assert "gateway:" in content, "Compose file missing 'gateway:' service"
+    assert "redis:" in content, "Compose file missing 'redis:' service"
+    assert "nginx:" in content, "Compose file missing 'nginx:' service"
+    assert "REDIS_URL" in content, "Compose file missing REDIS_URL environment variable"
+
+
+def test_p13_scaling_md_mentions_redis():
+    """docs/SCALING.md documents the Redis integration path (Phase 13)."""
+    from pathlib import Path
+
+    scaling = Path(__file__).parent.parent / "docs" / "SCALING.md"
+    assert scaling.exists(), "docs/SCALING.md not found"
+    content = scaling.read_text()
+    assert "redis_url" in content, "SCALING.md must document the redis_url config key"
+    assert "REDIS_URL" in content, "SCALING.md must document the REDIS_URL env var"
+    assert (
+        "KerberosBackend" in content or "Kerberos" in content
+    ), "SCALING.md must mention Kerberos setup"
