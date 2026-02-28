@@ -63,8 +63,10 @@ ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate counters
 fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
 
-# ── Channel Connectors (Phase 8) ─────────────────────────────
-discord.py~=2.3                 # Discord bot connector
+# ── Channel Connectors (Phase 8 / Phase 16) ──────────────────
+discord.py~=2.3                 # Discord bot connector (Phase 8)
+python-telegram-bot~=21.0       # Telegram bot connector (Phase 16)
+slack-bolt~=1.18                # Slack Socket Mode connector (Phase 16)
 
 # ── Dev / Testing ────────────────────────────────────────────
 pytest~=8.0

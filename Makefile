@@ -235,11 +235,26 @@ sandbox-build:
 	docker build -f Dockerfile.sandbox -t legionforge-sandbox:latest .
 	@echo "✅ legionforge-sandbox:latest built"
 
-# ── Discord Connector (Phase 8) ────────────────────────────────
+# ── Channel Connectors (Phase 8 / Phase 16) ────────────────────
 .PHONY: discord-start
 discord-start:
 	@echo "Starting Discord connector (gateway=$(DISCORD_GATEWAY_URL:-http://localhost:8080)) ..."
 	@cd $(BASE) && $(PYTHON) -m src.connectors.discord
+
+.PHONY: telegram-start
+telegram-start:
+	@echo "Starting Telegram connector (gateway=$(TELEGRAM_GATEWAY_URL:-http://localhost:8080)) ..."
+	@cd $(BASE) && $(PYTHON) -m src.connectors.telegram
+
+.PHONY: slack-start
+slack-start:
+	@echo "Starting Slack Socket Mode connector (gateway=$(SLACK_GATEWAY_URL:-http://localhost:8080)) ..."
+	@cd $(BASE) && $(PYTHON) -m src.connectors.slack
+
+.PHONY: webhook-start
+webhook-start:
+	@echo "Starting Webhook connector (port=$(WEBHOOK_PORT:-8081) gateway=$(WEBHOOK_GATEWAY_URL:-http://localhost:8080)) ..."
+	@cd $(BASE) && $(PYTHON) -m src.connectors.webhook
 
 .PHONY: health-token
 health-token:

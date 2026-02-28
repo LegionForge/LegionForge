@@ -274,3 +274,31 @@ pentest:
   synthetic_db_name: "legionforge_pentest"
   report_format: "json"            # "json" | "markdown" | "html"
   stub_ollama_port: 11435          # separate port from real Ollama (11434)
+
+# ── Channel Connectors (Phase 16) ────────────────────────────────────────────
+# Configuration for Telegram, Slack, and generic Webhook connectors.
+# Each connector runs as a separate process; see make telegram-start / slack-start / webhook-start.
+# Credentials are stored in macOS Keychain (see setup instructions in each connector module).
+connectors:
+  telegram:
+    gateway_url: http://localhost:8080
+    agent_type: orchestrator
+    prefix: "/"
+    max_edit_interval: 2.0
+    # Keychain: legionforge_telegram_token, legionforge_telegram_api_key
+    # Env override: TELEGRAM_ALLOWED_CHATS=123456789,-987654321
+
+  slack:
+    gateway_url: http://localhost:8080
+    agent_type: orchestrator
+    prefix: "!"
+    max_edit_interval: 2.0
+    # Keychain: legionforge_slack_bot_token, legionforge_slack_app_token, legionforge_slack_api_key
+    # Env override: SLACK_ALLOWED_CHANNELS=C01234567,C09876543
+
+  webhook:
+    gateway_url: http://localhost:8080
+    agent_type: orchestrator
+    port: 8081
+    # Keychain: legionforge_webhook_api_key, legionforge_webhook_inbound_secret (optional)
+    # inbound_secret empty = HMAC verification disabled (not recommended for internet-exposed endpoints)

@@ -3,7 +3,7 @@
 
 **Version:** 1.0.0
 **Last updated:** 2026-02-28
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ✅ | Phase 15 ⬜
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ✅ | Phase 15 ✅ | Phase 16 ✅
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1480,4 +1480,140 @@ test_p15_ui_has_copy_function
 
 ---
 
-## Phase 16 — Channel Connectors ⬜ Next
+## Phase 16 — Channel Connectors ✅ Complete
+
+**Goal:** Add Telegram and Slack connector bots (matching the Discord connector pattern)
+and a generic inbound/outbound webhook connector so any HTTP-capable tool (GitHub webhooks,
+Zapier, Make/Integromat, IFTTT, cron jobs) can submit tasks to the gateway and receive
+results via callback POST.
+
+**Test count:** 484/484 smoke tests (+13 from Phase 15 baseline of 471).
+
+---
+
+### Scope
+
+| Deliverable | File | Notes |
+|---|---|---|
+| Shared connector helpers | `src/connectors/base.py` | `_load_secret()` + `_consume_sse()` used by all connectors |
+| Telegram connector | `src/connectors/telegram.py` | `python-telegram-bot` polling; mirrors Discord pattern |
+| Slack connector | `src/connectors/slack.py` | `slack-bolt` Socket Mode; no public URL required |
+| Webhook connector | `src/connectors/webhook.py` | FastAPI :8081; inbound task POST → SSE → callback POST; HMAC signing |
+| ConnectorsConfig settings | `config/settings.py` | `TelegramConfig`, `SlackConfig`, `WebhookConfig`, `ConnectorsConfig` |
+| Hardware profile | `config/hardware_profiles/mac_m4_mini_16gb.yaml` | `connectors:` section |
+| Requirements | `requirements.txt` | `python-telegram-bot~=21.0`, `slack-bolt~=1.18` |
+| Makefile targets | `Makefile` | `telegram-start`, `slack-start`, `webhook-start` |
+| Smoke tests | `tests/test_smoke.py` | +13 → 484 total |
+
+---
+
+### Design
+
+#### Shared helpers (`src/connectors/base.py`)
+
+All three connectors share identical secret-loading and SSE-parsing logic, extracted
+from `discord.py` into a shared module:
+
+```
+_load_secret(keychain_service, env_var) → str
+_consume_sse(client, stream_url, stream_token, gateway_url) → AsyncGenerator[dict]
+```
+
+#### Telegram connector (`src/connectors/telegram.py`)
+
+```
+Flow:
+  Telegram message starting with PREFIX (default "/")
+    → POST /tasks (gateway, as telegram-bot user)
+    → subscribe SSE stream
+    → edit reply message every MAX_EDIT_INTERVAL seconds
+    → final edit on task_complete / task_error
+
+Keychain:
+  legionforge_telegram_token    — Bot token from BotFather
+  legionforge_telegram_api_key  — Gateway Bearer API key
+
+Env overrides:
+  TELEGRAM_GATEWAY_URL, TELEGRAM_ALLOWED_CHATS, TELEGRAM_PREFIX,
+  TELEGRAM_MAX_EDIT_INTERVAL, TELEGRAM_AGENT_TYPE
+
+Message limit: 4096 chars (Telegram API limit)
+```
+
+#### Slack connector (`src/connectors/slack.py`)
+
+```
+Flow:
+  Slack message/app_mention starting with PREFIX (default "!")
+    → POST /tasks (gateway, as slack-bot user)
+    → subscribe SSE stream
+    → update Slack message every MAX_EDIT_INTERVAL seconds
+    → final update on task_complete / task_error
+
+Socket Mode: no public URL needed; connects via Slack WebSocket API.
+Requires: App-level token (xapp-...) with connections:write scope.
+
+Keychain:
+  legionforge_slack_bot_token  — Bot token (xoxb-...)
+  legionforge_slack_app_token  — App-level token for Socket Mode (xapp-...)
+  legionforge_slack_api_key    — Gateway Bearer API key
+
+Env overrides:
+  SLACK_GATEWAY_URL, SLACK_ALLOWED_CHANNELS, SLACK_PREFIX,
+  SLACK_MAX_EDIT_INTERVAL, SLACK_AGENT_TYPE
+```
+
+#### Webhook connector (`src/connectors/webhook.py`)
+
+```
+Serves FastAPI on :8081 (WEBHOOK_PORT).
+
+POST /inbound
+  Body: {task: str, callback_url: str, agent_type?: str, secret?: str}
+  1. Verify HMAC-SHA256 X-Hub-Signature-256 header (when inbound_secret configured)
+  2. Submit task to gateway (as webhook-bot user)
+  3. Stream SSE to completion
+  4. POST {task_id, status, result, elapsed_seconds} to callback_url
+  Returns 202 immediately with {task_id, message: "queued"}
+
+GET /health
+  Returns {status: "ok", gateway_url: "..."}
+
+Keychain:
+  legionforge_webhook_api_key       — Gateway Bearer API key
+  legionforge_webhook_inbound_secret — HMAC secret for inbound verification (optional)
+```
+
+---
+
+### New Keychain Items
+
+| Service | Purpose |
+|---|---|
+| `legionforge_telegram_token` | Telegram bot token from BotFather |
+| `legionforge_telegram_api_key` | Gateway Bearer API key for telegram-bot user |
+| `legionforge_slack_bot_token` | Slack bot token (xoxb-...) |
+| `legionforge_slack_app_token` | Slack app-level token for Socket Mode (xapp-...) |
+| `legionforge_slack_api_key` | Gateway Bearer API key for slack-bot user |
+| `legionforge_webhook_api_key` | Gateway Bearer API key for webhook-bot user |
+| `legionforge_webhook_inbound_secret` | HMAC-SHA256 secret for inbound webhook verification |
+
+---
+
+### Smoke Tests (+13 → 484)
+
+```
+test_p16_connector_base_importable
+test_p16_telegram_connector_importable
+test_p16_slack_connector_importable
+test_p16_webhook_connector_importable
+test_p16_load_secret_raises_on_missing_keychain_and_env
+test_p16_consume_sse_parses_token_event
+test_p16_consume_sse_parses_task_complete_event
+test_p16_consume_sse_parses_task_error_event
+test_p16_webhook_hmac_verify_valid_signature
+test_p16_webhook_hmac_verify_rejects_bad_signature
+test_p16_webhook_inbound_missing_callback_url_rejected
+test_p16_settings_has_connectors_section
+test_p16_hardware_profile_has_connectors_section
+```

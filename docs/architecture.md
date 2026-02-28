@@ -1,6 +1,6 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 15 complete
+**Version:** 1.0.0 — Phase 16 complete
 **Last updated:** 2026-02-28
 
 ---
@@ -785,6 +785,21 @@ How a tool gets from "code" to "allowed to run inside an agent".
                                 │  Cmd/Ctrl+Enter shortcut, auto-resize textarea, SSE retry,
                                 │  connection status dot, task result fetch via GET /tasks/{id}
   471 smoke tests        │  +8 from Phase 15
+
+  Phase 16 ✅  Channel Connectors
+  ─────────────────────────────────────────────────────────────────
+  src/connectors/base.py        │  Shared helpers: _load_secret (Keychain→env fallback),
+                                │  _consume_sse (SSE event parser), _run_task (submit+stream)
+  src/connectors/telegram.py    │  Telegram bot — python-telegram-bot polling; mirrors Discord;
+                                │  edit-in-place every MAX_EDIT_INTERVAL s; make telegram-start
+  src/connectors/slack.py       │  Slack Socket Mode — slack-bolt; no public URL required;
+                                │  update-in-place; make slack-start
+  src/connectors/webhook.py     │  Generic inbound/outbound webhook — FastAPI :8081;
+                                │  POST /inbound → HMAC verify → gateway → callback POST;
+                                │  GET /health; make webhook-start
+  config/settings.py            │  TelegramConfig, SlackConfig, WebhookConfig, ConnectorsConfig
+  requirements.txt              │  python-telegram-bot~=21.0, slack-bolt~=1.18 added
+  484 smoke tests        │  +13 from Phase 16
 ```
 
 ---
