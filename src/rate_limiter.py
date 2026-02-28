@@ -292,10 +292,16 @@ class RateLimiter:
         agent_name: str | None = None,
         success: bool = True,
         latency_ms: int | None = None,
+        user_id: str | None = None,
     ) -> None:
         """
         Record actual token usage after a call completes.
         Updates in-memory counter and persists to database.
+
+        Args:
+            user_id: Gateway user who submitted the task.  Passed by the worker
+                     so api_usage rows can be attributed to specific users for
+                     per-user budget accounting.  None for internal agent calls.
         """
         total = input_tokens + output_tokens
         await self._daily.add(
@@ -318,6 +324,7 @@ class RateLimiter:
                 agent_name=agent_name,
                 success=success,
                 latency_ms=latency_ms,
+                user_id=user_id,
             )
         except Exception as e:
             logger.warning(f"Failed to persist API usage to DB: {e}")
@@ -377,6 +384,53 @@ def estimate_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
         return len(enc.encode(text))
     except (KeyError, Exception):
         return len(text) // 4
+
+
+async def per_user_budget_check(
+    user_id: str,
+    provider: str,
+    estimated_tokens: int,
+    daily_limit: int,
+) -> None:
+    """
+    Enforce per-user daily token budget at task submission time.
+
+    Makes two DB reads to prevent TOCTOU races when multiple tasks are
+    submitted concurrently by the same user:
+
+      actual_used  — tokens already recorded in api_usage today (rows where
+                     user_id IS NOT NULL, written by the worker on completion)
+      in_flight    — estimated_tokens sum of queued/running tasks today
+
+    If actual_used + in_flight + estimated_tokens > daily_limit, the
+    submission is rejected before the task is queued.
+
+    Args:
+        user_id:          UUID string of the gateway user.
+        provider:         LLM provider for this task (e.g. "ollama", "openai").
+        estimated_tokens: Conservative token estimate for the incoming task.
+        daily_limit:      User's daily_token_limit from gateway_users.
+
+    Raises:
+        RuntimeError: If submitting this task would exceed the user's budget.
+    """
+    from src.database import get_user_actual_usage_today, get_user_inflight_tokens
+
+    actual_used = await get_user_actual_usage_today(user_id, provider)
+    in_flight = await get_user_inflight_tokens(user_id)
+
+    if actual_used + in_flight + estimated_tokens > daily_limit:
+        raise RuntimeError(
+            f"Per-user daily token budget exceeded for user '{user_id}'.\n"
+            f"  Used today: {actual_used:,} | In-flight: {in_flight:,} | "
+            f"Estimated: {estimated_tokens:,} | Daily limit: {daily_limit:,}"
+        )
+
+    logger.debug(
+        f"[per-user-budget] user={user_id} provider={provider} "
+        f"actual={actual_used} in_flight={in_flight} estimated={estimated_tokens} "
+        f"limit={daily_limit} — OK"
+    )
 
 
 def preflight_budget_check(estimated_tokens: int, provider: str) -> None:

@@ -192,20 +192,10 @@ gateway-start:
 
 .PHONY: create-user
 create-user:
-	@if [ -z "$(USERNAME)" ]; then echo "Usage: make create-user USERNAME=<name>"; exit 1; fi
-	@cd $(BASE) && $(PYTHON) -c "\
-import asyncio, secrets, sys; \
-from src.gateway.auth import hash_api_key; \
-from src.database import init_db, create_gateway_user; \
-async def run(): \
-    await init_db(); \
-    raw = secrets.token_urlsafe(32); \
-    hashed = hash_api_key(raw); \
-    user = await create_gateway_user('$(USERNAME)', hashed); \
-    print(f'Created user: $(USERNAME)'); \
-    print(f'API key (save this — it will not be shown again):'); \
-    print(f'  {raw}'); \
-asyncio.run(run())"
+	@if [ -z "$(USERNAME)" ]; then echo "Usage: make create-user USERNAME=<name> [DAILY_LIMIT=100000]"; exit 1; fi
+	@cd $(BASE) && $(PYTHON) -m src.cli.manage_users create-user \
+		--username "$(USERNAME)" \
+		$(if $(DAILY_LIMIT),--daily-limit $(DAILY_LIMIT),)
 
 # ── Phase 9: Tool Library ──────────────────────────────────────
 .PHONY: register-http-tools

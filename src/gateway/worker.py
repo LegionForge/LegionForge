@@ -5,7 +5,8 @@ Background task worker — polls the tasks table for queued tasks and runs
 the appropriate agent, streaming events to SSE subscribers via publish_event().
 
 At Phase 8 scale (household, 1–2 users) a single embedded asyncio.Task is
-sufficient.  Phase 10 adds a worker pool and queue-depth monitoring.
+sufficient.  Phase 10 adds per-user token attribution and a stream-token
+purge heartbeat (every 10 min) via purge_expired_stream_tokens().
 
 Usage (started by app.py lifespan):
     asyncio.create_task(task_worker())
@@ -24,6 +25,8 @@ from src.database import (
     mark_task_running,
     mark_task_complete,
     mark_task_failed,
+    record_api_usage,
+    purge_expired_stream_tokens,
 )
 from src.gateway.events import (
     build_sse_event,
@@ -137,12 +140,17 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 # ── Task runner ───────────────────────────────────────────────────────────────
 
 
+_PURGE_INTERVAL_SECONDS = 600  # purge expired stream tokens every 10 minutes
+_last_purge: float = 0.0
+
+
 async def run_task(task: dict) -> None:
     """Run a single claimed task end-to-end, updating DB and publishing events."""
     task_id = task["task_id"]
+    user_id = task.get("user_id")
+    agent_type = task.get("agent_type", "base_agent")
     logger.info(
-        f"[worker] Starting task_id={task_id} agent={task['agent_type']} "
-        f"user={task['user_id']}"
+        f"[worker] Starting task_id={task_id} agent={agent_type} " f"user={user_id}"
     )
 
     try:
@@ -153,6 +161,29 @@ async def run_task(task: dict) -> None:
             steps=steps,
             tokens=tokens,
         )
+
+        # Record actual token usage with user attribution so per-user budget
+        # queries (get_user_actual_usage_today) can count it.
+        # These rows are the ones with user_id set — internal LLM factory calls
+        # produce rows with user_id=NULL, so there is no double-count.
+        if tokens.get("input") or tokens.get("output"):
+            try:
+                from src.gateway.routes.tasks import _AGENT_TYPE_TO_PROVIDER
+
+                provider = _AGENT_TYPE_TO_PROVIDER.get(agent_type, "ollama")
+                await record_api_usage(
+                    provider=provider,
+                    model="unknown",
+                    input_tokens=tokens.get("input", 0),
+                    output_tokens=tokens.get("output", 0),
+                    run_id=task_id,
+                    agent_name=agent_type,
+                    success=True,
+                    user_id=user_id,
+                )
+            except Exception as usage_err:
+                logger.warning(f"[worker] Failed to record user usage: {usage_err}")
+
         await publish_event(task_id, build_task_complete_event(task_id))
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
 
@@ -173,10 +204,14 @@ async def task_worker() -> None:
     Main worker loop.  Polls the tasks table every second for queued tasks
     and runs them one at a time.
 
-    A single worker is appropriate for Phase 8 (household scale).
-    The FOR UPDATE SKIP LOCKED in claim_next_queued_task() is safe for
-    future multi-worker scenarios without code changes here.
+    A single worker is appropriate at household scale.  The FOR UPDATE SKIP
+    LOCKED in claim_next_queued_task() is safe for future multi-worker
+    scenarios without code changes here.
+
+    Phase 10 addition: purges expired stream tokens every 10 minutes as an
+    opportunistic heartbeat (not a hot path).
     """
+    global _last_purge
     logger.info("[worker] Task worker started")
     while True:
         try:
@@ -185,6 +220,16 @@ async def task_worker() -> None:
                 await run_task(task)
             else:
                 await asyncio.sleep(1)
+
+            # Opportunistic purge of expired stream tokens (every 10 min)
+            now = asyncio.get_event_loop().time()
+            if now - _last_purge >= _PURGE_INTERVAL_SECONDS:
+                try:
+                    await purge_expired_stream_tokens()
+                    _last_purge = now
+                except Exception as purge_err:
+                    logger.debug(f"[worker] Stream token purge failed: {purge_err}")
+
         except asyncio.CancelledError:
             logger.info("[worker] Task worker shutting down")
             break
