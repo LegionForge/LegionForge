@@ -374,6 +374,52 @@ class GatewayConfig(BaseModel):
     redis_url: str = ""
 
 
+class TelegramConfig(BaseModel):
+    """
+    Configuration for the Phase 16 Telegram connector.
+    See src/connectors/telegram.py for setup instructions.
+    """
+
+    gateway_url: str = "http://localhost:8080"
+    agent_type: str = "orchestrator"
+    prefix: str = "/"
+    max_edit_interval: float = 2.0
+
+
+class SlackConfig(BaseModel):
+    """
+    Configuration for the Phase 16 Slack Socket Mode connector.
+    See src/connectors/slack.py for setup instructions.
+    """
+
+    gateway_url: str = "http://localhost:8080"
+    agent_type: str = "orchestrator"
+    prefix: str = "!"
+    max_edit_interval: float = 2.0
+
+
+class WebhookConfig(BaseModel):
+    """
+    Configuration for the Phase 16 generic inbound/outbound webhook connector.
+    See src/connectors/webhook.py for setup instructions.
+    """
+
+    gateway_url: str = "http://localhost:8080"
+    agent_type: str = "orchestrator"
+    port: int = 8081
+
+
+class ConnectorsConfig(BaseModel):
+    """
+    Aggregated connector configuration for Phase 16 channel connectors.
+    All fields have safe defaults; configure via hardware profile YAML.
+    """
+
+    telegram: TelegramConfig = TelegramConfig()
+    slack: SlackConfig = SlackConfig()
+    webhook: WebhookConfig = WebhookConfig()
+
+
 class PentestConfig(BaseModel):
     """
     Configuration for the Phase 6 PentestAgent (air-gapped red-team bot).
@@ -438,6 +484,7 @@ class HardwareSettings(BaseModel):
     pentest: PentestConfig = PentestConfig()
     tools: ToolsConfig = ToolsConfig()
     gateway: GatewayConfig = GatewayConfig()
+    connectors: ConnectorsConfig = ConnectorsConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

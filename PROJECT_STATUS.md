@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–15 complete. Phase 16 — channel connectors — is next.
+**Status:** ✅ Phases 0–16 complete. No further phases planned.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,16 +17,19 @@
 
 ## Current State
 
-All phases through 14 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, and request trace ID middleware are operational.
+All phases through 16 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, and Telegram/Slack/Webhook channel connectors are operational.
 
 ```
-make test-smoke        → 471/471 passing (~3.4s, no external services required)
+make test-smoke        → 484/484 passing (~3.0s, no external services required)
 make test-integration  → 35 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green (Redis health when configured)
 make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
-make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
+make discord-start     → Discord bot connector
+make telegram-start    → Telegram bot connector (requires Keychain secrets)
+make slack-start       → Slack Socket Mode connector (requires Keychain secrets)
+make webhook-start     → Generic webhook connector (:8081)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 15 — polished web UI (localStorage key, history, cancel, tool blocks, timer)
+git log --oneline -1 → Phase 16 — Telegram, Slack, Webhook channel connectors
 ```
 
 ---
@@ -211,6 +214,16 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
 | Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
+
+### Fixed (Phase 16)
+
+| Item | Fix |
+|---|---|
+| No Telegram connector | `src/connectors/telegram.py` — `python-telegram-bot` polling; mirrors Discord pattern; edit-in-place with throttling; `make telegram-start` |
+| No Slack connector | `src/connectors/slack.py` — `slack-bolt` Socket Mode (no public URL); update-in-place with throttling; `make slack-start` |
+| No generic webhook connector | `src/connectors/webhook.py` — FastAPI :8081; `POST /inbound` accepts task+callback_url; HMAC-SHA256 verification (X-Hub-Signature-256); async background task → callback POST on complete; `make webhook-start` |
+| `_load_secret` + `_consume_sse` duplicated in Discord | Extracted to `src/connectors/base.py`; all four connectors share the same helpers |
+| No `ConnectorsConfig` in settings | `TelegramConfig`, `SlackConfig`, `WebhookConfig`, `ConnectorsConfig` added to `config/settings.py`; `connectors:` section in hardware profile YAML |
 
 ### Fixed (Phase 15)
 

@@ -33,8 +33,11 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 11 — Security Fix + Integration Tests | ✅ Complete | SecureToolNode fix, 35 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` |
 | 12 — Multi-Provider Auth Registry | ✅ Complete | `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold; multi-scheme `require_user`; `load_backend_from_settings()` |
 | 13 — Redis State Layer + Kerberos + Multi-Instance | ✅ Complete | Real GSSAPI `KerberosBackend`; optional Redis stream tokens (`state.py`); `docker-compose.multi-instance.yml` + Nginx config |
+| 14 — Redis Budgets + Prometheus + Request IDs | ✅ Complete | Redis INCRBY budget counters; `GET /metrics` Prometheus text; `X-Request-ID` middleware; Redis health in `/status` |
+| 15 — Polished Web UI | ✅ Complete | localStorage key+history, cancel button, tool call blocks, live timer, token count, copy, Cmd+Enter, SSE retry |
+| 16 — Channel Connectors | ✅ Complete | Telegram (polling), Slack (Socket Mode), Webhook (HMAC+async callback); shared `src/connectors/base.py` |
 
-**471/471 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway + multi-provider auth operational.**
+**484/484 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway + multi-provider auth + Telegram/Slack/Webhook connectors operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -221,7 +224,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-471 passed in ~3.2s
+484 passed in ~3.0s
 ```
 
 ---
@@ -257,7 +260,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 471 smoke tests, ~3.2s, no services required
+make test-smoke            # 484 smoke tests, ~3.0s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -308,7 +311,7 @@ make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s 
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
 **`make test-smoke` shows fewer than 453 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 15 (commit referencing 471 smoke tests).
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 16 (commit referencing 484 smoke tests).
 
 ---
 

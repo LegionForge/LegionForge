@@ -6171,3 +6171,231 @@ def test_p15_ui_has_copy_function():
     html = _ui_html()
     assert "copyOutput" in html, "Missing copyOutput function"
     assert "clipboard" in html, "copyOutput must use clipboard API"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 16 — Channel Connectors
+# Tests: connector imports, _load_secret error path, SSE parser, webhook HMAC,
+#        webhook input validation, settings/profile sections.
+# Total: +13 → 484
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p16_connector_base_importable():
+    """src.connectors.base exposes _load_secret, _consume_sse, _run_task."""
+    from src.connectors.base import _load_secret, _consume_sse, _run_task
+
+    assert callable(_load_secret)
+    assert callable(_consume_sse)
+    assert callable(_run_task)
+
+
+def test_p16_telegram_connector_importable():
+    """src.connectors.telegram imports without errors and exposes main()."""
+    import importlib
+
+    mod = importlib.import_module("src.connectors.telegram")
+    assert callable(mod.main)
+
+
+def test_p16_slack_connector_importable():
+    """src.connectors.slack imports without errors and exposes main()."""
+    import importlib
+
+    mod = importlib.import_module("src.connectors.slack")
+    assert callable(mod.main)
+
+
+def test_p16_webhook_connector_importable():
+    """src.connectors.webhook imports without errors and exposes main() + build_app()."""
+    from src.connectors.webhook import main, build_app
+
+    assert callable(main)
+    assert callable(build_app)
+
+
+def test_p16_load_secret_raises_on_missing_keychain_and_env():
+    """_load_secret raises RuntimeError when neither Keychain nor env var is set."""
+    import os
+    from src.connectors.base import _load_secret
+
+    env_var = "_P16_DEFINITELY_NOT_SET_XYZ_"
+    os.environ.pop(env_var, None)
+    try:
+        _load_secret("legionforge_p16_nonexistent_secret_xyz", env_var)
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as exc:
+        assert "legionforge_p16_nonexistent_secret_xyz" in str(exc)
+
+
+def test_p16_consume_sse_parses_token_event():
+    """_consume_sse correctly parses SSE token event lines."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    async def fake_aiter_lines():
+        for line in ["event: token", 'data: {"delta": "hello"}', ""]:
+            yield line
+
+    async def run():
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_lines = fake_aiter_lines
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+
+        from src.connectors.base import _consume_sse
+
+        events = []
+        async for ev in _consume_sse(
+            mock_client, "/tasks/abc/stream", "tok123", "http://localhost:8080"
+        ):
+            events.append(ev)
+        return events
+
+    events = asyncio.run(run())
+    assert len(events) == 1
+    assert events[0]["event"] == "token"
+    assert events[0]["data"]["delta"] == "hello"
+
+
+def test_p16_consume_sse_parses_task_complete_event():
+    """_consume_sse correctly parses task_complete event."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    async def fake_aiter_lines():
+        for line in ["event: task_complete", 'data: {"result_url": "/tasks/abc"}', ""]:
+            yield line
+
+    async def run():
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_lines = fake_aiter_lines
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+
+        from src.connectors.base import _consume_sse
+
+        events = []
+        async for ev in _consume_sse(
+            mock_client, "/tasks/abc/stream", "tok123", "http://localhost:8080"
+        ):
+            events.append(ev)
+        return events
+
+    events = asyncio.run(run())
+    assert len(events) == 1
+    assert events[0]["event"] == "task_complete"
+    assert events[0]["data"]["result_url"] == "/tasks/abc"
+
+
+def test_p16_consume_sse_parses_task_error_event():
+    """_consume_sse correctly parses task_error event."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    async def fake_aiter_lines():
+        for line in ["event: task_error", 'data: {"error": "something broke"}', ""]:
+            yield line
+
+    async def run():
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_lines = fake_aiter_lines
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+
+        from src.connectors.base import _consume_sse
+
+        events = []
+        async for ev in _consume_sse(
+            mock_client, "/tasks/abc/stream", "tok123", "http://localhost:8080"
+        ):
+            events.append(ev)
+        return events
+
+    events = asyncio.run(run())
+    assert len(events) == 1
+    assert events[0]["event"] == "task_error"
+    assert events[0]["data"]["error"] == "something broke"
+
+
+def test_p16_webhook_hmac_verify_valid_signature():
+    """_verify_hmac returns True for a correctly signed payload."""
+    import hashlib
+    import hmac as hmaclib
+    from src.connectors.webhook import _verify_hmac
+
+    secret = "test_secret_key"
+    body = b'{"task": "hello"}'
+    computed = hmaclib.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    sig_header = f"sha256={computed}"
+
+    assert _verify_hmac(body, sig_header, secret) is True
+
+
+def test_p16_webhook_hmac_verify_rejects_bad_signature():
+    """_verify_hmac returns False for an incorrect signature."""
+    from src.connectors.webhook import _verify_hmac
+
+    body = b'{"task": "hello"}'
+    assert _verify_hmac(body, "sha256=deadbeef", "correct_secret") is False
+    assert _verify_hmac(body, "invalid_format", "correct_secret") is False
+
+
+def test_p16_webhook_inbound_missing_callback_url_rejected():
+    """Webhook /inbound endpoint rejects requests without callback_url."""
+    import asyncio
+    from httpx import AsyncClient, ASGITransport
+    from src.connectors.webhook import build_app
+
+    app = build_app(api_key="test_api_key", inbound_secret="")
+
+    async def run():
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/inbound",
+                json={"task": "hello"},  # missing callback_url
+            )
+            return resp.status_code
+
+    status = asyncio.run(run())
+    assert status == 422  # Pydantic validation error
+
+
+def test_p16_settings_has_connectors_section():
+    """HardwareSettings includes connectors with telegram, slack, webhook sub-configs."""
+    from config.settings import load_settings
+
+    s = load_settings()
+    assert hasattr(s, "connectors"), "HardwareSettings missing 'connectors' field"
+    assert hasattr(s.connectors, "telegram")
+    assert hasattr(s.connectors, "slack")
+    assert hasattr(s.connectors, "webhook")
+    assert s.connectors.webhook.port == 8081
+
+
+def test_p16_hardware_profile_has_connectors_section():
+    """mac_m4_mini_16gb.yaml contains a connectors: block with telegram/slack/webhook."""
+    from pathlib import Path
+
+    profile_path = (
+        Path(__file__).parent.parent
+        / "config"
+        / "hardware_profiles"
+        / "mac_m4_mini_16gb.yaml"
+    )
+    content = profile_path.read_text()
+    assert "connectors:" in content, "Missing connectors: section in hardware profile"
+    assert "telegram:" in content
+    assert "slack:" in content
+    assert "webhook:" in content
