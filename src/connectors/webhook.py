@@ -57,6 +57,7 @@ Environment / Keychain:
     legionforge_webhook_api_key        — Gateway Bearer API key (Keychain, required)
     legionforge_webhook_inbound_secret — HMAC-SHA256 secret (Keychain, optional)
     WEBHOOK_GATEWAY_URL                — default http://localhost:8080
+    WEBHOOK_HOST                       — bind address; default 127.0.0.1 (set 0.0.0.0 behind a reverse proxy)
     WEBHOOK_PORT                       — default 8081
     WEBHOOK_AGENT_TYPE                 — default "orchestrator"
     WEBHOOK_WORKERS                    — uvicorn worker count, default 1
@@ -85,6 +86,9 @@ logger = logging.getLogger(__name__)
 
 GATEWAY_URL = os.environ.get("WEBHOOK_GATEWAY_URL", "http://localhost:8080")
 PORT = int(os.environ.get("WEBHOOK_PORT", "8081"))
+# Default to loopback — set WEBHOOK_HOST=0.0.0.0 when running behind a reverse proxy
+# or when the connector needs to receive webhooks directly from the internet.
+HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 AGENT_TYPE = os.environ.get("WEBHOOK_AGENT_TYPE", "orchestrator")
 WORKERS = int(os.environ.get("WEBHOOK_WORKERS", "1"))
 
@@ -291,12 +295,12 @@ def main() -> None:
 
     logger.info(
         f"[webhook] Starting connector "
-        f"gateway={GATEWAY_URL} port={PORT} agent={AGENT_TYPE} "
+        f"host={HOST} port={PORT} gateway={GATEWAY_URL} agent={AGENT_TYPE} "
         f"hmac={'enabled' if inbound_secret else 'disabled'}"
     )
 
     app = build_app(api_key, inbound_secret)
-    uvicorn.run(app, host="0.0.0.0", port=PORT, workers=WORKERS, log_level="info")
+    uvicorn.run(app, host=HOST, port=PORT, workers=WORKERS, log_level="info")
 
 
 if __name__ == "__main__":

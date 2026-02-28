@@ -120,7 +120,7 @@ make db-init
 
 # 4. Run smoke tests (no services required)
 make test-smoke
-# Expected: 200 passed in ~2s
+# Expected: 484 passed in ~3s
 
 # 5. Start the health server
 make health-server
@@ -134,7 +134,7 @@ make health-server
 | File | Purpose |
 |---|---|
 | `src/base_graph.py` | LangGraph agent template — copy to create new agents |
-| `src/security/guardian.py` | Guardian sidecar — deterministic 6-check security pipeline |
+| `src/security/guardian.py` | Guardian sidecar — deterministic 7-check security pipeline |
 | `src/security/core.py` | Keychain loader, PII redaction, injection detection, I/O sanitizer |
 | `src/database.py` | Async PostgreSQL pool, LangGraph checkpointer, pgvector, threat event logging |
 | `src/safeguards.py` | Three-layer loop protection (step counter, action history, token budget) |
@@ -165,6 +165,10 @@ make build-pentest   # Build legionforge-pentest:latest air-gapped container
 make pentest         # Run red-team attack suite in verify mode (stop-at-proof)
 make pentest-resilience  # Run in resilience mode — explicit opt-in, prompts confirmation
 make pentest-report  # Print most recent pentest report (or RUN_ID=<uuid>)
+make discord-start   # Start Discord bot connector
+make telegram-start  # Start Telegram bot connector
+make slack-start     # Start Slack Socket Mode connector
+make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
 ```
 
 ---
@@ -172,8 +176,8 @@ make pentest-report  # Print most recent pentest report (or RUN_ID=<uuid>)
 ## Known Gaps (Accepted Residual Risk)
 
 - **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
-- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. Accepted residual risk.
-- **GGUF hash pinning** — `make verify-models` prints hashes for pinning; `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values.
+- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. `pip-audit` reports no known CVEs as of v1.0.0; transitive hash pinning is accepted residual risk.
+- **Kerberos live KDC** — `KerberosBackend` has full GSSAPI code; graceful fallback when `gssapi` package is absent. Requires OS-level KDC + keytab to activate — see `docs/SCALING.md`.
 
 ---
 
@@ -187,6 +191,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**Private development repository:** [LegionForge/LegionForge](https://github.com/LegionForge/LegionForge)
+**v1.0.0** — all 16 phases complete. 484/484 smoke tests. 35 integration tests.
 
-The codebase is currently in hardening and will be published here at v1.0. Watch this repository or visit [legionforge.org](https://legionforge.org) for updates.
+This is the public release of LegionForge. Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
