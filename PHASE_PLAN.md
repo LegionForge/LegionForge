@@ -3,7 +3,7 @@
 
 **Version:** 1.0.0
 **Last updated:** 2026-02-27
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ⬜
+**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ⬜
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1017,3 +1017,70 @@ New `SECURITY.md` at repo root covering:
 - `PHASE_PLAN.md`: Phase 6 + Phase 7 marked complete; Phase Overview updated
 - `placeholder_readme.md`: Phase 7 row; Known Gaps deduped; smoke test count 228 → 242
 - `tests/test_smoke.py`: +14 Phase 7 tests (228 → 242)
+
+---
+
+## Phase 8 — Gateway + Streaming + Task Queue + Web UI + Discord ✅ COMPLETE
+
+**Completed:** 2026-02-27 — 323/323 smoke tests passing.
+
+**What was built:** FastAPI gateway (`:8080`), embedded asyncio task worker, SSE streaming via `astream_events`, minimal Web UI, A2A + MCP endpoints, per-user Bearer token auth, Discord connector. Closed Guardian tool-args blind spot (Gap 1) and hardcoded-action bug (Gap 2).
+
+**New files:** `src/gateway/` (app, auth, events, worker, routes/), `src/connectors/discord.py`, `src/gateway/static/index.html`, `Dockerfile.sandbox`
+
+---
+
+## Phase 9 — Tool Library + langchain 1.x + Parallel Fan-Out ✅ COMPLETE
+
+**Completed:** 2026-02-28 — 397/397 smoke tests passing (377 at Phase 9 + 20 more in 9.5 hardening).
+
+**What was built:**
+- langchain 1.x migration (closes Dependabot #4 SSRF, LOW)
+- Tool library: `http_get`, `http_post` (SSRF guard, 50 KB cap), `file_read`, `file_write` (path allowlist, traversal guard), `code_execute` (air-gapped Docker sandbox)
+- Parallel fan-out engine: `src/agents/fan_out.py` — `asyncio.gather()` + `Semaphore` cap + per-branch JWT + error isolation
+- Phase 9.5 hardening: rate-limiter TOCTOU fix (`check_and_reserve()` atomic under lock), `/status` 30s TTL cache, 3 new PII patterns (`[DB_DSN]`, `[PRIVATE_IP]`, `[HOME_PATH]`)
+
+---
+
+## Phase 10 — Multi-User, Auth, and Scale ✅ COMPLETE
+
+**Completed:** 2026-02-28 — 422/422 smoke tests passing (+25 Phase 10 tests).
+
+**Goal:** DB-backed stream tokens that survive gateway restart; per-user daily token budgets enforced at submission time; user attribution on `api_usage`; user management CLI.
+
+**What was built:**
+
+### Schema additions (`src/database.py`)
+- `stream_tokens` table — `(token, task_id, user_id, expires_at TIMESTAMPTZ)` + TTL index
+- `gateway_users.daily_token_limit INTEGER NOT NULL DEFAULT 100000`
+- `tasks.estimated_tokens INTEGER NOT NULL DEFAULT 0`
+- `api_usage.user_id TEXT` + index
+
+### Stream tokens → DB (`src/gateway/auth.py`)
+Replaced in-memory `_stream_tokens` dict with `create_stream_token` / `resolve_stream_token` / `delete_stream_token` backed by PostgreSQL. Worker purges expired tokens every 10 minutes.
+
+### Per-user budget check (`src/rate_limiter.py`)
+`per_user_budget_check(user_id, provider, estimated_tokens, daily_limit)` — 2 DB reads: `SUM(total_tokens)` from `api_usage WHERE user_id=... AND DATE=today` plus `SUM(estimated_tokens)` from `tasks WHERE user_id=... AND status IN ('queued','running')`. Raises `RuntimeError` → HTTP 429 if `actual + in_flight + estimated > daily_limit`.
+
+### Task submission (`src/gateway/routes/tasks.py`)
+Token estimation heuristic (`len(words) * 1.3 + 500`), `per_user_budget_check()` call before queue insert, `estimated_tokens` stored on task row.
+
+### Worker attribution (`src/gateway/worker.py`)
+`run_task()` passes `user_id` from task dict to `record_actual_usage()`. Worker heartbeat purges expired stream tokens every 10 minutes.
+
+### `/usage/me` endpoint (`src/health.py`)
+Returns `{user_id, username, daily_limit, today: {tokens_used, tokens_in_flight, tokens_remaining}, providers}` from `api_usage` for the authenticated user.
+
+### User management CLI (`src/cli/manage_users.py`)
+```bash
+python -m src.cli.manage_users create-user   --username alice --daily-limit 100000
+python -m src.cli.manage_users deactivate-user --username alice
+python -m src.cli.manage_users set-quota     --username alice --daily-limit 500000
+python -m src.cli.manage_users list-users
+make create-user USERNAME=alice
+```
+
+### Config (`config/settings.py` + hardware YAML)
+`GatewayConfig` model with `default_daily_token_limit: int = 100000`. `gateway:` section in `mac_m4_mini_16gb.yaml`.
+
+**Explicitly deferred to Phase 11:** Redis, load balancer, multiple gateway processes, OAuth, integration tests.

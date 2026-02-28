@@ -2,7 +2,7 @@
 # LegionForge — What Is This and What Are We Building?
 
 **Version:** 1.0.0
-**Last updated:** 2026-02-27
+**Last updated:** 2026-02-28
 
 ---
 
@@ -16,17 +16,20 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–7 are complete. v1.0.0 is shipped.**
+✅ **Phases 0–11 are complete. v1.0.0 is shipped.**
 
-The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline (Observer → Crystallizer → Pre-HITL Analyzer → human gate → Ed25519-signed tool), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), and the pentest→Guardian feedback loop (approved findings hot-reload into enforcement within 10 seconds).
+The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, and containerized gateway (`Dockerfile.gateway`).
 
-**323/323 smoke tests passing** (~1s, no external services required).
+**~430/430 smoke tests passing** (~1.5s, no external services required).
+**~35 integration tests** (PostgreSQL required — `make test-integration`).
 
-✅ **Phase 8 complete:** Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP endpoints, Guardian arg-forwarding gaps closed.
+✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
+✅ **Phase 10 complete:** DB-backed stream tokens, per-user daily token budgets, `/usage/me` endpoint, user management CLI (`src/cli/manage_users.py`).
+✅ **Phase 11 complete:** SecureToolNode copy-failure fix (critical security), integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md`.
 
 ---
 
-## The Big Picture — Phases 0–8 Complete
+## The Big Picture — Phases 0–10 Complete
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -40,7 +43,10 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 | **6** | PentestAgent — air-gapped red-team bot, 24 attack functions, 0 bypasses | ✅ Done |
 | **7** | Guardian feedback loop — pentest→Guardian bridge, SECURITY.md, pre-release hardening | ✅ Done |
 | **8** | Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP, Guardian gap fixes | ✅ Done |
-| **9** | Tool library expansion, langchain 1.x migration, parallel agent fan-out | ⬜ Next |
+| **9** | langchain 1.x migration, tool library (5 tools), parallel fan-out, Phase 9.5 hardening sprint | ✅ Done |
+| **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Done |
+| **11** | SecureToolNode fix, integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `SCALING.md` | ✅ Done |
+| **12** | OAuth (GitHub/Keycloak), Redis-backed state (multi-datacenter), multi-datacenter deployment | ⬜ Next |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -108,17 +114,17 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of Phase 8)
+## Known Gaps (as of Phase 11)
 
-**Agents run serially, not in parallel.** The orchestrator spawns one sub-agent at a time. Parallel fan-out requires `asyncio.gather()` or LangGraph `Send()` — Phase 9.
-
-**Tool library is narrow.** Only web search, web fetch, and document summarize exist. Phase 9 adds file I/O, structured data query, HTTP API calls, and sandboxed code execution.
-
-**langchain-core SSRF (Dependabot #4, LOW — accepted risk).** Fix requires migrating the full langchain stack from 0.3.x → 1.x. We never call the vulnerable method (`ChatOpenAI.get_num_tokens_from_messages` with image URLs). Planned for Phase 9.
+**Loop protection resets on checkpoint resume.** Step counter and action history reset if a caller constructs a fresh `initial()` state for a resumed thread. Correct pattern documented in `SafeguardedState.initial()` docstring; explicit resume tests deferred.
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
 **GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values after running `make verify-models`.
+
+**No output sanitization on external tool responses.** Input-side sanitization exists; output-side (tool result content leaving the sandbox boundary) is deferred to Phase 12.
+
+**OAuth not implemented.** `AuthBackend` protocol is in place; plug in `GitHubOAuthBackend` or Keycloak in Phase 12 per `docs/SCALING.md`.
 
 ---
 
@@ -140,17 +146,13 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Immediate Next Steps
 
-### Phase 9 — Tool Expansion, langchain 1.x Migration, Parallel Fan-Out
+### Phase 12 — OAuth + Redis + Multi-Datacenter
 
-**Priority order:**
+1. **OAuth** — GitHub OAuth or Keycloak via `set_auth_backend()` (modular backend is ready)
+2. **Redis-backed state** — multi-datacenter stream tokens and rate counters
+3. **Multi-datacenter deployment** — two PostgreSQL replicas + Redis + Caddy/nginx load balancer
+4. **Output sanitization** — sanitize tool result content leaving external tool boundaries
 
-1. **langchain 0.3.x → 1.x migration** — closes Dependabot #4 (LOW SSRF), unlocks new LangGraph features. All langchain-* pins must upgrade together.
-
-2. **Tool library expansion** — file I/O, structured data query, HTTP API calls, sandboxed code execution. Each new tool requires: Ed25519 registration + Guardian capability entry + smoke tests.
-
-3. **Parallel agent fan-out** — orchestrator currently spawns sub-agents serially. Add `asyncio.gather()` / LangGraph `Send()` for parallel task execution.
-
-**→ Full Phase 8 spec (complete):** [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md)
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
 

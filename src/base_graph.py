@@ -906,7 +906,20 @@ class SecureToolNode:
                         try:
                             msg = msg.copy(update={"content": clean_content})
                         except Exception:
-                            pass
+                            # Both copy paths failed — synthesize a ToolMessage with
+                            # sanitized content so the agent ALWAYS sees clean content
+                            # regardless of the message object's copy capabilities.
+                            _tool_name = getattr(msg, "name", "unknown_tool")
+                            logger.warning(
+                                f"[SecureToolNode] Message copy failed for tool "
+                                f"'{_tool_name}'; synthesizing ToolMessage with "
+                                "sanitized content."
+                            )
+                            msg = ToolMessage(
+                                content=clean_content,
+                                tool_call_id=getattr(msg, "tool_call_id", "unknown"),
+                                name=_tool_name,
+                            )
                 sanitized_msgs.append(msg)
             result["messages"] = sanitized_msgs
 

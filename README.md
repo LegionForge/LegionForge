@@ -1,6 +1,6 @@
 # LegionForge
 
-**Version:** 5.5.0 · **Updated:** 2026-02-26 · **Status:** Phases 0–5.5 complete — crystallization pipeline + security hardening operational
+**Version:** 1.0.0 · **Updated:** 2026-02-28 · **Status:** Phases 0–10 complete — full security stack + multi-user gateway operational
 
 ---
 
@@ -25,9 +25,13 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 4 — Adaptive Threat Intelligence | ✅ Complete | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials |
 | 5 — Crystallization Pipeline | ✅ Complete | Observer + Crystallizer agents, Pre-HITL analysis, Ed25519-signed tools |
 | 5.5 — Security Hardening | ✅ Complete | DB RBAC, AST subscript+MRO guards, tool revocation, TOCTOU, model integrity |
-| 6 — PentestAgent | ⬜ Planned | Air-gapped red-team bot, continuous security regression |
+| 6 — PentestAgent | ✅ Complete | Air-gapped red-team bot, 24 attack functions, 0 bypasses on clean deploy |
+| 7 — Guardian Feedback Loop | ✅ Complete | Pentest→Guardian bridge, SECURITY.md, pre-release hardening |
+| 8 — Gateway + Streaming + Discord | ✅ Complete | Gateway (:8080), SSE streaming, web UI, A2A + MCP, Discord connector |
+| 9 — Tool Library + Fan-Out | ✅ Complete | langchain 1.x, 5 production tools, parallel fan-out, 9.5 hardening sprint |
+| 10 — Multi-User Auth | ✅ Complete | DB-backed stream tokens, per-user budgets, `/usage/me`, user management CLI |
 
-**323/323 smoke tests passing. Full security stack + gateway API operational.**
+**422/422 smoke tests passing. Full security stack + multi-user gateway operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -205,7 +209,7 @@ curl http://localhost:9766/health
 ### Step 9 — Verify Everything
 
 ```bash
-# Run all 323 smoke tests (no external services required — runs in ~2s)
+# Run all 422 smoke tests (no external services required — runs in ~2s)
 make test-smoke
 
 # Run the full system check (drive, venv, Keychain, Ollama, Guardian)
@@ -214,7 +218,7 @@ make check
 
 Expected output from `make test-smoke`:
 ```
-200 passed in 1.61s
+422 passed in ~1.5s
 ```
 
 ---
@@ -250,7 +254,7 @@ make start                 # Full startup (Ollama + PostgreSQL + Guardian + warm
 make stop                  # Graceful shutdown
 make health-server         # Start health/metrics server (separate terminal)
 
-make test-smoke            # 323 smoke tests, ~2s, no services required
+make test-smoke            # 422 smoke tests, ~1.5s, no services required
 make lint                  # Black formatter check
 make format                # Auto-format
 
@@ -300,8 +304,8 @@ make revoke-tool TOOL_ID=<id>  # Immediately revoke a tool via health API (<10s 
 **Ollama models not found**
 → Run `ollama list` to confirm. If empty, re-run `ollama pull llama3.1:8b`. Ensure Ollama is running: `brew services start ollama`.
 
-**`make test-smoke` shows fewer than 200 tests**
-→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 8 (commit referencing 323 smoke tests, Discord connector).
+**`make test-smoke` shows fewer than 422 tests**
+→ Ensure you're on `main` and the venv is activated. Run `git log --oneline -3` to verify you're at Phase 10 (commit referencing 422 smoke tests).
 
 ---
 
@@ -370,7 +374,7 @@ LegionForge/
 │   └── requirements.txt           # fastapi, uvicorn, psycopg — NO LLM clients
 │
 ├── tests/
-│   ├── test_smoke.py              # 200 tests, no services required, ~2s
+│   ├── test_smoke.py              # 422 tests, no services required, ~1.5s
 │   └── conftest.py
 │
 ├── scripts/
@@ -419,7 +423,9 @@ Security is layered. Each phase adds a new layer — nothing from a prior phase 
 | Tool revocation | Guardian + `health.py` | 5.5 | REVOKED status, Guardian TTL 10s, `/tools/{id}/revoke` |
 | TOCTOU prevention | `base_graph.py` | 5.5 | `approved_snapshot` pre-loop; unexpected call_id → threat event + halt |
 | Ollama model integrity | `tools/model_integrity.py` | 5.5 | SHA256 streaming GGUF verification on startup |
-| Automated red-teaming | Phase 6 | — | Air-gapped; manual trigger only |
+| Automated red-teaming | `agents/pentest_agent.py` | 6 | Air-gapped; manual trigger only |
+| Per-user token budgets | `rate_limiter.py` + `database.py` | 10 | DB-backed daily caps per user; enforced at task submission |
+| DB-backed stream tokens | `gateway/auth.py` + `database.py` | 10 | Persistent 30-min TTL tokens; survive gateway restart |
 
 **→ Full threat research and design theory:** [`RESEARCH.md`](./RESEARCH.md)
 

@@ -16,7 +16,7 @@ Every running process/service and how they connect.
 │  ┌──────────────────┐    ┌──────────────────────────────────────────┐    │
 │  │   Ollama :11434  │    │          PostgreSQL :5432                 │    │
 │  │                  │    │                                          │    │
-│  │  llama3.1:8b     │    │  DB: legionforge  (14 tables)            │    │
+│  │  llama3.1:8b     │    │  DB: legionforge  (17 tables)            │    │
 │  │  qwen2.5:3b      │    │  Users: legionforge (admin, DDL only)    │    │
 │  │  nomic-embed     │    │         legionforge_app (app runtime)    │    │
 │  │  (models on      │    │                                          │    │
@@ -709,11 +709,25 @@ How a tool gets from "code" to "allowed to run inside an agent".
   323 smoke tests        │
   → Spec: docs/PHASE_8_GATEWAY_SPEC.md
 
-  Phase 9 ⬜  Tool Expansion + langchain 1.x + Parallel Fan-Out
+  Phase 9 ✅  Tool Library + langchain 1.x + Parallel Fan-Out + 9.5 Hardening
   ─────────────────────────────────────────────────────────────────
-  File I/O, HTTP, code   │  langchain 0.3→1.x migration
-  execution tools        │  asyncio.gather() fan-out
-  Discord connector      │  Closes Dependabot #4 (LOW SSRF)
+  langchain 1.x migration│  Closes Dependabot #4 (LOW SSRF)
+  http_get + http_post   │  SSRF guard, I/O sanitize, 50 KB cap
+  file_read + file_write │  Path allowlist, traversal guard, ext block
+  code_execute sandbox   │  --network none --read-only --pids-limit 20
+  fan_out.py engine      │  asyncio.gather(), Semaphore cap, JWT/branch
+  fan_out_researchers    │  Parallel tool in orchestrator
+  Rate-limiter race fix  │  check_and_reserve() atomic under lock
+  /status TTL cache      │  30 s cache; hits skip DB/Ollama/subprocess
+  3 new PII patterns     │  [DB_DSN] [PRIVATE_IP] [HOME_PATH]
+  397 smoke tests        │
+
+  Phase 10 ✅  Multi-User, Auth, and Scale
+  ─────────────────────────────────────────────────────────────────
+  DB-backed stream tokens│  Per-user daily token budgets
+  User management CLI    │  /usage/me endpoint
+  stream_tokens table    │  Worker user attribution
+  api_usage.user_id      │  422 smoke tests
 ```
 
 ---

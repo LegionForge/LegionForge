@@ -3010,7 +3010,7 @@ async def get_user_actual_usage_today(user_id: str, provider: str) -> int:
             (user_id, provider),
         )
         row = await cur.fetchone()
-    return int(row[0]) if row else 0
+    return int(row["total"]) if row else 0
 
 
 async def get_user_inflight_tokens(user_id: str) -> int:
@@ -3041,7 +3041,7 @@ async def get_user_inflight_tokens(user_id: str) -> int:
             (user_id,),
         )
         row = await cur.fetchone()
-    return int(row[0]) if row else 0
+    return int(row["total"]) if row else 0
 
 
 async def get_user_usage_summary_today(user_id: str) -> dict:
@@ -3081,8 +3081,8 @@ async def get_user_usage_summary_today(user_id: str) -> dict:
         )
         inflight_row = await cur2.fetchone()
 
-    tokens_used = sum(r[1] for r in provider_rows)
-    tokens_in_flight = int(inflight_row[0]) if inflight_row else 0
+    tokens_used = sum(r["tokens"] for r in provider_rows)
+    tokens_in_flight = int(inflight_row["total"]) if inflight_row else 0
 
     return {
         "user_id": user_id,
@@ -3090,5 +3090,5 @@ async def get_user_usage_summary_today(user_id: str) -> dict:
             "tokens_used": int(tokens_used),
             "tokens_in_flight": tokens_in_flight,
         },
-        "providers": {r[0]: int(r[1]) for r in provider_rows},
+        "providers": {r["provider"]: int(r["tokens"]) for r in provider_rows},
     }

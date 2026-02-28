@@ -264,6 +264,11 @@ class GatewayConfig(BaseModel):
     # Override per-user via CLI: python -m src.cli.manage_users set-quota --username ...
     default_daily_token_limit: int = 100000
 
+    # Auth backend to use for API key verification.
+    # "api_key" — default; bcrypt-hashed keys in gateway_users table.
+    # Future: "oauth_github", "keycloak", etc. (plugged in via set_auth_backend()).
+    auth_provider: str = "api_key"
+
 
 class PentestConfig(BaseModel):
     """

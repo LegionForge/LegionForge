@@ -123,8 +123,8 @@ async def set_quota(username: str, daily_limit: int) -> None:
         sys.exit(1)
 
 
-async def list_users() -> None:
-    """Print all gateway users (active and inactive) in a table."""
+async def list_users() -> list:
+    """Print all gateway users (active and inactive) in a table. Returns the user list."""
     from src.database import init_db, list_gateway_users
 
     await init_db()
@@ -132,7 +132,7 @@ async def list_users() -> None:
     users = await list_gateway_users()
     if not users:
         print("No gateway users found.")
-        return
+        return []
 
     # Simple fixed-width table
     header = f"{'USERNAME':<20} {'ACTIVE':<8} {'DAILY LIMIT':>12} {'USER ID'}"
@@ -144,6 +144,7 @@ async def list_users() -> None:
             f"{u['username']:<20} {active:<8} {u['daily_token_limit']:>12,} "
             f"{u['user_id']}"
         )
+    return users
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────

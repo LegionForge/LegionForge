@@ -30,11 +30,12 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
-from src.database import init_db, close_db
+from src.database import init_db, close_db, get_user_usage_summary_today
+from src.gateway.auth import require_user
 from src.gateway.routes import tasks, stream, a2a, mcp
 from src.gateway.worker import task_worker
 
@@ -121,6 +122,36 @@ async def web_ui() -> HTMLResponse:
 @app.get("/health", include_in_schema=False)
 async def health() -> dict:
     return {"status": "ok", "service": "legionforge-gateway"}
+
+
+# ── Per-user usage ─────────────────────────────────────────────────────────────
+
+
+@app.get("/usage/me", tags=["usage"])
+async def get_my_usage(user: dict = Depends(require_user)) -> JSONResponse:
+    """Return today's token usage for the authenticated gateway user."""
+    try:
+        usage = await get_user_usage_summary_today(user["user_id"])
+        daily_limit = user.get("daily_token_limit", 100000)
+        tokens_used = usage["today"]["tokens_used"]
+        tokens_in_flight = usage["today"]["tokens_in_flight"]
+        tokens_remaining = max(0, daily_limit - tokens_used - tokens_in_flight)
+        return JSONResponse(
+            {
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "daily_limit": daily_limit,
+                "today": {
+                    "tokens_used": tokens_used,
+                    "tokens_in_flight": tokens_in_flight,
+                    "tokens_remaining": tokens_remaining,
+                },
+                "providers": usage["providers"],
+            }
+        )
+    except Exception as exc:
+        logger.error(f"[gateway] /usage/me failed: {exc}")
+        return JSONResponse({"error": str(exc)}, status_code=503)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

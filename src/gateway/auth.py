@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import secrets
 import logging
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -41,6 +41,63 @@ from src.database import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Auth backend protocol ──────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class AuthBackend(Protocol):
+    """
+    Auth backend protocol. Implement to add OAuth, LDAP, JWT, or other schemes.
+    See docs/SCALING.md for the OAuth integration pattern.
+
+    The returned user dict must include:
+        user_id, username, is_active (implicit True), daily_token_limit
+    """
+
+    async def authenticate(self, api_key: str) -> dict | None:
+        """Verify credentials. Returns user dict or None on failure."""
+        ...
+
+
+class ApiKeyBackend:
+    """Default backend: bcrypt-hashed API keys in the gateway_users table."""
+
+    async def authenticate(self, api_key: str) -> dict | None:
+        rows = await get_gateway_user_for_auth(api_key)
+        for row in rows:
+            if verify_api_key(api_key, row["api_key_hash"]):
+                return {
+                    "user_id": row["user_id"],
+                    "username": row["username"],
+                    "daily_token_limit": row.get("daily_token_limit", 100000),
+                }
+        return None
+
+
+_auth_backend: AuthBackend | None = None
+
+
+def get_auth_backend() -> AuthBackend:
+    """Return the active auth backend (default: ApiKeyBackend)."""
+    global _auth_backend
+    if _auth_backend is None:
+        _auth_backend = ApiKeyBackend()
+    return _auth_backend
+
+
+def set_auth_backend(backend: AuthBackend) -> None:
+    """
+    Inject a custom auth backend at startup. Example::
+
+        set_auth_backend(GitHubOAuthBackend(client_id=..., client_secret=...))
+
+    See docs/SCALING.md for the OAuth integration pattern.
+    """
+    global _auth_backend
+    _auth_backend = backend
+
 
 # ── API key hashing (bcrypt, used directly — passlib 1.7 is incompatible with bcrypt 5.x) ───
 
@@ -84,23 +141,13 @@ def extract_bearer_token(authorization: str | None) -> str | None:
 
 async def authenticate(raw_key: str) -> dict | None:
     """
-    Verify a raw API key against all active users' stored hashes.
+    Verify a raw API key via the active auth backend.
 
-    Fetches all active gateway_users rows (small table — O(users) bcrypt checks).
-    Returns the matching user row (without api_key_hash) or None.
-
-    Security: bcrypt verify is constant-time within each comparison.
-    We compare against all rows to avoid timing leaks on username.
+    Delegates to get_auth_backend().authenticate(). The default backend
+    (ApiKeyBackend) checks bcrypt-hashed keys in the gateway_users table.
+    Swap backends via set_auth_backend() at startup to add OAuth, LDAP, etc.
     """
-    rows = await get_gateway_user_for_auth(raw_key)
-    for row in rows:
-        if verify_api_key(raw_key, row["api_key_hash"]):
-            return {
-                "user_id": row["user_id"],
-                "username": row["username"],
-                "daily_token_limit": row.get("daily_token_limit", 100000),
-            }
-    return None
+    return await get_auth_backend().authenticate(raw_key)
 
 
 # ── FastAPI dependency ────────────────────────────────────────────────────────

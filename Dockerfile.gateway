@@ -1,0 +1,55 @@
+# ============================================================
+# Dockerfile.gateway — LegionForge Gateway (:8080)
+# ============================================================
+# Containerized FastAPI gateway with embedded asyncio worker.
+#
+# Build:
+#   make build-gateway
+#
+# Run (single instance):
+#   make gateway-start-docker
+#
+# Run (multiple workers for horizontal scale):
+#   docker run ... legionforge-gateway:latest \
+#     uvicorn src.gateway.app:app --host 0.0.0.0 --port 8080 --workers 4
+#
+# Required env vars at runtime:
+#   POSTGRES_PASSWORD   — gateway DB password (from macOS Keychain in dev)
+#   TASK_TOKEN_SECRET   — JWT signing secret (from macOS Keychain in dev)
+#
+# Optional env vars:
+#   POSTGRES_HOST       — default: host.docker.internal
+#   POSTGRES_PORT       — default: 5432
+#   POSTGRES_DB         — default: legionforge
+#   POSTGRES_USER       — default: legionforge
+#   AGENT_HARDWARE_PROFILE — default: mac_m4_mini_16gb
+#
+# See docs/SCALING.md for multi-worker and load balancer configuration.
+# ============================================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# libpq-dev + gcc are needed to build psycopg[binary] from source
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ ./src/
+COPY config/ ./config/
+
+# Drop to non-root for defence-in-depth
+RUN useradd -r -u 1001 -g root gateway
+USER gateway
+
+EXPOSE 8080
+
+# Single worker by default; override CMD for multi-worker deployments.
+# DB-backed stream tokens (Phase 10) ensure state survives across workers.
+CMD ["uvicorn", "src.gateway.app:app", \
+     "--host", "0.0.0.0", "--port", "8080", \
+     "--workers", "1", "--log-level", "info"]

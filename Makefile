@@ -98,6 +98,10 @@ help:
 	@echo "  make install      — install/update Python packages"
 	@echo "  make test         — run all tests"
 	@echo "  make test-fast    — run tests excluding slow ones"
+	@echo "  make test-integration — run integration tests (requires PostgreSQL)"
+	@echo "  make test-all     — run smoke + integration tests"
+	@echo "  make build-gateway    — build legionforge-gateway Docker image (Phase 11)"
+	@echo "  make gateway-start-docker — run gateway in Docker (Phase 11)"
 	@echo "  make lint         — run black formatter check"
 	@echo "  make format       — auto-format with black"
 	@echo "  make security-audit — smoke tests + bandit static analysis"
@@ -313,6 +317,29 @@ test-fast:
 .PHONY: test-smoke
 test-smoke:
 	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+
+.PHONY: test-integration
+test-integration:  ## Run integration tests (requires PostgreSQL — make db-start first)
+	@cd $(BASE) && $(PYTEST) tests/test_integration.py -v -m "integration"
+
+.PHONY: test-all
+test-all:  ## Run all tests (smoke + integration)
+	@cd $(BASE) && $(PYTEST) tests/ -v
+
+## ── Gateway Docker (Phase 11) ─────────────────────────────────
+.PHONY: build-gateway
+build-gateway:  ## Build legionforge-gateway:latest Docker image
+	docker build -f Dockerfile.gateway -t legionforge-gateway:latest .
+	@echo "✅ legionforge-gateway:latest built"
+
+.PHONY: gateway-start-docker
+gateway-start-docker:  ## Run gateway in Docker (requires POSTGRES_PASSWORD + TASK_TOKEN_SECRET)
+	docker run --rm -d --name legionforge-gateway -p 8080:8080 \
+		--env POSTGRES_PASSWORD="$(POSTGRES_PASSWORD)" \
+		--env TASK_TOKEN_SECRET="$(TASK_TOKEN_SECRET)" \
+		--add-host host.docker.internal:host-gateway \
+		legionforge-gateway:latest
+	@echo "✅ legionforge-gateway container started on :8080"
 
 # ── Code Quality ──────────────────────────────────────────────
 .PHONY: lint

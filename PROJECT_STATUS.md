@@ -2,10 +2,10 @@
 # LegionForge
 
 **Version:** 1.0.0
-**Last updated:** 2026-02-27
+**Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–8 complete + Guardian gap fixes. Phase 9 — Tool expansion + langchain 1.x migration is next.
+**Status:** ✅ Phases 0–11 complete. Phase 12 — OAuth, Redis-backed state, multi-datacenter is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,19 +17,21 @@
 
 ## Current State
 
-All phases through 8 are complete. The full security stack is operational and the user-facing gateway is live.
+All phases through 11 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, and containerized gateway are operational.
 
 ```
-make test-smoke    → 323/323 passing (~1s, no external services required)
-make health-server → localhost:8765 all components green
-make gateway-start → localhost:8080 gateway API + streaming UI
-make discord-start → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
-git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connectors/discord.py)
+make test-smoke        → ~430/430 passing (~1.5s, no external services required)
+make test-integration  → ~35 passed (requires PostgreSQL)
+make health-server     → localhost:8765 all components green
+make gateway-start     → localhost:8080 gateway API + streaming UI
+make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
+make build-gateway     → legionforge-gateway:latest Docker image
+git log --oneline -1 → Phase 11 — integration tests, modular auth, Dockerfile.gateway
 ```
 
 ---
 
-## What's Shipped (Phases 0–8)
+## What's Shipped (Phases 0–10)
 
 ### Source Files (`src/`)
 
@@ -48,7 +50,8 @@ git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connec
 | `health.py` | FastAPI (:8765) — health, status, metrics, usage, BOM, crystallization review, tool revocation, pentest reports | 0–6 |
 | `base_graph.py` | LangGraph template — TOCTOU snapshot, Guardian check, SecureToolNode (7-step pipeline with Tier 1/2 injection tiering), `run_agent()` | 1–hardening |
 | `agents/researcher.py` | Researcher agent — web fetch, document store, Ed25519-registered tools, `<external_content>` injection boundary | 1 |
-| `agents/orchestrator.py` | Orchestrator — master→derived JWT token hierarchy, task routing | 3 |
+| `agents/orchestrator.py` | Orchestrator — master→derived JWT token hierarchy, serial `spawn_researcher` + parallel `fan_out_researchers` | 3, 9 |
+| `agents/fan_out.py` | Parallel fan-out engine — `asyncio.gather()`, `Semaphore` cap, per-branch JWT, error isolation, order-preserved results | 9 |
 | `agents/threat_analyst.py` | Reads `threat_events`, proposes Guardian rules (cannot self-approve) | 4 |
 | `agents/observer.py` | Monitors runs, nominates crystallization candidates | 5 |
 | `agents/crystallizer.py` | Generates deterministic functions + test suites from patterns | 5 |
@@ -60,15 +63,20 @@ git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connec
 | `tools/crystallization_analyzer.py` | Pre-HITL AST analyzer (subscript/MRO/globals guards), Docker/sandbox/bare sandboxes | 5 |
 | `tools/pentest_tools.py` | 24 attack functions (8 classes × 3 variants) | 6 |
 | `gateway/app.py` | FastAPI gateway (:8080) — task queue, SSE streaming, Web UI, CORS, lifespan | 8 |
-| `gateway/auth.py` | Bearer token auth, bcrypt API key hashing, stream tokens (30-min TTL) | 8 |
+| `gateway/auth.py` | Bearer token auth, bcrypt API key hashing, stream tokens (30-min TTL); `AuthBackend` protocol + `ApiKeyBackend` + `get/set_auth_backend()` | 8, 11 |
 | `gateway/events.py` | LangGraph→SSE event mapping, in-process pub/sub queues | 8 |
 | `gateway/worker.py` | Embedded asyncio task worker — polls queue, streams events to subscribers | 8 |
 | `gateway/routes/tasks.py` | `POST/GET /tasks`, `GET /tasks/{id}`, `DELETE /tasks/{id}` | 8 |
 | `gateway/routes/stream.py` | `GET /tasks/{id}/stream` — SSE via EventSourceResponse | 8 |
 | `gateway/routes/a2a.py` | `/.well-known/agent.json`, `/a2a/tasks` — A2A protocol conformance | 8 |
-| `gateway/routes/mcp.py` | `GET /mcp/tools`, `POST /mcp/tools/invoke` (501 stub, Phase 9) | 8 |
+| `gateway/routes/mcp.py` | `GET /mcp/tools`, `POST /mcp/tools/invoke` (501 stub, Phase 10) | 8 |
+| `tools/http_tools.py` | `http_get` + `http_post` — SSRF guard, I/O sanitize, 50 KB cap, 30 s timeout | 9 |
+| `tools/file_tools.py` | `file_read` + `file_write` — path allowlist, realpath traversal guard, executable extension block | 9 |
+| `tools/code_tools.py` | `code_execute` — air-gapped Docker sandbox (`--network none --read-only --pids-limit 20`) | 9 |
 | `gateway/static/index.html` | Minimal streaming Web UI (dark theme, EventSource, token deltas) | 8 |
 | `connectors/discord.py` | Discord bot — `!<task>` → gateway POST → SSE → reply edits every 2s | 8 |
+| `cli/__init__.py` | CLI package marker | 10 |
+| `cli/manage_users.py` | User management CLI — `create-user`, `deactivate-user`, `set-quota`, `list-users` | 10 |
 
 ### Guardian — 7 Checks
 
@@ -89,11 +97,14 @@ git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connec
 | `guardian/Dockerfile` | FastAPI sidecar (:9766), Python 3.11-slim, zero LLM dependencies |
 | `Dockerfile.analyzer` | Pre-HITL analyzer — deny-default (`--network none --read-only --pids-limit 20`) |
 | `Dockerfile.pentest` | PentestAgent — air-gapped (`--network none --read-only`) |
+| `Dockerfile.sandbox` | code_execute sandbox — Python 3.11-slim, non-root `sandbox` user, stdlib only |
+| `Dockerfile.gateway` | Gateway service (:8080) — `uvicorn`, non-root `gateway` user, multi-worker ready |
 
 ### Tests
 
-- `tests/test_smoke.py` — **323 tests**, no running services required, ~1s
-- `tests/conftest.py` — pytest configuration and shared fixtures
+- `tests/test_smoke.py` — **~430 tests**, no running services required, ~1.5s
+- `tests/test_integration.py` — **~35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
+- `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
 
 ---
 
@@ -108,7 +119,7 @@ git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connec
 - **Password:** stored in macOS Keychain (`service: postgres`)
 - **Auto-start:** via `brew services`
 
-**All tables (14):**
+**All tables (17):**
 
 | Table | Purpose |
 |---|---|
@@ -130,6 +141,7 @@ git log --oneline -1 → 9837d17 feat: Phase 8 — Discord connector (src/connec
 | `pentest_runs` | PentestAgent run metadata |
 | `pentest_findings` | Individual attack findings with severity, bypass status |
 | `pentest_proposed_rules` | Guardian rules proposed from pentest findings (pending human approval) |
+| `stream_tokens` | DB-backed gateway stream tokens with 30-min TTL (replaces in-memory dict) |
 
 ### pgvector
 
@@ -167,7 +179,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 323 tests, ~1s
+make test-smoke                          # 422 tests, ~1.5s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -196,15 +208,38 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 
 | Item | Priority | Notes |
 |---|---|---|
-| Rate limiter race condition | High | Two concurrent calls can both pass the daily cap before either increments; fix with lock around check-and-reserve |
-| No rate limiting on `/status` endpoint | High | Each hit spawns fresh DB + Ollama checks; add request cache + rate cap before any networked exposure |
-| PII patterns incomplete | Medium | `_PII_PATTERNS` missing: IPv4, internal URLs, DB DSNs, file paths with usernames |
-| Loop protection resets on checkpoint resume | Medium | Step counter and action history reset on resume; terminated loop can restart clean |
-| No integration tests | Medium | Smoke tests pass without services; add DB + Ollama required integration tests |
-| `INTERVAL hours` not validated | Medium | `get_usage_summary()` / `get_threat_summary()` — `hours` must be bounded 1–8760 before query |
-| GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin the values |
-| Guardian tool args gap | ✅ Fixed | `guardian_check()` now forwards real `tool_input`; checks 3, 5, 6 see actual arguments. |
-| Guardian action field hardcoded | ✅ Fixed | `check_2` now also blocks forbidden `tool_id`; `action` read from state (default `"invoke"`). |
+| Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
+| GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
+| No output sanitization on external tool responses | Medium | Input-side sanitization exists; output-side (tool result content) sanitization deferred to Phase 12 |
+
+### Fixed (Phase 11)
+
+| Item | Fix |
+|---|---|
+| SecureToolNode silent failure on copy error | Both `model_copy()` and `copy()` failure now synthesizes a `ToolMessage` with sanitized content; dirty content can no longer leak into agent state |
+| No integration tests | `tests/test_integration.py` — ~35 tests, `@pytest.mark.integration`, covers auth, stream tokens, task lifecycle, budget enforcement, `/usage/me`, CLI |
+| `INTERVAL hours` not validated | Already parameterized + validated (`1–8760`) in `get_usage_summary()` / `get_threat_summary()` — removed from issues |
+| Auth not modular | `AuthBackend` protocol + `ApiKeyBackend` + `get/set_auth_backend()` in `gateway/auth.py`; OAuth can be plugged in at startup |
+| Gateway not containerized | `Dockerfile.gateway` added; `make build-gateway` + `make gateway-start-docker` |
+
+### Fixed (Phase 10)
+
+| Item | Fix |
+|---|---|
+| In-memory stream tokens lost on gateway restart | `stream_tokens` DB table; `create_stream_token` / `resolve_stream_token` / `delete_stream_token` backed by PostgreSQL |
+| No per-user budget enforcement | `per_user_budget_check()` — 2 DB reads (actual_used + in_flight); raises RuntimeError → HTTP 429 at submission time |
+| No user attribution on token spend | `api_usage.user_id` column; worker writes per-task attribution; `/usage/me` endpoint exposes per-user summary |
+| Single-user gateway | `gateway_users.daily_token_limit` + `tasks.estimated_tokens` + `src/cli/manage_users.py` CLI |
+
+### Fixed (Phase 9 + 9.5)
+
+| Item | Fix |
+|---|---|
+| Rate limiter TOCTOU race | `DailyCounter.check_and_reserve()` atomically checks + reserves under lock; `guard()` always releases in `finally` |
+| `/status` resource storm | 30 s TTL cache (`_status_cache_lock`); hits skip DB/Ollama/subprocess entirely |
+| PII patterns incomplete | Added `[DB_DSN]`, `[PRIVATE_IP]` (RFC 1918 + loopback), `[HOME_PATH]` (`/Users/` + `/home/`) |
+| Guardian tool args gap | `guardian_check()` now forwards real `tool_input`; checks 3, 5, 6 see actual arguments |
+| Guardian action field hardcoded | `check_2` also blocks forbidden `tool_id`; `action` read from state (default `"invoke"`) |
 
 ### Accepted / By Design
 
