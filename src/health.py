@@ -299,6 +299,22 @@ async def _check_external_drive() -> dict:
         return {"status": "error", "mount": mount, "error": str(e)}
 
 
+async def _check_redis() -> dict | None:
+    """Check Redis connectivity. Returns None when Redis is not configured."""
+    redis_url = getattr(settings.gateway, "redis_url", "")
+    if not redis_url:
+        return None  # not configured — omit from status
+    try:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(redis_url, socket_connect_timeout=1)
+        await client.ping()
+        await client.aclose()
+        return {"status": "ok", "url": redis_url}
+    except Exception as exc:
+        return {"status": "error", "url": redis_url, "error": str(exc)}
+
+
 def _check_memory() -> dict:
     try:
         import subprocess
@@ -381,11 +397,13 @@ async def status(request: Request) -> JSONResponse:
     ollama_task = asyncio.create_task(_check_ollama())
     postgres_task = asyncio.create_task(_check_postgres())
     drive_task = asyncio.create_task(_check_external_drive())
+    redis_task = asyncio.create_task(_check_redis())
 
-    ollama_result, postgres_result, drive_result = await asyncio.gather(
+    ollama_result, postgres_result, drive_result, redis_result = await asyncio.gather(
         ollama_task,
         postgres_task,
         drive_task,
+        redis_task,
         return_exceptions=True,
     )
 
@@ -410,6 +428,12 @@ async def status(request: Request) -> JSONResponse:
         ),
         "memory": memory_result,
     }
+
+    # Redis: omit entirely when not configured; surface errors when configured.
+    if isinstance(redis_result, dict) and redis_result is not None:
+        components["redis"] = redis_result
+    elif isinstance(redis_result, Exception):
+        components["redis"] = {"status": "error", "error": str(redis_result)}
 
     all_ok = all(c.get("status") == "ok" for c in components.values())
     overall = "ok" if all_ok else "degraded"

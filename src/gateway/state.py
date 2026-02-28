@@ -177,3 +177,129 @@ async def delete_stream_token(token: str) -> None:
         from src.database import delete_stream_token as _db_delete
 
         await _db_delete(token)
+
+
+# ── Per-user daily budget counters (Phase 14) ─────────────────────────────────
+#
+# When Redis is active, per-user daily token budgets are tracked with a single
+# Redis key per user per day:
+#
+#   lf:budget:{user_id}:{YYYY-MM-DD}   →  int (total reserved tokens today)
+#
+# INCRBY is used for atomic reservation.  The key auto-expires at midnight UTC
+# via EXPIREAT, so no manual cleanup is required.
+#
+# When Redis is not configured, budget enforcement falls back to the existing
+# two-read DB path in per_user_budget_check() (rate_limiter.py).
+
+_BUDGET_KEY_PREFIX = "lf:budget:"
+
+
+def _tomorrow_midnight_unix() -> int:
+    """Return Unix timestamp for tomorrow midnight UTC."""
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(tz=timezone.utc)
+    tomorrow = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return int(tomorrow.timestamp())
+
+
+async def redis_budget_check_and_reserve(
+    user_id: str,
+    estimated_tokens: int,
+    daily_limit: int,
+) -> None:
+    """
+    Atomically reserve ``estimated_tokens`` against the user's daily budget.
+
+    Uses Redis INCRBY so all gateway instances share the same counter.
+    Sets EXPIREAT to tomorrow midnight UTC on the first reservation of the day.
+
+    Raises:
+        RuntimeError: If adding ``estimated_tokens`` would exceed ``daily_limit``.
+
+    No-op when Redis is not configured (DB path handles enforcement instead).
+    """
+    if _redis is None:
+        return
+
+    from datetime import date
+
+    today = date.today().isoformat()
+    key = f"{_BUDGET_KEY_PREFIX}{user_id}:{today}"
+
+    new_val: int = await _redis.incrby(key, estimated_tokens)
+
+    # Set expiry on first write (TTL == -1 means the key has no expiry yet).
+    ttl: int = await _redis.ttl(key)
+    if ttl < 0:
+        await _redis.expireat(key, _tomorrow_midnight_unix())
+
+    if new_val > daily_limit:
+        # Roll back and reject.
+        await _redis.decrby(key, estimated_tokens)
+        raise RuntimeError(
+            f"Per-user daily token budget exceeded for user '{user_id}' (Redis).\n"
+            f"  Would reach: {new_val:,} | Daily limit: {daily_limit:,}"
+        )
+
+    logger.debug(
+        f"[state] Budget reserved: user={user_id} +{estimated_tokens} → {new_val}/{daily_limit}"
+    )
+
+
+async def redis_budget_release(
+    user_id: str,
+    estimated_tokens: int,
+    actual_tokens: int,
+) -> None:
+    """
+    Correct the Redis budget counter after a task completes.
+
+    Subtracts the reservation and adds actual usage (net adjustment).
+    If actual > estimated the counter is incremented by the difference.
+    If actual < estimated the counter is decremented (tokens returned).
+
+    No-op when Redis is not configured.
+    """
+    if _redis is None:
+        return
+
+    delta = actual_tokens - estimated_tokens
+    if delta == 0:
+        return
+
+    from datetime import date
+
+    today = date.today().isoformat()
+    key = f"{_BUDGET_KEY_PREFIX}{user_id}:{today}"
+
+    if delta > 0:
+        await _redis.incrby(key, delta)
+    else:
+        # Floor at 0 — never go negative.
+        await _redis.decrby(key, abs(delta))
+
+    logger.debug(
+        f"[state] Budget released: user={user_id} estimated={estimated_tokens} "
+        f"actual={actual_tokens} delta={delta:+}"
+    )
+
+
+async def redis_budget_get(user_id: str) -> int:
+    """
+    Return the current daily token consumption for a user from Redis.
+
+    Returns 0 if the key does not exist (no usage yet today or not in Redis mode).
+    """
+    if _redis is None:
+        return 0
+
+    from datetime import date
+
+    today = date.today().isoformat()
+    key = f"{_BUDGET_KEY_PREFIX}{user_id}:{today}"
+    val: str | None = await _redis.get(key)
+    return int(val) if val is not None else 0

@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–13 complete. Phase 14 — advanced scaling, Kerberos with live KDC, rate-limiter Redis counters — is next.
+**Status:** ✅ Phases 0–14 complete. Phase 15 — channel connectors, web UI polish — is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,16 +17,16 @@
 
 ## Current State
 
-All phases through 12 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, and multi-provider auth registry are operational.
+All phases through 14 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, and request trace ID middleware are operational.
 
 ```
-make test-smoke        → 453/453 passing (~3.3s, no external services required)
+make test-smoke        → 463/463 passing (~3.2s, no external services required)
 make test-integration  → 35 passed (requires PostgreSQL)
-make health-server     → localhost:8765 all components green
-make gateway-start     → localhost:8080 gateway API + streaming UI
+make health-server     → localhost:8765 all components green (Redis health when configured)
+make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
 make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 13 — Kerberos real impl, Redis state layer, multi-instance docker-compose
+git log --oneline -1 → Phase 14 — Redis budget counters, Prometheus metrics, request-ID middleware
 ```
 
 ---
@@ -210,7 +210,16 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 |---|---|---|
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
-| Kerberos with live KDC | Low | Phase 14+; `KerberosBackend` now has real GSSAPI code + graceful fallback; full end-to-end test requires OS-level KDC + `gssapi` package installed |
+| Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
+
+### Fixed (Phase 14)
+
+| Item | Fix |
+|---|---|
+| Per-instance budget counter drift under concurrent load | `redis_budget_check_and_reserve()` / `redis_budget_release()` in `state.py`; `per_user_budget_check()` delegates to Redis when active — global INCRBY counter shared across all replicas |
+| No Prometheus metrics on gateway | `GET /metrics` endpoint returns Prometheus text format (`src/gateway/metrics.py`; no new deps — inline formatter); `MetricsMiddleware` counts requests by method/path/status |
+| No request correlation IDs | `RequestIDMiddleware` reads `X-Request-ID` header or generates UUID4; echoes on all responses; stored on `request.state.request_id` |
+| Redis health not visible in `/status` | `_check_redis()` in `health.py` — independent PING check using `settings.gateway.redis_url`; `redis` component added to `/status` when configured |
 
 ### Fixed (Phase 12)
 

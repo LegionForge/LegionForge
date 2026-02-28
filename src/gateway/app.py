@@ -32,7 +32,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from src.database import init_db, close_db, get_user_usage_summary_today
 from src.gateway.auth import require_user
@@ -109,8 +109,16 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+# Phase 14: request trace IDs + Prometheus request counters.
+# MetricsMiddleware must be added before RequestIDMiddleware so that the
+# request_id is already set on request.state when metrics are recorded.
+from src.gateway.middleware import MetricsMiddleware, RequestIDMiddleware
+
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +148,27 @@ async def web_ui() -> HTMLResponse:
 @app.get("/health", include_in_schema=False)
 async def health() -> dict:
     return {"status": "ok", "service": "legionforge-gateway"}
+
+
+# ── Prometheus metrics (Phase 14) ─────────────────────────────────────────────
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics_endpoint() -> PlainTextResponse:
+    """
+    Prometheus text format metrics.
+
+    No auth required — typically scraped only from within the private network.
+    Restrict at the load balancer / firewall in production.
+    """
+    from src.gateway.metrics import prometheus_text, set_gauge
+    from src.gateway.state import redis_mode
+
+    set_gauge("legionforge_redis_connected", 1.0 if redis_mode() else 0.0)
+    return PlainTextResponse(
+        prometheus_text(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 # ── Per-user usage ─────────────────────────────────────────────────────────────

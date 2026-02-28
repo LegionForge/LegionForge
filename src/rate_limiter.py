@@ -395,15 +395,19 @@ async def per_user_budget_check(
     """
     Enforce per-user daily token budget at task submission time.
 
-    Makes two DB reads to prevent TOCTOU races when multiple tasks are
-    submitted concurrently by the same user:
+    **Redis path (Phase 14):** When Redis is configured, uses an atomic
+    ``INCRBY`` counter (``lf:budget:{user_id}:{date}``) shared across all
+    gateway instances, eliminating per-instance counter drift.  The counter
+    expires automatically at midnight UTC.
+
+    **DB path (fallback):** When Redis is not configured, makes two DB reads
+    to prevent TOCTOU races when multiple tasks are submitted concurrently:
 
       actual_used  — tokens already recorded in api_usage today (rows where
                      user_id IS NOT NULL, written by the worker on completion)
       in_flight    — estimated_tokens sum of queued/running tasks today
 
-    If actual_used + in_flight + estimated_tokens > daily_limit, the
-    submission is rejected before the task is queued.
+    If the check fails, submission is rejected before the task is queued.
 
     Args:
         user_id:          UUID string of the gateway user.
@@ -414,6 +418,21 @@ async def per_user_budget_check(
     Raises:
         RuntimeError: If submitting this task would exceed the user's budget.
     """
+    # Phase 14: Redis path — global counter across all gateway instances.
+    try:
+        from src.gateway.state import redis_mode, redis_budget_check_and_reserve
+
+        if redis_mode():
+            await redis_budget_check_and_reserve(user_id, estimated_tokens, daily_limit)
+            logger.debug(
+                f"[per-user-budget] user={user_id} provider={provider} "
+                f"estimated={estimated_tokens} limit={daily_limit} — OK (Redis)"
+            )
+            return
+    except ImportError:
+        pass  # state module not available in non-gateway contexts
+
+    # DB fallback path (two reads, single-instance safe).
     from src.database import get_user_actual_usage_today, get_user_inflight_tokens
 
     actual_used = await get_user_actual_usage_today(user_id, provider)
@@ -429,7 +448,7 @@ async def per_user_budget_check(
     logger.debug(
         f"[per-user-budget] user={user_id} provider={provider} "
         f"actual={actual_used} in_flight={in_flight} estimated={estimated_tokens} "
-        f"limit={daily_limit} — OK"
+        f"limit={daily_limit} — OK (DB)"
     )
 
 
