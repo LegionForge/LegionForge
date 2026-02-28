@@ -1,0 +1,72 @@
+# Dockerfile.testclient
+# ─────────────────────────────────────────────────────────────────────────────
+# LegionForge gateway test client — runs all four test suites against a live
+# gateway deployment.
+#
+# Build:
+#   docker build -f Dockerfile.testclient -t legionforge-testclient .
+#
+# Run (all suites):
+#   docker run --rm \
+#     -e GATEWAY_URL=http://host.docker.internal:8080 \
+#     -e GATEWAY_API_KEY=lf_your_key_here \
+#     legionforge-testclient
+#
+# Run (single suite):
+#   docker run --rm \
+#     -e GATEWAY_URL=http://host.docker.internal:8080 \
+#     -e GATEWAY_API_KEY=lf_your_key_here \
+#     legionforge-testclient --suite pentest
+#
+# JSON report (for CI):
+#   docker run --rm \
+#     -e GATEWAY_URL=http://... \
+#     -e GATEWAY_API_KEY=... \
+#     legionforge-testclient --json > results.json
+#
+# Environment variables:
+#   GATEWAY_URL          — required; base URL of the gateway
+#   GATEWAY_API_KEY      — required; primary Bearer token
+#   GATEWAY_API_KEY_2    — optional; second user key (enables cross-user tests)
+#   SUITE                — optional; basic|load|pentest|injection|all (default: all)
+#   LOAD_CONCURRENCY     — optional; concurrent requests for load suite (default: 20)
+#   LOAD_ITERATIONS      — optional; rapid auth-failure count (default: 50)
+#   HEALTH_SLA_MS        — optional; P95 health SLA in ms (default: 2000)
+#   REPORT_FORMAT        — optional; text|json (default: text)
+#   FAIL_FAST            — optional; 1 to stop after first suite failure
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.11-slim AS base
+
+# ── System setup ───────────────────────────────────────────────────────────────
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Non-root user ──────────────────────────────────────────────────────────────
+RUN groupadd --gid 1000 testclient \
+    && useradd --uid 1000 --gid testclient --no-create-home --shell /sbin/nologin testclient
+
+WORKDIR /app
+
+# ── Python dependencies ────────────────────────────────────────────────────────
+COPY requirements-testclient.txt ./
+RUN pip install --no-cache-dir -r requirements-testclient.txt
+
+# ── Test client source ─────────────────────────────────────────────────────────
+# Copy only the test client package — no gateway source, no model code.
+COPY tests/__init__.py              tests/__init__.py
+COPY tests/gateway_client/          tests/gateway_client/
+
+# ── Metadata ───────────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="LegionForge Test Client" \
+      org.opencontainers.image.description="HTTP integration test suite for the LegionForge gateway" \
+      org.opencontainers.image.source="https://github.com/LegionForge/LegionForge"
+
+# ── Runtime ────────────────────────────────────────────────────────────────────
+USER testclient
+
+# Default: run all suites against GATEWAY_URL with GATEWAY_API_KEY
+ENTRYPOINT ["python", "-m", "tests.gateway_client"]
+CMD []
