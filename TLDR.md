@@ -20,8 +20,8 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, and containerized gateway (`Dockerfile.gateway`).
 
-**~430/430 smoke tests passing** (~1.5s, no external services required).
-**~35 integration tests** (PostgreSQL required — `make test-integration`).
+**430/430 smoke tests passing** (~1.5s, no external services required).
+**35 integration tests** (PostgreSQL required — `make test-integration`).
 
 ✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
 ✅ **Phase 10 complete:** DB-backed stream tokens, per-user daily token budgets, `/usage/me` endpoint, user management CLI (`src/cli/manage_users.py`).
@@ -29,7 +29,7 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 
 ---
 
-## The Big Picture — Phases 0–10 Complete
+## The Big Picture — Phases 0–11 Complete
 
 | Phase | What Gets Built | Status |
 |---|---|---|

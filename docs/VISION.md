@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Active planning — Phases 8+
+**Status:** Phases 0–11 complete — Phase 12 (OAuth, Redis, multi-datacenter) is next
 **Source:** Architecture retrospective and requirements session
 
 ---

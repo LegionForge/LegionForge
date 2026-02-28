@@ -20,8 +20,8 @@
 All phases through 11 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, and containerized gateway are operational.
 
 ```
-make test-smoke        → ~430/430 passing (~1.5s, no external services required)
-make test-integration  → ~35 passed (requires PostgreSQL)
+make test-smoke        → 430/430 passing (~1.5s, no external services required)
+make test-integration  → 35 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green
 make gateway-start     → localhost:8080 gateway API + streaming UI
 make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
@@ -31,7 +31,7 @@ git log --oneline -1 → Phase 11 — integration tests, modular auth, Dockerfil
 
 ---
 
-## What's Shipped (Phases 0–10)
+## What's Shipped (Phases 0–11)
 
 ### Source Files (`src/`)
 
@@ -102,8 +102,8 @@ git log --oneline -1 → Phase 11 — integration tests, modular auth, Dockerfil
 
 ### Tests
 
-- `tests/test_smoke.py` — **~430 tests**, no running services required, ~1.5s
-- `tests/test_integration.py` — **~35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
+- `tests/test_smoke.py` — **430 tests**, no running services required, ~1.5s
+- `tests/test_integration.py` — **35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
 
 ---
@@ -179,7 +179,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 422 tests, ~1.5s
+make test-smoke                          # 430 tests, ~1.5s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 

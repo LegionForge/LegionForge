@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 422 tests (Phase 10). Count should never
+**Expected:** All tests pass. Current baseline is 430 tests (Phase 11). Count should never
 go below the previous passing count.
 
 ```
@@ -75,7 +75,7 @@ tests/test_smoke.py::test_settings_load PASSED
 tests/test_smoke.py::test_memory_budget_is_valid PASSED
 tests/test_smoke.py::test_injection_detection_positive PASSED
 ...
-========= 422 passed in 1.5s =========
+========= 430 passed in 1.5s =========
 ```
 
 If any test fails, the output will tell you exactly which assertion failed.
@@ -202,7 +202,30 @@ All tests should still pass. ✅
 | Phase 9 (langchain 1.x + tools + fan-out) | 377 |
 | Phase 9.5 hardening sprint | 397 |
 | Phase 10 (multi-user, stream tokens, per-user budgets) | 422 |
-| Phase 11 (SecureToolNode fix, integration tests, AuthBackend, Dockerfile.gateway) | ~430 |
+| Phase 11 (SecureToolNode fix, integration tests, AuthBackend, Dockerfile.gateway) | 430 |
+
+---
+
+## Step 8b — Run Integration Tests (Phase 11+, PostgreSQL required)
+
+With PostgreSQL running from Step 4:
+
+```bash
+cd ${LEGIONFORGE_HOME}
+make test-integration
+```
+
+**Expected:**
+```
+tests/test_integration.py::test_db_gateway_users_has_daily_token_limit PASSED
+...
+========= 35 passed, 3 skipped in 2.0s =========
+```
+
+The 3 skipped tests are Ollama-dependent — they skip cleanly and are not failures. ✅
+
+**If any test fails, the output will tell you exactly which assertion failed.**
+**Do not proceed if any non-skipped test fails.**
 
 ---
 

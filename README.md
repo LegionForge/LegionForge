@@ -1,6 +1,6 @@
 # LegionForge
 
-**Version:** 1.0.0 · **Updated:** 2026-02-28 · **Status:** Phases 0–10 complete — full security stack + multi-user gateway operational
+**Version:** 1.0.0 · **Updated:** 2026-02-28 · **Status:** Phases 0–11 complete — full security stack + multi-user gateway + integration tests + containerized gateway
 
 ---
 
@@ -30,8 +30,9 @@ Agents run local LLMs via Ollama or fall back to cloud APIs. Security is built i
 | 8 — Gateway + Streaming + Discord | ✅ Complete | Gateway (:8080), SSE streaming, web UI, A2A + MCP, Discord connector |
 | 9 — Tool Library + Fan-Out | ✅ Complete | langchain 1.x, 5 production tools, parallel fan-out, 9.5 hardening sprint |
 | 10 — Multi-User Auth | ✅ Complete | DB-backed stream tokens, per-user budgets, `/usage/me`, user management CLI |
+| 11 — Security Fix + Integration Tests | ✅ Complete | SecureToolNode fix, 35 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` |
 
-**422/422 smoke tests passing. Full security stack + multi-user gateway operational.**
+**430/430 smoke tests passing. 35 integration tests passing. Full security stack + multi-user gateway operational.**
 
 **→ Full roadmap:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 

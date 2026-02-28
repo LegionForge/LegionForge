@@ -1,7 +1,7 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 7 complete
-**Last updated:** 2026-02-27
+**Version:** 1.0.0 — Phase 11 complete
+**Last updated:** 2026-02-28
 
 ---
 
@@ -728,6 +728,17 @@ How a tool gets from "code" to "allowed to run inside an agent".
   User management CLI    │  /usage/me endpoint
   stream_tokens table    │  Worker user attribution
   api_usage.user_id      │  422 smoke tests
+
+  Phase 11 ✅  SecureToolNode Fix, Integration Tests, Modular Auth, Gateway Container
+  ─────────────────────────────────────────────────────────────────
+  SecureToolNode fix     │  Synthesize ToolMessage on copy failure (critical security)
+  AuthBackend protocol   │  Pluggable OAuth/LDAP/JWT via set_auth_backend()
+  Integration tests      │  35 tests (PostgreSQL), 3 Ollama-scaffolded
+  Dockerfile.gateway     │  Containerized gateway, non-root uid 1001
+  docs/SCALING.md        │  Horizontal scaling guide + OAuth pattern
+  /usage/me on gateway   │  Moved to gateway app (port 8080) with require_user
+  dict_row fixes         │  row["col"] throughout get_user_*_today functions
+  430 smoke tests        │  +8 from Phase 11
 ```
 
 ---
