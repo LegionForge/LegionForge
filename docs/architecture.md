@@ -1,6 +1,6 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 12 complete
+**Version:** 1.0.0 — Phase 13 complete
 **Last updated:** 2026-02-28
 
 ---
@@ -752,6 +752,19 @@ How a tool gets from "code" to "allowed to run inside an agent".
   OIDCConfig/LDAPConfig │  Pydantic sub-models in GatewayConfig; oidc/ldap sections in YAML
   PyJWT[crypto]         │  RS256/ES256 JWKS decode; ldap3 added for LDAP
   443 smoke tests        │  +13 from Phase 12
+
+  Phase 13 ✅  Kerberos Real Implementation + Redis State Layer + Multi-Instance
+  ─────────────────────────────────────────────────────────────────
+  KerberosBackend       │  Real GSSAPI accept-security-context flow; graceful None fallback when gssapi absent
+  KerberosConfig        │  keytab_path, service_name, realm, daily_token_limit in GatewayConfig
+  src/gateway/state.py  │  Optional Redis-backed stream token store; DB fallback; init_redis/close_redis lifecycle
+  GatewayConfig.redis_url │  Empty = DB mode; "redis://..." = Redis mode (REDIS_URL env var also accepted)
+  auth.py               │  Stream token ops delegate to state.py (transparent to callers)
+  app.py lifespan       │  init_redis() / close_redis() called at startup/shutdown
+  docker-compose.multi-instance.yml │  2-replica gateway + Redis + Nginx load balancer
+  config/nginx/         │  nginx.multi-instance.conf; round-robin, SSE buffering off
+  redis[asyncio]        │  redis 5.x (asyncio built-in); fakeredis for smoke tests
+  453 smoke tests        │  +10 from Phase 13
 ```
 
 ---

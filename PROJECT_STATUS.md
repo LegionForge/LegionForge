@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–12 complete. Phase 13 — Kerberos full implementation, Redis-backed state, multi-datacenter is next.
+**Status:** ✅ Phases 0–13 complete. Phase 14 — advanced scaling, Kerberos with live KDC, rate-limiter Redis counters — is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -20,13 +20,13 @@
 All phases through 12 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, and multi-provider auth registry are operational.
 
 ```
-make test-smoke        → 443/443 passing (~2.1s, no external services required)
+make test-smoke        → 453/453 passing (~3.3s, no external services required)
 make test-integration  → 35 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green
 make gateway-start     → localhost:8080 gateway API + streaming UI
 make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 12 — multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos scaffold)
+git log --oneline -1 → Phase 13 — Kerberos real impl, Redis state layer, multi-instance docker-compose
 ```
 
 ---
@@ -210,7 +210,7 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 |---|---|---|
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
-| Kerberos full implementation | Low | Phase 13+; `KerberosBackend` is scaffolded (raises `NotImplementedError` with setup docs); requires OS-level KDC + `gssapi` package |
+| Kerberos with live KDC | Low | Phase 14+; `KerberosBackend` now has real GSSAPI code + graceful fallback; full end-to-end test requires OS-level KDC + `gssapi` package installed |
 
 ### Fixed (Phase 12)
 

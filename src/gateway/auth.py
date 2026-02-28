@@ -7,12 +7,15 @@ Phase 8–11: Bearer-token (bcrypt API keys) only.
 Phase 12:   Multi-scheme: Bearer (api_key / OIDC / GitHub), Basic (LDAP),
             Negotiate (Kerberos scaffold).  The active backend is selected by
             ``settings.gateway.auth_provider`` and wired in the app lifespan.
+Phase 13:   Stream token operations delegate to ``src.gateway.state`` which
+            uses Redis when configured or the DB table when not.
 
 Stream tokens:
   EventSource (browser SSE) cannot set Authorization headers.  After POST /tasks
   the response includes a short-lived stream_token (30-minute TTL).  The SSE
   endpoint accepts either the Bearer token or a stream_token query param.
-  Stream tokens are stored in the stream_tokens DB table (survive restarts).
+  Phase 13: tokens are stored in Redis (multi-instance) or the stream_tokens
+  DB table (single-instance fallback).
 
 Public API:
     AuthBackend                          — Protocol (re-exported from backends)
@@ -29,7 +32,6 @@ Public API:
 from __future__ import annotations
 
 import base64
-import secrets
 import logging
 from typing import Optional
 
@@ -38,11 +40,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 import bcrypt as _bcrypt
 
-from src.database import (
-    get_gateway_user_for_auth,
-    create_stream_token as _db_create_stream_token,
-    resolve_stream_token as _db_resolve_stream_token,
-    delete_stream_token as _db_delete_stream_token,
+from src.database import get_gateway_user_for_auth
+
+# Phase 13: stream token operations route through state.py (Redis or DB fallback)
+from src.gateway.state import (
+    create_stream_token as _state_create_stream_token,
+    resolve_stream_token as _state_resolve_stream_token,
+    delete_stream_token as _state_delete_stream_token,
 )
 
 # Re-export from backends package so existing imports continue to work:
@@ -209,21 +213,21 @@ async def require_user(
     return user
 
 
-# ── Stream tokens (DB-backed, 30-minute TTL) ──────────────────────────────────
-# Phase 10 migrated stream tokens from an in-memory dict to the stream_tokens
-# DB table so they survive gateway restarts.  The worker heartbeat purges
-# expired rows every 10 minutes via purge_expired_stream_tokens().
-
-_STREAM_TOKEN_TTL = 30 * 60  # 30 minutes, in seconds
+# ── Stream tokens (Redis or DB-backed, 30-minute TTL) ─────────────────────────
+# Phase 10: DB-backed (stream_tokens table, survives restarts).
+# Phase 13: Redis-backed when settings.gateway.redis_url is set — enables
+#           cross-instance token sharing for multi-gateway deployments.
+#           Falls back transparently to DB when Redis is not configured.
+#           The worker heartbeat still purges expired DB rows every 10 min
+#           (no-op overhead when Redis mode is active).
 
 
 async def create_stream_token(task_id: str, user_id: str) -> str:
     """
     Issue a short-lived stream token for SSE access from browser clients.
 
-    The token is persisted in the stream_tokens DB table so it survives a
-    gateway restart.  TTL is enforced by comparing expires_at to NOW() on
-    every resolve call.
+    Phase 13: delegates to state.py which uses Redis (if configured) or the
+    stream_tokens DB table (fallback).  TTL is 30 minutes in both modes.
 
     Args:
         task_id: The task this token grants access to stream.
@@ -232,14 +236,12 @@ async def create_stream_token(task_id: str, user_id: str) -> str:
     Returns:
         URL-safe random token string (32 bytes of entropy).
     """
-    token = secrets.token_urlsafe(32)
-    await _db_create_stream_token(token, task_id, user_id, _STREAM_TOKEN_TTL)
-    return token
+    return await _state_create_stream_token(task_id, user_id)
 
 
 async def resolve_stream_token(token: str) -> tuple[str, str] | None:
     """
-    Resolve a DB-backed stream token to (task_id, user_id).
+    Resolve a stream token to (task_id, user_id).
 
     Returns None if the token is unknown or has expired.  Does NOT consume
     (delete) the token so EventSource clients can reconnect within the TTL.
@@ -250,9 +252,9 @@ async def resolve_stream_token(token: str) -> tuple[str, str] | None:
     Returns:
         (task_id, user_id) tuple, or None if invalid/expired.
     """
-    return await _db_resolve_stream_token(token)
+    return await _state_resolve_stream_token(token)
 
 
 async def delete_stream_token(token: str) -> None:
     """Explicitly delete a stream token (e.g. on task cancellation)."""
-    await _db_delete_stream_token(token)
+    await _state_delete_stream_token(token)

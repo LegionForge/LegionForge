@@ -311,6 +311,35 @@ class LDAPConfig(BaseModel):
     daily_token_limit: int = 100000
 
 
+class KerberosConfig(BaseModel):
+    """
+    Configuration for the Phase 13 KerberosBackend (GSSAPI / Negotiate).
+
+    Requires:
+      - A working KDC with ``/etc/krb5.conf`` on every host.
+      - A service principal registered in the KDC:
+            HTTP/legionforge.example.com@EXAMPLE.COM
+      - A keytab file (default: /etc/legionforge/http.keytab).
+      - The ``gssapi`` Python package (``pip install gssapi``).
+
+    When ``gssapi`` is not installed, KerberosBackend logs a WARNING and
+    returns None instead of raising — the caller receives a 401.
+
+    Fields:
+        keytab_path   — Path to the HTTP service keytab file.
+        service_name  — GSSAPI service name (default: "HTTP").
+        realm         — Kerberos realm (e.g. EXAMPLE.COM). Empty = KDC default.
+        daily_token_limit — Default token budget for Kerberos-authenticated users.
+
+    Keychain: legionforge_kerberos_keytab_path (override keytab location at runtime).
+    """
+
+    keytab_path: str = "/etc/legionforge/http.keytab"
+    service_name: str = "HTTP"
+    realm: str = ""
+    daily_token_limit: int = 100000
+
+
 class GatewayConfig(BaseModel):
     """
     Configuration for Phase 10+ gateway multi-user and auth features.
@@ -327,7 +356,7 @@ class GatewayConfig(BaseModel):
     # "oidc"      — OIDC/JWKS for Google, Okta, Auth0, Keycloak, Azure AD…
     # "github"    — GitHub OAuth opaque token → /user API.
     # "ldap"      — LDAP / Active Directory bind+search+rebind (Basic auth).
-    # "kerberos"  — Kerberos/GSSAPI scaffold (Phase 13+; raises NotImplementedError).
+    # "kerberos"  — Kerberos/GSSAPI (Phase 13; graceful fallback when gssapi absent).
     auth_provider: str = "api_key"
 
     # Phase 12: OIDC provider configuration (required when auth_provider="oidc").
@@ -335,6 +364,14 @@ class GatewayConfig(BaseModel):
 
     # Phase 12: LDAP / Active Directory configuration (required when auth_provider="ldap").
     ldap: LDAPConfig = LDAPConfig()
+
+    # Phase 13: Kerberos/GSSAPI configuration (required when auth_provider="kerberos").
+    kerberos: KerberosConfig = KerberosConfig()
+
+    # Phase 13: Optional Redis URL for cross-instance stream token sharing.
+    # Empty string = DB-backed tokens (single-instance mode, current default).
+    # Set to "redis://localhost:6379/0" (or REDIS_URL env var) to enable Redis mode.
+    redis_url: str = ""
 
 
 class PentestConfig(BaseModel):

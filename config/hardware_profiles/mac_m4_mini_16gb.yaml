@@ -247,6 +247,24 @@ gateway:
     user_search_filter: "(uid={username})"    # Use (sAMAccountName={username}) for AD
     daily_token_limit: 100000                 # Default budget for LDAP users
 
+  # ── Kerberos / GSSAPI (Phase 13) ──────────────────────────────────────────
+  # Required when auth_provider: kerberos.
+  # Prerequisites: /etc/krb5.conf, HTTP service principal, gssapi package.
+  # See docs/SCALING.md for full Kerberos setup instructions.
+  kerberos:
+    keytab_path: /etc/legionforge/http.keytab   # HTTP service keytab
+    service_name: HTTP                           # GSSAPI service name
+    realm: ""                                    # e.g. EXAMPLE.COM (empty = KDC default)
+    daily_token_limit: 100000                    # Default budget for Kerberos users
+
+  # ── Redis State Layer (Phase 13) ──────────────────────────────────────────
+  # Optional. When empty, stream tokens are stored in the stream_tokens DB table
+  # (suitable for single-instance deployments).
+  # Set to enable cross-instance token sharing for multi-gateway deployments:
+  #   redis_url: redis://localhost:6379/0
+  # Or export REDIS_URL=redis://localhost:6379/0 without changing this file.
+  redis_url: ""   # empty = DB-backed tokens (single-instance mode)
+
 # ── Pentest (Phase 6 — PentestAgent) ────────────────────────────────────────
 pentest:
   enabled: true

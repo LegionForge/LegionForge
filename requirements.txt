@@ -59,6 +59,10 @@ bcrypt~=4.0                     # API key hashing (bcrypt; passlib 1.7 incompati
 # ── Auth Backends (Phase 12) ──────────────────────────────────
 ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 
+# ── Redis State Layer (Phase 13) ──────────────────────────────
+redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate counters
+fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
+
 # ── Channel Connectors (Phase 8) ─────────────────────────────
 discord.py~=2.3                 # Discord bot connector
 

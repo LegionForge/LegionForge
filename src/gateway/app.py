@@ -47,16 +47,24 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB, wire auth backend, and start the background task worker."""
+    """Initialize DB, Redis (optional), auth backend, and the background task worker."""
     await init_db()
 
     # Wire auth backend from settings (no-op if auth_provider not changed from default)
     from src.gateway.backends.registry import load_backend_from_settings
     from src.gateway.auth import set_auth_backend
+    from src.gateway.state import init_redis, close_redis
     from config.settings import settings as _settings
 
     set_auth_backend(load_backend_from_settings(_settings))
     logger.info(f"[gateway] Auth backend: {_settings.gateway.auth_provider}")
+
+    # Phase 13: optional Redis-backed state (stream tokens + rate counters)
+    # Falls back to DB-backed tokens when redis_url is empty.
+    import os
+
+    redis_url = _settings.gateway.redis_url or os.environ.get("REDIS_URL", "")
+    await init_redis(redis_url)
 
     worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
     logger.info("[gateway] Startup complete — worker running")
@@ -68,6 +76,7 @@ async def lifespan(app: FastAPI):
             await worker_task
         except asyncio.CancelledError:
             pass
+        await close_redis()
         await close_db()
         logger.info("[gateway] Shutdown complete")
 

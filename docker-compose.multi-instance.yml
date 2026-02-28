@@ -1,0 +1,123 @@
+# docker-compose.multi-instance.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# LegionForge — Multi-instance gateway deployment example.
+#
+# Topology:
+#   Nginx (port 80/443) → 2× legionforge-gateway → Redis + PostgreSQL
+#
+#   All gateway instances share:
+#     - PostgreSQL  — tasks, users, audit, checkpoints, api_usage
+#     - Redis       — stream tokens (cross-instance SSE coherence),
+#                     rate-limiter counters (global daily budgets)
+#
+# Prerequisites:
+#   1. Build the gateway image: make build-gateway
+#   2. Set the required environment variables (see below)
+#   3. Ensure PostgreSQL is running (managed externally or via a DB service)
+#   4. docker compose -f docker-compose.multi-instance.yml up -d
+#
+# Required environment variables (pass via .env or shell):
+#   POSTGRES_PASSWORD         — PostgreSQL password for legionforge user
+#   TASK_TOKEN_SECRET         — JWT secret for task token signing (same on all instances)
+#   GATEWAY_SIGNING_KEY       — Ed25519 private key for tool signing (same on all instances)
+#   ANTHROPIC_API_KEY         — Cloud LLM key (optional; for cloud fallback)
+#
+# Scaling:
+#   docker compose -f docker-compose.multi-instance.yml up -d --scale gateway=3
+#
+# Health check:
+#   curl http://localhost/health  → {"status": "ok", "service": "legionforge-gateway"}
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - legionforge
+
+  # ── Gateway (replica 1) ───────────────────────────────────────────────────
+  # ── Gateway (replica 2) — same image, different container name ───────────
+  # Scale via: docker compose ... --scale gateway=N
+  gateway:
+    image: legionforge-gateway:latest
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # PostgreSQL connection (shared across all instances)
+      POSTGRES_HOST: ${POSTGRES_HOST:-host.docker.internal}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB:   ${POSTGRES_DB:-legionforge}
+      POSTGRES_USER: ${POSTGRES_USER:-legionforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+
+      # Redis — stream tokens + rate counters (cross-instance coherence)
+      REDIS_URL: redis://redis:6379/0
+
+      # JWT task-token secret — MUST be identical on all instances
+      TASK_TOKEN_SECRET: ${TASK_TOKEN_SECRET:?TASK_TOKEN_SECRET is required}
+
+      # Cloud LLM keys (optional)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY:    ${OPENAI_API_KEY:-}
+
+      # Hardware profile
+      AGENT_HARDWARE_PROFILE: ${AGENT_HARDWARE_PROFILE:-mac_m4_mini_16gb}
+
+      # CORS — lock to your actual domain in production
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    networks:
+      - legionforge
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Note: do NOT expose port 8080 directly in multi-instance mode.
+    # All traffic routes through Nginx below.
+
+  # ── Nginx load balancer ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    ports:
+      - "80:80"
+      # Uncomment for HTTPS (requires certs mounted into /etc/nginx/certs/):
+      # - "443:443"
+    volumes:
+      - ./config/nginx/nginx.multi-instance.conf:/etc/nginx/nginx.conf:ro
+      # Uncomment for HTTPS:
+      # - ./config/nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - legionforge
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  legionforge:
+    driver: bridge
