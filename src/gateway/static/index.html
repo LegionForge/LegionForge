@@ -5,149 +5,890 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LegionForge</title>
   <style>
-    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0d1117; color: #c9d1d9; }
-    h1 { color: #58a6ff; }
-    textarea { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; padding: 8px; border-radius: 6px; resize: vertical; }
-    button { margin-top: 8px; padding: 8px 20px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; }
-    button:disabled { background: #3d4450; cursor: not-allowed; }
-    #log { background: #161b22; border: 1px solid #30363d; padding: 12px; border-radius: 6px; min-height: 300px; white-space: pre-wrap; word-break: break-word; margin-top: 16px; }
-    .tool-call { color: #f0883e; }
-    .error { color: #f85149; }
-    .status { color: #8b949e; font-style: italic; }
-    input[type=text] { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 8px; border-radius: 6px; margin-bottom: 8px; }
-    label { font-size: 0.85em; color: #8b949e; }
+    /* ── Reset & base ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --panel:     #161b22;
+      --panel2:    #1c2128;
+      --border:    #30363d;
+      --border2:   #21262d;
+      --text:      #c9d1d9;
+      --text-dim:  #8b949e;
+      --text-xdim: #484f58;
+      --blue:      #58a6ff;
+      --green:     #3fb950;
+      --orange:    #f0883e;
+      --red:       #f85149;
+      --purple:    #d2a8ff;
+      --yellow:    #e3b341;
+      --radius:    6px;
+      --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    #app {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    #header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--blue);
+      letter-spacing: 0.02em;
+    }
+    #header .subtitle {
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+    #conn-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-xdim);
+      margin-left: auto;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #conn-dot.live    { background: var(--green); }
+    #conn-dot.pulse   { animation: pulse 1s ease-in-out; }
+    #conn-dot.error   { background: var(--red); }
+    @keyframes pulse {
+      0%   { opacity: 1; }
+      50%  { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+
+    /* ── Card ────────────────────────────────────────────────────── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+
+    /* ── Config row ──────────────────────────────────────────────── */
+    #config { display: flex; flex-direction: column; gap: 10px; }
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .field-row label {
+      width: 72px;
+      flex-shrink: 0;
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+    .field-row input[type="text"],
+    .field-row input[type="password"],
+    .field-row select {
+      flex: 1;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 5px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field-row input:focus,
+    .field-row select:focus { border-color: var(--blue); }
+    .field-row select option { background: var(--panel2); }
+
+    /* ── Buttons ─────────────────────────────────────────────────── */
+    .btn {
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .btn:hover  { background: var(--border2); border-color: var(--text-dim); }
+    .btn:active { opacity: 0.8; }
+    .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+    .btn.primary { background: #238636; border-color: #2ea043; color: #fff; }
+    .btn.primary:hover:not(:disabled) { background: #2ea043; }
+    .btn.danger  { border-color: #6e1a1a; color: var(--red); }
+    .btn.danger:hover:not(:disabled) { background: #2d1317; }
+    .btn.ghost   { border-color: transparent; color: var(--text-dim); }
+    .btn.ghost:hover { border-color: var(--border); color: var(--text); }
+    .btn.icon    { padding: 5px 8px; font-size: 14px; }
+
+    /* ── Task input ──────────────────────────────────────────────── */
+    #task-input {
+      width: 100%;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 10px;
+      resize: none;
+      outline: none;
+      min-height: 80px;
+      max-height: 300px;
+      overflow-y: auto;
+      transition: border-color 0.15s;
+      line-height: 1.6;
+    }
+    #task-input:focus { border-color: var(--blue); }
+
+    /* ── Action bar ──────────────────────────────────────────────── */
+    #action-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #char-count {
+      margin-left: auto;
+      color: var(--text-xdim);
+      font-size: 11px;
+    }
+
+    /* ── Status bar ──────────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 22px;
+      font-size: 12px;
+      padding: 0 2px;
+    }
+    #status-indicator {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    #status-indicator.running  { color: var(--yellow); }
+    #status-indicator.complete { color: var(--green);  }
+    #status-indicator.error    { color: var(--red);    }
+    #status-indicator.cancelled{ color: var(--text-dim);}
+    #status-detail { color: var(--text-dim); flex: 1; }
+    #elapsed { color: var(--text-xdim); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+    /* ── Output ──────────────────────────────────────────────────── */
+    #output-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+    #output-header .card-title { margin-bottom: 0; flex: 1; }
+    #output {
+      background: var(--panel2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 12px;
+      min-height: 200px;
+      max-height: 600px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    /* Output text classes */
+    .o-ready   { color: var(--text-xdim); font-style: italic; }
+    .o-status  { color: var(--text-dim);  font-style: italic; }
+    .o-node    { color: var(--purple);    font-size: 11px; }
+    .o-tool    { color: var(--orange); }
+    .o-token   { color: var(--text); }
+    .o-complete{ color: var(--green); font-weight: 600; }
+    .o-error   { color: var(--red); }
+    .o-cancelled{ color: var(--text-dim); }
+    .o-result  { color: var(--text); border-top: 1px solid var(--border2); margin-top: 8px; padding-top: 8px; }
+
+    /* Tool block */
+    .tool-block {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(240, 136, 62, 0.08);
+      border: 1px solid rgba(240, 136, 62, 0.25);
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin: 2px 0;
+      font-size: 12px;
+      color: var(--orange);
+    }
+    .tool-block .tool-status { font-size: 10px; }
+    .tool-block.done { opacity: 0.7; }
+
+    /* ── History ─────────────────────────────────────────────────── */
+    #history-section summary {
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 0;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      list-style: none;
+    }
+    #history-section summary::before {
+      content: '▶ ';
+      font-size: 9px;
+      transition: transform 0.2s;
+    }
+    #history-section[open] summary::before { content: '▼ '; }
+    #history-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .history-item {
+      display: grid;
+      grid-template-columns: 16px 80px 90px 1fr 60px;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      background: var(--panel2);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: border-color 0.15s;
+    }
+    .history-item:hover { border-color: var(--blue); }
+    .history-item .hi-badge {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .hi-badge.complete  { background: var(--green); }
+    .hi-badge.error, .hi-badge.failed { background: var(--red); }
+    .hi-badge.cancelled { background: var(--text-xdim); }
+    .hi-badge.running   { background: var(--yellow); }
+    .hi-badge.queued    { background: var(--blue); }
+    .history-item .hi-id     { color: var(--text-dim); font-size: 10px; }
+    .history-item .hi-agent  { color: var(--purple);   font-size: 10px; }
+    .history-item .hi-input  { color: var(--text);     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item .hi-tokens { color: var(--text-xdim); text-align: right; font-size: 10px; }
+    #history-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
+
+    /* ── Scrollbar styling ───────────────────────────────────────── */
+    ::-webkit-scrollbar            { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track      { background: transparent; }
+    ::-webkit-scrollbar-thumb      { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover{ background: var(--text-xdim); }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .field-row label { width: 56px; }
+      .history-item { grid-template-columns: 12px 1fr 50px; }
+      .history-item .hi-id, .history-item .hi-agent { display: none; }
+    }
   </style>
 </head>
 <body>
-  <h1>LegionForge</h1>
+<div id="app">
 
-  <label for="api-key">API Key</label>
-  <input type="text" id="api-key" placeholder="Paste your API key here" autocomplete="off">
+  <!-- ── Header ─────────────────────────────────────────── -->
+  <div id="header">
+    <h1>LegionForge</h1>
+    <span class="subtitle">agent gateway</span>
+    <div id="conn-dot" title="Stream connection status"></div>
+  </div>
 
-  <label for="task">Task</label>
-  <textarea id="task" rows="4" placeholder="Enter a research task or question..."></textarea>
+  <!-- ── Config card ────────────────────────────────────── -->
+  <div class="card" id="config">
+    <div class="card-title">Configuration</div>
 
-  <br>
-  <button id="submit-btn" onclick="submitTask()">Submit</button>
-  <button onclick="clearLog()" style="margin-left:8px;background:#21262d;">Clear</button>
+    <div class="field-row">
+      <label for="api-key">API Key</label>
+      <input type="password" id="api-key" placeholder="Paste your API key" autocomplete="off" spellcheck="false">
+      <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key">👁</button>
+      <button class="btn ghost icon" onclick="clearApiKey()" title="Clear saved key">✕</button>
+    </div>
 
-  <pre id="log"><span class="status">Ready.</span></pre>
+    <div class="field-row">
+      <label for="agent-type">Agent</label>
+      <select id="agent-type">
+        <option value="orchestrator">Orchestrator — multi-step tasks, planning + research + synthesis</option>
+        <option value="researcher">Researcher — focused web research + document retrieval</option>
+        <option value="base_agent">Base Agent — general LLM with tool access</option>
+      </select>
+    </div>
+  </div>
 
-  <script>
-    const log = document.getElementById('log');
-    const btn = document.getElementById('submit-btn');
-    let activeES = null;
+  <!-- ── Input card ─────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Task</div>
+    <textarea id="task-input"
+      placeholder="Enter a task or question…&#10;&#10;Examples:&#10;  Research the latest developments in AI agent security&#10;  Summarize this document: [paste text]&#10;  What is the current threat landscape for RAG systems?"
+      oninput="onTaskInput(this)"
+      onkeydown="onTaskKeydown(event)"></textarea>
 
-    function appendLog(text, cls) {
-      const span = document.createElement('span');
-      if (cls) span.className = cls;
-      span.textContent = text;
-      log.appendChild(span);
-      log.scrollTop = log.scrollHeight;
+    <div id="action-bar" style="margin-top: 10px;">
+      <button class="btn primary" id="submit-btn" onclick="submitTask()">▶ Submit <kbd style="font-size:10px;opacity:0.7">⌘↵</kbd></button>
+      <button class="btn danger"  id="cancel-btn" onclick="cancelTask()" style="display:none">✕ Cancel</button>
+      <button class="btn ghost"   onclick="clearOutput()">Clear</button>
+      <span id="char-count"></span>
+    </div>
+  </div>
+
+  <!-- ── Output card ────────────────────────────────────── -->
+  <div class="card">
+    <div id="output-header">
+      <div class="card-title">Output</div>
+      <div id="status-bar">
+        <span id="status-indicator"></span>
+        <span id="status-detail"></span>
+        <span id="elapsed"></span>
+      </div>
+      <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" style="margin-left:8px">⎘</button>
+    </div>
+    <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
+  </div>
+
+  <!-- ── History ────────────────────────────────────────── -->
+  <div class="card">
+    <details id="history-section">
+      <summary id="history-summary">History (0)</summary>
+      <div id="history-list">
+        <div id="history-empty">No tasks yet this session.</div>
+      </div>
+    </details>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  LegionForge Web UI — Phase 15
+//  Vanilla JS, no framework, single file.
+// ════════════════════════════════════════════════════════════════
+
+// ── State ────────────────────────────────────────────────────────
+const S = {
+  activeES:       null,   // EventSource
+  activeTaskId:   null,   // string
+  streamToken:    null,   // string
+  startTime:      null,   // Date
+  elapsedTimer:   null,   // setInterval handle
+  history:        [],     // [{task_id, agent_type, input_preview, status, elapsed_ms, tokens, ts}]
+  outputBuffer:   '',     // plain-text accumulator for copy
+  activeToolName: null,   // current open tool block
+};
+
+const MAX_HISTORY = 20;
+const STORAGE_KEY = 'lf_history_v1';
+const APIKEY_KEY  = 'lf_api_key';
+
+// ── DOM refs ─────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const el = {
+  apiKey:     () => $('api-key'),
+  agentType:  () => $('agent-type'),
+  taskInput:  () => $('task-input'),
+  submitBtn:  () => $('submit-btn'),
+  cancelBtn:  () => $('cancel-btn'),
+  output:     () => $('output'),
+  statusInd:  () => $('status-indicator'),
+  statusDet:  () => $('status-detail'),
+  elapsed:    () => $('elapsed'),
+  connDot:    () => $('conn-dot'),
+  histList:   () => $('history-list'),
+  histEmpty:  () => $('history-empty'),
+  histSummary:() => $('history-summary'),
+  charCount:  () => $('char-count'),
+};
+
+// ── Init ─────────────────────────────────────────────────────────
+(function init() {
+  // Restore API key
+  const saved = localStorage.getItem(APIKEY_KEY);
+  if (saved) el.apiKey().value = saved;
+
+  // Save API key on change
+  el.apiKey().addEventListener('input', () => {
+    const v = el.apiKey().value.trim();
+    if (v) localStorage.setItem(APIKEY_KEY, v);
+    else   localStorage.removeItem(APIKEY_KEY);
+  });
+
+  // Restore history
+  try {
+    const h = localStorage.getItem(STORAGE_KEY);
+    if (h) S.history = JSON.parse(h);
+  } catch (_) { S.history = []; }
+  renderHistory();
+})();
+
+// ── API key helpers ───────────────────────────────────────────────
+function toggleKeyVisibility() {
+  const inp = el.apiKey();
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+function clearApiKey() {
+  el.apiKey().value = '';
+  localStorage.removeItem(APIKEY_KEY);
+}
+
+// ── Textarea auto-resize + char count ────────────────────────────
+function onTaskInput(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 300) + 'px';
+  const n = ta.value.length;
+  el.charCount().textContent = n > 0 ? n + ' chars' : '';
+}
+
+// ── Keyboard shortcut: Cmd/Ctrl + Enter ──────────────────────────
+function onTaskKeydown(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    submitTask();
+  }
+}
+
+// ── Connection dot helpers ────────────────────────────────────────
+function dotLive()   { el.connDot().className = 'live'; }
+function dotPulse()  { const d = el.connDot(); d.className = 'pulse'; setTimeout(() => d.className = 'live', 1000); }
+function dotError()  { el.connDot().className = 'error'; }
+function dotIdle()   { el.connDot().className = ''; }
+
+// ── Output helpers ────────────────────────────────────────────────
+function clearOutputEl() {
+  el.output().innerHTML = '<span class="o-ready">Ready. Enter a task above and press Submit.</span>';
+  S.outputBuffer = '';
+}
+
+function appendSpan(text, cls) {
+  if (!text && text !== 0) return;
+  const out = el.output();
+  // Remove ready placeholder on first real content
+  const ready = out.querySelector('.o-ready');
+  if (ready) ready.remove();
+
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = text;
+  out.appendChild(span);
+  out.scrollTop = out.scrollHeight;
+  // Accumulate plain text for copy
+  S.outputBuffer += text;
+}
+
+function appendHTML(html) {
+  const out = el.output();
+  const ready = out.querySelector('.o-ready');
+  if (ready) ready.remove();
+  const wrap = document.createElement('span');
+  wrap.innerHTML = html;
+  out.appendChild(wrap);
+  out.scrollTop = out.scrollHeight;
+}
+
+// ── Status bar ────────────────────────────────────────────────────
+function setStatus(cls, indicator, detail) {
+  el.statusInd().className = cls;
+  el.statusInd().textContent = indicator;
+  el.statusDet().textContent = detail;
+}
+function clearStatus() {
+  el.statusInd().className = '';
+  el.statusInd().textContent = '';
+  el.statusDet().textContent = '';
+  el.elapsed().textContent = '';
+}
+
+// ── Elapsed timer ─────────────────────────────────────────────────
+function startTimer() {
+  S.startTime = Date.now();
+  S.elapsedTimer = setInterval(() => {
+    const s = ((Date.now() - S.startTime) / 1000).toFixed(1);
+    el.elapsed().textContent = s + 's';
+  }, 100);
+}
+function stopTimer() {
+  clearInterval(S.elapsedTimer);
+  S.elapsedTimer = null;
+}
+function elapsedSec() {
+  return S.startTime ? ((Date.now() - S.startTime) / 1000).toFixed(1) : '0.0';
+}
+
+// ── Tool block management ─────────────────────────────────────────
+let _toolBlockEl = null;
+
+function openToolBlock(toolName) {
+  S.activeToolName = toolName;
+  // Ensure we're on a new line
+  appendSpan('\n');
+  const wrap = document.createElement('span');
+  wrap.className = 'tool-block';
+  wrap.id = 'tool-block-' + toolName.replace(/\W/g, '_');
+  wrap.innerHTML = '<span class="tool-status">▶</span> ' + escapeHtml(toolName);
+  el.output().appendChild(wrap);
+  el.output().scrollTop = el.output().scrollHeight;
+  _toolBlockEl = wrap;
+  S.outputBuffer += '\n▶ ' + toolName;
+}
+
+function closeToolBlock(toolName) {
+  if (_toolBlockEl) {
+    _toolBlockEl.classList.add('done');
+    _toolBlockEl.querySelector('.tool-status').textContent = '✓';
+    _toolBlockEl = null;
+  }
+  appendSpan('\n');
+  S.outputBuffer += ' ✓\n';
+  S.activeToolName = null;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Copy output ───────────────────────────────────────────────────
+function copyOutput() {
+  const text = S.outputBuffer || el.output().textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('[onclick="copyOutput()"]');
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => {
+    // Fallback: select all text in output
+    const range = document.createRange();
+    range.selectNodeContents(el.output());
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+
+// ── Submit task ───────────────────────────────────────────────────
+async function submitTask() {
+  const apiKey = el.apiKey().value.trim();
+  const task   = el.taskInput().value.trim();
+  const agent  = el.agentType().value;
+
+  if (!apiKey) { appendSpan('\n[error] Enter your API key first.\n', 'o-error'); return; }
+  if (!task)   { appendSpan('\n[error] Enter a task first.\n', 'o-error'); return; }
+
+  // Close any existing stream
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+
+  // Reset UI
+  el.output().innerHTML = '';
+  S.outputBuffer = '';
+  _toolBlockEl = null;
+  el.submitBtn().disabled = true;
+  el.cancelBtn().style.display = 'inline-flex';
+  setStatus('running', '● Running…', '');
+  dotLive();
+  startTimer();
+
+  appendSpan('[submitting…]\n', 'o-status');
+
+  let taskId, streamToken;
+  try {
+    const res = await fetch('/tasks', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify({ task, agent_type: agent }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      const msg = err.detail || JSON.stringify(err);
+      finishRun('error', msg);
+      return;
     }
 
-    function clearLog() {
-      log.innerHTML = '<span class="status">Ready.</span>';
-    }
+    const data = await res.json();
+    taskId      = data.task_id;
+    streamToken = data.stream_token;
+    S.activeTaskId  = taskId;
+    S.streamToken   = streamToken;
 
-    async function submitTask() {
-      const apiKey = document.getElementById('api-key').value.trim();
-      const task = document.getElementById('task').value.trim();
-      if (!apiKey) { appendLog('\n[error] Enter your API key first.\n', 'error'); return; }
-      if (!task)   { appendLog('\n[error] Enter a task first.\n', 'error'); return; }
+    setStatus('running', '● Running…', taskId.slice(0, 8) + '…');
+    appendSpan('[queued: ' + taskId.slice(0,8) + '…]\n', 'o-status');
+  } catch (e) {
+    finishRun('error', 'Network error: ' + e.message);
+    return;
+  }
 
-      if (activeES) { activeES.close(); activeES = null; }
-      log.innerHTML = '';
-      btn.disabled = true;
+  // Subscribe to SSE
+  openStream(taskId, streamToken, apiKey, agent, task);
+}
 
-      appendLog('[submitting task...]\n', 'status');
+// ── SSE stream ────────────────────────────────────────────────────
+function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false) {
+  const url = '/tasks/' + taskId + '/stream?stream_token=' + encodeURIComponent(streamToken);
+  const es = new EventSource(url);
+  S.activeES = es;
 
-      let taskId, streamToken;
-      try {
-        const res = await fetch('/tasks', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({ task }),
-        });
+  es.addEventListener('task_start', () => {
+    appendSpan('[agent started]\n', 'o-status');
+  });
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ detail: res.statusText }));
-          appendLog(`[error ${res.status}] ${err.detail || JSON.stringify(err)}\n`, 'error');
-          btn.disabled = false;
-          return;
-        }
-
-        const data = await res.json();
-        taskId = data.task_id;
-        streamToken = data.stream_token;
-        appendLog(`[task queued: ${taskId}]\n`, 'status');
-      } catch (e) {
-        appendLog(`[network error] ${e}\n`, 'error');
-        btn.disabled = false;
-        return;
+  es.addEventListener('chain_start', e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.node && d.node !== '__start__' && d.node !== 'LangGraph') {
+        appendSpan('\n[' + d.node + ']\n', 'o-node');
       }
+    } catch(_) {}
+  });
 
-      // Subscribe to SSE stream using stream_token (no Authorization header needed)
-      const streamUrl = `/tasks/${taskId}/stream?stream_token=${encodeURIComponent(streamToken)}`;
-      const es = new EventSource(streamUrl);
-      activeES = es;
+  es.addEventListener('tool_start', e => {
+    try {
+      const d = JSON.parse(e.data);
+      openToolBlock(d.tool || 'tool');
+    } catch(_) { openToolBlock('tool'); }
+  });
 
-      es.addEventListener('task_start', () => {
-        appendLog('[agent started]\n', 'status');
-      });
+  es.addEventListener('tool_end', e => {
+    try {
+      const d = JSON.parse(e.data);
+      closeToolBlock(d.tool || S.activeToolName || 'tool');
+    } catch(_) { closeToolBlock(S.activeToolName || 'tool'); }
+  });
 
-      es.addEventListener('chain_start', e => {
-        const d = JSON.parse(e.data);
-        appendLog(`[node: ${d.node}]\n`, 'status');
-      });
+  es.addEventListener('token', e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.delta) appendSpan(d.delta, 'o-token');
+    } catch(_) {}
+  });
 
-      es.addEventListener('tool_start', e => {
-        const d = JSON.parse(e.data);
-        appendLog(`\n[tool: ${d.tool}] `, 'tool-call');
-      });
+  es.addEventListener('task_complete', e => {
+    dotPulse();
+    // Fetch full result for token count
+    fetchTaskResult(taskId, apiKey, agent, taskInput);
+  });
 
-      es.addEventListener('tool_end', e => {
-        const d = JSON.parse(e.data);
-        appendLog(`[done]\n`, 'tool-call');
-      });
+  es.addEventListener('task_error', e => {
+    try {
+      const d = JSON.parse(e.data);
+      finishRun('error', d.error || 'Unknown error', taskId, agent, taskInput, 0);
+    } catch(_) { finishRun('error', 'Stream error', taskId, agent, taskInput, 0); }
+    es.close();
+    S.activeES = null;
+  });
 
-      es.addEventListener('token', e => {
-        const d = JSON.parse(e.data);
-        appendLog(d.delta);
-      });
+  es.addEventListener('task_cancelled', () => {
+    finishRun('cancelled', 'Task cancelled', taskId, agent, taskInput, 0);
+    es.close();
+    S.activeES = null;
+  });
 
-      es.addEventListener('task_complete', e => {
-        appendLog('\n\n[task complete]\n', 'status');
-        es.close();
-        activeES = null;
-        btn.disabled = false;
-      });
+  es.addEventListener('heartbeat', () => { dotPulse(); });
 
-      es.addEventListener('task_error', e => {
-        const d = JSON.parse(e.data);
-        appendLog(`\n[error] ${d.error}\n`, 'error');
-        es.close();
-        activeES = null;
-        btn.disabled = false;
-      });
-
-      es.addEventListener('task_cancelled', () => {
-        appendLog('\n[task cancelled]\n', 'status');
-        es.close();
-        activeES = null;
-        btn.disabled = false;
-      });
-
-      es.onerror = () => {
-        appendLog('\n[stream disconnected]\n', 'error');
-        es.close();
-        activeES = null;
-        btn.disabled = false;
-      };
+  es.onerror = () => {
+    if (!retry) {
+      // Single retry
+      es.close();
+      S.activeES = null;
+      appendSpan('\n[stream disconnected — retrying…]\n', 'o-status');
+      setTimeout(() => openStream(taskId, streamToken, apiKey, agent, taskInput, true), 1500);
+    } else {
+      finishRun('error', 'Stream disconnected', taskId, agent, taskInput, 0);
+      es.close();
+      S.activeES = null;
     }
-  </script>
+  };
+}
+
+// ── Fetch task result ─────────────────────────────────────────────
+async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
+  try {
+    const res = await fetch('/tasks/' + taskId, {
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const tokens = data.estimated_tokens || 0;
+      const result = data.result;
+      // Display result summary if available and not already shown via tokens
+      if (result && result.output && typeof result.output === 'string') {
+        const preview = result.output.slice(0, 300);
+        if (preview && !S.outputBuffer.includes(preview.slice(0, 50))) {
+          appendSpan('\n', '');
+          appendHTML('<span class="o-result">' + escapeHtml(preview) + (result.output.length > 300 ? '…' : '') + '</span>');
+        }
+      }
+      finishRun('complete', '', taskId, agent, taskInputText, tokens);
+    } else {
+      finishRun('complete', '', taskId, agent, taskInputText, 0);
+    }
+  } catch(_) {
+    finishRun('complete', '', taskId, agent, taskInputText, 0);
+  }
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+}
+
+// ── Finish run (all terminal states) ─────────────────────────────
+function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
+  stopTimer();
+  const elapsed = elapsedSec();
+
+  el.submitBtn().disabled = false;
+  el.cancelBtn().style.display = 'none';
+  dotIdle();
+
+  if (status === 'complete') {
+    const tokenStr = tokens ? ' · ' + tokens.toLocaleString() + ' tokens est.' : '';
+    const summary = '✓ Complete' + tokenStr + ' · ' + elapsed + 's';
+    setStatus('complete', summary, '');
+    appendSpan('\n' + summary + '\n', 'o-complete');
+    saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
+  } else if (status === 'error') {
+    setStatus('error', '✗ Error', detail);
+    appendSpan('\n[error] ' + detail + '\n', 'o-error');
+    saveHistory({ task_id: taskId, agent_type: agent, input_preview: (taskInputText || '').slice(0, 80), status: 'error', elapsed_ms: 0, tokens: 0, ts: Date.now() });
+  } else if (status === 'cancelled') {
+    setStatus('cancelled', '⊘ Cancelled', '');
+    appendSpan('\n[cancelled]\n', 'o-cancelled');
+    saveHistory({ task_id: taskId, agent_type: agent, input_preview: (taskInputText || '').slice(0, 80), status: 'cancelled', elapsed_ms: 0, tokens: 0, ts: Date.now() });
+  }
+
+  S.activeTaskId = null;
+}
+
+// ── Cancel task ───────────────────────────────────────────────────
+async function cancelTask() {
+  const taskId = S.activeTaskId;
+  if (!taskId) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+
+  el.cancelBtn().disabled = true;
+  try {
+    const res = await fetch('/tasks/' + taskId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (!res.ok && res.status !== 204) {
+      appendSpan('\n[cancel failed: ' + res.status + ']\n', 'o-error');
+      el.cancelBtn().disabled = false;
+    }
+    // The SSE stream will receive task_cancelled and finishRun will be called
+  } catch (e) {
+    appendSpan('\n[cancel error: ' + e.message + ']\n', 'o-error');
+    el.cancelBtn().disabled = false;
+  }
+}
+
+// ── Clear output ──────────────────────────────────────────────────
+function clearOutput() {
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+  stopTimer();
+  clearOutputEl();
+  clearStatus();
+  dotIdle();
+  el.submitBtn().disabled = false;
+  el.cancelBtn().style.display = 'none';
+  S.activeTaskId = null;
+}
+
+// ── History ───────────────────────────────────────────────────────
+function saveHistory(entry) {
+  S.history.unshift(entry);
+  if (S.history.length > MAX_HISTORY) S.history.length = MAX_HISTORY;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {}
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = el.histList();
+  const empty = el.histEmpty();
+  el.histSummary().textContent = 'History (' + S.history.length + ')';
+
+  if (S.history.length === 0) {
+    empty.style.display = 'block';
+    // Remove any existing items
+    list.querySelectorAll('.history-item').forEach(n => n.remove());
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Rebuild list
+  list.querySelectorAll('.history-item').forEach(n => n.remove());
+  S.history.forEach((h, i) => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.onclick = () => restoreHistory(i);
+    div.title = h.input_preview;
+
+    const badgeCls = h.status === 'complete' ? 'complete'
+                   : h.status === 'error' || h.status === 'failed' ? 'error'
+                   : h.status === 'cancelled' ? 'cancelled'
+                   : 'queued';
+
+    const tokenStr = h.tokens ? h.tokens.toLocaleString() + ' tok' : '';
+    const shortId = (h.task_id || '').slice(0, 8);
+
+    div.innerHTML =
+      '<span class="hi-badge ' + badgeCls + '"></span>' +
+      '<span class="hi-id">' + escapeHtml(shortId) + '</span>' +
+      '<span class="hi-agent">' + escapeHtml(h.agent_type || '') + '</span>' +
+      '<span class="hi-input">' + escapeHtml(h.input_preview || '') + '</span>' +
+      '<span class="hi-tokens">' + tokenStr + '</span>';
+
+    list.appendChild(div);
+  });
+}
+
+function restoreHistory(idx) {
+  const h = S.history[idx];
+  if (!h) return;
+  el.taskInput().value = h.input_preview;
+  onTaskInput(el.taskInput());
+  if (h.agent_type) el.agentType().value = h.agent_type;
+  // Show a note in output
+  clearOutput();
+  appendSpan('[restored task from history: ' + (h.task_id || '').slice(0,8) + '…]\n', 'o-status');
+  appendSpan(h.input_preview + '\n', 'o-token');
+  el.taskInput().focus();
+}
+</script>
 </body>
 </html>

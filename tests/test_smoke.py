@@ -6093,3 +6093,81 @@ def test_p14_kerberos_integration_skeleton_exists():
     assert "KERBEROS_TEST_KDC" in content, "Missing skip guard env var"
     assert "skip_without_kdc" in content, "Missing skip marker"
     assert "test_kerberos_spnego_accept_context" in content, "Missing SPNEGO test"
+
+
+# ── Phase 15: Polished web UI ─────────────────────────────────────
+
+
+def _ui_html() -> str:
+    from pathlib import Path
+
+    return (
+        Path(__file__).parent.parent / "src" / "gateway" / "static" / "index.html"
+    ).read_text()
+
+
+def test_p15_ui_file_exists():
+    """src/gateway/static/index.html exists and is non-empty."""
+    from pathlib import Path
+
+    ui = Path(__file__).parent.parent / "src" / "gateway" / "static" / "index.html"
+    assert ui.exists(), "index.html not found"
+    assert ui.stat().st_size > 5000, "index.html suspiciously small"
+
+
+def test_p15_ui_has_api_key_input():
+    """UI contains a password-type API key input and localStorage persistence."""
+    html = _ui_html()
+    assert 'id="api-key"' in html, "Missing api-key input"
+    assert "localStorage" in html, "Missing localStorage usage"
+    assert "lf_api_key" in html or "APIKEY_KEY" in html or "lf_api" in html
+
+
+def test_p15_ui_has_agent_type_selector():
+    """UI contains an agent type <select> with all three valid agent types."""
+    html = _ui_html()
+    assert 'id="agent-type"' in html, "Missing agent-type select"
+    assert "orchestrator" in html, "Missing orchestrator option"
+    assert "researcher" in html, "Missing researcher option"
+    assert "base_agent" in html, "Missing base_agent option"
+
+
+def test_p15_ui_has_cancel_function():
+    """UI implements a cancelTask() function that calls DELETE /tasks/{id}."""
+    html = _ui_html()
+    assert "cancelTask" in html, "Missing cancelTask function"
+    assert "DELETE" in html, "cancelTask must use DELETE method"
+    assert 'id="cancel-btn"' in html, "Missing cancel-btn element"
+
+
+def test_p15_ui_persists_api_key_in_localstorage():
+    """UI reads and writes localStorage for API key persistence."""
+    html = _ui_html()
+    assert "localStorage.getItem" in html
+    assert "localStorage.setItem" in html
+    # Key must be stored/retrieved by name
+    assert "lf_api_key" in html or "APIKEY_KEY" in html
+
+
+def test_p15_ui_has_history_rendering():
+    """UI implements session history stored in localStorage."""
+    html = _ui_html()
+    assert "saveHistory" in html, "Missing saveHistory function"
+    assert "renderHistory" in html, "Missing renderHistory function"
+    assert "history-list" in html, "Missing history-list element"
+    assert "lf_history" in html or "STORAGE_KEY" in html, "Missing history storage key"
+
+
+def test_p15_ui_has_keyboard_shortcut():
+    """UI handles Cmd/Ctrl+Enter to submit."""
+    html = _ui_html()
+    assert "onTaskKeydown" in html or "keydown" in html, "Missing keydown handler"
+    assert "metaKey" in html or "ctrlKey" in html, "Missing Cmd/Ctrl check"
+    assert "Enter" in html, "Missing Enter key check"
+
+
+def test_p15_ui_has_copy_function():
+    """UI implements copyOutput() using navigator.clipboard."""
+    html = _ui_html()
+    assert "copyOutput" in html, "Missing copyOutput function"
+    assert "clipboard" in html, "copyOutput must use clipboard API"

@@ -5,7 +5,7 @@
 **Last updated:** 2026-02-28
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–14 complete. Phase 15 — channel connectors, web UI polish — is next.
+**Status:** ✅ Phases 0–15 complete. Phase 16 — channel connectors — is next.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -20,13 +20,13 @@
 All phases through 14 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, and request trace ID middleware are operational.
 
 ```
-make test-smoke        → 463/463 passing (~3.2s, no external services required)
+make test-smoke        → 471/471 passing (~3.4s, no external services required)
 make test-integration  → 35 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green (Redis health when configured)
 make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
 make discord-start     → Discord bot connector (requires Keychain secrets, see VERIFICATION.md)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 14 — Redis budget counters, Prometheus metrics, request-ID middleware
+git log --oneline -1 → Phase 15 — polished web UI (localStorage key, history, cancel, tool blocks, timer)
 ```
 
 ---
@@ -211,6 +211,12 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | GGUF hash pinning | Low | `gguf_sha256: ""` in hardware profile skips model integrity; run `make verify-models` and pin values |
 | Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
+
+### Fixed (Phase 15)
+
+| Item | Fix |
+|---|---|
+| Web UI was a minimal demo (no key persistence, no history, no cancel) | Full rewrite of `src/gateway/static/index.html` — localStorage API key + history (20 entries), agent type selector, cancel button (`DELETE /tasks/{id}`), tool call blocks, live elapsed timer, token count on complete, copy output, `Cmd/Ctrl+Enter` shortcut, auto-resize textarea, SSE retry on disconnect |
 
 ### Fixed (Phase 14)
 

@@ -1,6 +1,6 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 14 complete
+**Version:** 1.0.0 — Phase 15 complete
 **Last updated:** 2026-02-28
 
 ---
@@ -776,6 +776,15 @@ How a tool gets from "code" to "allowed to run inside an agent".
   health.py _check_redis() │  Independent Redis PING in /status; redis component added when configured
   tests/test_kerberos_integration.py │  Integration skeleton (5 tests); skip unless KERBEROS_TEST_KDC=1
   463 smoke tests        │  +10 from Phase 14
+
+  Phase 15 ✅  Polished Web UI
+  ─────────────────────────────────────────────────────────────────
+  src/gateway/static/index.html │  Full rewrite: localStorage API key + 20-entry history, agent type
+                                │  selector, cancel (DELETE /tasks/{id}), styled tool call blocks,
+                                │  live elapsed timer, token count on complete, copy output,
+                                │  Cmd/Ctrl+Enter shortcut, auto-resize textarea, SSE retry,
+                                │  connection status dot, task result fetch via GET /tasks/{id}
+  471 smoke tests        │  +8 from Phase 15
 ```
 
 ---
