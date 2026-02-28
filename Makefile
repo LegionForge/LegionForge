@@ -207,6 +207,40 @@ async def run(): \
     print(f'  {raw}'); \
 asyncio.run(run())"
 
+# ── Phase 9: Tool Library ──────────────────────────────────────
+.PHONY: register-http-tools
+register-http-tools:
+	@echo "Registering Phase 9 HTTP tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.tools.http_tools import register_http_tools; \
+asyncio.run(register_http_tools()); \
+print('✅ http_get + http_post registered')"
+
+.PHONY: register-file-tools
+register-file-tools:
+	@echo "Registering Phase 9 file tools..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.tools.file_tools import register_file_tools; \
+asyncio.run(register_file_tools()); \
+print('✅ file_read + file_write registered')"
+
+.PHONY: register-code-tool
+register-code-tool:
+	@echo "Registering Phase 9 code_execute tool..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.tools.code_tools import register_code_tool; \
+asyncio.run(register_code_tool()); \
+print('✅ code_execute registered')"
+
+.PHONY: sandbox-build
+sandbox-build:
+	@echo "Building legionforge-sandbox Docker image..."
+	docker build -f Dockerfile.sandbox -t legionforge-sandbox:latest .
+	@echo "✅ legionforge-sandbox:latest built"
+
 # ── Discord Connector (Phase 8) ────────────────────────────────
 .PHONY: discord-start
 discord-start:

@@ -1,0 +1,33 @@
+# ============================================================
+# Dockerfile.sandbox — LegionForge sandboxed code execution
+# ============================================================
+# Air-gapped Python 3.11 sandbox for the code_execute tool.
+#
+# Runtime flags (enforced by code_tools.py, not this file):
+#   --network none          no outbound network
+#   --read-only             container filesystem read-only
+#   --tmpfs /tmp:size=10m   only /tmp writable (in-memory)
+#   --memory=256m           memory cap
+#   --memory-swap=0         no swap
+#   --cpus=0.5              CPU cap
+#   --pids-limit=20         prevents fork bombs
+#   --security-opt=no-new-privileges
+#
+# Build:
+#   make sandbox-build
+# ============================================================
+
+FROM python:3.11-slim
+
+# No network access at runtime, so install only what's needed at build time.
+# stdlib only — no third-party packages to minimize attack surface.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        # nothing extra — stdlib is sufficient for the sandbox \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Drop to non-root user (defence-in-depth alongside --security-opt=no-new-privileges)
+RUN useradd --no-create-home --shell /bin/false sandbox
+USER sandbox
+
+# No ENTRYPOINT — code_tools.py passes `python3 -c <script>` as CMD

@@ -278,6 +278,32 @@ class PentestConfig(BaseModel):
     stub_ollama_port: int = 11435
 
 
+class ToolsConfig(BaseModel):
+    """
+    Configuration for Phase 9 tool library (file I/O, HTTP, code execution).
+    All fields have safe defaults; configure via hardware profile YAML.
+    """
+
+    # ── file_read / file_write ──────────────────────────────────
+    # Empty list = tool refuses every path until operator configures an allowlist.
+    allowed_read_paths: list[str] = []
+    allowed_write_paths: list[str] = []
+    max_file_read_bytes: int = 51200  # 50 KB
+    max_file_write_bytes: int = 51200  # 50 KB
+
+    # ── http_get / http_post ────────────────────────────────────
+    http_timeout_seconds: float = 30.0
+    max_response_bytes: int = 51200  # 50 KB
+    max_post_body_bytes: int = 10240  # 10 KB
+
+    # ── code_execute ────────────────────────────────────────────
+    sandbox_image: str = "legionforge-sandbox:latest"
+    sandbox_timeout_seconds: int = 30
+    sandbox_memory_mb: int = 256
+    sandbox_cpus: float = 0.5
+    sandbox_max_output_bytes: int = 10240  # 10 KB
+
+
 class HardwareSettings(BaseModel):
     profile: ProfileMeta
     memory: MemoryConfig
@@ -289,6 +315,7 @@ class HardwareSettings(BaseModel):
     observability: ObservabilityConfig
     security: SecurityConfig
     pentest: PentestConfig = PentestConfig()
+    tools: ToolsConfig = ToolsConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

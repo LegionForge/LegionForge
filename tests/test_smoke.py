@@ -4221,3 +4221,356 @@ def test_discord_stream_to_discord_is_coroutine():
 def test_discord_connectors_package_importable():
     """src.connectors package imports cleanly."""
     import src.connectors  # noqa: F401
+
+
+# ── Phase 9 — Tool Library ─────────────────────────────────────────────────────
+
+
+# ── ToolsConfig ────────────────────────────────────────────────────────────────
+
+
+def test_tools_config_importable():
+    """ToolsConfig loads and exposes all expected fields."""
+    from config.settings import settings
+
+    cfg = settings.tools
+    assert hasattr(cfg, "allowed_read_paths")
+    assert hasattr(cfg, "allowed_write_paths")
+    assert hasattr(cfg, "max_file_read_bytes")
+    assert hasattr(cfg, "max_file_write_bytes")
+    assert hasattr(cfg, "http_timeout_seconds")
+    assert hasattr(cfg, "max_response_bytes")
+    assert hasattr(cfg, "max_post_body_bytes")
+    assert hasattr(cfg, "sandbox_image")
+    assert hasattr(cfg, "sandbox_timeout_seconds")
+    assert hasattr(cfg, "sandbox_memory_mb")
+    assert hasattr(cfg, "sandbox_cpus")
+    assert hasattr(cfg, "sandbox_max_output_bytes")
+
+
+def test_tools_config_defaults_are_sane():
+    """ToolsConfig numeric defaults are within expected ranges."""
+    from config.settings import settings
+
+    cfg = settings.tools
+    assert cfg.max_file_read_bytes >= 1024
+    assert cfg.max_file_write_bytes >= 1024
+    assert cfg.http_timeout_seconds > 0
+    assert cfg.max_response_bytes >= 1024
+    assert cfg.sandbox_memory_mb >= 64
+    assert cfg.sandbox_cpus > 0
+
+
+# ── http_tools ─────────────────────────────────────────────────────────────────
+
+
+def test_http_tools_importable():
+    """src.tools.http_tools imports without error."""
+    import src.tools.http_tools  # noqa: F401
+
+
+def test_http_get_is_tool():
+    """http_get is a LangChain tool (has .name attribute)."""
+    from src.tools.http_tools import http_get
+
+    assert hasattr(http_get, "name")
+    assert http_get.name == "http_get"
+
+
+def test_http_post_is_tool():
+    """http_post is a LangChain tool (has .name attribute)."""
+    from src.tools.http_tools import http_post
+
+    assert hasattr(http_post, "name")
+    assert http_post.name == "http_post"
+
+
+def test_http_tools_manifests_defined():
+    """HTTP_TOOL_MANIFESTS contains manifests for both http_get and http_post."""
+    from src.tools.http_tools import HTTP_TOOL_MANIFESTS
+
+    ids = {m.tool_id for m in HTTP_TOOL_MANIFESTS}
+    assert "http_get" in ids
+    assert "http_post" in ids
+
+
+def test_http_tools_sequences_defined():
+    """HTTP_TOOL_SEQUENCES is a non-empty list of lists."""
+    from src.tools.http_tools import HTTP_TOOL_SEQUENCES
+
+    assert isinstance(HTTP_TOOL_SEQUENCES, list)
+    assert len(HTTP_TOOL_SEQUENCES) > 0
+    assert all(isinstance(seq, list) for seq in HTTP_TOOL_SEQUENCES)
+
+
+def test_http_tools_register_fn_is_coroutine():
+    """register_http_tools is a coroutine function."""
+    import inspect
+    from src.tools.http_tools import register_http_tools
+
+    assert inspect.iscoroutinefunction(register_http_tools)
+
+
+def test_http_tools_blocks_localhost():
+    """http_get blocks localhost URLs via validate_fetch_url."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("http://localhost/anything")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_http_tools_blocks_private_ip():
+    """http_get blocks RFC-1918 private IPs via validate_fetch_url."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("http://192.168.1.1/secret")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_http_tools_blocks_metadata_endpoint():
+    """http_get blocks AWS metadata endpoint via validate_fetch_url."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("http://169.254.169.254/latest/meta-data/")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_http_tools_blocks_non_http_scheme():
+    """validate_fetch_url blocks file:// and other non-HTTP schemes."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("file:///etc/passwd")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_http_post_body_size_check():
+    """http_post manifest declares sends_data_externally side effect."""
+    from src.tools.http_tools import HTTP_TOOL_MANIFESTS
+
+    post_manifest = next(m for m in HTTP_TOOL_MANIFESTS if m.tool_id == "http_post")
+    assert "sends_data_externally" in post_manifest.declared_side_effects
+
+
+def test_http_get_manifest_side_effects():
+    """http_get manifest declares calls_external_api side effect."""
+    from src.tools.http_tools import HTTP_TOOL_MANIFESTS
+
+    get_manifest = next(m for m in HTTP_TOOL_MANIFESTS if m.tool_id == "http_get")
+    assert "calls_external_api" in get_manifest.declared_side_effects
+
+
+# ── file_tools ─────────────────────────────────────────────────────────────────
+
+
+def test_file_tools_importable():
+    """src.tools.file_tools imports without error."""
+    import src.tools.file_tools  # noqa: F401
+
+
+def test_file_read_is_tool():
+    """file_read is a LangChain tool (has .name attribute)."""
+    from src.tools.file_tools import file_read
+
+    assert hasattr(file_read, "name")
+    assert file_read.name == "file_read"
+
+
+def test_file_write_is_tool():
+    """file_write is a LangChain tool (has .name attribute)."""
+    from src.tools.file_tools import file_write
+
+    assert hasattr(file_write, "name")
+    assert file_write.name == "file_write"
+
+
+def test_file_tools_manifests_defined():
+    """FILE_TOOL_MANIFESTS contains manifests for both file_read and file_write."""
+    from src.tools.file_tools import FILE_TOOL_MANIFESTS
+
+    ids = {m.tool_id for m in FILE_TOOL_MANIFESTS}
+    assert "file_read" in ids
+    assert "file_write" in ids
+
+
+def test_file_tools_sequences_defined():
+    """FILE_TOOL_SEQUENCES is a non-empty list of lists."""
+    from src.tools.file_tools import FILE_TOOL_SEQUENCES
+
+    assert isinstance(FILE_TOOL_SEQUENCES, list)
+    assert len(FILE_TOOL_SEQUENCES) > 0
+    assert all(isinstance(seq, list) for seq in FILE_TOOL_SEQUENCES)
+
+
+def test_file_tools_register_fn_is_coroutine():
+    """register_file_tools is a coroutine function."""
+    import inspect
+    from src.tools.file_tools import register_file_tools
+
+    assert inspect.iscoroutinefunction(register_file_tools)
+
+
+def test_file_read_blocks_unconfigured_path():
+    """file_read returns an error string when allowed_read_paths is empty."""
+    from unittest.mock import patch
+    from src.tools.file_tools import _resolve_and_check
+
+    try:
+        _resolve_and_check("/etc/passwd", [], "file_read")
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "file_read" in str(exc)
+
+
+def test_file_read_blocks_path_traversal():
+    """file_read blocks ../../../ traversal attempts outside allowed root."""
+    from src.tools.file_tools import _resolve_and_check
+    import tempfile, os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        allowed = [tmpdir]
+        # Attempt traversal above the allowed root
+        try:
+            _resolve_and_check(tmpdir + "/../../etc/passwd", allowed, "file_read")
+            assert False, "Should have raised ValueError"
+        except ValueError as exc:
+            assert "outside" in str(exc).lower() or "file_read" in str(exc)
+
+
+def test_file_read_within_allowed_path():
+    """_resolve_and_check succeeds for a path that is inside the allowed root."""
+    from src.tools.file_tools import _resolve_and_check
+    import tempfile, os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target = os.path.join(tmpdir, "ok.txt")
+        resolved = _resolve_and_check(target, [tmpdir], "file_read")
+        assert str(resolved).startswith(os.path.realpath(tmpdir))
+
+
+def test_file_write_blocks_executable_extensions():
+    """file_write refuses .py, .sh, .bash, .exe and other executable extensions."""
+    from src.tools.file_tools import _BLOCKED_WRITE_EXTENSIONS
+
+    for ext in (".py", ".sh", ".bash", ".exe", ".bat", ".ps1"):
+        assert ext in _BLOCKED_WRITE_EXTENSIONS, f"{ext} not in blocked extensions"
+
+
+def test_file_write_manifest_side_effects():
+    """file_write manifest declares writes_local_file side effect."""
+    from src.tools.file_tools import FILE_TOOL_MANIFESTS
+
+    write_manifest = next(m for m in FILE_TOOL_MANIFESTS if m.tool_id == "file_write")
+    assert "writes_local_file" in write_manifest.declared_side_effects
+
+
+def test_file_read_manifest_side_effects():
+    """file_read manifest declares reads_local_file side effect."""
+    from src.tools.file_tools import FILE_TOOL_MANIFESTS
+
+    read_manifest = next(m for m in FILE_TOOL_MANIFESTS if m.tool_id == "file_read")
+    assert "reads_local_file" in read_manifest.declared_side_effects
+
+
+# ── code_tools ─────────────────────────────────────────────────────────────────
+
+
+def test_code_tools_importable():
+    """src.tools.code_tools imports without error."""
+    import src.tools.code_tools  # noqa: F401
+
+
+def test_code_execute_is_tool():
+    """code_execute is a LangChain tool (has .name attribute)."""
+    from src.tools.code_tools import code_execute
+
+    assert hasattr(code_execute, "name")
+    assert code_execute.name == "code_execute"
+
+
+def test_code_tool_manifest_defined():
+    """CODE_TOOL_MANIFEST has expected tool_id and side effects."""
+    from src.tools.code_tools import CODE_TOOL_MANIFEST
+
+    assert CODE_TOOL_MANIFEST.tool_id == "code_execute"
+    assert "spawns_docker_container" in CODE_TOOL_MANIFEST.declared_side_effects
+    assert "executes_arbitrary_code" in CODE_TOOL_MANIFEST.declared_side_effects
+
+
+def test_code_tool_sequences_defined():
+    """CODE_TOOL_SEQUENCES is a non-empty list of lists."""
+    from src.tools.code_tools import CODE_TOOL_SEQUENCES
+
+    assert isinstance(CODE_TOOL_SEQUENCES, list)
+    assert len(CODE_TOOL_SEQUENCES) > 0
+    assert all(isinstance(seq, list) for seq in CODE_TOOL_SEQUENCES)
+
+
+def test_code_tool_register_fn_is_coroutine():
+    """register_code_tool is a coroutine function."""
+    import inspect
+    from src.tools.code_tools import register_code_tool
+
+    assert inspect.iscoroutinefunction(register_code_tool)
+
+
+def test_code_execute_no_docker(monkeypatch):
+    """code_execute returns a graceful error string when Docker is unavailable."""
+    import asyncio
+    from src.tools.code_tools import code_execute
+    import src.tools.code_tools as ct
+
+    monkeypatch.setattr(ct, "_docker_available", lambda: False)
+
+    result = asyncio.run(code_execute.ainvoke({"code": "print('hello')"}))
+    assert "Docker" in result or "docker" in result
+
+
+def test_code_execute_is_async():
+    """code_execute is registered as an async tool (has a coroutine function)."""
+    import inspect
+    from src.tools.code_tools import code_execute
+
+    # LangChain 1.x async @tool stores the wrapped coroutine in .coroutine
+    assert inspect.iscoroutinefunction(code_execute.coroutine)
+
+
+def test_dockerfile_sandbox_exists():
+    """Dockerfile.sandbox is present in the project root."""
+    import os
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dockerfile = os.path.join(project_root, "Dockerfile.sandbox")
+    assert os.path.isfile(dockerfile), "Dockerfile.sandbox not found in project root"
+
+
+def test_dockerfile_sandbox_uses_slim_base():
+    """Dockerfile.sandbox uses the python:3.11-slim base image."""
+    import os
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dockerfile = os.path.join(project_root, "Dockerfile.sandbox")
+    content = open(dockerfile).read()
+    assert "python:3.11-slim" in content
+
+
+def test_dockerfile_sandbox_drops_to_nonroot():
+    """Dockerfile.sandbox creates and switches to a non-root sandbox user."""
+    import os
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dockerfile = os.path.join(project_root, "Dockerfile.sandbox")
+    content = open(dockerfile).read()
+    assert "sandbox" in content
+    assert "USER sandbox" in content

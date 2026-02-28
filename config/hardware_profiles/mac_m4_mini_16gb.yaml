@@ -196,6 +196,29 @@ security:
   # Phase 6: Model integrity strict mode (raise on SHA256 mismatch)
   model_integrity_strict: false
 
+# ── Tool Library (Phase 9) ───────────────────────────────────────────────────
+tools:
+  # Paths the file_read tool may access (symlinks resolved before check).
+  # Empty list = tool refuses all paths until operator configures this.
+  allowed_read_paths:
+    - "/Volumes/MAC_MINI_1TB/LegionForge/workspace"
+  # Paths the file_write tool may write to (must be a subdirectory of an allowed_read_path).
+  # Executable extensions (.py .sh .bash .rb .pl .exe .bat) are always refused.
+  allowed_write_paths:
+    - "/Volumes/MAC_MINI_1TB/LegionForge/workspace/output"
+  max_file_read_bytes: 51200    # 50 KB
+  max_file_write_bytes: 51200   # 50 KB
+  # HTTP tools
+  http_timeout_seconds: 30.0
+  max_response_bytes: 51200     # 50 KB
+  max_post_body_bytes: 10240    # 10 KB
+  # code_execute Docker sandbox
+  sandbox_image: "legionforge-sandbox:latest"
+  sandbox_timeout_seconds: 30
+  sandbox_memory_mb: 256
+  sandbox_cpus: 0.5
+  sandbox_max_output_bytes: 10240  # 10 KB
+
 # ── Pentest (Phase 6 — PentestAgent) ────────────────────────────────────────
 pentest:
   enabled: true
