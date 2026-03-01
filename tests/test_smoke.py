@@ -7305,3 +7305,79 @@ def test_p24_gateway_app_includes_admin_router():
     routes = [r.path for r in app.routes if hasattr(r, "path")]
     admin_routes = [r for r in routes if "/admin" in r]
     assert len(admin_routes) > 0, "No /admin routes found in app"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 25 — Audit Log & Observability API
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p25_observability_route_importable():
+    """src.gateway.routes.observability imports without error."""
+    from src.gateway.routes import observability as _
+
+    assert hasattr(_, "router")
+
+
+def test_p25_gateway_includes_observability_routes():
+    """Gateway app includes /admin/audit, /admin/threats, /admin/tools routes."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("/admin/audit" in p for p in paths), "Missing /admin/audit"
+    assert any("/admin/threats" in p for p in paths), "Missing /admin/threats"
+    assert any("/admin/tools" in p for p in paths), "Missing /admin/tools"
+    assert any("/admin/metrics" in p for p in paths), "Missing /admin/metrics"
+
+
+def test_p25_verify_audit_log_chain_importable():
+    """verify_audit_log_chain is importable from src.database."""
+    from src.database import verify_audit_log_chain
+
+    assert callable(verify_audit_log_chain)
+
+
+def test_p25_set_tool_status_model_valid_statuses():
+    """SetToolStatusRequest accepts APPROVED, REVOKED, PENDING only."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.observability import SetToolStatusRequest
+
+    SetToolStatusRequest(status="APPROVED")
+    SetToolStatusRequest(status="REVOKED")
+    SetToolStatusRequest(status="PENDING")
+    with pytest.raises(ValidationError):
+        SetToolStatusRequest(status="DELETED")
+
+
+def test_p25_observability_router_uses_require_admin():
+    """Observability endpoints are protected by require_admin dependency."""
+    import inspect
+    from src.gateway.routes import observability
+
+    src = inspect.getsource(observability)
+    assert "require_admin" in src
+
+
+def test_p25_threat_summary_endpoint_registered():
+    """GET /admin/threats/summary route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("threats/summary" in p for p in paths)
+
+
+def test_p25_audit_verify_endpoint_registered():
+    """GET /admin/audit/verify route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("audit/verify" in p for p in paths)
+
+
+def test_p25_tool_status_put_endpoint_registered():
+    """PUT /admin/tools/{tool_id}/status route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("tools" in p and "status" in p for p in paths)
