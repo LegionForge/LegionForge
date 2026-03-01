@@ -61,9 +61,14 @@ ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 
 # ── Redis State Layer (Phase 13) ──────────────────────────────
 redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate counters
-# gssapi>=1.8.3                 # Optional Kerberos/SPNEGO auth — install manually when using KerberosBackend
-#                               # Requires OS-level Kerberos libs: brew install krb5 (macOS)
-#                               # or apt-get install libkrb5-dev (Debian/Ubuntu)
+# gssapi>=1.8.3                 # Optional Kerberos/SPNEGO auth — required only when auth_provider=kerberos
+#                               # macOS: must build from source against Homebrew MIT Kerberos (not Heimdal):
+#                               #   brew install krb5
+#                               #   GSSAPI_MAIN_LIB=/opt/homebrew/opt/krb5/lib/libgssapi_krb5.dylib \
+#                               #   GSSAPI_COMPILER_ARGS="-I/opt/homebrew/opt/krb5/include -include /opt/homebrew/opt/krb5/include/gssapi/gssapi_ext.h -Wno-implicit-function-declaration" \
+#                               #   GSSAPI_LINKER_ARGS="-L/opt/homebrew/opt/krb5/lib -lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err -Wl,-rpath,/opt/homebrew/opt/krb5/lib" \
+#                               #   pip install --no-binary :all: gssapi
+#                               # Linux: apt-get install libkrb5-dev && pip install gssapi
 fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
 
 # ── Channel Connectors (Phase 8 / Phase 16) ──────────────────

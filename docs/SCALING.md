@@ -168,19 +168,117 @@ replaced globally — no routes need changes.
 
 To enable Kerberos authentication (`auth_provider: kerberos`):
 
-**1. Prerequisites:**
+### macOS — install MIT Kerberos and build gssapi from source
+
+The binary `gssapi` wheel on macOS links against the system Heimdal
+(`GSS.framework`), which does not support the `store={"keytab": ...}` API
+used by `KerberosBackend`. You must build from source against Homebrew MIT
+Kerberos:
+
 ```bash
-# macOS — install MIT Kerberos tools
 brew install krb5
 
-# Linux (Debian/Ubuntu)
-apt-get install krb5-user libkrb5-dev
+GSSAPI_MAIN_LIB=/opt/homebrew/opt/krb5/lib/libgssapi_krb5.dylib \
+GSSAPI_COMPILER_ARGS="-I/opt/homebrew/opt/krb5/include \
+  -include /opt/homebrew/opt/krb5/include/gssapi/gssapi_ext.h \
+  -Wno-implicit-function-declaration" \
+GSSAPI_LINKER_ARGS="-L/opt/homebrew/opt/krb5/lib -lgssapi_krb5 \
+  -lkrb5 -lk5crypto -lcom_err \
+  -Wl,-rpath,/opt/homebrew/opt/krb5/lib" \
+pip install --no-binary :all: gssapi
+```
 
-# Install gssapi Python package (after Kerberos dev libs are present)
+### Linux (Debian/Ubuntu)
+
+```bash
+apt-get install krb5-user libkrb5-dev
 pip install gssapi
 ```
 
-**2. Configure `/etc/krb5.conf`** (all gateway hosts):
+### Local test KDC setup (macOS, no /etc write required)
+
+The KDC runs user-owned using `KRB5_CONFIG` and `KRB5_KDC_PROFILE` env vars —
+no `sudo` needed.
+
+```bash
+# 1. Create config directories
+mkdir -p ~/.krb5kdc
+
+# 2. Write ~/.krb5.conf (use port 7088 to avoid requiring root for <1024)
+cat > ~/.krb5.conf <<'EOF'
+[libdefaults]
+    default_realm = TEST.LOCAL
+    kdc_timesync = 1
+    forwardable = true
+    no_addresses = true
+
+[realms]
+    TEST.LOCAL = {
+        kdc = localhost:7088
+        admin_server = localhost:7749
+    }
+
+[domain_realm]
+    .test.local = TEST.LOCAL
+    test.local = TEST.LOCAL
+EOF
+
+# 3. Write ~/.krb5kdc/kdc.conf
+cat > ~/.krb5kdc/kdc.conf <<'EOF'
+[kdcdefaults]
+    kdc_ports = 7088
+    kdc_tcp_ports = 7088
+
+[realms]
+    TEST.LOCAL = {
+        database_name = ~/.krb5kdc/principal
+        key_stash_file = ~/.krb5kdc/.k5.TEST.LOCAL
+        acl_file = ~/.krb5kdc/kadm5.acl
+        master_key_type = aes256-cts-hmac-sha1-96
+        supported_enctypes = aes256-cts-hmac-sha1-96:normal aes128-cts-hmac-sha1-96:normal
+    }
+
+[logging]
+    kdc = FILE:~/.krb5kdc/kdc.log
+EOF
+
+# 4. Write ACL
+echo '*/admin@TEST.LOCAL *' > ~/.krb5kdc/kadm5.acl
+
+# 5. Initialise KDC database
+KRB5_CONFIG=~/.krb5.conf KRB5_KDC_PROFILE=~/.krb5kdc/kdc.conf \
+  /opt/homebrew/opt/krb5/sbin/kdb5_util create -s -r TEST.LOCAL -P 'ChangeMe!'
+
+# 6. Create principals
+KRB5_CONFIG=~/.krb5.conf KRB5_KDC_PROFILE=~/.krb5kdc/kdc.conf \
+  /opt/homebrew/opt/krb5/sbin/kadmin.local -r TEST.LOCAL \
+  -q "addprinc -randkey HTTP/localhost@TEST.LOCAL"
+
+KRB5_CONFIG=~/.krb5.conf KRB5_KDC_PROFILE=~/.krb5kdc/kdc.conf \
+  /opt/homebrew/opt/krb5/sbin/kadmin.local -r TEST.LOCAL \
+  -q "addprinc -pw testpass testuser@TEST.LOCAL"
+
+# 7. Export keytab
+KRB5_CONFIG=~/.krb5.conf KRB5_KDC_PROFILE=~/.krb5kdc/kdc.conf \
+  /opt/homebrew/opt/krb5/sbin/kadmin.local -r TEST.LOCAL \
+  -q "ktadd -k /tmp/test.keytab HTTP/localhost@TEST.LOCAL"
+
+# 8. Start KDC (background)
+KRB5_CONFIG=~/.krb5.conf KRB5_KDC_PROFILE=~/.krb5kdc/kdc.conf \
+  /opt/homebrew/opt/krb5/sbin/krb5kdc -n -r TEST.LOCAL &
+
+# 9. Verify KDC is working
+KRB5_CONFIG=~/.krb5.conf /opt/homebrew/opt/krb5/bin/kinit \
+  -kt /tmp/test.keytab HTTP/localhost@TEST.LOCAL && \
+  /opt/homebrew/opt/krb5/bin/klist
+
+# 10. Run Kerberos integration tests
+make test-kerberos
+```
+
+### Production KDC setup (all gateway hosts)
+
+**1. Configure `/etc/krb5.conf`:**
 ```ini
 [libdefaults]
     default_realm = EXAMPLE.COM
@@ -198,7 +296,7 @@ pip install gssapi
     example.com  = EXAMPLE.COM
 ```
 
-**3. Create the HTTP service principal and keytab:**
+**2. Create the HTTP service principal and keytab:**
 ```bash
 # On the KDC server (MIT krb5):
 kadmin.local -q "addprinc -randkey HTTP/legionforge.example.com@EXAMPLE.COM"
@@ -208,7 +306,7 @@ kadmin.local -q "ktadd -k /etc/legionforge/http.keytab HTTP/legionforge.example.
 # (owner: root:gateway, mode: 0640)
 ```
 
-**4. Update the hardware profile YAML:**
+**3. Update the hardware profile YAML:**
 ```yaml
 gateway:
   auth_provider: kerberos
@@ -219,7 +317,7 @@ gateway:
     daily_token_limit: 100000
 ```
 
-**5. Restart the gateway.** Clients presenting a valid Kerberos ticket via
+**4. Restart the gateway.** Clients presenting a valid Kerberos ticket via
 `Authorization: Negotiate <token>` will be authenticated and provisioned
 automatically on first login.
 
