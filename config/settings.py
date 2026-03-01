@@ -132,9 +132,48 @@ class LocalService(BaseModel):
         return self.base_url
 
 
+class OllamaNodeConfig(BaseModel):
+    """
+    A single Ollama node in a multi-machine cluster (Phase 20).
+
+    Fields:
+        url    — Base URL of the Ollama instance, e.g. http://192.168.1.100:11434
+        label  — Human-readable name used in the TestLab Cluster admin UI.
+        weight — Relative request weight (round-robin; reserved for future use).
+        enabled — Set false to temporarily remove a node without deleting config.
+        timeout — Health-check connect+read timeout in seconds.
+    """
+
+    url: str
+    label: str
+    weight: int = 1
+    enabled: bool = True
+    timeout: float = 10.0
+
+
+class OllamaClusterConfig(BaseModel):
+    """
+    Multi-machine Ollama cluster configuration (Phase 20).
+
+    When ``nodes`` is empty (the default), the framework uses the single
+    ``local_services.ollama.base_url`` — no behavioural change.
+
+    Routing strategies:
+        round_robin   — distribute requests across healthy nodes in order.
+        primary_first — always prefer the first configured healthy node.
+        least_busy    — route to the node with the lowest recent latency.
+    """
+
+    nodes: list[OllamaNodeConfig] = []
+    routing: Literal["round_robin", "primary_first", "least_busy"] = "round_robin"
+    health_check_interval: int = 30  # seconds between background health polls
+    fallback_to_primary: bool = True  # use local ollama URL when all cluster nodes fail
+
+
 class LocalServicesConfig(BaseModel):
     ollama: LocalService
     lmstudio: LocalService
+    ollama_cluster: OllamaClusterConfig = OllamaClusterConfig()
 
 
 class ModelEntry(BaseModel):

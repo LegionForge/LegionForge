@@ -47,13 +47,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-# Novel findings support
-_NOVEL_FINDINGS_FILE = _TESTS_DIR / "testlab_suite" / "novel_findings.json"
-
 # ── Project root (two levels up from this file) ───────────────────────────────
 _ROOT = Path(__file__).parent.parent.parent
 _TESTS_DIR = _ROOT / "tests"
 _STATIC = Path(__file__).parent / "static"
+
+# Novel findings support (defined after _TESTS_DIR)
+_NOVEL_FINDINGS_FILE = _TESTS_DIR / "testlab_suite" / "novel_findings.json"
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 _ADMIN_KEY: str | None = None
@@ -917,3 +917,107 @@ async def promote_novel_finding(finding_id: str, req: PromoteRequest):
     )
 
     return {"status": "promoted", "id": finding_id, "target": req.target_file}
+
+
+# ── Ollama Cluster management (Phase 20) ──────────────────────────────────────
+
+
+def _get_manager():
+    """Lazy-import cluster manager to avoid circular import at module load."""
+    from src.ollama_cluster import get_cluster_manager
+
+    return get_cluster_manager()
+
+
+@app.get("/cluster/nodes", dependencies=[Depends(require_admin)])
+async def list_cluster_nodes():
+    """
+    Return the current health snapshot for all configured Ollama cluster nodes.
+    Responds immediately with the most recent cached status (no live probe).
+    Use POST /cluster/nodes/{label}/check for a live health check.
+    """
+    mgr = _get_manager()
+    return [s.to_dict() for s in mgr.get_all_status()]
+
+
+class AddNodeRequest(BaseModel):
+    url: str  # e.g. "http://192.168.1.100:11434"
+    label: str  # e.g. "mac-studio"
+    weight: int = 1
+    timeout: float = 10.0
+
+
+@app.post("/cluster/nodes", dependencies=[Depends(require_admin)])
+async def add_cluster_node(req: AddNodeRequest):
+    """
+    Dynamically add an Ollama node to the running cluster.
+    The node is available immediately; background polling will health-check it
+    on the next cycle.
+
+    Does NOT persist across restarts — add the node to your hardware profile YAML
+    for permanent configuration.
+    """
+    # Basic URL validation
+    if not req.url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400, detail="url must start with http:// or https://"
+        )
+    if not req.label.strip():
+        raise HTTPException(status_code=400, detail="label must not be empty")
+
+    mgr = _get_manager()
+    try:
+        mgr.add_node(req.url.rstrip("/"), req.label.strip(), req.weight, req.timeout)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"status": "added", "label": req.label, "url": req.url}
+
+
+@app.delete("/cluster/nodes/{label}", dependencies=[Depends(require_admin)])
+async def remove_cluster_node(label: str):
+    """Remove an Ollama node from the running cluster by label."""
+    mgr = _get_manager()
+    removed = mgr.remove_node(label)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Node '{label}' not found")
+    return {"status": "removed", "label": label}
+
+
+@app.post("/cluster/nodes/{label}/check", dependencies=[Depends(require_admin)])
+async def check_cluster_node(label: str):
+    """
+    Perform a live health check on a specific cluster node and return the result.
+    Also updates the cached health snapshot.
+    """
+    mgr = _get_manager()
+    # Find the node URL from the cache
+    statuses = {s.label: s for s in mgr.get_all_status()}
+    if label not in statuses:
+        raise HTTPException(status_code=404, detail=f"Node '{label}' not found")
+
+    # Look up timeout from node config
+    timeout = 10.0
+    for n in mgr._nodes:
+        if getattr(n, "label", None) == label:
+            timeout = getattr(n, "timeout", 10.0)
+            break
+
+    result = await mgr.check_node(statuses[label].url, label, timeout)
+    mgr.update_health(result)
+    return result.to_dict()
+
+
+@app.get("/cluster/models", dependencies=[Depends(require_admin)])
+async def list_cluster_models():
+    """
+    Return the aggregate model list across all healthy cluster nodes.
+    Each entry includes the model name and which nodes provide it.
+    """
+    mgr = _get_manager()
+    statuses = mgr.get_all_status()
+    model_map: dict[str, list[str]] = {}
+    for s in statuses:
+        if s.healthy:
+            for m in s.models:
+                model_map.setdefault(m, []).append(s.label)
+    return [{"model": m, "nodes": nodes} for m, nodes in sorted(model_map.items())]

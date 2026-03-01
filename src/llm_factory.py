@@ -86,7 +86,7 @@ def get_embedding_model():
     logger.info(f"Loading embeddings model: {m.model_id}")
     return OllamaEmbeddings(
         model=m.model_id,
-        base_url=settings.local_services.ollama.resolved_url(),
+        base_url=_get_ollama_url(),
     )
 
 
@@ -114,6 +114,26 @@ def get_cloud_fallback_llm(prefer: str = "anthropic", **kwargs) -> BaseChatModel
 # ── Provider implementations ──────────────────────────────────────────────────
 
 
+def _get_ollama_url(prefer_label: str | None = None) -> str:
+    """
+    Return the best Ollama base URL.
+
+    If the cluster has configured nodes, delegates to the cluster manager
+    (health-polling, routing strategy, automatic failover).
+    Falls back to ``settings.local_services.ollama.resolved_url()`` when no
+    cluster nodes are configured or all nodes are unhealthy.
+
+    Args:
+        prefer_label: if set, attempt to route to this specific cluster node.
+    """
+    cluster_cfg = settings.local_services.ollama_cluster
+    if cluster_cfg.nodes:
+        from src.ollama_cluster import get_cluster_manager
+
+        return get_cluster_manager().get_healthy_url(prefer_label)
+    return settings.local_services.ollama.resolved_url()
+
+
 def _get_ollama(
     model: str | None,
     temperature: float,
@@ -121,7 +141,7 @@ def _get_ollama(
     **kwargs,
 ) -> ChatOllama:
     model = model or settings.models.primary.model_id
-    base_url = settings.local_services.ollama.resolved_url()
+    base_url = _get_ollama_url()
 
     return ChatOllama(
         model=model,
@@ -192,7 +212,7 @@ async def warmup_local_models() -> dict[str, bool]:
     import httpx
 
     results = {}
-    base_url = settings.local_services.ollama.resolved_url()
+    base_url = _get_ollama_url()
 
     models_to_warm = [
         settings.models.primary.model_id,

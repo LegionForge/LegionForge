@@ -302,3 +302,39 @@ connectors:
     port: 8081
     # Keychain: legionforge_webhook_api_key, legionforge_webhook_inbound_secret (optional)
     # inbound_secret empty = HMAC verification disabled (not recommended for internet-exposed endpoints)
+
+# ── Ollama Cluster (Phase 20) ─────────────────────────────────────────────────
+# Optional: distribute LLM inference across multiple Ollama instances on different machines.
+# When nodes is empty (the default), the framework uses local_services.ollama.base_url above.
+#
+# Routing strategies:
+#   round_robin   — distribute requests across healthy nodes in order (default)
+#   primary_first — always prefer the first configured healthy node
+#   least_busy    — route to the node with the lowest recent response latency
+#
+# Each node:
+#   url     — base URL of the Ollama instance (no trailing slash)
+#   label   — human-readable name shown in the TestLab Cluster admin UI
+#   weight  — relative priority (reserved for weighted round-robin; default 1)
+#   enabled — set false to pause a node without removing it from config
+#   timeout — health-check connect+read timeout in seconds (default 10)
+#
+# Example multi-machine cluster:
+#   nodes:
+#     - { url: "http://192.168.1.100:11434", label: "mac-studio",   weight: 2 }
+#     - { url: "http://192.168.1.101:11434", label: "linux-server", weight: 1 }
+#     - { url: "http://ollama:11434",        label: "docker-local", weight: 1, enabled: false }
+#
+# Admin UI:
+#   Browse to http://localhost:8090 → Cluster tab to view node health, latency,
+#   available models, and add/remove nodes at runtime.
+#
+# Security:
+#   Only add nodes reachable from within your trusted network.
+#   Ollama is not exposed externally — bind to 127.0.0.1 or an internal NIC only.
+#
+ollama_cluster:
+  nodes: []           # empty = single-node mode (uses local_services.ollama above)
+  routing: round_robin
+  health_check_interval: 30   # seconds between background health polls
+  fallback_to_primary: true   # fall back to local_services.ollama if all cluster nodes fail

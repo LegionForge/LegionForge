@@ -364,6 +364,20 @@ ollama-docker-status:  ## Check Dockerised Ollama health and loaded models
 	  && echo "✅ Dockerised Ollama healthy" \
 	  || echo "❌ Dockerised Ollama not running — run: make ollama-docker-start"
 
+.PHONY: cluster-status
+cluster-status:  ## Show Ollama cluster health — checks all configured nodes (Phase 20)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.ollama_cluster import get_cluster_manager; \
+mgr = get_cluster_manager(); \
+if not mgr._nodes: \
+    print('No cluster nodes configured (single-node mode).'); \
+    from config.settings import settings; \
+    print(f'  Primary Ollama: {settings.local_services.ollama.resolved_url()}'); \
+else: \
+    statuses = asyncio.run(mgr.check_all()); \
+    [print(f'  {s.label:20s} {s.url:35s} {\"✅\" if s.healthy else \"❌\"} {s.latency_ms:.0f}ms  {chr(34) + \", \".join(s.models[:3]) + chr(34) if s.healthy else s.error[:60]}') for s in statuses]"
+
 .PHONY: ollama-warm
 ollama-warm:
 	@echo "Warming up local models (this takes ~30s)..."

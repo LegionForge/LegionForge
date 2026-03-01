@@ -1,11 +1,11 @@
 VERSION: 1.0.1
-UPDATE: 79
+UPDATE: 81
 BRANCH: dev
-COMMIT: 11e47d7
-TIMESTAMP: 2026-03-01T14:00Z
-LAST_OP: feat: Phase 19 — 104-test attack suite (functional/security/dos/auth/data) + dockerised Ollama
-SMOKE_TESTS: 497/497
+COMMIT: b29b3b0
+TIMESTAMP: 2026-03-01T19:00Z
+LAST_OP: Phase 20 — Multi-machine Ollama cluster (src/ollama_cluster.py, settings, llm_factory, TestLab Cluster tab)
+SMOKE_TESTS: 508/508
 INTEGRATION_TESTS: 38/38 (0 skipped)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
-TESTLAB_SUITE: 104/104 (functional:25, security:31, dos:15, auth:20, data:15; novel/CVE skip without LLM)
+TESTLAB_SUITE: 104/104

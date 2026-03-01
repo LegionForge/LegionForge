@@ -6632,3 +6632,230 @@ def test_p17_sse_subscribe_live_path_unaffected():
     event_types = [e["event"] for e in collected]
     assert "chain_start" in event_types
     assert "task_complete" in event_types
+
+
+# ── Phase 20: Multi-Machine Ollama Cluster ────────────────────────────────────
+
+
+def test_p20_ollama_node_config_defaults():
+    """OllamaNodeConfig has correct field defaults."""
+    from config.settings import OllamaNodeConfig
+
+    node = OllamaNodeConfig(url="http://localhost:11434", label="local")
+    assert node.weight == 1
+    assert node.enabled is True
+    assert node.timeout == 10.0
+    assert node.url == "http://localhost:11434"
+    assert node.label == "local"
+
+
+def test_p20_ollama_cluster_config_defaults():
+    """OllamaClusterConfig defaults to empty nodes and round_robin routing."""
+    from config.settings import OllamaClusterConfig
+
+    cfg = OllamaClusterConfig()
+    assert cfg.nodes == []
+    assert cfg.routing == "round_robin"
+    assert cfg.health_check_interval == 30
+    assert cfg.fallback_to_primary is True
+
+
+def test_p20_settings_has_ollama_cluster():
+    """LocalServicesConfig exposes ollama_cluster attribute."""
+    from config.settings import settings
+
+    assert hasattr(settings.local_services, "ollama_cluster")
+    assert hasattr(settings.local_services.ollama_cluster, "nodes")
+    assert hasattr(settings.local_services.ollama_cluster, "routing")
+
+
+def test_p20_cluster_manager_no_nodes_returns_fallback():
+    """Cluster manager with empty node list returns the fallback URL."""
+    from src.ollama_cluster import OllamaClusterManager
+
+    mgr = OllamaClusterManager(
+        nodes=[],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://localhost:11434",
+    )
+    assert mgr.get_healthy_url() == "http://localhost:11434"
+
+
+def test_p20_cluster_manager_skips_unhealthy_returns_fallback():
+    """When all nodes are unhealthy, the fallback URL is returned."""
+    from src.ollama_cluster import OllamaClusterManager, NodeHealth
+    import time
+
+    class _Node:
+        url = "http://dead-server:11434"
+        label = "dead"
+        weight = 1
+        enabled = True
+        timeout = 5.0
+
+    mgr = OllamaClusterManager(
+        nodes=[_Node()],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    # Mark the node unhealthy in the cache
+    mgr._health["dead"] = NodeHealth(
+        label="dead",
+        url="http://dead-server:11434",
+        healthy=False,
+        last_checked=time.monotonic(),
+        error="connection refused",
+    )
+    assert mgr.get_healthy_url() == "http://fallback:11434"
+
+
+def test_p20_cluster_manager_round_robin_cycles():
+    """Round-robin cycles through healthy nodes."""
+    from src.ollama_cluster import OllamaClusterManager, NodeHealth
+    import time
+
+    class _Node:
+        def __init__(self, url, label):
+            self.url, self.label, self.weight, self.enabled, self.timeout = (
+                url,
+                label,
+                1,
+                True,
+                5.0,
+            )
+
+    mgr = OllamaClusterManager(
+        nodes=[_Node("http://a:11434", "a"), _Node("http://b:11434", "b")],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    t0 = time.monotonic()
+    mgr._health["a"] = NodeHealth(
+        label="a", url="http://a:11434", healthy=True, last_checked=t0
+    )
+    mgr._health["b"] = NodeHealth(
+        label="b", url="http://b:11434", healthy=True, last_checked=t0
+    )
+
+    urls = [mgr.get_healthy_url() for _ in range(4)]
+    # Both nodes must appear across 4 calls
+    assert "http://a:11434" in urls
+    assert "http://b:11434" in urls
+
+
+def test_p20_cluster_manager_primary_first():
+    """primary_first routing always returns the first healthy node by config order."""
+    from src.ollama_cluster import OllamaClusterManager, NodeHealth
+    import time
+
+    class _Node:
+        def __init__(self, url, label):
+            self.url, self.label, self.weight, self.enabled, self.timeout = (
+                url,
+                label,
+                1,
+                True,
+                5.0,
+            )
+
+    mgr = OllamaClusterManager(
+        nodes=[
+            _Node("http://primary:11434", "primary"),
+            _Node("http://secondary:11434", "secondary"),
+        ],
+        routing="primary_first",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    t0 = time.monotonic()
+    mgr._health["primary"] = NodeHealth(
+        label="primary", url="http://primary:11434", healthy=True, last_checked=t0
+    )
+    mgr._health["secondary"] = NodeHealth(
+        label="secondary", url="http://secondary:11434", healthy=True, last_checked=t0
+    )
+
+    for _ in range(3):
+        assert mgr.get_healthy_url() == "http://primary:11434"
+
+
+def test_p20_cluster_manager_prefer_label():
+    """get_healthy_url(prefer_label=...) returns that specific node when healthy."""
+    from src.ollama_cluster import OllamaClusterManager, NodeHealth
+    import time
+
+    class _Node:
+        def __init__(self, url, label):
+            self.url, self.label, self.weight, self.enabled, self.timeout = (
+                url,
+                label,
+                1,
+                True,
+                5.0,
+            )
+
+    mgr = OllamaClusterManager(
+        nodes=[_Node("http://a:11434", "a"), _Node("http://b:11434", "b")],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    t0 = time.monotonic()
+    mgr._health["a"] = NodeHealth(
+        label="a", url="http://a:11434", healthy=True, last_checked=t0
+    )
+    mgr._health["b"] = NodeHealth(
+        label="b", url="http://b:11434", healthy=True, last_checked=t0
+    )
+
+    assert mgr.get_healthy_url(prefer_label="b") == "http://b:11434"
+
+
+def test_p20_cluster_manager_add_remove_node():
+    """add_node and remove_node update the node list and health cache."""
+    from src.ollama_cluster import OllamaClusterManager
+
+    mgr = OllamaClusterManager(
+        nodes=[],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    mgr.add_node("http://new:11434", label="new-node", weight=1, timeout=5.0)
+    assert any(n.label == "new-node" for n in mgr._nodes)
+    assert "new-node" in mgr._health
+
+    removed = mgr.remove_node("new-node")
+    assert removed is True
+    assert not any(n.label == "new-node" for n in mgr._nodes)
+    assert "new-node" not in mgr._health
+
+
+def test_p20_cluster_manager_duplicate_label_raises():
+    """Adding a node with an existing label raises ValueError."""
+    from src.ollama_cluster import OllamaClusterManager
+    import pytest
+
+    mgr = OllamaClusterManager(
+        nodes=[],
+        routing="round_robin",
+        health_check_interval=60,
+        fallback_url="http://fallback:11434",
+    )
+    mgr.add_node("http://a:11434", label="a")
+    with pytest.raises(ValueError, match="already exists"):
+        mgr.add_node("http://b:11434", label="a")
+
+
+def test_p20_get_cluster_manager_singleton():
+    """get_cluster_manager returns the same object on repeated calls."""
+    from src.ollama_cluster import get_cluster_manager, reset_cluster_manager
+
+    reset_cluster_manager()
+    m1 = get_cluster_manager()
+    m2 = get_cluster_manager()
+    assert m1 is m2
+    reset_cluster_manager()  # leave clean for other tests

@@ -114,6 +114,33 @@
     .hist-time  { color: var(--dim); font-size: 11px; }
     .hist-elapsed { color: var(--xdim); font-size: 11px; }
 
+    /* ── Cluster panel ── */
+    #cluster-toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px;
+                       border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #cluster-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 16px; }
+    #cluster-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #cluster-table th { text-align: left; padding: 6px 10px; color: var(--dim);
+                        font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+                        border-bottom: 1px solid var(--border); font-weight: 600; }
+    #cluster-table td { padding: 7px 10px; border-bottom: 1px solid var(--border2,#21262d); vertical-align: middle; }
+    .node-healthy   { color: var(--green); font-weight: 600; }
+    .node-unhealthy { color: var(--red); font-weight: 600; }
+    .node-unknown   { color: var(--dim); }
+    .node-url   { color: var(--blue); font-size: 11px; }
+    .node-model { font-size: 10px; color: var(--dim); }
+    #add-node-form { background: var(--panel); border: 1px solid var(--border);
+                     border-radius: var(--radius); padding: 14px; max-width: 600px; }
+    #add-node-form .form-title { font-size: 11px; font-weight: 600; color: var(--dim);
+                                 text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+    .form-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+    .form-field { display: flex; flex-direction: column; gap: 3px; }
+    .form-field label { font-size: 10px; color: var(--dim); }
+    .form-field input { background: var(--panel2); border: 1px solid var(--border);
+                        border-radius: var(--radius); color: var(--text); padding: 5px 8px;
+                        font-family: var(--mono); font-size: 12px; }
+    .form-field input:focus { outline: 1px solid var(--blue); }
+    #cluster-status { font-size: 11px; color: var(--dim); }
+
     /* ── Buttons ── */
     .btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
            background: var(--panel2); color: var(--text); cursor: pointer;
@@ -162,6 +189,7 @@
         <div class="tab" onclick="showTab('editor')">✎ Editor</div>
         <div class="tab" onclick="showTab('generate')">✦ Generate</div>
         <div class="tab" onclick="showTab('history')">⏱ History</div>
+        <div class="tab" onclick="showTab('cluster')">⬡ Cluster</div>
       </div>
 
       <!-- Run Panel -->
@@ -219,6 +247,72 @@
         </div>
         <div id="history-list"></div>
       </div>
+
+      <!-- Cluster Panel -->
+      <div id="panel-cluster" class="panel">
+        <div id="cluster-toolbar">
+          <button class="btn primary" onclick="checkAllNodes()">⬡ Check All</button>
+          <button class="btn" onclick="loadCluster()">↻ Refresh</button>
+          <span id="cluster-status">Ollama cluster node administration</span>
+        </div>
+        <div id="cluster-body">
+          <!-- Node table -->
+          <div>
+            <table id="cluster-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>URL</th>
+                  <th>Status</th>
+                  <th>Latency</th>
+                  <th>Models</th>
+                  <th>Last Checked</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="cluster-nodes">
+                <tr><td colspan="7" class="node-unknown" style="padding:12px">
+                  Loading…
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Add node form -->
+          <div id="add-node-form">
+            <div class="form-title">Add Node</div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Label</label>
+                <input type="text" id="node-label" placeholder="mac-studio" style="width:130px">
+              </div>
+              <div class="form-field">
+                <label>URL</label>
+                <input type="text" id="node-url" placeholder="http://192.168.1.100:11434" style="width:240px">
+              </div>
+              <div class="form-field">
+                <label>Weight</label>
+                <input type="number" id="node-weight" value="1" min="1" style="width:60px">
+              </div>
+              <div class="form-field">
+                <label>Timeout (s)</label>
+                <input type="number" id="node-timeout" value="10" min="1" style="width:70px">
+              </div>
+              <div class="form-field">
+                <label>&nbsp;</label>
+                <button class="btn primary" onclick="addNode()">+ Add</button>
+              </div>
+              <span id="add-node-status" style="align-self:center; font-size:11px"></span>
+            </div>
+          </div>
+
+          <!-- Aggregate models -->
+          <div>
+            <div class="side-title" style="margin-bottom:8px">Available Models Across Cluster</div>
+            <div id="cluster-models" class="node-unknown" style="font-size:12px">—</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -248,12 +342,13 @@ const APIKEY_KEY = 'lf_testlab_key';
 // ── Tab switching ─────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const panels = ['run','editor','generate','history'];
+    const panels = ['run','editor','generate','history','cluster'];
     t.classList.toggle('active', panels[i] === name);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'history') loadHistory();
+  if (name === 'cluster') loadCluster();
 }
 
 // ── Auth headers ──────────────────────────────────────────────────
@@ -510,6 +605,151 @@ async function generateTests() {
     status.textContent = '✗ ' + e.message;
     status.className = 'o-fail';
   }
+}
+
+// ── Cluster ───────────────────────────────────────────────────────
+async function loadCluster() {
+  try {
+    const r = await fetch('/cluster/nodes', { headers: headers() });
+    if (!r.ok) {
+      document.getElementById('cluster-status').textContent = '✗ Auth required';
+      return;
+    }
+    const nodes = await r.json();
+    renderClusterNodes(nodes);
+    document.getElementById('cluster-status').textContent =
+      nodes.length ? `${nodes.length} node(s) configured` : 'No cluster nodes configured — using local Ollama';
+    await loadClusterModels();
+  } catch(e) {
+    document.getElementById('cluster-status').textContent = '✗ ' + e.message;
+  }
+}
+
+function renderClusterNodes(nodes) {
+  const tbody = document.getElementById('cluster-nodes');
+  if (!nodes.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="node-unknown" style="padding:12px 10px">' +
+      'No cluster nodes configured. Add a node below, or set <code>ollama_cluster.nodes</code> in your hardware profile YAML.' +
+      '</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  nodes.forEach(n => {
+    const statusCls = n.healthy ? 'node-healthy' : (n.last_checked_ago_s === null ? 'node-unknown' : 'node-unhealthy');
+    const statusTxt = n.healthy ? '● Online' : (n.last_checked_ago_s === null ? '○ Unknown' : '✗ Offline');
+    const latency   = n.healthy ? `${n.latency_ms.toFixed(0)} ms` : '—';
+    const models    = n.models && n.models.length
+      ? n.models.slice(0, 3).map(m => `<span class="node-model">${m}</span>`).join(' ')
+        + (n.models.length > 3 ? ` <span class="node-model">+${n.models.length - 3}</span>` : '')
+      : '<span class="node-model">—</span>';
+    const ago = n.last_checked_ago_s !== null ? `${n.last_checked_ago_s}s ago` : 'never';
+    const errTip = n.error ? ` title="${n.error.replace(/"/g,'&quot;')}"` : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600">${n.label}</td>
+      <td class="node-url">${n.url}</td>
+      <td class="${statusCls}"${errTip}>${statusTxt}</td>
+      <td>${latency}</td>
+      <td>${models}</td>
+      <td class="node-unknown">${ago}</td>
+      <td style="display:flex;gap:6px">
+        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="checkNode('${n.label}')">Check</button>
+        <button class="btn danger" style="font-size:11px;padding:3px 8px" onclick="removeNode('${n.label}')">Remove</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function checkNode(label) {
+  const st = document.getElementById('cluster-status');
+  st.textContent = `⟳ Checking ${label}…`;
+  try {
+    const r = await fetch(`/cluster/nodes/${encodeURIComponent(label)}/check`, {
+      method: 'POST', headers: headers()
+    });
+    const d = await r.json();
+    if (!r.ok) { st.textContent = '✗ ' + (d.detail || 'Error'); return; }
+    st.textContent = `${label}: ${d.healthy ? '● Online' : '✗ Offline'} (${d.latency_ms} ms)`;
+    await loadCluster();
+  } catch(e) { st.textContent = '✗ ' + e.message; }
+}
+
+async function checkAllNodes() {
+  const st = document.getElementById('cluster-status');
+  st.textContent = '⟳ Checking all nodes…';
+  const tbody = document.getElementById('cluster-nodes');
+  const labels = [...tbody.querySelectorAll('tr')].map(tr => {
+    const btn = tr.querySelector('button');
+    return btn ? btn.getAttribute('onclick')?.match(/checkNode\('(.+?)'\)/)?.[1] : null;
+  }).filter(Boolean);
+  if (!labels.length) { await loadCluster(); return; }
+  for (const label of labels) {
+    try {
+      await fetch(`/cluster/nodes/${encodeURIComponent(label)}/check`, {
+        method: 'POST', headers: headers()
+      });
+    } catch(e) {}
+  }
+  await loadCluster();
+  st.textContent = 'All checks complete';
+}
+
+async function addNode() {
+  const label   = document.getElementById('node-label').value.trim();
+  const url     = document.getElementById('node-url').value.trim();
+  const weight  = parseInt(document.getElementById('node-weight').value) || 1;
+  const timeout = parseFloat(document.getElementById('node-timeout').value) || 10;
+  const st = document.getElementById('add-node-status');
+
+  if (!label || !url) { st.textContent = '✗ Label and URL are required'; st.className = 'o-fail'; return; }
+
+  st.textContent = '⟳ Adding…';
+  st.className   = 'o-dim';
+  try {
+    const r = await fetch('/cluster/nodes', {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ label, url, weight, timeout }),
+    });
+    const d = await r.json();
+    if (!r.ok) { st.textContent = '✗ ' + (d.detail || 'Error'); st.className = 'o-fail'; return; }
+    st.textContent = `✓ Added '${label}'`;
+    st.className   = 'o-pass';
+    document.getElementById('node-label').value   = '';
+    document.getElementById('node-url').value     = '';
+    await loadCluster();
+  } catch(e) { st.textContent = '✗ ' + e.message; st.className = 'o-fail'; }
+}
+
+async function removeNode(label) {
+  if (!confirm(`Remove cluster node '${label}'?`)) return;
+  try {
+    const r = await fetch(`/cluster/nodes/${encodeURIComponent(label)}`, {
+      method: 'DELETE', headers: headers()
+    });
+    const d = await r.json();
+    const st = document.getElementById('cluster-status');
+    if (!r.ok) { st.textContent = '✗ ' + (d.detail || 'Error'); return; }
+    st.textContent = `Removed '${label}'`;
+    await loadCluster();
+  } catch(e) {}
+}
+
+async function loadClusterModels() {
+  try {
+    const r = await fetch('/cluster/models', { headers: headers() });
+    if (!r.ok) return;
+    const models = await r.json();
+    const el = document.getElementById('cluster-models');
+    if (!models.length) { el.textContent = 'No models available (all nodes offline)'; el.className = 'node-unknown'; return; }
+    el.className = '';
+    el.innerHTML = models.map(m =>
+      `<span style="display:inline-block;margin:2px 4px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px">
+        <span style="color:var(--blue)">${m.model}</span>
+        <span style="color:var(--dim);font-size:10px"> (${m.nodes.join(', ')})</span>
+      </span>`
+    ).join('');
+  } catch(e) {}
 }
 
 // ── History ───────────────────────────────────────────────────────
