@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md
 # LegionForge
 
-**Version:** 1.0.0
-**Last updated:** 2026-02-28
+**Version:** 1.0.1
+**Last updated:** 2026-03-01
 **Branch:** `main`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
 **Status:** ✅ Phases 0–16 complete. No further phases planned.
@@ -20,8 +20,9 @@
 All phases through 16 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, and Telegram/Slack/Webhook channel connectors are operational.
 
 ```
-make test-smoke        → 484/484 passing (~3.0s, no external services required)
+make test-smoke        → 492/492 passing (~3.0s, no external services required)
 make test-integration  → 38 passed (requires PostgreSQL)
+make test-kerberos     → 5/5 passed (requires live KDC + PostgreSQL)
 make health-server     → localhost:8765 all components green (Redis health when configured)
 make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
 make discord-start     → Discord bot connector
@@ -29,7 +30,7 @@ make telegram-start    → Telegram bot connector (requires Keychain secrets)
 make slack-start       → Slack Socket Mode connector (requires Keychain secrets)
 make webhook-start     → Generic webhook connector (:8081)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → fix: implement 3 Ollama integration tests + fix worker graph compilation
+git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing (#42)
 ```
 
 ---
@@ -117,11 +118,13 @@ git log --oneline -1 → fix: implement 3 Ollama integration tests + fix worker 
 | `Dockerfile.pentest` | PentestAgent — air-gapped (`--network none --read-only`) |
 | `Dockerfile.sandbox` | code_execute sandbox — Python 3.11-slim, non-root `sandbox` user, stdlib only |
 | `Dockerfile.gateway` | Gateway service (:8080) — `uvicorn`, non-root `gateway` user, multi-worker ready |
+| `Dockerfile.testclient` | HTTP test client — 4 suites (basic/load/pentest/injection), non-root `testclient` user, httpx only |
 
 ### Tests
 
-- `tests/test_smoke.py` — **484 tests**, no running services required, ~3s
+- `tests/test_smoke.py` — **492 tests**, no running services required, ~3s
 - `tests/test_integration.py` — **38 tests**, `@pytest.mark.integration`, requires PostgreSQL + Ollama (`make test-integration`)
+- `tests/test_kerberos_integration.py` — **5 tests**, requires live KDC + PostgreSQL (`make test-kerberos`); tests SPNEGO round-trip + DB user provisioning
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
 - `pytest.ini` — `asyncio_mode=strict`, `asyncio_default_fixture_loop_scope=session`, `asyncio_default_test_loop_scope=session`; required so the session-scoped psycopg pool shares one event loop with all tests
 
@@ -190,6 +193,7 @@ git log --oneline -1 → fix: implement 3 Ollama integration tests + fix worker 
 | `legionforge_oidc_client_secret` | OIDC client secret (`OIDCBackend`) |
 | `legionforge_github_client_secret` | GitHub OAuth app client secret (`GitHubOAuthBackend`) |
 | `legionforge_ldap_bind_password` | LDAP service-account bind password (`LDAPBackend`) |
+| `legionforge_kerberos_keytab_path` | Path to HTTP keytab file; default `/etc/legionforge/http.keytab` (`KerberosBackend`) |
 | `legionforge_telegram_token` | Telegram bot token from BotFather |
 | `legionforge_telegram_api_key` | Gateway Bearer API key for `telegram-bot` gateway user |
 | `legionforge_slack_bot_token` | Slack bot token (`xoxb-...`) |
@@ -208,7 +212,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 484 tests, ~3s
+make test-smoke                          # 492 tests, ~3s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -235,17 +239,20 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 
 ### Active (unfixed)
 
-| Item | Priority | Notes |
+None. All known technical debt is resolved as of v1.0.1.
+
+### Fixed (v1.0.1 — post-release patches, PRs #36–#42)
+
+| Item | Fix | PR |
 |---|---|---|
-| `model_integrity_strict: false` | Low | All three GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or YAML. Default is log-only + threat event. |
-| Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
-
-### Fixed (Phase 17)
-
-| Item | Fix |
-|---|---|
-| Loop protection resets on resume | `resume_run_config(thread_id)` in `safeguards.py` returns `(None, config)` — the correct LangGraph resume pattern. Passing `None` as graph input tells LangGraph to hydrate full state (including `step_count`, `action_history`, `token_count`) from the checkpoint. Passing a new `initial()` dict instead would silently reset all three counters. |
-| `model_integrity_strict` admin access | `MODEL_INTEGRITY_STRICT` env var overrides YAML — no file edit needed at deploy time. `/status` surfaces per-model integrity results under `components.model_integrity`. No runtime API toggle by design. |
+| 3 Ollama integration tests unconditionally skipped | `pytest.ini` session-scoped event loop (`asyncio_default_fixture_loop_scope=session`); all 3 Ollama tests fully implemented; 38/38 integration tests pass | #36 |
+| Loop protection resets on checkpoint resume | `resume_run_config(thread_id)` in `safeguards.py` — passes `None` as graph input so LangGraph hydrates `step_count`/`action_history`/`token_count` from checkpoint rather than resetting | #39 |
+| `model_integrity_strict` not deploy-time settable | `MODEL_INTEGRITY_STRICT=true` env var overrides YAML; `/status` surfaces per-model integrity results under `components.model_integrity` | #38 |
+| Kerberos integration test DB queries used wrong API | Fixed `asyncpg` → `psycopg` cursor API (`%s` params, `conn.cursor()`, `cur.fetchone()`, `get_pool()`) | #40 |
+| Kerberos live KDC not set up | MIT Kerberos 1.22.2 KDC running locally (user-owned, port 7088); `gssapi` built from source against MIT Kerberos (not macOS Heimdal); `make test-kerberos` target; full SCALING.md guide | #41 |
+| `gateway_users.user_id UUID` rejects OAuth natural IDs | Changed to `TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text`; idempotent `ALTER TABLE` migration; all OAuth backends (`oidc`, `github`, `ldap`, `kerberos`) write "scheme:id" strings | #42 |
+| `api_key_hash UNIQUE` blocks second OAuth user | Constraint dropped — multiple OAuth users share `[OAUTH-NO-KEY]` sentinel; bcrypt hashes are cryptographically unique without a DB constraint | #42 |
+| `_KERBEROS_NO_KEY` sentinel inconsistent | Standardised to `[OAUTH-NO-KEY]` across all four OAuth backends; `ApiKeyBackend` sentinel guard handles all of them | #42 |
 
 ### Fixed (Phase 16)
 

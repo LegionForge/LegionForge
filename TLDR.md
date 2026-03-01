@@ -1,8 +1,8 @@
 # TLDR.md
 # LegionForge — What Is This and What Are We Building?
 
-**Version:** 1.0.0
-**Last updated:** 2026-02-28
+**Version:** 1.0.1
+**Last updated:** 2026-03-01
 
 ---
 
@@ -123,7 +123,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of v1.0.0)
+## Known Gaps (as of v1.0.1)
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
@@ -149,9 +149,9 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Open Technical Debt
 
-All phases (0–16) are complete, v1.0.0 is shipped, and all known technical debt is resolved.
+All phases (0–16) are complete, v1.0.1 is shipped, and all known technical debt is resolved.
 
-**Kerberos live KDC** is operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified, `make test-kerberos` passes 3 of 5 (the remaining 2 additionally require PostgreSQL — run from your terminal where the Keychain is unlocked). Full setup guide in `docs/SCALING.md`.
+**Kerberos live KDC** is fully operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified end-to-end, `make test-kerberos` passes **5/5** (including DB user provisioning — `gateway_users.user_id` is now `TEXT` to support OAuth natural IDs). Full setup guide in `docs/SCALING.md`.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)

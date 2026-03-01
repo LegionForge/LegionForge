@@ -19,7 +19,7 @@ make start          # Full startup (drive check → Ollama → PostgreSQL → mo
 make stop           # Graceful shutdown
 
 # Testing (smoke tests must pass before any PR merge)
-make test-smoke     # 484 smoke tests, ~3s, no external services required
+make test-smoke     # 492 smoke tests, ~3s, no external services required
 make test-integration  # 38 integration tests (requires PostgreSQL — make db-start first)
 make test-fast      # All tests except slow ones
 make test           # Full test suite
@@ -88,12 +88,12 @@ Security violations are logged to the `threat_events` table with structured type
 
 ## Phase Status
 
-- **Phases 0–16** ✅ Complete: Full security stack, multi-user gateway, integration tests, modular auth, containerized gateway, multi-provider auth registry, Redis-backed state layer, real Kerberos GSSAPI backend, multi-instance docker-compose, Redis global budget counters, Prometheus /metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors. 484/484 smoke tests, 38/38 integration tests.
+- **Phases 0–16** ✅ Complete: Full security stack, multi-user gateway, integration tests, modular auth, containerized gateway, multi-provider auth registry, Redis-backed state layer, real Kerberos GSSAPI backend, multi-instance docker-compose, Redis global budget counters, Prometheus /metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors. 492/492 smoke tests, 38/38 integration tests, 5/5 Kerberos live-KDC tests.
 
 ## Branch & Commit Conventions
 
 - `main` ← `dev` ← `feature/xxx` / `fix/xxx` / `refactor/xxx`
-- Smoke test count must never decrease; current baseline: 484 (Phase 16)
+- Smoke test count must never decrease; current baseline: 492 (v1.0.1)
 - All PRs require `make test-smoke` + `make security-audit` passing before merge
 - Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `security:`, `docs:`)
 - Co-author line: `Co-Authored-By: Claude <noreply@anthropic.com>`

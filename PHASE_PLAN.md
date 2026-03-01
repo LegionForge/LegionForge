@@ -1,8 +1,8 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 1.0.0
-**Last updated:** 2026-02-28
+**Version:** 1.0.1
+**Last updated:** 2026-03-01
 **Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ✅ | Phase 15 ✅ | Phase 16 ✅
 
 > **Related docs:**
@@ -1617,3 +1617,20 @@ test_p16_webhook_inbound_missing_callback_url_rejected
 test_p16_settings_has_connectors_section
 test_p16_hardware_profile_has_connectors_section
 ```
+
+---
+
+## v1.0.1 — Post-Release Patches (PRs #36–#42, 2026-03-01)
+
+No new phases. Bug fixes and operational completions only.
+
+**Final test counts: 492/492 smoke tests · 38/38 integration tests · 5/5 Kerberos live-KDC tests.**
+
+| Fix | PR | Impact |
+|---|---|---|
+| pytest.ini session-scoped event loop; 3 Ollama integration tests fully implemented | #36 | 38/38 integration tests (was 35/38) |
+| `MODEL_INTEGRITY_STRICT` env var override; `/status` model integrity section | #38 | +8 smoke tests → 492 total |
+| `resume_run_config()` helper — loop protection survives checkpoint resume | #39 | +3 smoke tests → 492 total |
+| Kerberos integration test DB API fixed (psycopg, `%s`, `get_pool()`) | #40 | Tests 4-5 no longer fail on wrong DB API |
+| MIT Kerberos 1.22.2 KDC live; `gssapi` built vs MIT; `make test-kerberos` | #41 | 3/5 Kerberos tests pass live |
+| `gateway_users.user_id TEXT`; `api_key_hash UNIQUE` dropped; sentinel standardised | #42 | 5/5 Kerberos tests pass (DB provisioning fixed) |
