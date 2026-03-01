@@ -24,6 +24,7 @@ from src.database import (
     list_tasks,
     lookup_cached_task,
     mark_task_cancelled,
+    update_task_tags,
     VALID_AGENT_TYPES,
     VALID_TASK_STATUSES,
 )
@@ -78,6 +79,12 @@ class TaskRequest(BaseModel):
         description="Cache validity in seconds (0 disables, max 86400 = 24h).  "
         "Ignored when use_cache=false.",
     )
+    tags: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description="Up to 10 freeform string tags for filtering and organisation.  "
+        "Each tag max 50 characters.  Phase 31.",
+    )
     callback_url: str | None = Field(
         default=None,
         max_length=2048,
@@ -100,6 +107,14 @@ class TaskRequest(BaseModel):
         if v not in VALID_AGENT_TYPES:
             raise ValueError(f"agent_type must be one of {sorted(VALID_AGENT_TYPES)}")
         return v
+
+    @field_validator("tags")
+    @classmethod
+    def tags_must_be_short(cls, v: list[str]) -> list[str]:
+        for tag in v:
+            if len(tag) > 50:
+                raise ValueError(f"tag {tag!r} exceeds 50 characters")
+        return [t.strip() for t in v if t.strip()]
 
     @field_validator("callback_url")
     @classmethod
@@ -196,6 +211,7 @@ async def submit_task(
         callback_url=body.callback_url,
         priority=body.priority,
         content_hash=content_hash,
+        tags=body.tags,
     )
 
     task_id = row["task_id"]
@@ -313,8 +329,20 @@ async def list_user_tasks(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status_filter: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Substring search on task input"
+    ),
+    tags: list[str] | None = Query(
+        default=None, description="Filter tasks containing all listed tags"
+    ),
 ) -> dict:
-    """Return paginated task history for the authenticated user."""
+    """Return paginated task history for the authenticated user.
+
+    Optional filters (Phase 31):
+    - ``status``  — filter by task status
+    - ``q``       — case-insensitive substring search on task input
+    - ``tags``    — return only tasks containing ALL specified tags
+    """
     if status_filter and status_filter not in VALID_TASK_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -326,6 +354,8 @@ async def list_user_tasks(
         limit=limit,
         offset=offset,
         status=status_filter,
+        q=q,
+        tags=tags,
     )
 
 
@@ -343,6 +373,44 @@ async def get_task_result(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
+    return row
+
+
+class UpdateTagsRequest(BaseModel):
+    tags: list[str] = Field(
+        ...,
+        max_length=10,
+        description="New tag list (replaces existing tags).  Max 10 tags, each max 50 chars.",
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def tags_must_be_short(cls, v: list[str]) -> list[str]:
+        for tag in v:
+            if len(tag) > 50:
+                raise ValueError(f"tag {tag!r} exceeds 50 characters")
+        return [t.strip() for t in v if t.strip()]
+
+
+@router.put("/{task_id}/tags")
+async def set_task_tags(
+    task_id: str,
+    body: UpdateTagsRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Replace the tags on a task.
+
+    Returns the updated task with new tags.  404 if task not found or not owned.
+
+    Phase 31 — Task Tags.
+    """
+    row = await update_task_tags(task_id, user["user_id"], body.tags)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or not owned by this user",
         )
     return row
 

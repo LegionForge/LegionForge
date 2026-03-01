@@ -1080,6 +1080,16 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON pipeline_runs (user_id)"
     )
 
+    # ── Phase 31: Task tags ────────────────────────────────────────────────────
+    # Freeform string tags for filtering and organisation.  Stored as a
+    # PostgreSQL TEXT[] so containment queries (@>) use the GIN index.
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_tags ON tasks USING GIN (tags)"
+    )
+
     # ── Phase 28: Task priority queue ─────────────────────────────────────────
     # priority: 1=low … 5=normal … 10=high.  Worker picks highest priority first,
     # then oldest-first within equal priority (FIFO within tier).
@@ -2729,11 +2739,13 @@ async def create_task(
     callback_url: str | None = None,
     priority: int = 5,
     content_hash: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'.
 
     priority: 1 (low) … 5 (normal, default) … 10 (high).
     content_hash: SHA-256 of (agent_type:input_text) used for cache lookups.
+    tags: freeform string labels (Phase 31).
     """
     pool = get_pool()
     async with pool.connection() as conn:
@@ -2742,9 +2754,9 @@ async def create_task(
             """
             INSERT INTO tasks
                 (user_id, input, agent_type, config, estimated_tokens,
-                 callback_url, priority, content_hash)
-            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)
-            RETURNING task_id::text, status, created_at, agent_type, priority
+                 callback_url, priority, content_hash, tags)
+            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+            RETURNING task_id::text, status, created_at, agent_type, priority, tags
             """,
             (
                 user_id,
@@ -2755,6 +2767,7 @@ async def create_task(
                 callback_url,
                 max(1, min(10, int(priority))),
                 content_hash,
+                list(tags) if tags else [],
             ),
         )
         row = await cur.fetchone()
@@ -2820,8 +2833,15 @@ async def list_tasks(
     limit: int = 20,
     offset: int = 0,
     status: str | None = None,
+    q: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
-    """Return paginated task list for a user with total count."""
+    """Return paginated task list for a user with total count.
+
+    Optional filters (Phase 31):
+        q    — case-insensitive substring search on task input text
+        tags — return only tasks that contain ALL listed tags
+    """
     if status is not None and status not in VALID_TASK_STATUSES:
         raise ValueError(f"Invalid status filter: {status!r}")
     pool = get_pool()
@@ -2835,6 +2855,12 @@ async def list_tasks(
         if status:
             where += " AND status = %s"
             params.append(status)
+        if q:
+            where += " AND input ILIKE %s"
+            params.append(f"%{q}%")
+        if tags:
+            where += " AND tags @> %s"
+            params.append(list(tags))
 
         # `where` is assembled from hardcoded string fragments only; all user
         # values go into parameterised `params` — no injection risk.
@@ -2844,7 +2870,7 @@ async def list_tasks(
 
         _list_q = f"""
             SELECT task_id::text, user_id, status, agent_type, input,
-                   result, error, steps, tokens, created_at, updated_at, completed_at
+                   result, error, steps, tokens, tags, created_at, updated_at, completed_at
             FROM tasks {where}
             ORDER BY created_at DESC
             LIMIT %s OFFSET %s
@@ -2858,6 +2884,33 @@ async def list_tasks(
         "limit": limit,
         "offset": offset,
     }
+
+
+async def update_task_tags(
+    task_id: str,
+    user_id: str,
+    tags: list[str],
+) -> dict | None:
+    """
+    Replace the tags on a task with the provided list.
+    Returns the updated task dict, or None if not found / not owned by user.
+
+    Phase 31.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET tags = %s, updated_at = now()
+            WHERE task_id = %s::uuid AND user_id = %s
+            RETURNING task_id::text, tags, status, updated_at
+            """,
+            (list(tags), task_id, user_id),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 async def claim_next_queued_task() -> dict | None:

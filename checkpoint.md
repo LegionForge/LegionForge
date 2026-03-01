@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 91
+UPDATE: 92
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T00:30Z
-LAST_OP: Phase 30 — Pipeline SSE Progress Streaming: pipeline pub/sub channels, step events in runner, /pipelines/runs/{run_id}/stream endpoint
-SMOKE_TESTS: 597/597
+TIMESTAMP: 2026-03-02T01:00Z
+LAST_OP: Phase 31 — Task Tags & Search: tags TEXT[] column, GIN index, list_tasks q+tags filters, PUT /tasks/{id}/tags, tags on TaskRequest
+SMOKE_TESTS: 606/606
 INTEGRATION_TESTS: 38/38 (0 skipped)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

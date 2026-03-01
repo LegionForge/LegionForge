@@ -7802,3 +7802,84 @@ def test_p30_pipeline_runner_imports_events():
     import src.pipeline_runner as _
 
     assert callable(_.execute_pipeline)
+
+
+# ── Phase 31: Task Tags & Search ──────────────────────────────────────────────
+
+
+def test_p31_task_request_accepts_tags():
+    """TaskRequest accepts a list of tags."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello", tags=["research", "important"])
+    assert req.tags == ["research", "important"]
+
+
+def test_p31_task_request_tags_default_empty():
+    """TaskRequest defaults tags to empty list."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello")
+    assert req.tags == []
+
+
+def test_p31_task_request_tags_max_length():
+    """TaskRequest rejects more than 10 tags."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", tags=[f"tag{i}" for i in range(11)])
+
+
+def test_p31_task_request_tags_max_char_length():
+    """TaskRequest rejects tags longer than 50 characters."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", tags=["a" * 51])
+
+
+def test_p31_update_tags_request_model():
+    """UpdateTagsRequest validates tag list correctly."""
+    from src.gateway.routes.tasks import UpdateTagsRequest
+
+    req = UpdateTagsRequest(tags=["alpha", "beta"])
+    assert len(req.tags) == 2
+
+
+def test_p31_task_tags_endpoint_registered():
+    """Gateway registers PUT /tasks/{task_id}/tags."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("tags" in p for p in paths)
+
+
+def test_p31_update_task_tags_importable():
+    """update_task_tags is importable from src.database."""
+    from src.database import update_task_tags
+
+    assert callable(update_task_tags)
+
+
+def test_p31_create_task_accepts_tags_param():
+    """create_task() signature includes tags kwarg."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "tags" in sig.parameters
+
+
+def test_p31_list_tasks_accepts_q_and_tags():
+    """list_tasks() signature includes q and tags kwargs."""
+    import inspect
+    from src.database import list_tasks
+
+    sig = inspect.signature(list_tasks)
+    assert "q" in sig.parameters
+    assert "tags" in sig.parameters
