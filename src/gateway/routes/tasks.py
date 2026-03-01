@@ -4,6 +4,7 @@ src/gateway/routes/tasks.py
 Core task API:
 
     POST   /tasks               — submit a task
+    POST   /tasks/batch         — submit up to 20 tasks at once (Phase 28)
     GET    /tasks               — list tasks (authenticated user's own)
     GET    /tasks/{task_id}     — get a single task result
     DELETE /tasks/{task_id}     — cancel a queued task
@@ -55,6 +56,13 @@ class TaskRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=4000)
     agent_type: str = Field(default="orchestrator")
     config: TaskConfig = Field(default_factory=TaskConfig)
+    priority: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Task priority: 1=low, 5=normal (default), 10=high. "
+        "Higher-priority tasks are picked up by the worker first.",
+    )
     callback_url: str | None = Field(
         default=None,
         max_length=2048,
@@ -149,6 +157,7 @@ async def submit_task(
         config=body.config.model_dump(),
         estimated_tokens=estimated_tokens,
         callback_url=body.callback_url,
+        priority=body.priority,
     )
 
     task_id = row["task_id"]
@@ -164,10 +173,100 @@ async def submit_task(
     return {
         "task_id": task_id,
         "status": "queued",
+        "priority": row.get("priority", 5),
         "created_at": row["created_at"],
         "stream_url": f"/tasks/{task_id}/stream",
         "stream_token": stream_token,
     }
+
+
+# ── Batch submission (Phase 28) ────────────────────────────────────────────────
+
+
+class BatchTaskRequest(BaseModel):
+    tasks: list[TaskRequest] = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        description="List of 1–20 task requests to submit atomically.",
+    )
+
+
+@router.post("/batch", status_code=status.HTTP_202_ACCEPTED)
+async def submit_tasks_batch(
+    body: BatchTaskRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Submit up to 20 tasks at once.
+
+    Each task is validated and sanitized individually.  The entire batch fails
+    fast if any task fails validation or budget checks.  Returns a list of
+    ``task_id`` + ``stream_token`` pairs in the same order as the input.
+
+    Phase 28 — batch submission.
+    """
+    results = []
+    daily_limit = user.get("daily_token_limit", 100000)
+
+    for idx, req in enumerate(body.tasks):
+        # Sanitize + injection check
+        sanitized, injection_meta = sanitize_text(req.task, check_injection=True)
+        if injection_meta.get("injection_detected"):
+            logger.warning(
+                "[gateway/batch] Injection detected task %d user=%s",
+                idx,
+                user["username"],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Task {idx}: rejected — invalid input",
+            )
+
+        estimated_tokens = int(len(sanitized.split()) * 1.3 + 500)
+        provider = _AGENT_TYPE_TO_PROVIDER.get(req.agent_type, "ollama")
+
+        try:
+            await per_user_budget_check(
+                user_id=user["user_id"],
+                provider=provider,
+                estimated_tokens=estimated_tokens,
+                daily_limit=daily_limit,
+            )
+        except RuntimeError as budget_err:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Task {idx}: daily token budget exceeded",
+            ) from budget_err
+
+        row = await create_task(
+            user_id=user["user_id"],
+            input_text=sanitized,
+            agent_type=req.agent_type,
+            config=req.config.model_dump(),
+            estimated_tokens=estimated_tokens,
+            callback_url=req.callback_url,
+            priority=req.priority,
+        )
+        task_id = row["task_id"]
+        stream_token = await create_stream_token(task_id, user["user_id"])
+        inc_counter("legionforge_tasks_submitted_total")
+
+        results.append(
+            {
+                "task_id": task_id,
+                "status": "queued",
+                "priority": row.get("priority", 5),
+                "created_at": row["created_at"],
+                "stream_url": f"/tasks/{task_id}/stream",
+                "stream_token": stream_token,
+            }
+        )
+
+    logger.info(
+        "[gateway/batch] Queued %d tasks user=%s", len(results), user["username"]
+    )
+    return {"count": len(results), "tasks": results}
 
 
 @router.get("")

@@ -7560,3 +7560,83 @@ def test_p27_pipeline_db_functions_importable():
         finalize_pipeline_run,
     ):
         assert callable(fn)
+
+
+# ── Phase 28: Task Priority Queue + Batch Submission ─────────────────────────
+
+
+def test_p28_task_request_accepts_priority():
+    """TaskRequest model accepts a valid priority field (1-10)."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello", priority=8)
+    assert req.priority == 8
+
+
+def test_p28_task_request_priority_default():
+    """TaskRequest defaults priority to 5 (normal)."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello")
+    assert req.priority == 5
+
+
+def test_p28_task_request_priority_bounds():
+    """TaskRequest rejects priority outside 1-10."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", priority=0)
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", priority=11)
+
+
+def test_p28_batch_task_request_model():
+    """BatchTaskRequest accepts a list of TaskRequest objects."""
+    from src.gateway.routes.tasks import BatchTaskRequest, TaskRequest
+
+    batch = BatchTaskRequest(
+        tasks=[
+            TaskRequest(task="first task", priority=10),
+            TaskRequest(task="second task", priority=3),
+        ]
+    )
+    assert len(batch.tasks) == 2
+    assert batch.tasks[0].priority == 10
+
+
+def test_p28_batch_task_request_max_length():
+    """BatchTaskRequest rejects more than 20 tasks."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import BatchTaskRequest, TaskRequest
+
+    with pytest.raises(ValidationError):
+        BatchTaskRequest(tasks=[TaskRequest(task=f"task {i}") for i in range(21)])
+
+
+def test_p28_batch_endpoint_registered():
+    """Gateway app exposes /tasks/batch route."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert "/tasks/batch" in paths
+
+
+def test_p28_create_task_accepts_priority_param():
+    """create_task() signature includes priority kwarg."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "priority" in sig.parameters
+    assert sig.parameters["priority"].default == 5
+
+
+def test_p28_claim_next_queued_task_importable():
+    """claim_next_queued_task is importable from src.database."""
+    from src.database import claim_next_queued_task
+
+    assert callable(claim_next_queued_task)

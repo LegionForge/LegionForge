@@ -1080,6 +1080,19 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON pipeline_runs (user_id)"
     )
 
+    # ── Phase 28: Task priority queue ─────────────────────────────────────────
+    # priority: 1=low … 5=normal … 10=high.  Worker picks highest priority first,
+    # then oldest-first within equal priority (FIFO within tier).
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "
+        "priority SMALLINT NOT NULL DEFAULT 5"
+    )
+    # Composite index: worker scans (status='queued') ordered by (priority DESC, created_at ASC)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_priority_queue "
+        "ON tasks (status, priority DESC, created_at ASC)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2705,17 +2718,21 @@ async def create_task(
     config: dict | None = None,
     estimated_tokens: int = 0,
     callback_url: str | None = None,
+    priority: int = 5,
 ) -> dict:
-    """Insert a new task row and return it with task_id and status='queued'."""
+    """Insert a new task row and return it with task_id and status='queued'.
+
+    priority: 1 (low) … 5 (normal, default) … 10 (high).
+    """
     pool = get_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
             INSERT INTO tasks
-                (user_id, input, agent_type, config, estimated_tokens, callback_url)
-            VALUES (%s, %s, %s, %s::jsonb, %s, %s)
-            RETURNING task_id::text, status, created_at, agent_type
+                (user_id, input, agent_type, config, estimated_tokens, callback_url, priority)
+            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)
+            RETURNING task_id::text, status, created_at, agent_type, priority
             """,
             (
                 user_id,
@@ -2724,6 +2741,7 @@ async def create_task(
                 json.dumps(config or {}),
                 estimated_tokens,
                 callback_url,
+                max(1, min(10, int(priority))),
             ),
         )
         row = await cur.fetchone()
@@ -2813,7 +2831,7 @@ async def claim_next_queued_task() -> dict | None:
             WHERE task_id = (
                 SELECT task_id FROM tasks
                 WHERE status = 'queued'
-                ORDER BY created_at
+                ORDER BY priority DESC, created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
