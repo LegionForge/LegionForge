@@ -36,7 +36,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from src.database import init_db, close_db, get_user_usage_summary_today
 from src.gateway.auth import require_user
-from src.gateway.routes import tasks, stream, a2a, mcp
+from src.gateway.routes import tasks, stream, a2a, mcp, memory as memory_route
 from src.gateway.worker import task_worker
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 app.include_router(stream.router, prefix="/tasks", tags=["stream"])
 app.include_router(a2a.router, tags=["a2a"])
 app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
+app.include_router(memory_route.router, prefix="/memory", tags=["memory"])
 
 
 # ── Minimal Web UI ────────────────────────────────────────────────────────────

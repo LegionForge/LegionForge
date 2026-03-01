@@ -137,6 +137,23 @@ async def agent_node(state: AgentState) -> dict:
     try:
         llm = get_primary_llm(temperature=0.1)
 
+        # ── Phase 21: Memory recall ───────────────────────────────────────────
+        # Inject relevant past context before LLM call (no-op when disabled).
+        if settings.agent_memory.enabled and settings.agent_memory.recall_on_task:
+            task = state.get("task", "")
+            if task:
+                from src.memory import recall_for_task
+
+                ns = f"agent:{state.get('agent_id', 'base_agent')}"
+                memory_ctx = await recall_for_task(task, ns)
+                if memory_ctx:
+                    from langchain_core.messages import SystemMessage
+
+                    _mem_msg = SystemMessage(
+                        content=f"[Relevant memory from past runs]\n{memory_ctx}"
+                    )
+                    state = {**state, "messages": [_mem_msg] + list(state["messages"])}
+
         # Sanitize outbound messages (PII redaction before sending to LLM)
         clean_messages = sanitize_messages(state["messages"])
 
@@ -208,6 +225,16 @@ async def finalizer_node(state: AgentState) -> dict:
         },
         run_id=state.get("run_id"),
     )
+
+    # ── Phase 21: Memory store ────────────────────────────────────────────────
+    # Persist task+result for future recall (no-op when disabled or result empty).
+    if settings.agent_memory.enabled and settings.agent_memory.store_results:
+        task = state.get("task", "")
+        if task and result and result != "No result produced.":
+            from src.memory import store_task_result
+
+            ns = f"agent:{state.get('agent_id', 'base_agent')}"
+            await store_task_result(task, result, ns, run_id=state.get("run_id", ""))
 
     return {"result": result}
 

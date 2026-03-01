@@ -364,6 +364,56 @@ ollama-docker-status:  ## Check Dockerised Ollama health and loaded models
 	  && echo "✅ Dockerised Ollama healthy" \
 	  || echo "❌ Dockerised Ollama not running — run: make ollama-docker-start"
 
+.PHONY: memory-stats
+memory-stats:  ## Show agent memory stats for all namespaces (Phase 21 — requires PostgreSQL)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db, get_pool; \
+async def run(): \
+    await init_db(); \
+    pool = get_pool(); \
+    async with pool.connection() as conn: \
+        rows = await conn.fetch('SELECT namespace, COUNT(*) as n, MIN(created_at) as oldest, MAX(created_at) as newest FROM documents GROUP BY namespace ORDER BY n DESC'); \
+    await close_db(); \
+    if not rows: print('  (no documents stored yet)'); return; \
+    [print(f'  {r[\"namespace\"]:40s} {r[\"n\"]:6d} docs  oldest={str(r[\"oldest\"])[:19]}  newest={str(r[\"newest\"])[:19]}') for r in rows]; \
+asyncio.run(run())"
+
+.PHONY: memory-search
+memory-search:  ## Semantic search agent memory: make memory-search Q="your query" NS="namespace" (Phase 21)
+	@[ -n "$(Q)" ] || (echo "Usage: make memory-search Q='your query' [NS=namespace]" && exit 1)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db; \
+from src.memory import get_memory_store; \
+async def run(): \
+    await init_db(); \
+    store = get_memory_store(); \
+    ns = '$(NS)' if '$(NS)' else 'global'; \
+    results = await store.search('$(Q)', namespace=ns, limit=10, min_similarity=0.5); \
+    await close_db(); \
+    if not results: print('  No results found in namespace: ' + ns); return; \
+    print(f'  Results in namespace \"{ns}\":'); \
+    [print(f'  [{i+1}] sim={r[\"similarity\"]:.3f}  {r[\"content\"][:120]}') for i,r in enumerate(results)]; \
+asyncio.run(run())"
+
+.PHONY: memory-ingest
+memory-ingest:  ## Ingest a text file into agent memory: make memory-ingest FILE=path [NS=namespace] (Phase 21)
+	@[ -n "$(FILE)" ] || (echo "Usage: make memory-ingest FILE=path/to/file.txt [NS=namespace]" && exit 1)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db; \
+from src.memory import get_memory_store; \
+async def run(): \
+    await init_db(); \
+    content = open('$(FILE)').read(); \
+    store = get_memory_store(); \
+    ns = '$(NS)' if '$(NS)' else 'global'; \
+    doc_id = await store.store(content, namespace=ns, metadata={'source': '$(FILE)'}); \
+    await close_db(); \
+    print(f'  Stored doc #{doc_id} in namespace \"{ns}\" ({len(content)} chars)'); \
+asyncio.run(run())"
+
 .PHONY: cluster-status
 cluster-status:  ## Show Ollama cluster health — checks all configured nodes (Phase 20)
 	@cd $(BASE) && $(PYTHON) -c "\

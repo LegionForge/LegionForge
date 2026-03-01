@@ -338,3 +338,32 @@ ollama_cluster:
   routing: round_robin
   health_check_interval: 30   # seconds between background health polls
   fallback_to_primary: true   # fall back to local_services.ollama if all cluster nodes fail
+
+# ── Agent Memory / RAG (Phase 21) ─────────────────────────────────────────────
+# Persistent agent memory backed by pgvector (documents table, 768-dim HNSW).
+# Requires PostgreSQL with pgvector + a running Ollama embeddings model.
+#
+# When enabled:
+#   - recall_on_task: inject relevant past context before each LLM call
+#   - store_results:  persist task+result for future recall
+#   - max_docs_per_namespace: prune oldest when limit exceeded (0 = unlimited)
+#   - search_limit:   top-K docs returned per recall
+#   - min_similarity: cosine threshold; raise for stricter relevance filtering
+#
+# Gateway endpoints (require Bearer auth):
+#   POST   /memory/ingest    — store a document
+#   POST   /memory/search    — semantic search
+#   DELETE /memory           — clear your memory namespace
+#   GET    /memory/stats     — document count + timestamps
+#
+# CLI:
+#   make memory-stats            — namespace stats
+#   make memory-search Q="query" — semantic search (requires Ollama + PostgreSQL)
+#
+agent_memory:
+  enabled: false          # set true to activate (requires PostgreSQL + Ollama)
+  recall_on_task: true    # inject relevant past context before LLM call
+  store_results: true     # persist task+result pairs for future recall
+  max_docs_per_namespace: 1000  # 0 = unlimited
+  search_limit: 5
+  min_similarity: 0.7

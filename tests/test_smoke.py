@@ -6859,3 +6859,126 @@ def test_p20_get_cluster_manager_singleton():
     m2 = get_cluster_manager()
     assert m1 is m2
     reset_cluster_manager()  # leave clean for other tests
+
+
+# ── Phase 21: Persistent Agent Memory (RAG) ───────────────────────────────────
+
+
+def test_p21_agent_memory_config_defaults():
+    """AgentMemoryConfig has correct defaults — disabled, sensible limits."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert cfg.enabled is False
+    assert cfg.recall_on_task is True
+    assert cfg.store_results is True
+    assert cfg.max_docs_per_namespace == 1000
+    assert cfg.search_limit == 5
+    assert cfg.min_similarity == 0.7
+
+
+def test_p21_settings_has_agent_memory():
+    """HardwareSettings exposes agent_memory attribute with correct type."""
+    from config.settings import settings, AgentMemoryConfig
+
+    assert hasattr(settings, "agent_memory")
+    assert isinstance(settings.agent_memory, AgentMemoryConfig)
+    # Disabled by default in the mac_m4_mini_16gb profile
+    assert settings.agent_memory.enabled is False
+
+
+def test_p21_hardware_profile_has_agent_memory_section():
+    """Hardware profile YAML has agent_memory section."""
+    import yaml
+    from pathlib import Path
+
+    profile = (
+        Path(__file__).parent.parent
+        / "config"
+        / "hardware_profiles"
+        / "mac_m4_mini_16gb.yaml"
+    )
+    raw = yaml.safe_load(profile.read_text())
+    assert "agent_memory" in raw
+    assert raw["agent_memory"]["enabled"] is False
+    assert "search_limit" in raw["agent_memory"]
+    assert "min_similarity" in raw["agent_memory"]
+
+
+def test_p21_memory_store_importable():
+    """src.memory imports cleanly and exposes expected API."""
+    from src.memory import MemoryStore, get_memory_store, reset_memory_store
+
+    assert callable(get_memory_store)
+    assert callable(reset_memory_store)
+    assert hasattr(MemoryStore, "user_namespace")
+    assert hasattr(MemoryStore, "agent_namespace")
+    assert hasattr(MemoryStore, "agent_user_namespace")
+
+
+def test_p21_memory_store_namespace_helpers():
+    """MemoryStore namespace helpers produce correct strings."""
+    from src.memory import MemoryStore
+
+    assert MemoryStore.user_namespace("alice") == "user:alice"
+    assert MemoryStore.agent_namespace("base_agent") == "agent:base_agent"
+    assert (
+        MemoryStore.agent_user_namespace("orchestrator", "bob")
+        == "agent:orchestrator/user:bob"
+    )
+
+
+def test_p21_memory_store_singleton():
+    """get_memory_store returns the same instance on repeated calls."""
+    from src.memory import get_memory_store, reset_memory_store
+
+    reset_memory_store()
+    s1 = get_memory_store()
+    s2 = get_memory_store()
+    assert s1 is s2
+    reset_memory_store()
+
+
+def test_p21_gateway_memory_route_importable():
+    """Gateway memory router imports cleanly and has expected router."""
+    from src.gateway.routes.memory import router
+
+    assert router is not None
+    # Collect route paths
+    paths = {r.path for r in router.routes}
+    assert "/ingest" in paths
+    assert "/search" in paths
+    assert "" in paths  # DELETE /memory (empty path on the router)
+    assert "/stats" in paths
+
+
+def test_p21_recall_for_task_disabled_returns_empty():
+    """recall_for_task returns '' immediately when agent_memory.enabled=False."""
+    import asyncio
+    from unittest.mock import patch
+    from src.memory import recall_for_task
+
+    # settings.agent_memory.enabled defaults to False in profile
+    result = asyncio.run(recall_for_task("some task", "agent:test"))
+    assert result == ""
+
+
+def test_p21_store_task_result_disabled_no_op():
+    """store_task_result is a no-op when agent_memory.enabled=False."""
+    import asyncio
+    from src.memory import store_task_result
+
+    # Should complete without error and without touching the DB
+    asyncio.run(store_task_result("task", "result", "agent:test", run_id="x"))
+
+
+def test_p21_memory_store_has_async_interface():
+    """MemoryStore exposes the expected async methods."""
+    from src.memory import MemoryStore
+    import inspect
+
+    store = MemoryStore()
+    for method in ("embed", "store", "search", "stats", "clear_namespace", "prune"):
+        assert inspect.iscoroutinefunction(
+            getattr(store, method)
+        ), f"MemoryStore.{method} must be async"

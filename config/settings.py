@@ -459,6 +459,32 @@ class ConnectorsConfig(BaseModel):
     webhook: WebhookConfig = WebhookConfig()
 
 
+class AgentMemoryConfig(BaseModel):
+    """
+    Configuration for Phase 21 persistent agent memory (pgvector RAG).
+
+    Disabled by default — set ``enabled: true`` in your hardware profile to
+    activate.  Requires PostgreSQL with the pgvector extension and a running
+    Ollama embeddings model (``nomic-embed-text`` by default).
+
+    Fields:
+        enabled          — Master switch.  No DB calls are made when False.
+        recall_on_task   — Inject relevant past memory before each LLM call.
+        store_results    — Persist task+result pairs for future recall.
+        max_docs_per_namespace — Prune oldest docs when this limit is exceeded.
+                                 0 = unlimited (not recommended in production).
+        search_limit     — Top-K documents returned by similarity search.
+        min_similarity   — Cosine similarity threshold (0–1; higher = stricter).
+    """
+
+    enabled: bool = False
+    recall_on_task: bool = True
+    store_results: bool = True
+    max_docs_per_namespace: int = 1000
+    search_limit: int = 5
+    min_similarity: float = 0.7
+
+
 class PentestConfig(BaseModel):
     """
     Configuration for the Phase 6 PentestAgent (air-gapped red-team bot).
@@ -524,6 +550,7 @@ class HardwareSettings(BaseModel):
     tools: ToolsConfig = ToolsConfig()
     gateway: GatewayConfig = GatewayConfig()
     connectors: ConnectorsConfig = ConnectorsConfig()
+    agent_memory: AgentMemoryConfig = AgentMemoryConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)
