@@ -147,7 +147,7 @@ safeguards:
 # ── Observability ─────────────────────────────────────────────
 observability:
   langsmith:
-    enabled: true
+    enabled: false
     project_name: "local-agents-m4"
     env_var: "LANGSMITH_API_KEY"    # Key stored in macOS Keychain
   local_logging:

@@ -637,25 +637,60 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
     Raises SecurityError only when the violation is severe enough to halt the run.
     """
     if tool_id not in _TOOL_REGISTRY:
-        logger.error(
-            f"[tool-registry] CAPABILITY_VIOLATION — tool '{tool_id}' not registered."
-        )
-        # Log to DB if available
+        # Lazy-load from DB — tools registered via `make register-*` in a separate
+        # process (e.g. the gateway startup context) are in the DB but not yet in the
+        # in-memory registry of this process.  Reconstruct a minimal ToolManifest from
+        # the stored description + input_schema and populate _TOOL_HASHES from the
+        # stored hashes so the subsequent hash check can proceed normally.
+        loaded = False
         try:
-            from src.database import log_threat_event
+            from src.database import get_tool_registry_entry
 
-            await log_threat_event(
-                agent_id="security",
-                run_id="unknown",
-                threat_type="CAPABILITY_VIOLATION",
-                action_taken="BLOCKED",
-                confidence=1.0,
-                raw_input=tool_id[:200],
-                metadata={"tool_id": tool_id},
+            row = await get_tool_registry_entry(tool_id)
+            if row is not None:
+                manifest = ToolManifest(
+                    tool_id=tool_id,
+                    description=row["description"],
+                    input_schema=(
+                        row["input_schema"]
+                        if isinstance(row["input_schema"], dict)
+                        else {}
+                    ),
+                    declared_side_effects=[],
+                    source=row.get("source", "local"),
+                )
+                _TOOL_REGISTRY[tool_id] = manifest
+                _TOOL_HASHES[tool_id] = {
+                    "description_hash": row["description_hash"],
+                    "schema_hash": row["schema_hash"],
+                    "entrypoint_hash": row.get("entrypoint_hash"),
+                }
+                logger.info(
+                    f"[tool-registry] Lazy-loaded '{tool_id}' from DB into in-memory registry."
+                )
+                loaded = True
+        except Exception as e:
+            logger.warning(f"[tool-registry] DB fallback failed for '{tool_id}': {e}")
+
+        if not loaded:
+            logger.error(
+                f"[tool-registry] CAPABILITY_VIOLATION — tool '{tool_id}' not registered."
             )
-        except Exception:
-            pass
-        return False
+            try:
+                from src.database import log_threat_event
+
+                await log_threat_event(
+                    agent_id="security",
+                    run_id="unknown",
+                    threat_type="CAPABILITY_VIOLATION",
+                    action_taken="BLOCKED",
+                    confidence=1.0,
+                    raw_input=tool_id[:200],
+                    metadata={"tool_id": tool_id},
+                )
+            except Exception:
+                pass
+            return False
 
     manifest = _TOOL_REGISTRY[tool_id]
     stored_hashes = _TOOL_HASHES[tool_id]
