@@ -155,7 +155,7 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 All phases (0–16) are complete and v1.0.0 is shipped. Remaining items:
 
-1. **`model_integrity_strict: false`** — GGUF hashes are already pinned and verified. Consider flipping to `true` in the hardware profile to halt startup on mismatch rather than log-only.
+1. **`model_integrity_strict: false`** — GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or the YAML setting — no code change needed. The `/status` endpoint now surfaces per-model integrity results.
 2. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` skeleton exists; activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC + `gssapi` package.
 3. **Loop protection on resume** — documented edge case: if a caller passes a fresh `SafeguardedState.initial()` for an existing `thread_id`, step counters reset. Correct usage is in the `SafeguardedState.initial()` docstring.
 

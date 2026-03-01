@@ -238,7 +238,7 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | Item | Priority | Notes |
 |---|---|---|
 | Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
-| `model_integrity_strict: false` | Low | All three GGUF hashes are pinned and verified (`make verify-models` matches). Consider enabling strict mode to halt startup on mismatch rather than log-only. |
+| `model_integrity_strict: false` | Low | All three GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or YAML. Default is log-only + threat event. |
 | Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
 
 ### Fixed (Phase 16)

@@ -26,7 +26,17 @@ After pinning, update mac_m4_mini_16gb.yaml:
       primary:
         gguf_sha256: "abc123..."
 
-Set model_integrity_strict: true to raise on mismatch (default: log only).
+Strict mode (halt on mismatch instead of log-only):
+  YAML:    model_integrity_strict: true  (in hardware profile security section)
+  Env var: MODEL_INTEGRITY_STRICT=true   (overrides YAML; useful for containers
+                                          and deploy-time configuration without
+                                          editing the profile)
+
+After an intentional model update (ollama pull):
+  1. Run 'make verify-models' to print the new SHA256 hashes.
+  2. Update gguf_sha256 in the hardware profile YAML.
+  3. Commit the change — the hash update is now in git history,
+     tying the model update to a deliberate human decision.
 """
 
 from __future__ import annotations
@@ -42,6 +52,29 @@ logger = logging.getLogger(__name__)
 
 # Chunk size for streaming SHA256 computation (1 MB — avoids loading full GGUF into RAM)
 _SHA256_CHUNK_SIZE = 1024 * 1024
+
+# One-shot cache: SHA256 computation takes 30-60 s for multi-GB GGUF files.
+# Run once per process lifetime (at startup / first /status call); return
+# cached results on every subsequent call.  Reset to None only on restart.
+_integrity_result_cache: dict | None = None
+
+
+def _effective_strict(settings: Any) -> bool:
+    """
+    Return the effective model_integrity_strict value.
+
+    Environment variable MODEL_INTEGRITY_STRICT takes precedence over the
+    hardware profile setting, so operators can enable strict mode at deploy
+    time (e.g. via Docker -e or a .env file) without editing the YAML.
+
+    Accepted truthy env values (case-insensitive): "1", "true", "yes".
+    Any other non-empty value is treated as false.
+    Unset / empty falls back to the hardware profile value.
+    """
+    env = os.environ.get("MODEL_INTEGRITY_STRICT", "").strip().lower()
+    if env:
+        return env in ("1", "true", "yes")
+    return bool(getattr(settings.security, "model_integrity_strict", False))
 
 
 def _sha256_file(path: Path) -> str:
@@ -138,7 +171,7 @@ async def verify_model_integrity(settings: Any) -> dict[str, str]:
         # Default Ollama location
         ollama_dir = Path(settings.paths.models.ollama)
 
-    strict = getattr(settings.security, "model_integrity_strict", False)
+    strict = _effective_strict(settings)
     results: dict[str, str] = {}
 
     for attr in ("primary", "router", "embeddings"):
@@ -267,3 +300,52 @@ async def compute_model_hashes(settings: Any) -> dict[str, str | None]:
             hashes[model_id] = None
 
     return hashes
+
+
+async def get_model_integrity_status(settings: Any) -> dict:
+    """
+    Return a status dict suitable for inclusion in the /status API response.
+
+    Results are cached for the process lifetime — SHA256 computation takes
+    30-60 s for multi-GB GGUF files and only needs to run once at startup.
+    The cache is intentionally never invalidated at runtime; a model change
+    requires a process restart, which is the correct security gate.
+
+    Return shape:
+        {
+            "strict": bool,          # effective strict mode (YAML or env var)
+            "status": str,           # "ok" | "mismatch" | "not_found" | "skipped"
+            "models": {              # per-model result from verify_model_integrity()
+                "llama3.1:8b": "ok",
+                ...
+            }
+        }
+
+    The top-level "status" is "mismatch" if ANY model has "mismatch",
+    "not_found" if ANY model is not_found (and none mismatch),
+    "skipped" if all models were skipped, otherwise "ok".
+    """
+    global _integrity_result_cache
+    if _integrity_result_cache is not None:
+        return _integrity_result_cache
+
+    strict = _effective_strict(settings)
+    try:
+        models = await verify_model_integrity(settings)
+    except Exception as exc:
+        logger.error(f"[integrity] get_model_integrity_status failed: {exc}")
+        models = {}
+
+    statuses = set(models.values())
+    if "mismatch" in statuses:
+        overall = "mismatch"
+    elif "not_found" in statuses:
+        overall = "not_found"
+    elif statuses == {"skipped"} or not statuses:
+        overall = "skipped"
+    else:
+        overall = "ok"
+
+    result = {"strict": strict, "status": overall, "models": models}
+    _integrity_result_cache = result
+    return result

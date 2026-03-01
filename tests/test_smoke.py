@@ -6399,3 +6399,82 @@ def test_p16_hardware_profile_has_connectors_section():
     assert "telegram:" in content
     assert "slack:" in content
     assert "webhook:" in content
+
+
+# ── Phase 17 — model_integrity_strict env var + /status model_integrity ──────
+
+
+def test_p17_effective_strict_false_by_default(monkeypatch):
+    """_effective_strict returns False when env var unset and YAML value is False."""
+    monkeypatch.delenv("MODEL_INTEGRITY_STRICT", raising=False)
+    from src.tools.model_integrity import _effective_strict
+    from config.settings import load_settings
+
+    s = load_settings()
+    assert _effective_strict(s) is False
+
+
+def test_p17_effective_strict_env_var_true(monkeypatch):
+    """MODEL_INTEGRITY_STRICT=true overrides YAML False."""
+    monkeypatch.setenv("MODEL_INTEGRITY_STRICT", "true")
+    from src.tools.model_integrity import _effective_strict
+    from config.settings import load_settings
+
+    s = load_settings()
+    assert _effective_strict(s) is True
+
+
+def test_p17_effective_strict_env_var_1(monkeypatch):
+    """MODEL_INTEGRITY_STRICT=1 is accepted as truthy."""
+    monkeypatch.setenv("MODEL_INTEGRITY_STRICT", "1")
+    from src.tools.model_integrity import _effective_strict
+    from config.settings import load_settings
+
+    s = load_settings()
+    assert _effective_strict(s) is True
+
+
+def test_p17_effective_strict_env_var_false_overrides_yaml(monkeypatch):
+    """MODEL_INTEGRITY_STRICT=false overrides even if YAML were True."""
+    monkeypatch.setenv("MODEL_INTEGRITY_STRICT", "false")
+    from src.tools.model_integrity import _effective_strict
+
+    class _FakeSettings:
+        class security:
+            model_integrity_strict = True
+
+    assert _effective_strict(_FakeSettings()) is False
+
+
+def test_p17_get_model_integrity_status_shape(monkeypatch):
+    """get_model_integrity_status returns expected dict shape (mocked file check)."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.delenv("MODEL_INTEGRITY_STRICT", raising=False)
+
+    mock_results = {
+        "llama3.1:8b": "ok",
+        "qwen2.5:3b": "ok",
+        "nomic-embed-text:latest": "ok",
+    }
+
+    with patch(
+        "src.tools.model_integrity.verify_model_integrity",
+        new=AsyncMock(return_value=mock_results),
+    ):
+        # Clear the process-lifetime cache so the mock runs
+        import src.tools.model_integrity as _mi
+
+        _mi._integrity_result_cache = None
+
+        from config.settings import load_settings
+
+        result = asyncio.run(_mi.get_model_integrity_status(load_settings()))
+
+    assert result["status"] == "ok"
+    assert result["strict"] is False
+    assert result["models"] == mock_results
+
+    # Restore cache to None so other tests aren't polluted
+    _mi._integrity_result_cache = None
