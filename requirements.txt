@@ -61,6 +61,9 @@ ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 
 # ── Redis State Layer (Phase 13) ──────────────────────────────
 redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate counters
+# gssapi>=1.8.3                 # Optional Kerberos/SPNEGO auth — install manually when using KerberosBackend
+#                               # Requires OS-level Kerberos libs: brew install krb5 (macOS)
+#                               # or apt-get install libkrb5-dev (Debian/Ubuntu)
 fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
 
 # ── Channel Connectors (Phase 8 / Phase 16) ──────────────────

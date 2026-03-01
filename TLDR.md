@@ -20,7 +20,7 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with Redis/DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (38 tests), modular `AuthBackend` protocol, containerized gateway, multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos), Redis-backed state layer, multi-instance docker-compose, Redis global budget counters, Prometheus metrics endpoint, request trace IDs, polished web UI, and Telegram + Slack + Webhook channel connectors.
 
-**484/484 smoke tests passing** (~3.0s, no external services required).
+**492/492 smoke tests passing** (~3.0s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
 
 ✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
@@ -123,13 +123,9 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of Phase 16)
-
-**Loop protection on checkpoint resume** is handled by `resume_run_config(thread_id)` in `safeguards.py`, which returns `(None, config)`. Passing `None` as the graph input tells LangGraph to hydrate the full state from the checkpoint — counters continue from where the interrupted run left off. Using `SafeguardedState.initial()` for a resume would reset them; the helper makes the correct pattern explicit.
+## Known Gaps (as of v1.0.0)
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
-
-**GGUF hashes are pinned; strict mode is not enabled.** All three model hashes are set and verified (`make verify-models` matches). `model_integrity_strict: false` means a mismatch logs a CRITICAL warning and emits a threat event but does not halt startup. Set `model_integrity_strict: true` in the hardware profile to make integrity failures fatal.
 
 **OAuth / LDAP not wired by default.** `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` are all implemented (Phase 12–13). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
 
@@ -153,10 +149,9 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Open Technical Debt
 
-All phases (0–16) are complete and v1.0.0 is shipped. Remaining items:
+All phases (0–16) are complete and v1.0.0 is shipped. One remaining infrastructure item:
 
-1. **`model_integrity_strict: false`** — GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or the YAML setting — no code change needed. The `/status` endpoint now surfaces per-model integrity results.
-2. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` skeleton exists; activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC + `gssapi` package.
+1. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` exists with full SPNEGO round-trip tests. Activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC (`brew install krb5`) and `pip install gssapi`. See `docs/SCALING.md` for setup instructions.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)

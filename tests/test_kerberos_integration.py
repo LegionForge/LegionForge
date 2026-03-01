@@ -175,7 +175,7 @@ async def test_kerberos_user_provisioned_on_first_auth():
         pytest.skip("Could not obtain Kerberos TGT — KDC may not be running")
 
     try:
-        from src.database import get_connection
+        from src.database import get_pool
     except ImportError:
         pytest.skip("Database module not available")
 
@@ -189,10 +189,13 @@ async def test_kerberos_user_provisioned_on_first_auth():
         pytest.skip("Kerberos authentication failed — skipping DB check")
 
     # Verify the user exists in gateway_users
-    async with get_connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT user_id, username, is_active FROM gateway_users WHERE user_id = $1",
-            result["user_id"],
-        )
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT user_id, username, is_active FROM gateway_users WHERE user_id = %s",
+                (result["user_id"],),
+            )
+            row = await cur.fetchone()
     assert row is not None, f"User {result['user_id']} not found in gateway_users"
     assert row["is_active"] is True
