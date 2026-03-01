@@ -6982,3 +6982,108 @@ def test_p21_memory_store_has_async_interface():
         assert inspect.iscoroutinefunction(
             getattr(store, method)
         ), f"MemoryStore.{method} must be async"
+
+
+# ── Phase 22: Document Ingestion Pipeline ─────────────────────────────────────
+
+
+def test_p22_ingestor_importable():
+    """src.ingestor imports cleanly and exposes expected API."""
+    from src.ingestor import DocumentIngestor, get_ingestor, chunk_text, read_file
+
+    assert callable(chunk_text)
+    assert callable(read_file)
+    assert callable(get_ingestor)
+    ingestor = DocumentIngestor()
+    assert ingestor.chunk_size == 512
+    assert ingestor.overlap == 64
+
+
+def test_p22_chunk_text_empty():
+    """chunk_text returns [] for empty or whitespace-only input."""
+    from src.ingestor import chunk_text
+
+    assert chunk_text("") == []
+    assert chunk_text("   \n\n  ") == []
+
+
+def test_p22_chunk_text_short():
+    """chunk_text returns a single chunk for text shorter than chunk_size."""
+    from src.ingestor import chunk_text
+
+    text = "This is a short paragraph."
+    chunks = chunk_text(text, chunk_size=512, overlap=64)
+    assert len(chunks) == 1
+    assert chunks[0] == text
+
+
+def test_p22_chunk_text_splits_large():
+    """chunk_text produces multiple chunks for text exceeding chunk_size."""
+    from src.ingestor import chunk_text
+
+    # 4 chars = 1 token; chunk_size=10 tokens = 40 chars
+    text = "Alpha beta gamma delta.\n\nEpsilon zeta eta theta.\n\nIota kappa lambda mu."
+    chunks = chunk_text(text, chunk_size=10, overlap=2)
+    assert len(chunks) >= 2
+    for chunk in chunks:
+        assert len(chunk.strip()) >= 1
+
+
+def test_p22_chunk_text_overlap_carries_context():
+    """Overlap causes tail content to appear in subsequent chunk."""
+    from src.ingestor import chunk_text
+
+    para = "The quick brown fox jumps over the lazy dog. " * 30
+    text = para + "\n\n" + para
+    chunks = chunk_text(text, chunk_size=64, overlap=16)
+    assert len(chunks) >= 2
+
+
+def test_p22_read_file_text(tmp_path):
+    """read_file reads plain text and markdown files correctly."""
+    from src.ingestor import read_file
+
+    f = tmp_path / "note.md"
+    f.write_text("# Hello\n\nThis is a test document.")
+    content = read_file(f)
+    assert "Hello" in content
+    assert "test document" in content
+
+
+def test_p22_read_file_html_strips_tags(tmp_path):
+    """read_file strips HTML tags from .html files."""
+    from src.ingestor import read_file
+
+    f = tmp_path / "page.html"
+    f.write_text("<html><body><h1>Title</h1><p>Body text.</p></body></html>")
+    content = read_file(f)
+    assert "Title" in content
+    assert "Body text" in content
+    assert "<h1>" not in content
+
+
+def test_p22_read_file_missing_returns_empty(tmp_path):
+    """read_file returns empty string for a non-existent file."""
+    from src.ingestor import read_file
+
+    content = read_file(tmp_path / "missing.txt")
+    assert content == ""
+
+
+def test_p22_gateway_documents_route_importable():
+    """Gateway documents router imports cleanly and has expected endpoints."""
+    from src.gateway.routes.documents import router
+
+    paths = {r.path for r in router.routes}
+    assert "" in paths  # GET /documents
+    assert "/ingest" in paths
+    assert any("{doc_id}" in p for p in paths)
+
+
+def test_p22_ingestor_singleton():
+    """get_ingestor returns the same DocumentIngestor instance."""
+    from src.ingestor import get_ingestor
+
+    i1 = get_ingestor()
+    i2 = get_ingestor()
+    assert i1 is i2

@@ -364,6 +364,38 @@ ollama-docker-status:  ## Check Dockerised Ollama health and loaded models
 	  && echo "✅ Dockerised Ollama healthy" \
 	  || echo "❌ Dockerised Ollama not running — run: make ollama-docker-start"
 
+.PHONY: docs-ingest
+docs-ingest:  ## Ingest a file into the global RAG namespace: make docs-ingest FILE=path [NS=global] (Phase 22)
+	@[ -n "$(FILE)" ] || (echo "Usage: make docs-ingest FILE=path/to/file.txt [NS=global]" && exit 1)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db; \
+from src.ingestor import DocumentIngestor; \
+async def run(): \
+    await init_db(); \
+    ns = '$(NS)' if '$(NS)' else 'global'; \
+    ingestor = DocumentIngestor(); \
+    ids = await ingestor.ingest_file('$(FILE)', namespace=ns); \
+    await close_db(); \
+    print(f'  Ingested {len(ids)} chunk(s) from $(FILE) → namespace \"{ns}\"'); \
+asyncio.run(run())"
+
+.PHONY: docs-list
+docs-list:  ## List documents in a namespace: make docs-list [NS=global] [LIMIT=20] (Phase 22)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db; \
+from src.ingestor import DocumentIngestor; \
+async def run(): \
+    await init_db(); \
+    ns = '$(NS)' if '$(NS)' else 'global'; \
+    limit = int('$(LIMIT)') if '$(LIMIT)' else 20; \
+    docs = await DocumentIngestor().list_documents(ns, limit=limit); \
+    await close_db(); \
+    if not docs: print(f'  (no documents in namespace \"{ns}\")'); return; \
+    [print(f'  [{d[\"id\"]:6d}] {d[\"created_at\"][:19]}  {d[\"content_preview\"][:80]}') for d in docs]; \
+asyncio.run(run())"
+
 .PHONY: memory-stats
 memory-stats:  ## Show agent memory stats for all namespaces (Phase 21 — requires PostgreSQL)
 	@cd $(BASE) && $(PYTHON) -c "\
