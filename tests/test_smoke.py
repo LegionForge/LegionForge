@@ -7640,3 +7640,83 @@ def test_p28_claim_next_queued_task_importable():
     from src.database import claim_next_queued_task
 
     assert callable(claim_next_queued_task)
+
+
+# ── Phase 29: Task Result Cache ───────────────────────────────────────────────
+
+
+def test_p29_task_cache_importable():
+    """src.task_cache imports without error."""
+    from src.task_cache import compute_task_hash, CACHE_TTL_SECONDS
+
+    assert callable(compute_task_hash)
+    assert CACHE_TTL_SECONDS == 3600
+
+
+def test_p29_compute_task_hash_deterministic():
+    """compute_task_hash returns stable SHA-256 hex for same inputs."""
+    from src.task_cache import compute_task_hash
+
+    h1 = compute_task_hash("orchestrator", "What is 2+2?")
+    h2 = compute_task_hash("orchestrator", "What is 2+2?")
+    assert h1 == h2
+    assert len(h1) == 64  # SHA-256 hex
+
+
+def test_p29_compute_task_hash_different_for_different_inputs():
+    """Different agent_type or text produces different hash."""
+    from src.task_cache import compute_task_hash
+
+    h1 = compute_task_hash("orchestrator", "hello")
+    h2 = compute_task_hash("researcher", "hello")
+    h3 = compute_task_hash("orchestrator", "world")
+    assert h1 != h2
+    assert h1 != h3
+    assert h2 != h3
+
+
+def test_p29_task_request_use_cache_field():
+    """TaskRequest accepts use_cache and cache_ttl fields."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello", use_cache=False, cache_ttl=7200)
+    assert req.use_cache is False
+    assert req.cache_ttl == 7200
+
+
+def test_p29_task_request_cache_defaults():
+    """TaskRequest defaults: use_cache=True, cache_ttl=3600."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello")
+    assert req.use_cache is True
+    assert req.cache_ttl == 3600
+
+
+def test_p29_task_request_cache_ttl_bounds():
+    """cache_ttl must be 0–86400."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    TaskRequest(task="hello", cache_ttl=0)  # min allowed
+    TaskRequest(task="hello", cache_ttl=86400)  # max allowed
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", cache_ttl=86401)
+
+
+def test_p29_lookup_cached_task_importable():
+    """lookup_cached_task is importable from src.database."""
+    from src.database import lookup_cached_task
+
+    assert callable(lookup_cached_task)
+
+
+def test_p29_create_task_accepts_content_hash():
+    """create_task() signature includes content_hash kwarg."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "content_hash" in sig.parameters
+    assert sig.parameters["content_hash"].default is None

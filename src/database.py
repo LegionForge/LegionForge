@@ -1093,6 +1093,15 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON tasks (status, priority DESC, created_at ASC)"
     )
 
+    # ── Phase 29: Task result cache ────────────────────────────────────────────
+    # SHA-256 of (agent_type + ":" + input_text).  Stored on every task;
+    # lookup_cached_task() queries for a recent completed task with the same hash.
+    await conn.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS content_hash TEXT")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_content_hash "
+        "ON tasks (content_hash) WHERE status = 'complete'"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2719,10 +2728,12 @@ async def create_task(
     estimated_tokens: int = 0,
     callback_url: str | None = None,
     priority: int = 5,
+    content_hash: str | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'.
 
     priority: 1 (low) … 5 (normal, default) … 10 (high).
+    content_hash: SHA-256 of (agent_type:input_text) used for cache lookups.
     """
     pool = get_pool()
     async with pool.connection() as conn:
@@ -2730,8 +2741,9 @@ async def create_task(
         cur = await conn.execute(
             """
             INSERT INTO tasks
-                (user_id, input, agent_type, config, estimated_tokens, callback_url, priority)
-            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)
+                (user_id, input, agent_type, config, estimated_tokens,
+                 callback_url, priority, content_hash)
+            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)
             RETURNING task_id::text, status, created_at, agent_type, priority
             """,
             (
@@ -2742,10 +2754,43 @@ async def create_task(
                 estimated_tokens,
                 callback_url,
                 max(1, min(10, int(priority))),
+                content_hash,
             ),
         )
         row = await cur.fetchone()
     return dict(row)
+
+
+async def lookup_cached_task(
+    content_hash: str,
+    max_age_seconds: int = 3600,
+) -> dict | None:
+    """
+    Return the most recent completed task matching content_hash within
+    max_age_seconds, or None if no cache hit exists.
+
+    Phase 29 task result cache.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT task_id::text, result, completed_at, agent_type
+            FROM tasks
+            WHERE content_hash = %s
+              AND status = 'complete'
+              AND completed_at > %s
+            ORDER BY completed_at DESC
+            LIMIT 1
+            """,
+            (content_hash, cutoff),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 async def get_task(task_id: str, user_id: str | None = None) -> dict | None:

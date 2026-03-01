@@ -22,6 +22,7 @@ from src.database import (
     create_task,
     get_task,
     list_tasks,
+    lookup_cached_task,
     mark_task_cancelled,
     VALID_AGENT_TYPES,
     VALID_TASK_STATUSES,
@@ -62,6 +63,20 @@ class TaskRequest(BaseModel):
         le=10,
         description="Task priority: 1=low, 5=normal (default), 10=high. "
         "Higher-priority tasks are picked up by the worker first.",
+    )
+    use_cache: bool = Field(
+        default=True,
+        description=(
+            "Return a cached result if an identical task (same agent_type + text) "
+            "completed within cache_ttl seconds.  Set to false to force a fresh run."
+        ),
+    )
+    cache_ttl: int = Field(
+        default=3600,
+        ge=0,
+        le=86400,
+        description="Cache validity in seconds (0 disables, max 86400 = 24h).  "
+        "Ignored when use_cache=false.",
     )
     callback_url: str | None = Field(
         default=None,
@@ -126,6 +141,28 @@ async def submit_task(
             detail="Task rejected: invalid input",
         )
 
+    # Phase 29: always compute content_hash (stored on the task for future lookups)
+    from src.task_cache import compute_task_hash
+
+    content_hash = compute_task_hash(body.agent_type, sanitized)
+
+    # Cache lookup: skip queue if an identical completed task exists within TTL
+    if body.use_cache and body.cache_ttl > 0:
+        hit = await lookup_cached_task(content_hash, max_age_seconds=body.cache_ttl)
+        if hit:
+            logger.info(
+                "[gateway] Cache hit task_id=%s user=%s",
+                hit["task_id"],
+                user["username"],
+            )
+            return {
+                "task_id": hit["task_id"],
+                "status": "complete",
+                "result": hit["result"],
+                "cached": True,
+                "cached_at": hit["completed_at"],
+            }
+
     # Estimate token cost for budget check (conservative: word count × 1.3 + 500
     # for system prompt / response overhead).  Actual usage replaces this on
     # task completion via api_usage with user_id set.
@@ -158,6 +195,7 @@ async def submit_task(
         estimated_tokens=estimated_tokens,
         callback_url=body.callback_url,
         priority=body.priority,
+        content_hash=content_hash,
     )
 
     task_id = row["task_id"]
