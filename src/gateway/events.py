@@ -120,6 +120,22 @@ def build_heartbeat_event() -> dict:
 _channels: dict[str, list[asyncio.Queue]] = {}
 _SENTINEL = object()  # signals end-of-stream to subscribers
 
+# Cache of terminal events keyed by task_id.  Populated by publish_event() when
+# a terminal event fires; consumed by subscribe_task_events() if a subscriber
+# arrives after the channel has already been torn down.  This closes the race:
+#
+#   1. Client fetches task_row  → status = "running"
+#   2. Worker completes, publishes terminal event, deletes _channels[task_id]
+#   3. Client calls subscribe_task_events() — channel is gone
+#
+# Without this cache step 3 creates a new empty channel that never receives
+# anything and the client hangs on heartbeats forever.  With the cache the
+# late subscriber finds the terminal event immediately and returns it.
+#
+# The dict is unbounded but small (one entry per completed task per process
+# lifetime — typically a few hundred bytes each).
+_terminal_events: dict[str, dict] = {}
+
 
 def _get_or_create_channel(task_id: str) -> list[asyncio.Queue]:
     if task_id not in _channels:
@@ -131,6 +147,10 @@ async def publish_event(task_id: str, event: dict) -> None:
     """Push an SSE event to all subscribers of task_id."""
     queues = _channels.get(task_id, [])
     is_terminal = event.get("event") in _TERMINAL_EVENTS
+    if is_terminal:
+        # Cache before notifying subscribers so any subscriber that calls
+        # subscribe_task_events() immediately after this returns will find it.
+        _terminal_events[task_id] = event
     for q in queues:
         await q.put(event)
         if is_terminal:
@@ -143,7 +163,16 @@ async def subscribe_task_events(task_id: str) -> asyncio.AsyncGenerator[dict, No
     """
     Async generator that yields SSE event dicts as the worker publishes them.
     Yields a heartbeat every 15 s while waiting.  Closes on terminal event.
+
+    Race safety: if the task completed between the caller's DB fetch and this
+    call, the terminal event will be in _terminal_events and is returned
+    immediately without creating a subscriber queue.
     """
+    # Fast-path: task already done (race: completed between task_row fetch and here)
+    if task_id in _terminal_events:
+        yield _terminal_events[task_id]
+        return
+
     q: asyncio.Queue = asyncio.Queue()
     channel = _get_or_create_channel(task_id)
     channel.append(q)

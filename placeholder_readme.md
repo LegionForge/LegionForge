@@ -87,7 +87,7 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, timer, copy, keyboard shortcut, SSE retry | ✅ Complete |
 | **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC+async callback) | ✅ Complete |
 
-**484/484 smoke tests passing.** 35 integration tests passing. No running services required for smoke tests. Runs in ~3 seconds.
+**492/492 smoke tests passing.** 38 integration tests passing. 5/5 Kerberos tests passing. No running services required for smoke tests. Runs in ~3 seconds.
 
 ---
 
@@ -120,7 +120,7 @@ make db-init
 
 # 4. Run smoke tests (no services required)
 make test-smoke
-# Expected: 484 passed in ~3s
+# Expected: 492 passed in ~3s
 
 # 5. Start the health server
 make health-server
@@ -151,8 +151,8 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 484 smoke tests, ~3s, no services required
-make test-integration  # 35 integration tests (requires PostgreSQL)
+make test-smoke      # 492 smoke tests, ~3s, no services required
+make test-integration  # 38 integration tests (requires PostgreSQL)
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765
 make setup-db-roles  # Provision legionforge_app restricted PostgreSQL role (idempotent)
@@ -191,6 +191,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v1.0.0** — all 16 phases complete. 484/484 smoke tests. 35 integration tests.
+**v1.0.1** — all 16 phases complete. 492/492 smoke tests. 38 integration tests. 5/5 Kerberos live-KDC tests.
 
 This is the public release of LegionForge. Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).

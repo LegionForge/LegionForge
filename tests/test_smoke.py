@@ -6509,3 +6509,126 @@ def test_p17_resume_run_config_distinct_from_fresh_initial():
     assert resume_input is None
     assert isinstance(fresh_state, dict)
     assert fresh_state["step_count"] == 0
+
+
+# ── Phase 17 patch: SSE terminal-event race fix ────────────────────────────────
+# Regression tests for the subscribe_task_events() race condition where a task
+# completes between the caller's get_task() DB fetch and the subscribe call,
+# causing the channel to be deleted before the subscriber registers.
+
+
+def test_p17_sse_terminal_event_cache_populated_on_publish():
+    """publish_event() stores terminal events in _terminal_events for late subscribers."""
+    import asyncio
+    from src.gateway.events import publish_event, _terminal_events
+
+    task_id = "race-test-complete-001"
+    event = {
+        "event": "task_complete",
+        "data": {"task_id": task_id, "status": "complete"},
+    }
+
+    asyncio.run(publish_event(task_id, event))
+
+    assert task_id in _terminal_events
+    assert _terminal_events[task_id]["event"] == "task_complete"
+
+
+def test_p17_sse_terminal_event_cache_populated_for_error():
+    """publish_event() stores task_error terminal events too."""
+    import asyncio
+    from src.gateway.events import publish_event, _terminal_events
+
+    task_id = "race-test-error-001"
+    event = {"event": "task_error", "data": {"task_id": task_id, "error": "boom"}}
+
+    asyncio.run(publish_event(task_id, event))
+
+    assert task_id in _terminal_events
+    assert _terminal_events[task_id]["event"] == "task_error"
+
+
+def test_p17_sse_non_terminal_events_not_cached():
+    """publish_event() does NOT cache non-terminal events (chain_start, token, etc.)."""
+    import asyncio
+    from src.gateway.events import publish_event, _terminal_events
+
+    task_id = "race-test-nonterminal-001"
+    event = {"event": "chain_start", "data": {"node": "agent_node"}}
+
+    asyncio.run(publish_event(task_id, event))
+
+    assert task_id not in _terminal_events
+
+
+def test_p17_sse_subscribe_returns_cached_terminal_immediately():
+    """subscribe_task_events() yields cached terminal event immediately for late subscriber."""
+    import asyncio
+    from src.gateway.events import (
+        publish_event,
+        subscribe_task_events,
+        _terminal_events,
+    )
+
+    task_id = "race-test-late-sub-001"
+    complete_event = {
+        "event": "task_complete",
+        "data": {"task_id": task_id, "status": "complete"},
+    }
+
+    async def run():
+        # Simulate: task completes (terminal event cached), channel deleted
+        await publish_event(task_id, complete_event)
+        assert (
+            task_id
+            not in __import__("src.gateway.events", fromlist=["_channels"])._channels
+        )
+
+        # Late subscriber — channel is gone, but _terminal_events has the event
+        events = []
+        async for ev in subscribe_task_events(task_id):
+            events.append(ev)
+
+        return events
+
+    collected = asyncio.run(run())
+    assert len(collected) == 1
+    assert collected[0]["event"] == "task_complete"
+
+
+def test_p17_sse_subscribe_live_path_unaffected():
+    """subscribe_task_events() still works normally for in-progress tasks (no cache entry)."""
+    import asyncio
+    from src.gateway.events import publish_event, subscribe_task_events
+
+    task_id = "race-test-live-path-001"
+
+    async def run():
+        # Simulate: subscriber connects while task is running (no cache entry yet)
+        events = []
+
+        async def subscriber():
+            async for ev in subscribe_task_events(task_id):
+                events.append(ev)
+
+        async def producer():
+            await asyncio.sleep(0.05)
+            await publish_event(
+                task_id, {"event": "chain_start", "data": {"node": "n"}}
+            )
+            await asyncio.sleep(0.05)
+            await publish_event(
+                task_id,
+                {
+                    "event": "task_complete",
+                    "data": {"task_id": task_id, "status": "complete"},
+                },
+            )
+
+        await asyncio.gather(subscriber(), producer())
+        return events
+
+    collected = asyncio.run(run())
+    event_types = [e["event"] for e in collected]
+    assert "chain_start" in event_types
+    assert "task_complete" in event_types

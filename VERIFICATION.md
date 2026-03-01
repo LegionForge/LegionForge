@@ -67,7 +67,7 @@ cd ${LEGIONFORGE_HOME}
 python -m pytest tests/test_smoke.py -v
 ```
 
-**Expected:** All tests pass. Current baseline is 484 tests (Phase 16). Count should never
+**Expected:** All tests pass. Current baseline is 492 tests (v1.0.1). Count should never
 go below the previous passing count.
 
 ```
@@ -75,7 +75,7 @@ tests/test_smoke.py::test_settings_load PASSED
 tests/test_smoke.py::test_memory_budget_is_valid PASSED
 tests/test_smoke.py::test_injection_detection_positive PASSED
 ...
-========= 463 passed in 3.2s =========
+========= 492 passed in 3.2s =========
 ```
 
 If any test fails, the output will tell you exactly which assertion failed.
@@ -208,6 +208,7 @@ All tests should still pass. ✅
 | Phase 14 (Redis budget counters, Prometheus metrics, request-ID middleware) | 463 |
 | Phase 15 (Polished web UI) | 471 |
 | Phase 16 (Telegram, Slack, Webhook channel connectors) | 484 |
+| v1.0.1 patches (model integrity, resume_run_config, Kerberos live-KDC) | 492 |
 
 ---
 
