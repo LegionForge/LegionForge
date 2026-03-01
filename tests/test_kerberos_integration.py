@@ -74,7 +74,11 @@ async def _db():
         await init_db()
         yield
     except Exception as exc:
-        pytest.skip(f"PostgreSQL not available — skipping DB provisioning tests: {exc}")
+        pytest.skip(
+            f"PostgreSQL not available — skipping DB provisioning tests: {exc}\n"
+            "Fix: ensure POSTGRES_PASSWORD is exported, or run via 'make test-kerberos' "
+            "which reads it from the macOS Keychain automatically."
+        )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -340,6 +340,7 @@ test-integration:  ## Run integration tests (requires PostgreSQL — make db-sta
 .PHONY: test-kerberos
 test-kerberos:  ## Run Kerberos live-KDC tests (requires KERBEROS_TEST_KDC=1 + KDC setup — see docs/SCALING.md)
 	@cd $(BASE) && \
+	  POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$($(PYTHON) -c "import keyring; print(keyring.get_password('postgres','api_key') or '')" 2>/dev/null)} \
 	  KRB5_CONFIG=$$HOME/.krb5.conf \
 	  KRB5_KDC_PROFILE=$$HOME/.krb5kdc/kdc.conf \
 	  KERBEROS_TEST_KDC=1 \

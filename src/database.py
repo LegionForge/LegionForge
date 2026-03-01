@@ -914,12 +914,17 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     )
 
     # ── Phase 8: Gateway users ────────────────────────────────────────────────
+    # user_id is TEXT (not UUID) so OAuth backends can use "oidc:sub", "github:id",
+    # "kerberos:principal", etc. as natural identifiers.  API-key users still get
+    # a UUID-formatted string via DEFAULT gen_random_uuid()::text.
+    # api_key_hash has no UNIQUE constraint because multiple OAuth users share the
+    # same [OAUTH-NO-KEY] sentinel; bcrypt hashes are cryptographically unique.
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS gateway_users (
-            user_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
             username        TEXT NOT NULL UNIQUE,
-            api_key_hash    TEXT NOT NULL UNIQUE,
+            api_key_hash    TEXT NOT NULL,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
             is_active       BOOLEAN NOT NULL DEFAULT true
         )
@@ -947,6 +952,25 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     await conn.execute("ALTER TABLE api_usage ADD COLUMN IF NOT EXISTS user_id TEXT")
     await conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_api_usage_user_id ON api_usage (user_id)"
+    )
+
+    # ── Phase 13 migration: gateway_users schema corrections ─────────────────
+    # Migrate user_id from UUID → TEXT so OAuth backends can store natural IDs
+    # like "kerberos:principal", "oidc:sub", "github:id".  Idempotent: postgres
+    # ALTER TYPE TEXT on a TEXT column is a no-op.
+    await conn.execute(
+        "ALTER TABLE gateway_users ALTER COLUMN user_id TYPE TEXT USING user_id::text"
+    )
+    await conn.execute(
+        "ALTER TABLE gateway_users ALTER COLUMN user_id "
+        "SET DEFAULT gen_random_uuid()::text"
+    )
+    # Drop the UNIQUE constraint on api_key_hash.  Multiple OAuth users share the
+    # [OAUTH-NO-KEY] sentinel so the constraint would fire on the second OAuth user.
+    # bcrypt hashes are cryptographically unique — no DB constraint needed.
+    await conn.execute(
+        "ALTER TABLE gateway_users "
+        "DROP CONSTRAINT IF EXISTS gateway_users_api_key_hash_key"
     )
 
     # Stream tokens — DB-backed so they survive gateway restarts.
@@ -2796,7 +2820,7 @@ async def create_gateway_user(username: str, api_key_hash: str) -> dict:
             """
             INSERT INTO gateway_users (username, api_key_hash)
             VALUES (%s, %s)
-            RETURNING user_id::text, username, created_at, is_active
+            RETURNING user_id, username, created_at, is_active
             """,
             (username, api_key_hash),
         )
@@ -2829,7 +2853,7 @@ async def get_gateway_user_for_auth(username: str) -> dict | None:
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            SELECT user_id::text, username, api_key_hash, is_active,
+            SELECT user_id, username, api_key_hash, is_active,
                    daily_token_limit
             FROM gateway_users
             WHERE is_active = true

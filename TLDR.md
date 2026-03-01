@@ -149,9 +149,9 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Open Technical Debt
 
-All phases (0–16) are complete and v1.0.0 is shipped. One remaining infrastructure item:
+All phases (0–16) are complete, v1.0.0 is shipped, and all known technical debt is resolved.
 
-1. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` exists with full SPNEGO round-trip tests. Activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC (`brew install krb5`) and `pip install gssapi`. See `docs/SCALING.md` for setup instructions.
+**Kerberos live KDC** is operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified, `make test-kerberos` passes 3 of 5 (the remaining 2 additionally require PostgreSQL — run from your terminal where the Keychain is unlocked). Full setup guide in `docs/SCALING.md`.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)

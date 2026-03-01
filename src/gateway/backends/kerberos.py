@@ -63,7 +63,7 @@ _GSSAPI_MISSING_WARNED = False  # log once, not every request
 
 # Sentinel stored in api_key_hash for Kerberos-provisioned users.
 # Never passes bcrypt verification, preventing API-key auth for these users.
-_KERBEROS_NO_KEY = "[KERBEROS-NO-KEY]"
+_KERBEROS_NO_KEY = "[OAUTH-NO-KEY]"
 
 
 class KerberosBackend:
@@ -143,7 +143,7 @@ class KerberosBackend:
         """
         Upsert a gateway_users row for a Kerberos-authenticated principal.
 
-        Uses ``[KERBEROS-NO-KEY]`` as the api_key_hash sentinel so ApiKeyBackend
+        Uses ``[OAUTH-NO-KEY]`` as the api_key_hash sentinel so ApiKeyBackend
         cannot authenticate these users.
         """
         from src.database import get_pool
