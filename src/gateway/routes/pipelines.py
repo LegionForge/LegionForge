@@ -1,21 +1,22 @@
 """
 src/gateway/routes/pipelines.py
 ────────────────────────────────
-Gateway endpoints for reusable task pipelines (Phase 27).
+Gateway endpoints for reusable task pipelines (Phase 27 + 30).
 
 A pipeline is a named sequence of steps.  Each step has a task_text template
 that can reference the initial run input (``{{input}}``) or the result of an
 earlier step (``{{step_0.result}}``).
 
 Endpoints:
-    POST   /pipelines                  — define a new pipeline
-    GET    /pipelines                  — list user's pipelines
-    GET    /pipelines/{id}             — get pipeline definition
-    PUT    /pipelines/{id}             — update pipeline
-    DELETE /pipelines/{id}             — delete pipeline
-    POST   /pipelines/{id}/run         — start an async run
-    GET    /pipelines/{id}/runs        — list runs for a pipeline
-    GET    /pipelines/runs/{run_id}    — get run status + step results
+    POST   /pipelines                       — define a new pipeline
+    GET    /pipelines                       — list user's pipelines
+    GET    /pipelines/{id}                  — get pipeline definition
+    PUT    /pipelines/{id}                  — update pipeline
+    DELETE /pipelines/{id}                  — delete pipeline
+    POST   /pipelines/{id}/run              — start an async run
+    GET    /pipelines/{id}/runs             — list runs for a pipeline
+    GET    /pipelines/runs/{run_id}         — get run status + step results
+    GET    /pipelines/runs/{run_id}/stream  — SSE progress stream (Phase 30)
 
 All endpoints are user-scoped.
 """
@@ -23,11 +24,13 @@ All endpoints are user-scoped.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
+from sse_starlette.sse import EventSourceResponse
 
 from src.gateway.auth import require_user
 
@@ -156,6 +159,81 @@ async def get_pipeline_run(
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
+
+
+@router.get("/runs/{run_id}/stream")
+async def stream_pipeline_run(
+    run_id: int,
+    request: Request,
+    user: dict = Depends(require_user),
+) -> EventSourceResponse:
+    """
+    Subscribe to the SSE progress stream for a pipeline run.
+
+    Emits events:
+    - ``pipeline_start``         — run started (total_steps)
+    - ``pipeline_step_start``    — step N beginning (name, task_id)
+    - ``pipeline_step_complete`` — step N done (name, task_id, result)
+    - ``pipeline_complete``      — all steps succeeded
+    - ``pipeline_failed``        — run failed (error)
+    - ``heartbeat``              — keepalive every 15 s
+
+    If the run already completed before the client connects, the terminal
+    event is returned immediately (race-safe via cached terminal events).
+
+    Phase 30 — Pipeline SSE Progress Streaming.
+    """
+    from src.database import get_pipeline_run as db_get_run
+    from src.gateway.events import subscribe_pipeline_events
+
+    try:
+        run = await db_get_run(run_id, user["user_id"])
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    async def event_generator():
+        # Fast-path: already finished
+        run_status = run.get("status", "")
+        if run_status == "complete":
+            step_results = run.get("step_results", [])
+            yield {
+                "event": "pipeline_complete",
+                "data": json.dumps(
+                    {
+                        "run_id": run_id,
+                        "total_steps": len(step_results),
+                        "status": "complete",
+                    }
+                ),
+            }
+            return
+        if run_status == "failed":
+            yield {
+                "event": "pipeline_failed",
+                "data": json.dumps(
+                    {
+                        "run_id": run_id,
+                        "status": "failed",
+                        "error": "Pipeline already failed before stream connected",
+                    }
+                ),
+            }
+            return
+
+        # Still running — subscribe to live events
+        async for event in subscribe_pipeline_events(run_id):
+            if await request.is_disconnected():
+                logger.debug("[pipelines/stream] Client disconnected run_id=%d", run_id)
+                break
+            yield {
+                "event": event["event"],
+                "data": json.dumps(event["data"]),
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/{pipeline_id}")

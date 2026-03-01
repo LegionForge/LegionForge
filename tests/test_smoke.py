@@ -7720,3 +7720,85 @@ def test_p29_create_task_accepts_content_hash():
     sig = inspect.signature(create_task)
     assert "content_hash" in sig.parameters
     assert sig.parameters["content_hash"].default is None
+
+
+# ── Phase 30: Pipeline SSE Progress Streaming ─────────────────────────────────
+
+
+def test_p30_pipeline_sse_event_builders_importable():
+    """Pipeline SSE event builder functions are importable from events module."""
+    from src.gateway.events import (
+        build_pipeline_start_event,
+        build_pipeline_step_start_event,
+        build_pipeline_step_complete_event,
+        build_pipeline_complete_event,
+        build_pipeline_failed_event,
+        publish_pipeline_event,
+        subscribe_pipeline_events,
+    )
+
+    for fn in (
+        build_pipeline_start_event,
+        build_pipeline_step_start_event,
+        build_pipeline_step_complete_event,
+        build_pipeline_complete_event,
+        build_pipeline_failed_event,
+        publish_pipeline_event,
+        subscribe_pipeline_events,
+    ):
+        assert callable(fn)
+
+
+def test_p30_build_pipeline_start_event_shape():
+    """build_pipeline_start_event returns expected structure."""
+    from src.gateway.events import build_pipeline_start_event
+
+    evt = build_pipeline_start_event(run_id=7, pipeline_id=3, total_steps=2)
+    assert evt["event"] == "pipeline_start"
+    assert evt["data"]["run_id"] == 7
+    assert evt["data"]["total_steps"] == 2
+
+
+def test_p30_build_pipeline_step_complete_event_shape():
+    """build_pipeline_step_complete_event includes result and step index."""
+    from src.gateway.events import build_pipeline_step_complete_event
+
+    evt = build_pipeline_step_complete_event(
+        run_id=1, step_index=0, step_name="Research", task_id="abc-123", result="done"
+    )
+    assert evt["event"] == "pipeline_step_complete"
+    assert evt["data"]["step"] == 0
+    assert evt["data"]["result"] == "done"
+
+
+def test_p30_build_pipeline_complete_event_shape():
+    """build_pipeline_complete_event has correct status."""
+    from src.gateway.events import build_pipeline_complete_event
+
+    evt = build_pipeline_complete_event(run_id=5, total_steps=3)
+    assert evt["event"] == "pipeline_complete"
+    assert evt["data"]["status"] == "complete"
+
+
+def test_p30_build_pipeline_failed_event_shape():
+    """build_pipeline_failed_event includes error text."""
+    from src.gateway.events import build_pipeline_failed_event
+
+    evt = build_pipeline_failed_event(run_id=9, error="step 0 timed out")
+    assert evt["event"] == "pipeline_failed"
+    assert "timed out" in evt["data"]["error"]
+
+
+def test_p30_pipeline_stream_endpoint_registered():
+    """Gateway exposes /pipelines/runs/{run_id}/stream route."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("runs" in p and "stream" in p for p in paths)
+
+
+def test_p30_pipeline_runner_imports_events():
+    """src.pipeline_runner can import publish_pipeline_event at module level."""
+    import src.pipeline_runner as _
+
+    assert callable(_.execute_pipeline)

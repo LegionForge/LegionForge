@@ -128,9 +128,22 @@ async def execute_pipeline(
         finalize_pipeline_run,
     )
 
+    from src.gateway.events import (
+        build_pipeline_complete_event,
+        build_pipeline_failed_event,
+        build_pipeline_start_event,
+        build_pipeline_step_complete_event,
+        build_pipeline_step_start_event,
+        publish_pipeline_event,
+    )
+
     step_results: list[dict] = []
 
     try:
+        await publish_pipeline_event(
+            run_id, build_pipeline_start_event(run_id, pipeline_id, len(steps))
+        )
+
         for i, step in enumerate(steps):
             task_text = render_template(
                 step.get("task_text", ""), initial_input, step_results
@@ -161,6 +174,11 @@ async def execute_pipeline(
 
             task_id = task_row["task_id"]
 
+            await publish_pipeline_event(
+                run_id,
+                build_pipeline_step_start_event(run_id, i, step_name, task_id),
+            )
+
             # Wait for the task to complete
             try:
                 completed = await _wait_for_task(task_id)
@@ -169,18 +187,25 @@ async def execute_pipeline(
                     f"Step {i} ({step_name!r}) task {task_id}: {exc}"
                 ) from exc
 
+            result_text = completed.get("result", "")
             step_results.append(
                 {
                     "step": i,
                     "name": step_name,
                     "task_id": task_id,
                     "status": "complete",
-                    "result": completed.get("result", ""),
+                    "result": result_text,
                 }
             )
 
             # Persist incremental progress
             await update_pipeline_run_step(run_id, i + 1, step_results)
+            await publish_pipeline_event(
+                run_id,
+                build_pipeline_step_complete_event(
+                    run_id, i, step_name, task_id, result_text
+                ),
+            )
             logger.info(
                 "[pipeline] Run %d step %d/%d (%s) done",
                 run_id,
@@ -190,6 +215,9 @@ async def execute_pipeline(
             )
 
         await finalize_pipeline_run(run_id, "complete", step_results)
+        await publish_pipeline_event(
+            run_id, build_pipeline_complete_event(run_id, len(steps))
+        )
         logger.info("[pipeline] Run %d completed (%d steps)", run_id, len(steps))
 
     except Exception as exc:
@@ -198,3 +226,6 @@ async def execute_pipeline(
             {"step": len(step_results), "status": "failed", "error": str(exc)}
         )
         await finalize_pipeline_run(run_id, "failed", step_results)
+        await publish_pipeline_event(
+            run_id, build_pipeline_failed_event(run_id, str(exc))
+        )

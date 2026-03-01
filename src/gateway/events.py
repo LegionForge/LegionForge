@@ -5,7 +5,7 @@ SSE event builders and the in-process pub/sub channel used to bridge the
 task worker (which runs the agent and produces LangGraph events) to the SSE
 stream endpoint (which delivers them to the client).
 
-Event flow:
+Event flow — task SSE:
     worker.run_task()
         ↓  graph.astream_events()
         ↓  build_sse_event(lg_event) → dict | None
@@ -14,6 +14,17 @@ Event flow:
            _channels[task_id] → asyncio.Queue
                 ↓
     stream.py  subscribe_task_events(task_id) → AsyncGenerator[dict, None]
+                ↓
+    EventSourceResponse → browser
+
+Event flow — pipeline SSE (Phase 30):
+    pipeline_runner.execute_pipeline()
+        ↓  after each step
+        ↓  publish_pipeline_event(run_id, step_event)
+                ↓
+           _pipeline_channels[run_id] → asyncio.Queue
+                ↓
+    pipelines.py  subscribe_pipeline_events(run_id) → AsyncGenerator[dict, None]
                 ↓
     EventSourceResponse → browser
 
@@ -191,5 +202,135 @@ async def subscribe_task_events(task_id: str) -> asyncio.AsyncGenerator[dict, No
     finally:
         try:
             channel.remove(q)
+        except ValueError:
+            pass
+
+
+# ── Pipeline SSE pub/sub (Phase 30) ───────────────────────────────────────────
+# Separate channel map keyed by str(run_id).  Pipeline events are step-level;
+# terminal events are pipeline_complete / pipeline_failed.
+
+_PIPELINE_TERMINAL_EVENTS = {"pipeline_complete", "pipeline_failed"}
+
+_pipeline_channels: dict[str, list[asyncio.Queue]] = {}
+_pipeline_terminal_events: dict[str, dict] = {}
+
+
+def build_pipeline_start_event(run_id: int, pipeline_id: int, total_steps: int) -> dict:
+    return {
+        "event": "pipeline_start",
+        "data": {
+            "run_id": run_id,
+            "pipeline_id": pipeline_id,
+            "total_steps": total_steps,
+            "timestamp": _now(),
+        },
+    }
+
+
+def build_pipeline_step_start_event(
+    run_id: int, step_index: int, step_name: str, task_id: str
+) -> dict:
+    return {
+        "event": "pipeline_step_start",
+        "data": {
+            "run_id": run_id,
+            "step": step_index,
+            "name": step_name,
+            "task_id": task_id,
+            "timestamp": _now(),
+        },
+    }
+
+
+def build_pipeline_step_complete_event(
+    run_id: int, step_index: int, step_name: str, task_id: str, result: str
+) -> dict:
+    return {
+        "event": "pipeline_step_complete",
+        "data": {
+            "run_id": run_id,
+            "step": step_index,
+            "name": step_name,
+            "task_id": task_id,
+            "result": result,
+            "timestamp": _now(),
+        },
+    }
+
+
+def build_pipeline_complete_event(run_id: int, total_steps: int) -> dict:
+    return {
+        "event": "pipeline_complete",
+        "data": {
+            "run_id": run_id,
+            "total_steps": total_steps,
+            "status": "complete",
+            "timestamp": _now(),
+        },
+    }
+
+
+def build_pipeline_failed_event(run_id: int, error: str) -> dict:
+    return {
+        "event": "pipeline_failed",
+        "data": {
+            "run_id": run_id,
+            "status": "failed",
+            "error": error,
+            "timestamp": _now(),
+        },
+    }
+
+
+async def publish_pipeline_event(run_id: int, event: dict) -> None:
+    """Push a pipeline SSE event to all subscribers of run_id."""
+    key = str(run_id)
+    queues = _pipeline_channels.get(key, [])
+    is_terminal = event.get("event") in _PIPELINE_TERMINAL_EVENTS
+    if is_terminal:
+        _pipeline_terminal_events[key] = event
+    for q in queues:
+        await q.put(event)
+        if is_terminal:
+            await q.put(_SENTINEL)
+    if is_terminal and key in _pipeline_channels:
+        del _pipeline_channels[key]
+
+
+async def subscribe_pipeline_events(
+    run_id: int,
+) -> asyncio.AsyncGenerator[dict, None]:
+    """
+    Async generator that yields pipeline SSE events as the runner publishes them.
+    Yields heartbeats every 15 s.  Closes on pipeline_complete / pipeline_failed.
+
+    Race safety: mirrors subscribe_task_events() — checks _pipeline_terminal_events
+    first in case the run finished before the client subscribed.
+    """
+    key = str(run_id)
+    if key in _pipeline_terminal_events:
+        yield _pipeline_terminal_events[key]
+        return
+
+    q: asyncio.Queue = asyncio.Queue()
+    if key not in _pipeline_channels:
+        _pipeline_channels[key] = []
+    _pipeline_channels[key].append(q)
+
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(q.get(), timeout=15.0)
+            except asyncio.TimeoutError:
+                yield build_heartbeat_event()
+                continue
+
+            if item is _SENTINEL:
+                break
+            yield item
+    finally:
+        try:
+            _pipeline_channels.get(key, []).remove(q)
         except ValueError:
             pass
