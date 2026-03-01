@@ -123,15 +123,15 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of Phase 11)
+## Known Gaps (as of Phase 16)
 
 **Loop protection resets on checkpoint resume.** Step counter and action history reset if a caller constructs a fresh `initial()` state for a resumed thread. Correct pattern documented in `SafeguardedState.initial()` docstring; explicit resume tests deferred.
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
-**GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile means model integrity is skipped until the operator pins the values after running `make verify-models`.
+**GGUF hashes are pinned; strict mode is not enabled.** All three model hashes are set and verified (`make verify-models` matches). `model_integrity_strict: false` means a mismatch logs a CRITICAL warning and emits a threat event but does not halt startup. Set `model_integrity_strict: true` in the hardware profile to make integrity failures fatal.
 
-**OAuth / LDAP not yet wired by default.** Phase 12 ships `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` (scaffold). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
+**OAuth / LDAP not wired by default.** `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` are all implemented (Phase 12–13). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
 
 ---
 
@@ -155,7 +155,7 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 All phases (0–16) are complete and v1.0.0 is shipped. Remaining items:
 
-1. **GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile disables model integrity checking at runtime. Run `make verify-models` to compute hashes and pin them.
+1. **`model_integrity_strict: false`** — GGUF hashes are already pinned and verified. Consider flipping to `true` in the hardware profile to halt startup on mismatch rather than log-only.
 2. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` skeleton exists; activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC + `gssapi` package.
 3. **Loop protection on resume** — documented edge case: if a caller passes a fresh `SafeguardedState.initial()` for an existing `thread_id`, step counters reset. Correct usage is in the `SafeguardedState.initial()` docstring.
 
