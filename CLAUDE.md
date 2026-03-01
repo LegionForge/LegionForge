@@ -1,0 +1,120 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Project Is
+
+A local-first, security-native AI agent framework for Apple Silicon Macs, built on LangGraph. Agents run local LLMs (Ollama) or cloud APIs. Security is baked in at every layer — not bolted on.
+
+Read `TLDR.md` for orientation, `PHASE_PLAN.md` for the roadmap, `CONTRIBUTING.md` for branch/commit conventions.
+
+## Common Commands
+
+All development commands run through the Makefile. Always activate the venv first: `source venv/bin/activate`.
+
+```bash
+# Development
+make check          # Verify drive, venv, models, config before starting
+make start          # Full startup (drive check → Ollama → PostgreSQL → model warmup)
+make stop           # Graceful shutdown
+
+# Testing (smoke tests must pass before any PR merge)
+make test-smoke     # 484 smoke tests, ~3s, no external services required
+make test-integration  # 38 integration tests (requires PostgreSQL — make db-start first)
+make test-fast      # All tests except slow ones
+make test           # Full test suite
+
+# Code quality
+make lint           # Black formatter check (src/, tests/, config/)
+make format         # Auto-format with Black
+make security-audit # smoke tests + bandit + URI scan (run before every PR merge)
+
+# Database
+make db-init        # Initialize PostgreSQL + LangGraph + app tables (one-time)
+make db-start       # Start PostgreSQL service
+
+# Health & gateway
+make health         # Quick liveness check (localhost:8765/health)
+make status         # Full system status
+make health-server  # Start health API server (localhost:8765)
+make gateway-start  # Start gateway API (localhost:8080)
+make discord-start  # Start Discord connector bot
+
+# Run a single test
+pytest tests/test_smoke.py::test_injection_detection_positive -v
+```
+
+## Architecture
+
+### Core Design Principles
+- Fail-safe tiering: halt → sandbox/retry → degrade (never silently succeed)
+- Human gates on all mutations
+- Replace AI with determinism wherever possible
+- Validate at trust boundaries, not at processing nodes
+- Privilege tied to tasks, not persistent to agents
+
+### Key Modules
+
+**`config/settings.py`** — Pydantic singleton loaded from a hardware YAML profile. Import as `from config.settings import settings`. All memory limits, model names, safeguard thresholds, and paths come from here. Active profile: `config/hardware_profiles/mac_m4_mini_16gb.yaml`. Switch profiles via `export AGENT_HARDWARE_PROFILE=<name>`.
+
+**`src/base_graph.py`** — The LangGraph template. Copy this when creating new agents. It wires in three-layer loop protection, token budgeting, per-run tracing toggle, TOCTOU snapshot, and Guardian pre-invocation check automatically.
+
+**`src/security/core.py`** — API key management via macOS Keychain (no `.env` secrets), prompt injection detection (29 patterns, Tier 1/2 tiering), and PII redaction. All inputs must pass through `sanitize_input()` before use; all outputs through `sanitize_output()` before logging to LangSmith.
+
+**`src/security/guardian.py`** — Guardian FastAPI sidecar (:9766). 7-check deterministic pipeline (no LLM in hot path): tool revocation, hash validation, capability boundary, destructive pattern detection, sequence contracts, Ed25519 verification, adaptive threat rules. Rules hot-reload every 10s from `threat_rules` table.
+
+**`src/safeguards.py`** — Three independent loop-protection layers:
+1. Step counter (LangGraph recursion limit — hard stop)
+2. Action history loop detection (MD5 hash of tool call signatures, window=5, threshold=3)
+3. Token budget guard (alert at 80%, force-end at 100%)
+
+**`src/database.py`** — Async PostgreSQL pool (admin + restricted app roles), LangGraph `AsyncPostgresSaver` for checkpoint-based graph resumption, pgvector for RAG, 16 tables. Key tables: `api_usage`, `health_metrics`, `documents` (768-dim HNSW), `threat_events`, `audit_log` (SHA-256 hash chain), `tasks`, `gateway_users`.
+
+**`src/llm_factory.py`** — Unified factory for Ollama (local) + OpenAI + Anthropic. Reads all config from the hardware profile. Supports cloud fallback when local models are insufficient.
+
+**`src/rate_limiter.py`** — Per-provider rate limits with pre-execution token cost estimation. Hard daily caps with 80%/100% alert thresholds. Prevents resource bombs before LLM calls are made.
+
+**`src/gateway/app.py`** — FastAPI gateway (:8080). Task submission queue, SSE streaming, minimal web UI, A2A + MCP endpoints, Bearer token auth.
+
+**`src/connectors/discord.py`** — Discord bot connector. Bridges `!<task>` messages → gateway → SSE stream → reply edits.
+
+### Threat Event Logging
+Security violations are logged to the `threat_events` table with structured types: `INJECTION_DETECTED`, `TOOL_HASH_MISMATCH`, `PREFLIGHT_BUDGET_EXCEEDED`, `PII_REDACTED`, `LOOP_DETECTED`, `STEP_LIMIT_REACHED`, `TOKEN_BUDGET_EXCEEDED`, `TOOL_ARG_INJECTION`, `TOOL_RESULT_INJECTION`, `MODEL_INTEGRITY_MISMATCH`. This feeds the Phase 4 Threat Analyst agent.
+
+### Infrastructure Dependencies
+- **PostgreSQL 17** (Homebrew) — database: `legionforge`; password in macOS Keychain (`service: postgres`)
+- **Ollama** — local LLM runtime; primary `llama3.1:8b`, router `qwen2.5:3b`, embeddings `nomic-embed-text`; models at `/Volumes/MAC_MINI_1TB/ollama_models/`
+- **Docker Desktop** — required for Guardian sidecar (`make guardian-start`)
+
+## Phase Status
+
+- **Phases 0–16** ✅ Complete: Full security stack, multi-user gateway, integration tests, modular auth, containerized gateway, multi-provider auth registry, Redis-backed state layer, real Kerberos GSSAPI backend, multi-instance docker-compose, Redis global budget counters, Prometheus /metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors. 484/484 smoke tests, 38/38 integration tests.
+
+## Branch & Commit Conventions
+
+- `main` ← `dev` ← `feature/xxx` / `fix/xxx` / `refactor/xxx`
+- Smoke test count must never decrease; current baseline: 484 (Phase 16)
+- All PRs require `make test-smoke` + `make security-audit` passing before merge
+- Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `security:`, `docs:`)
+- Co-author line: `Co-Authored-By: Claude <noreply@anthropic.com>`
+
+## Checkpoint File (`checkpoint.md`)
+
+Update `checkpoint.md` in the project root after every major operation. Major operations include:
+- Any PR merged to main
+- Any phase completed
+- Any commit that changes test counts, phase status, or core architecture
+
+Fields to update each time:
+```
+VERSION: <semver>
+UPDATE: <increment by 1>
+BRANCH: <current branch>
+COMMIT: <current HEAD hash>
+TIMESTAMP: <ISO 8601 UTC>
+LAST_OP: <one-line description of what just happened>
+SMOKE_TESTS: <passing>/<total>
+INTEGRATION_TESTS: <passing>/<total> (+ <N> skipped — reason)
+```
+
+The checkpoint file is a fast-reference state record. Keep it current — stale checkpoints are useless.

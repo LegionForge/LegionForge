@@ -21,7 +21,7 @@ All phases through 16 are complete. The full security stack, gateway, tool libra
 
 ```
 make test-smoke        → 484/484 passing (~3.0s, no external services required)
-make test-integration  → 35 passed (requires PostgreSQL)
+make test-integration  → 38 passed (requires PostgreSQL)
 make health-server     → localhost:8765 all components green (Redis health when configured)
 make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
 make discord-start     → Discord bot connector
@@ -29,12 +29,12 @@ make telegram-start    → Telegram bot connector (requires Keychain secrets)
 make slack-start       → Slack Socket Mode connector (requires Keychain secrets)
 make webhook-start     → Generic webhook connector (:8081)
 make build-gateway     → legionforge-gateway:latest Docker image
-git log --oneline -1 → Phase 16 — Telegram, Slack, Webhook channel connectors
+git log --oneline -1 → fix: implement 3 Ollama integration tests + fix worker graph compilation
 ```
 
 ---
 
-## What's Shipped (Phases 0–11)
+## What's Shipped (Phases 0–16)
 
 ### Source Files (`src/`)
 
@@ -80,6 +80,21 @@ git log --oneline -1 → Phase 16 — Telegram, Slack, Webhook channel connector
 | `connectors/discord.py` | Discord bot — `!<task>` → gateway POST → SSE → reply edits every 2s | 8 |
 | `cli/__init__.py` | CLI package marker | 10 |
 | `cli/manage_users.py` | User management CLI — `create-user`, `deactivate-user`, `set-quota`, `list-users` | 10 |
+| `gateway/backends/__init__.py` | Auth backend package exports | 12 |
+| `gateway/backends/base.py` | `AuthBackend` protocol + `Credential` scheme constants | 12 |
+| `gateway/backends/api_key.py` | `ApiKeyBackend` — bcrypt key verification against `gateway_users` | 12 |
+| `gateway/backends/oidc.py` | `OIDCBackend` — JWKS discovery, JWT decode (PyJWT), userinfo fallback, first-login provisioning | 12 |
+| `gateway/backends/github.py` | `GitHubOAuthBackend` — opaque token → `/user` API, first-login provisioning | 12 |
+| `gateway/backends/ldap_backend.py` | `LDAPBackend` — bind+search+rebind for AD/OpenLDAP | 12 |
+| `gateway/backends/kerberos.py` | `KerberosBackend` — GSSAPI Negotiate via `gssapi` package; graceful `None` fallback when `gssapi` absent | 13 |
+| `gateway/backends/registry.py` | `load_backend_from_settings()` factory — maps `auth_provider` setting to backend instance | 12 |
+| `gateway/state.py` | Redis-backed stream token store (`create/resolve/delete_stream_token`); Redis global budget counters (`redis_budget_check_and_reserve` / `redis_budget_release`) | 13, 14 |
+| `gateway/metrics.py` | Prometheus-format `/metrics` endpoint — inline text formatter, no new deps; `MetricsMiddleware` | 14 |
+| `gateway/middleware.py` | `RequestIDMiddleware` (reads/generates `X-Request-ID`) + `MetricsMiddleware` (per-route counters) | 14 |
+| `connectors/base.py` | Shared connector helpers — `_load_secret`, `_consume_sse`, `_run_task` | 16 |
+| `connectors/telegram.py` | Telegram bot — `python-telegram-bot` polling, edit-in-place responses, throttling | 16 |
+| `connectors/slack.py` | Slack bot — `slack-bolt` Socket Mode (no public URL), edit-in-place responses | 16 |
+| `connectors/webhook.py` | Generic webhook connector — FastAPI :8081, HMAC-SHA256 inbound verification, async callback POST | 16 |
 
 ### Guardian — 7 Checks
 
@@ -105,9 +120,10 @@ git log --oneline -1 → Phase 16 — Telegram, Slack, Webhook channel connector
 
 ### Tests
 
-- `tests/test_smoke.py` — **430 tests**, no running services required, ~1.5s
-- `tests/test_integration.py` — **35 tests**, `@pytest.mark.integration`, requires PostgreSQL (`make test-integration`)
+- `tests/test_smoke.py` — **484 tests**, no running services required, ~3s
+- `tests/test_integration.py` — **38 tests**, `@pytest.mark.integration`, requires PostgreSQL + Ollama (`make test-integration`)
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
+- `pytest.ini` — `asyncio_mode=strict`, `asyncio_default_fixture_loop_scope=session`, `asyncio_default_test_loop_scope=session`; required so the session-scoped psycopg pool shares one event loop with all tests
 
 ---
 
@@ -171,6 +187,16 @@ git log --oneline -1 → Phase 16 — Telegram, Slack, Webhook channel connector
 | `legionforge_signing_key` | Ed25519 private key for tool signing |
 | `legionforge_discord_token` | Discord bot token (Phase 8 connector) |
 | `legionforge_discord_api_key` | Gateway API key for the `discord-bot` gateway user |
+| `legionforge_oidc_client_secret` | OIDC client secret (`OIDCBackend`) |
+| `legionforge_github_client_secret` | GitHub OAuth app client secret (`GitHubOAuthBackend`) |
+| `legionforge_ldap_bind_password` | LDAP service-account bind password (`LDAPBackend`) |
+| `legionforge_telegram_token` | Telegram bot token from BotFather |
+| `legionforge_telegram_api_key` | Gateway Bearer API key for `telegram-bot` gateway user |
+| `legionforge_slack_bot_token` | Slack bot token (`xoxb-...`) |
+| `legionforge_slack_app_token` | Slack app-level token for Socket Mode (`xapp-...`) |
+| `legionforge_slack_api_key` | Gateway Bearer API key for `slack-bot` gateway user |
+| `legionforge_webhook_api_key` | Gateway Bearer API key for `webhook-bot` gateway user |
+| `legionforge_webhook_inbound_secret` | HMAC-SHA256 secret for inbound webhook verification |
 
 ---
 
@@ -182,7 +208,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 430 tests, ~1.5s
+make test-smoke                          # 484 tests, ~3s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 
@@ -254,7 +280,7 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | Item | Fix |
 |---|---|
 | SecureToolNode silent failure on copy error | Both `model_copy()` and `copy()` failure now synthesizes a `ToolMessage` with sanitized content; dirty content can no longer leak into agent state |
-| No integration tests | `tests/test_integration.py` — ~35 tests, `@pytest.mark.integration`, covers auth, stream tokens, task lifecycle, budget enforcement, `/usage/me`, CLI |
+| No integration tests | `tests/test_integration.py` — 38 tests (`@pytest.mark.integration`), covers auth, stream tokens, task lifecycle, budget enforcement, `/usage/me`, CLI, Ollama worker |
 | `INTERVAL hours` not validated | Already parameterized + validated (`1–8760`) in `get_usage_summary()` / `get_threat_summary()` — removed from issues |
 | Auth not modular | `AuthBackend` protocol + `ApiKeyBackend` + `get/set_auth_backend()` in `gateway/auth.py`; OAuth can be plugged in at startup |
 | Gateway not containerized | `Dockerfile.gateway` added; `make build-gateway` + `make gateway-start-docker` |
