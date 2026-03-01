@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Phases 0–12 complete — Phase 13 (Kerberos full implementation, Redis, multi-datacenter) is next
+**Status:** Phases 0–16 complete — v1.0.1 released. All services operational. See [`docs/quick-start.md`](./quick-start.md) to connect.
 **Source:** Architecture retrospective and requirements session
 
 ---
@@ -126,23 +126,21 @@ This is consistent with Guardian already being a separate sidecar.
 └────────────────────────────────────────────────────┘
 ```
 
-### Services that already exist
+### Services — all built (v1.0.1)
 | Service | Status | Port |
 |---|---|---|
 | Guardian | ✅ Docker image | :9766 |
 | Health / Operator | ✅ FastAPI | :8765 |
 | PostgreSQL | ✅ Homebrew (containerizable) | :5432 |
 | Ollama | ✅ Native (Metal GPU — stay native) | :11434 |
-| Agent code | ✅ exists; not yet containerized as a service | — |
-
-### Services that need to be built
-| Service | Priority | Notes |
-|---|---|---|
-| **Gateway** | P0 — gates everything | New FastAPI app; thin routing + auth + SSE |
-| **Task Queue** | P0 — multi-user requires this | `tasks` table in existing PostgreSQL is sufficient at household scale |
-| **Agent Runtime** | P0 — containerize existing agent code | Switch `ainvoke` → `astream_events` |
-| **Web UI** | P1 | Minimal HTML + SSE first; framework later |
-| **Channel connectors** | P2 | Discord first; Signal, WhatsApp later |
+| Gateway | ✅ FastAPI + Docker image | :8080 |
+| Task Queue | ✅ `tasks` table + worker (PostgreSQL FOR UPDATE SKIP LOCKED) | — |
+| Agent Runtime | ✅ in-process, streaming via astream_events() | — |
+| Web UI | ✅ polished HTML/SSE — localStorage, cancel, tool blocks, timer | :8080/ui |
+| Discord connector | ✅ `!<task>` → gateway API | — |
+| Telegram connector | ✅ `/<task>` → gateway API (polling) | — |
+| Slack connector | ✅ `!<task>` → gateway API (Socket Mode) | — |
+| Webhook connector | ✅ HMAC-SHA256 inbound → gateway API | :8081 |
 
 ---
 
