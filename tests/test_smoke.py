@@ -6478,3 +6478,34 @@ def test_p17_get_model_integrity_status_shape(monkeypatch):
 
     # Restore cache to None so other tests aren't polluted
     _mi._integrity_result_cache = None
+
+
+# ── Phase 17 — resume_run_config correct checkpoint resume ────────────────────
+
+
+def test_p17_resume_run_config_returns_none_input():
+    """resume_run_config returns None as the graph input (LangGraph checkpoint resume)."""
+    from src.safeguards import resume_run_config
+
+    graph_input, _ = resume_run_config(thread_id="test-thread-abc")
+    assert graph_input is None
+
+
+def test_p17_resume_run_config_preserves_thread_id():
+    """resume_run_config embeds the thread_id in the config configurable block."""
+    from src.safeguards import resume_run_config
+
+    _, config = resume_run_config(thread_id="my-thread-123")
+    assert config["configurable"]["thread_id"] == "my-thread-123"
+
+
+def test_p17_resume_run_config_distinct_from_fresh_initial():
+    """resume_run_config input=None is distinct from SafeguardedState.initial() dict."""
+    from src.safeguards import resume_run_config, SafeguardedState
+
+    resume_input, _ = resume_run_config(thread_id="t")
+    fresh_state = SafeguardedState.initial(agent_id="base_agent")
+    # None input tells LangGraph to load from checkpoint; dict input resets counters
+    assert resume_input is None
+    assert isinstance(fresh_state, dict)
+    assert fresh_state["step_count"] == 0

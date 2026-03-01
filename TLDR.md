@@ -125,7 +125,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ## Known Gaps (as of Phase 16)
 
-**Loop protection resets on checkpoint resume.** Step counter and action history reset if a caller constructs a fresh `initial()` state for a resumed thread. Correct pattern documented in `SafeguardedState.initial()` docstring; explicit resume tests deferred.
+**Loop protection on checkpoint resume** is handled by `resume_run_config(thread_id)` in `safeguards.py`, which returns `(None, config)`. Passing `None` as the graph input tells LangGraph to hydrate the full state from the checkpoint — counters continue from where the interrupted run left off. Using `SafeguardedState.initial()` for a resume would reset them; the helper makes the correct pattern explicit.
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
@@ -157,7 +157,6 @@ All phases (0–16) are complete and v1.0.0 is shipped. Remaining items:
 
 1. **`model_integrity_strict: false`** — GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or the YAML setting — no code change needed. The `/status` endpoint now surfaces per-model integrity results.
 2. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` skeleton exists; activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC + `gssapi` package.
-3. **Loop protection on resume** — documented edge case: if a caller passes a fresh `SafeguardedState.initial()` for an existing `thread_id`, step counters reset. Correct usage is in the `SafeguardedState.initial()` docstring.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)

@@ -1,8 +1,8 @@
 VERSION: 1.0.0
-UPDATE: 66
+UPDATE: 67
 BRANCH: dev
-COMMIT: 7a683d3
-TIMESTAMP: 2026-02-28T23:15Z
-LAST_OP: feat: MODEL_INTEGRITY_STRICT env var + /status model_integrity section; 489/489 smoke tests
-SMOKE_TESTS: 489/489
+COMMIT: (pending)
+TIMESTAMP: 2026-02-28T23:30Z
+LAST_OP: feat: resume_run_config() helper closes loop-protection resume edge case; 492/492 smoke tests
+SMOKE_TESTS: 492/492
 INTEGRATION_TESTS: 38/38 (0 skipped)

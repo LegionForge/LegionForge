@@ -237,9 +237,15 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 
 | Item | Priority | Notes |
 |---|---|---|
-| Loop protection resets on resume | Medium | If caller passes a fresh `initial()` state for a resumed `thread_id`, counters reset; correct usage documented in `SafeguardedState.initial()` docstring |
 | `model_integrity_strict: false` | Low | All three GGUF hashes are pinned and verified. Strict mode (halt on mismatch) can be enabled via `MODEL_INTEGRITY_STRICT=true` env var or YAML. Default is log-only + threat event. |
 | Kerberos with live KDC | Low | `tests/test_kerberos_integration.py` skeleton exists (Phase 14); activate with `KERBEROS_TEST_KDC=1`; full end-to-end test requires OS-level KDC + `gssapi` package |
+
+### Fixed (Phase 17)
+
+| Item | Fix |
+|---|---|
+| Loop protection resets on resume | `resume_run_config(thread_id)` in `safeguards.py` returns `(None, config)` — the correct LangGraph resume pattern. Passing `None` as graph input tells LangGraph to hydrate full state (including `step_count`, `action_history`, `token_count`) from the checkpoint. Passing a new `initial()` dict instead would silently reset all three counters. |
+| `model_integrity_strict` admin access | `MODEL_INTEGRITY_STRICT` env var overrides YAML — no file edit needed at deploy time. `/status` surfaces per-model integrity results under `components.model_integrity`. No runtime API toggle by design. |
 
 ### Fixed (Phase 16)
 
