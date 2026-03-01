@@ -20,8 +20,9 @@ import uuid
 import pytest
 
 # Apply both markers at module level.
-# pytest.mark.asyncio is required in STRICT mode (default in pytest-asyncio 0.21+)
-# to run async test functions — asyncio_mode=auto is set via pytest.ini.
+# pytest.mark.asyncio is required in STRICT mode (configured in pytest.ini).
+# asyncio_default_test_loop_scope = session (pytest.ini) ensures the session-scoped
+# db fixture and all tests share one event loop — required for the psycopg pool.
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
@@ -733,26 +734,208 @@ async def test_cli_list_users_returns_list_with_username(db, test_user):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Ollama-dependent (scaffolded — skipped until Ollama is available in CI)
+# Ollama-dependent — skipped dynamically when Ollama is unreachable/empty
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+async def _ollama_available() -> bool:
+    """Return True if Ollama is reachable and has at least one model loaded."""
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            r = await c.get("http://localhost:11434/api/tags")
+            return bool(r.json().get("models"))
+    except Exception:
+        return False
+
+
+async def _wait_for_task(
+    gateway_client, task_id: str, auth_headers: dict, *, timeout: float = 90.0
+) -> dict:
+    """Poll GET /tasks/{task_id} until status is complete/failed/cancelled."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = await gateway_client.get(f"/tasks/{task_id}", headers=auth_headers)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") in ("complete", "failed", "cancelled"):
+                return data
+        await asyncio.sleep(2.0)
+    raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
+
+
+async def _start_worker() -> asyncio.Task:
+    """Start the gateway task worker as a background asyncio task.
+
+    The gateway_client fixture uses ASGITransport which does not trigger ASGI
+    lifespan events, so the worker is not started automatically.  These Ollama
+    tests require the worker to actually process submitted tasks, so we start
+    and cancel it manually around each test body.
+    """
+    from src.gateway.worker import task_worker
+
+    return asyncio.create_task(task_worker(), name="test-ollama-worker")
+
+
+async def _stop_worker(worker: asyncio.Task) -> None:
+    worker.cancel()
+    try:
+        await worker
+    except asyncio.CancelledError:
+        pass
+
+
 @pytest.mark.integration
 @pytest.mark.ollama
-async def test_task_worker_completes_and_writes_result(db, test_user, auth_headers):
+async def test_task_worker_completes_and_writes_result(
+    db, test_user, auth_headers, gateway_client
+):
     """Submit task → worker completes → result written to DB (requires Ollama)."""
-    pytest.skip("Ollama not available in integration CI — scaffolded for Phase 12")
+    if not await _ollama_available():
+        pytest.skip("Ollama not running or no models available")
+
+    worker = await _start_worker()
+    try:
+        submit = await gateway_client.post(
+            "/tasks",
+            json={
+                "task": "Say hello in exactly three words.",
+                "agent_type": "researcher",
+            },
+            headers=auth_headers,
+        )
+        assert submit.status_code == 202, submit.text
+        task_id = submit.json()["task_id"]
+
+        result = await _wait_for_task(gateway_client, task_id, auth_headers)
+        assert (
+            result["status"] == "complete"
+        ), f"Task ended with status: {result['status']}"
+        assert result.get("result"), "Expected non-empty result string"
+    finally:
+        await _stop_worker(worker)
 
 
 @pytest.mark.integration
-@pytest.mark.ollama
 async def test_sse_events_received_during_worker_run(db, gateway_client, auth_headers):
-    """SSE events are received as the worker runs (requires Ollama)."""
-    pytest.skip("Ollama not available in integration CI — scaffolded for Phase 12")
+    """SSE endpoint delivers events and closes on terminal event.
+
+    Tests three things without requiring a live Ollama instance:
+      1. /tasks/{task_id}/stream returns 200 with a valid stream_token.
+      2. Events published to a task_id are delivered to SSE subscribers.
+      3. A terminal event (task_complete) closes the stream.
+
+    Race-condition note: we start the SSE collector as a background asyncio
+    task, poll until its queue subscription is registered in the in-process
+    event bus, and only then publish the terminal event — so no events are
+    missed.
+    """
+    from src.gateway.events import _channels, publish_event, build_task_complete_event
+
+    # 1. Submit task (to get a real task_id + stream_token).
+    submit = await gateway_client.post(
+        "/tasks",
+        json={"task": "Say hello in exactly three words.", "agent_type": "researcher"},
+        headers=auth_headers,
+    )
+    assert submit.status_code == 202
+    body = submit.json()
+    task_id = body["task_id"]
+    stream_token = body["stream_token"]
+
+    events: list[str] = []
+
+    async def _collect():
+        async with gateway_client.stream(
+            "GET",
+            f"/tasks/{task_id}/stream",
+            params={"stream_token": stream_token},
+            timeout=30.0,
+        ) as resp:
+            assert resp.status_code == 200, resp.text
+            # SSE format: "event: X\r\ndata: {...}\r\n\r\n"
+            # The event: line precedes the data: line, so track state.
+            _terminal = False
+            async for line in resp.aiter_lines():
+                if line.startswith("event:") and (
+                    "task_complete" in line or "task_error" in line
+                ):
+                    _terminal = True
+                if line.startswith("data:"):
+                    events.append(line[5:].strip())
+                    if _terminal:
+                        break  # data received for terminal event → close
+
+    # 2. Start the SSE collector as a background task.
+    collector = asyncio.create_task(_collect())
+
+    # 3. Poll until the subscriber queue is registered in the event bus.
+    #    This avoids the race where the publisher fires before the subscriber
+    #    is ready (which would cause the stream to wait forever).
+    for _ in range(50):  # up to 5 s
+        if task_id in _channels:
+            break
+        await asyncio.sleep(0.1)
+    else:
+        collector.cancel()
+        pytest.fail("SSE subscription was not registered within 5 s")
+
+    # 4. Publish a terminal event — the collector should receive it and stop.
+    await publish_event(task_id, build_task_complete_event(task_id))
+
+    try:
+        await asyncio.wait_for(collector, timeout=10.0)
+    except asyncio.TimeoutError:
+        collector.cancel()
+        try:
+            await collector
+        except asyncio.CancelledError:
+            pass
+        pytest.fail("SSE stream did not close within 10 s after terminal event")
+
+    assert events, "Expected at least one SSE data event"
 
 
 @pytest.mark.integration
 @pytest.mark.ollama
-async def test_api_usage_row_written_with_user_id_after_completion(db, test_user):
+async def test_api_usage_row_written_with_user_id_after_completion(
+    db, test_user, auth_headers, gateway_client
+):
     """api_usage row includes user_id after a completed task run (requires Ollama)."""
-    pytest.skip("Ollama not available in integration CI — scaffolded for Phase 12")
+    if not await _ollama_available():
+        pytest.skip("Ollama not running or no models available")
+
+    worker = await _start_worker()
+    try:
+        submit = await gateway_client.post(
+            "/tasks",
+            json={
+                "task": "Say hello in exactly three words.",
+                "agent_type": "researcher",
+            },
+            headers=auth_headers,
+        )
+        assert submit.status_code == 202
+        task_id = submit.json()["task_id"]
+
+        await _wait_for_task(gateway_client, task_id, auth_headers)
+
+        from src.database import get_pool
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            row = await conn.execute(
+                "SELECT user_id FROM api_usage WHERE user_id = %s LIMIT 1",
+                (test_user["user_id"],),
+            )
+            record = await row.fetchone()
+
+        assert record is not None, "Expected api_usage row for completed task"
+        # psycopg pool uses dict_row factory — rows are dicts
+        user_id_value = record["user_id"] if isinstance(record, dict) else record[0]
+        assert user_id_value == test_user["user_id"]
+    finally:
+        await _stop_worker(worker)

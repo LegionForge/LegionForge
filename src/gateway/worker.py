@@ -63,22 +63,37 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     # Emit task_start
     await publish_event(task_id, build_task_start_event(task_id, agent_type))
 
-    # ── Import agent graph ─────────────────────────────────────────────────
+    # ── Import agent graph (uncompiled) ───────────────────────────────────
+    from src.safeguards import SafeguardedState
+
     if agent_type == "researcher":
-        from src.agents.researcher import build_researcher_graph, ResearcherState
+        from src.agents.researcher import build_researcher_graph
 
-        graph = build_researcher_graph()
-        initial_state = ResearcherState(task=input_text)
+        uncompiled = build_researcher_graph()
+        agent_id = "researcher"
     elif agent_type == "orchestrator":
-        from src.agents.orchestrator import build_orchestrator_graph, OrchestratorState
+        from src.agents.orchestrator import build_orchestrator_graph
 
-        graph = build_orchestrator_graph()
-        initial_state = OrchestratorState(task=input_text)
+        uncompiled = build_orchestrator_graph()
+        agent_id = "orchestrator"
     else:
-        from src.base_graph import build_graph, AgentState
+        from src.base_graph import build_graph
 
-        graph = build_graph()
-        initial_state = AgentState(task=input_text)
+        uncompiled = build_graph()
+        agent_id = "base_agent"
+
+    # Seed all safeguard fields (step_count, action_history, token_count, …)
+    # using the same run_id that was recorded in the tasks table for this run.
+    # Mirror run_researcher(): seed messages with the task as the initial
+    # HumanMessage so the agent_node has a non-empty message list to invoke.
+    from langchain_core.messages import HumanMessage
+
+    initial_state = {
+        **SafeguardedState.initial(agent_id=agent_id),
+        "task": input_text,
+        "run_id": run_id,
+        "messages": [HumanMessage(content=input_text)],
+    }
 
     config = {
         "configurable": {
@@ -89,39 +104,48 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     if task_config.get("max_steps"):
         config["recursion_limit"] = task_config["max_steps"]
 
-    # ── Stream events ──────────────────────────────────────────────────────
+    # ── Compile with checkpointer + stream events ──────────────────────────
     collected_events: list[dict] = []
     result_text = ""
     step_count = 0
     token_counts: dict = {"input": 0, "output": 0}
+    lg_event: dict = {}
+
+    from src.database import get_checkpointer
 
     try:
-        async for lg_event in graph.astream_events(
-            initial_state, config=config, version="v2"
-        ):
-            sse_event = build_sse_event(lg_event)
-            if sse_event:
-                collected_events.append(sse_event)
-                await publish_event(task_id, sse_event)
-
-            # Track step count (each on_chain_end at the root level = one node)
-            if lg_event.get("event") == "on_chain_end" and lg_event.get("name") in (
-                "agent_node",
-                "tool_node",
-                "researcher_node",
+        async with get_checkpointer() as checkpointer:
+            graph = uncompiled.compile(checkpointer=checkpointer)
+            async for lg_event in graph.astream_events(
+                initial_state, config=config, version="v2"
             ):
-                step_count += 1
+                sse_event = build_sse_event(lg_event)
+                if sse_event:
+                    collected_events.append(sse_event)
+                    await publish_event(task_id, sse_event)
 
-            # Extract token usage if available
-            if lg_event.get("event") == "on_chat_model_end":
-                usage = (
-                    lg_event.get("data", {}).get("output", {}).get("usage_metadata", {})
-                )
-                token_counts["input"] += usage.get("input_tokens", 0)
-                token_counts["output"] += usage.get("output_tokens", 0)
+                # Track step count (each on_chain_end at the root level = one node)
+                if lg_event.get("event") == "on_chain_end" and lg_event.get("name") in (
+                    "agent_node",
+                    "tool_node",
+                    "researcher_node",
+                ):
+                    step_count += 1
+
+                # Extract token usage if available.
+                # data["output"] is an AIMessage (Pydantic) not a plain dict.
+                if lg_event.get("event") == "on_chat_model_end":
+                    output = lg_event.get("data", {}).get("output")
+                    usage: dict = {}
+                    if hasattr(output, "usage_metadata") and output.usage_metadata:
+                        usage = dict(output.usage_metadata)
+                    elif isinstance(output, dict):
+                        usage = output.get("usage_metadata") or {}
+                    token_counts["input"] += usage.get("input_tokens") or 0
+                    token_counts["output"] += usage.get("output_tokens") or 0
 
         # Extract final result from terminal state
-        final_state = lg_event.get("data", {}).get("output", {}) if lg_event else {}  # type: ignore[possibly-undefined]
+        final_state = lg_event.get("data", {}).get("output", {}) if lg_event else {}
         result_text = (
             final_state.get("final_answer")
             or final_state.get("result")
