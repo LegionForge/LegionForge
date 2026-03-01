@@ -100,6 +100,45 @@ async def stream_task(
         )
 
     async def event_generator():
+        # Fast-path: if the task already completed before the browser connected
+        # (common for short tasks — the agent finishes before EventSource handshake),
+        # emit the terminal event immediately so the UI doesn't hang waiting for a
+        # queue that was already deleted when the task finished.
+        status = task_row.get("status", "")
+        if status == "complete":
+            yield {
+                "event": "task_complete",
+                "data": json.dumps(
+                    {
+                        "task_id": task_id,
+                        "status": "complete",
+                        "result_url": f"/tasks/{task_id}",
+                        "result": task_row.get("result", ""),
+                        "tokens": task_row.get("tokens"),
+                    }
+                ),
+            }
+            return
+        if status == "failed":
+            yield {
+                "event": "task_error",
+                "data": json.dumps(
+                    {
+                        "task_id": task_id,
+                        "status": "failed",
+                        "error": task_row.get("error", "Unknown error"),
+                    }
+                ),
+            }
+            return
+        if status == "cancelled":
+            yield {
+                "event": "task_cancelled",
+                "data": json.dumps({"task_id": task_id, "status": "cancelled"}),
+            }
+            return
+
+        # Task still running — subscribe to the live event queue.
         async for event in subscribe_task_events(task_id):
             if await request.is_disconnected():
                 logger.debug(f"[gateway/stream] Client disconnected task_id={task_id}")
