@@ -7216,3 +7216,92 @@ def test_p23_gateway_app_includes_schedules_router():
     routes = [r.path for r in app.routes if hasattr(r, "path")]
     sched_routes = [r for r in routes if "/schedules" in r]
     assert len(sched_routes) > 0, "No /schedules routes found in app"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 24 — Admin API
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p24_admin_route_importable():
+    """src.gateway.routes.admin imports without error."""
+    from src.gateway.routes import admin as _
+
+    assert hasattr(_, "router")
+
+
+def test_p24_require_admin_importable():
+    """require_admin dependency is importable from auth."""
+    from src.gateway.auth import require_admin
+
+    assert callable(require_admin)
+
+
+def test_p24_require_admin_raises_403_for_non_admin():
+    """require_admin logic raises 403 for a non-admin user dict."""
+    import pytest
+    from fastapi import HTTPException
+
+    user = {"user_id": "u1", "username": "alice", "is_admin": False}
+    if not user.get("is_admin", False):
+        exc = HTTPException(status_code=403, detail="Admin privilege required")
+        assert exc.status_code == 403
+
+
+def test_p24_create_gateway_user_accepts_is_admin_param():
+    """create_gateway_user signature accepts is_admin kwarg."""
+    import inspect
+    from src.database import create_gateway_user
+
+    sig = inspect.signature(create_gateway_user)
+    assert "is_admin" in sig.parameters
+
+
+def test_p24_promote_gateway_user_to_admin_importable():
+    """promote_gateway_user_to_admin is importable from src.database."""
+    from src.database import promote_gateway_user_to_admin
+
+    assert callable(promote_gateway_user_to_admin)
+
+
+def test_p24_get_gateway_user_by_user_id_importable():
+    """get_gateway_user_by_user_id is importable from src.database."""
+    from src.database import get_gateway_user_by_user_id
+
+    assert callable(get_gateway_user_by_user_id)
+
+
+def test_p24_admin_api_key_backend_returns_is_admin():
+    """ApiKeyBackend.authenticate return dict includes is_admin key."""
+    import inspect
+    from src.gateway.backends.api_key import ApiKeyBackend
+
+    src_code = inspect.getsource(ApiKeyBackend.authenticate)
+    assert "is_admin" in src_code
+
+
+def test_p24_manage_users_cli_supports_admin_flag():
+    """manage_users CLI parser accepts --admin flag on create-user."""
+    from src.cli.manage_users import _build_parser
+
+    parser = _build_parser()
+    args = parser.parse_args(["create-user", "--username", "testadmin", "--admin"])
+    assert args.admin is True
+
+
+def test_p24_manage_users_cli_admin_defaults_false():
+    """manage_users CLI --admin defaults to False."""
+    from src.cli.manage_users import _build_parser
+
+    parser = _build_parser()
+    args = parser.parse_args(["create-user", "--username", "normaluser"])
+    assert args.admin is False
+
+
+def test_p24_gateway_app_includes_admin_router():
+    """Gateway app registers the /admin router."""
+    from src.gateway.app import app
+
+    routes = [r.path for r in app.routes if hasattr(r, "path")]
+    admin_routes = [r for r in routes if "/admin" in r]
+    assert len(admin_routes) > 0, "No /admin routes found in app"

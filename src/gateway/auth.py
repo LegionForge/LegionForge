@@ -213,6 +213,29 @@ async def require_user(
     return user
 
 
+async def require_admin(user: dict = Depends(require_user)) -> dict:
+    """
+    FastAPI dependency: require an authenticated admin user.
+
+    Composes with ``require_user`` — first authenticates the user, then checks
+    the ``is_admin`` flag.  Non-admin users receive HTTP 403 (not 401), so
+    attackers cannot distinguish admin endpoints from non-existent ones merely by
+    probing for 401 vs 403.
+
+    Usage::
+
+        @router.get("/admin/users")
+        async def list_users(admin: dict = Depends(require_admin)):
+            ...
+    """
+    if not user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privilege required",
+        )
+    return user
+
+
 # ── Stream tokens (Redis or DB-backed, 30-minute TTL) ─────────────────────────
 # Phase 10: DB-backed (stream_tokens table, survives restarts).
 # Phase 13: Redis-backed when settings.gateway.redis_url is set — enables

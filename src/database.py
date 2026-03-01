@@ -973,6 +973,12 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "DROP CONSTRAINT IF EXISTS gateway_users_api_key_hash_key"
     )
 
+    # ── Phase 24 migration: add is_admin flag ─────────────────────────────────
+    await conn.execute(
+        "ALTER TABLE gateway_users "
+        "ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false"
+    )
+
     # Stream tokens — DB-backed so they survive gateway restarts.
     # Low-volume (one row per active SSE session); purged by the worker heartbeat.
     await conn.execute(
@@ -2838,7 +2844,9 @@ async def mark_task_cancelled(task_id: str, user_id: str) -> bool:
 # ── Phase 8: Gateway user management ─────────────────────────────────────────
 
 
-async def create_gateway_user(username: str, api_key_hash: str) -> dict:
+async def create_gateway_user(
+    username: str, api_key_hash: str, is_admin: bool = False
+) -> dict:
     """
     Insert a new gateway user. api_key_hash must be a bcrypt hash of the raw key.
     Returns the created user row (without the raw key — it is never stored).
@@ -2848,11 +2856,12 @@ async def create_gateway_user(username: str, api_key_hash: str) -> dict:
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            INSERT INTO gateway_users (username, api_key_hash)
-            VALUES (%s, %s)
-            RETURNING user_id, username, created_at, is_active
+            INSERT INTO gateway_users (username, api_key_hash, is_admin)
+            VALUES (%s, %s, %s)
+            RETURNING user_id, username, created_at, is_active, is_admin,
+                      daily_token_limit
             """,
-            (username, api_key_hash),
+            (username, api_key_hash, is_admin),
         )
         row = await cur.fetchone()
     return dict(row)
@@ -2884,7 +2893,7 @@ async def get_gateway_user_for_auth(username: str) -> dict | None:
         cur = await conn.execute(
             """
             SELECT user_id, username, api_key_hash, is_active,
-                   daily_token_limit
+                   daily_token_limit, is_admin
             FROM gateway_users
             WHERE is_active = true
             """,
@@ -2935,13 +2944,45 @@ async def list_gateway_users() -> list[dict]:
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            SELECT user_id::text, username, is_active, daily_token_limit, created_at
+            SELECT user_id::text, username, is_active, is_admin,
+                   daily_token_limit, created_at
             FROM gateway_users
             ORDER BY created_at ASC
             """
         )
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def promote_gateway_user_to_admin(username: str, is_admin: bool = True) -> bool:
+    """
+    Grant or revoke admin privilege for a gateway user.
+    Returns True if a row was updated, False if the user was not found.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "UPDATE gateway_users SET is_admin = %s WHERE username = %s",
+            (is_admin, username),
+        )
+        return cur.rowcount == 1
+
+
+async def get_gateway_user_by_user_id(user_id: str) -> dict | None:
+    """Fetch a gateway_users row by user_id (for admin API lookups)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT user_id, username, is_active, is_admin, daily_token_limit,
+                   created_at
+            FROM gateway_users WHERE user_id = %s
+            """,
+            (user_id,),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 # ── Phase 10: DB-backed stream tokens ────────────────────────────────────────

@@ -68,5 +68,6 @@ class ApiKeyBackend:
                     "user_id": row["user_id"],
                     "username": row["username"],
                     "daily_token_limit": row.get("daily_token_limit", 100000),
+                    "is_admin": row.get("is_admin", False),
                 }
         return None

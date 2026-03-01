@@ -220,6 +220,27 @@ create-user:
 		--username "$(USERNAME)" \
 		$(if $(DAILY_LIMIT),--daily-limit $(DAILY_LIMIT),)
 
+.PHONY: create-admin-user
+create-admin-user:  ## Create a gateway admin user: make create-admin-user USERNAME=<name> (Phase 24)
+	@if [ -z "$(USERNAME)" ]; then echo "Usage: make create-admin-user USERNAME=<name> [DAILY_LIMIT=100000]"; exit 1; fi
+	@cd $(BASE) && $(PYTHON) -m src.cli.manage_users create-user \
+		--username "$(USERNAME)" \
+		--admin \
+		$(if $(DAILY_LIMIT),--daily-limit $(DAILY_LIMIT),)
+
+.PHONY: promote-admin
+promote-admin:  ## Promote an existing user to admin: make promote-admin USERNAME=<name> (Phase 24)
+	@if [ -z "$(USERNAME)" ]; then echo "Usage: make promote-admin USERNAME=<name>"; exit 1; fi
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db, promote_gateway_user_to_admin; \
+async def run(): \
+    await init_db(); \
+    ok = await promote_gateway_user_to_admin('$(USERNAME)', True); \
+    await close_db(); \
+    print('✅ $(USERNAME) promoted to admin' if ok else '❌ user not found'); \
+asyncio.run(run())"
+
 # ── Phase 9: Tool Library ──────────────────────────────────────
 .PHONY: register-http-tools
 register-http-tools:

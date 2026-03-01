@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ── User operations ───────────────────────────────────────────────────────────
 
 
-async def create_user(username: str, daily_limit: int) -> None:
+async def create_user(username: str, daily_limit: int, is_admin: bool = False) -> None:
     """
     Create a new gateway user and print the raw API key once.
 
@@ -39,6 +39,7 @@ async def create_user(username: str, daily_limit: int) -> None:
     Args:
         username:    Unique username for the new user.
         daily_limit: Daily token budget for this user.
+        is_admin:    If True, grant admin privilege (Phase 24).
     """
     from src.database import init_db, create_gateway_user
     from src.gateway.auth import hash_api_key
@@ -49,7 +50,9 @@ async def create_user(username: str, daily_limit: int) -> None:
     key_hash = hash_api_key(raw_key)
 
     try:
-        user = await create_gateway_user(username=username, api_key_hash=key_hash)
+        user = await create_gateway_user(
+            username=username, api_key_hash=key_hash, is_admin=is_admin
+        )
     except Exception as exc:
         if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
             print(f"ERROR: Username '{username}' already exists.", file=sys.stderr)
@@ -61,9 +64,11 @@ async def create_user(username: str, daily_limit: int) -> None:
 
     await set_gateway_user_quota(username=username, daily_token_limit=daily_limit)
 
-    print(f"✅ User created:")
+    admin_label = " (admin)" if is_admin else ""
+    print(f"✅ User created{admin_label}:")
     print(f"   username:    {user['username']}")
     print(f"   user_id:     {user['user_id']}")
+    print(f"   is_admin:    {is_admin}")
     print(f"   daily_limit: {daily_limit:,} tokens/day")
     print()
     print(f"   API KEY (copy now — not stored in plain text):")
@@ -135,13 +140,16 @@ async def list_users() -> list:
         return []
 
     # Simple fixed-width table
-    header = f"{'USERNAME':<20} {'ACTIVE':<8} {'DAILY LIMIT':>12} {'USER ID'}"
+    header = (
+        f"{'USERNAME':<20} {'ACTIVE':<8} {'ADMIN':<6} {'DAILY LIMIT':>12} {'USER ID'}"
+    )
     print(header)
     print("─" * len(header))
     for u in users:
         active = "yes" if u["is_active"] else "no"
+        admin = "yes" if u.get("is_admin") else "no"
         print(
-            f"{u['username']:<20} {active:<8} {u['daily_token_limit']:>12,} "
+            f"{u['username']:<20} {active:<8} {admin:<6} {u['daily_token_limit']:>12,} "
             f"{u['user_id']}"
         )
     return users
@@ -165,6 +173,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=100000,
         help="Daily token budget (default: 100000)",
+    )
+    p_create.add_argument(
+        "--admin",
+        action="store_true",
+        default=False,
+        help="Grant admin privilege (Phase 24)",
     )
 
     # deactivate-user
@@ -194,7 +208,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "create-user":
-        asyncio.run(create_user(args.username, args.daily_limit))
+        asyncio.run(create_user(args.username, args.daily_limit, args.admin))
     elif args.command == "deactivate-user":
         asyncio.run(deactivate_user(args.username))
     elif args.command == "set-quota":

@@ -44,6 +44,7 @@ from src.gateway.routes import (
     memory as memory_route,
     documents as documents_route,
     schedules as schedules_route,
+    admin as admin_route,
 )
 from src.gateway.worker import task_worker
 
@@ -145,6 +146,7 @@ app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
 app.include_router(memory_route.router, prefix="/memory", tags=["memory"])
 app.include_router(documents_route.router, prefix="/documents", tags=["documents"])
 app.include_router(schedules_route.router, prefix="/schedules", tags=["schedules"])
+app.include_router(admin_route.router, prefix="/admin", tags=["admin"])
 
 
 # ── Minimal Web UI ────────────────────────────────────────────────────────────
