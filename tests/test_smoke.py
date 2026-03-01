@@ -7381,3 +7381,78 @@ def test_p25_tool_status_put_endpoint_registered():
 
     paths = [r.path for r in app.routes if hasattr(r, "path")]
     assert any("tools" in p and "status" in p for p in paths)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 26 — Task Result Webhooks
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p26_webhook_sender_importable():
+    """src.webhook_sender imports without error."""
+    from src import webhook_sender as _
+
+    assert hasattr(_, "send_callback")
+    assert callable(_.send_callback)
+
+
+def test_p26_is_valid_url_accepts_http():
+    """_is_valid_url accepts http and https URLs."""
+    from src.webhook_sender import _is_valid_url
+
+    assert _is_valid_url("http://example.com/callback")
+    assert _is_valid_url("https://myapp.io/hook")
+
+
+def test_p26_is_valid_url_rejects_other_schemes():
+    """_is_valid_url rejects non-HTTP schemes."""
+    from src.webhook_sender import _is_valid_url
+
+    assert not _is_valid_url("ftp://example.com/cb")
+    assert not _is_valid_url("file:///etc/passwd")
+    assert not _is_valid_url("javascript:alert(1)")
+    assert not _is_valid_url("not-a-url")
+
+
+def test_p26_sign_body_produces_sha256_prefix():
+    """_sign_body returns a 'sha256=...' HMAC string."""
+    from src.webhook_sender import _sign_body
+
+    sig = _sign_body(b'{"task_id":"abc"}', b"secret")
+    assert sig.startswith("sha256=")
+    assert len(sig) == len("sha256=") + 64  # hex of 32-byte SHA256
+
+
+def test_p26_task_request_accepts_callback_url():
+    """TaskRequest model accepts a valid callback_url."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello", callback_url="https://example.com/cb")
+    assert req.callback_url == "https://example.com/cb"
+
+
+def test_p26_task_request_rejects_invalid_callback_url():
+    """TaskRequest rejects non-HTTP callback_url."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", callback_url="ftp://example.com")
+
+
+def test_p26_task_request_callback_url_defaults_none():
+    """TaskRequest.callback_url defaults to None."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello world")
+    assert req.callback_url is None
+
+
+def test_p26_create_task_accepts_callback_url_param():
+    """create_task DB function accepts callback_url parameter."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "callback_url" in sig.parameters

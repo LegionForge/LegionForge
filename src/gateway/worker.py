@@ -211,6 +211,27 @@ async def run_task(task: dict) -> None:
         await publish_event(task_id, build_task_complete_event(task_id))
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
 
+        # Phase 26: fire completion webhook if caller supplied a callback_url
+        callback_url = task.get("callback_url")
+        if callback_url:
+            from src.webhook_sender import send_callback
+            from datetime import datetime, timezone
+
+            asyncio.create_task(
+                send_callback(
+                    task_id,
+                    callback_url,
+                    {
+                        "task_id": task_id,
+                        "status": "complete",
+                        "result": result_text,
+                        "error": None,
+                        "agent_type": agent_type,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            )
+
     except Exception as exc:
         error_msg = str(exc)
         logger.error(
@@ -218,6 +239,27 @@ async def run_task(task: dict) -> None:
         )
         await mark_task_failed(task_id, error=error_msg)
         await publish_event(task_id, build_task_error_event(task_id, error_msg))
+
+        # Phase 26: fire failure webhook
+        callback_url = task.get("callback_url")
+        if callback_url:
+            from src.webhook_sender import send_callback
+            from datetime import datetime, timezone
+
+            asyncio.create_task(
+                send_callback(
+                    task_id,
+                    callback_url,
+                    {
+                        "task_id": task_id,
+                        "status": "failed",
+                        "result": None,
+                        "error": error_msg,
+                        "agent_type": agent_type,
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            )
 
 
 # ── Worker loop ───────────────────────────────────────────────────────────────

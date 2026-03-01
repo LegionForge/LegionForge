@@ -55,6 +55,14 @@ class TaskRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=4000)
     agent_type: str = Field(default="orchestrator")
     config: TaskConfig = Field(default_factory=TaskConfig)
+    callback_url: str | None = Field(
+        default=None,
+        max_length=2048,
+        description=(
+            "Optional HTTP(S) URL to POST the task result to when the task "
+            "completes (success or failure).  Phase 26 completion webhooks."
+        ),
+    )
 
     @field_validator("task")
     @classmethod
@@ -68,6 +76,18 @@ class TaskRequest(BaseModel):
     def agent_type_must_be_valid(cls, v: str) -> str:
         if v not in VALID_AGENT_TYPES:
             raise ValueError(f"agent_type must be one of {sorted(VALID_AGENT_TYPES)}")
+        return v
+
+    @field_validator("callback_url")
+    @classmethod
+    def callback_url_must_be_http(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        from urllib.parse import urlparse
+
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("callback_url must be an http:// or https:// URL")
         return v
 
 
@@ -128,6 +148,7 @@ async def submit_task(
         agent_type=body.agent_type,
         config=body.config.model_dump(),
         estimated_tokens=estimated_tokens,
+        callback_url=body.callback_url,
     )
 
     task_id = row["task_id"]

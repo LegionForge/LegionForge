@@ -979,6 +979,11 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false"
     )
 
+    # ── Phase 26 migration: task completion webhooks ───────────────────────────
+    # Optional callback URL: when set, the worker POSTs the result JSON to this
+    # URL after the task completes (success or failure).
+    await conn.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS callback_url TEXT")
+
     # Stream tokens — DB-backed so they survive gateway restarts.
     # Low-volume (one row per active SSE session); purged by the worker heartbeat.
     await conn.execute(
@@ -2650,6 +2655,7 @@ async def create_task(
     agent_type: str = "orchestrator",
     config: dict | None = None,
     estimated_tokens: int = 0,
+    callback_url: str | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'."""
     pool = get_pool()
@@ -2657,8 +2663,9 @@ async def create_task(
         conn.row_factory = dict_row
         cur = await conn.execute(
             """
-            INSERT INTO tasks (user_id, input, agent_type, config, estimated_tokens)
-            VALUES (%s, %s, %s, %s::jsonb, %s)
+            INSERT INTO tasks
+                (user_id, input, agent_type, config, estimated_tokens, callback_url)
+            VALUES (%s, %s, %s, %s::jsonb, %s, %s)
             RETURNING task_id::text, status, created_at, agent_type
             """,
             (
@@ -2667,6 +2674,7 @@ async def create_task(
                 agent_type,
                 json.dumps(config or {}),
                 estimated_tokens,
+                callback_url,
             ),
         )
         row = await cur.fetchone()
