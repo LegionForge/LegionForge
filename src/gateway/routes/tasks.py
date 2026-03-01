@@ -3,11 +3,15 @@ src/gateway/routes/tasks.py
 ────────────────────────────
 Core task API:
 
-    POST   /tasks               — submit a task
-    POST   /tasks/batch         — submit up to 20 tasks at once (Phase 28)
-    GET    /tasks               — list tasks (authenticated user's own)
-    GET    /tasks/{task_id}     — get a single task result
-    DELETE /tasks/{task_id}     — cancel a queued task
+    POST   /tasks                       — submit a task
+    POST   /tasks/batch                 — submit up to 20 tasks at once (Phase 28)
+    GET    /tasks                       — list tasks (authenticated user's own)
+    GET    /tasks/{task_id}             — get a single task result
+    PUT    /tasks/{task_id}/tags        — replace task tags (Phase 31)
+    DELETE /tasks/{task_id}             — cancel a queued task
+    POST   /tasks/{task_id}/notes      — add a note to a task (Phase 32)
+    GET    /tasks/{task_id}/notes      — list notes on a task (Phase 32)
+    DELETE /tasks/{task_id}/notes/{note_id}  — delete a note (Phase 32)
 """
 
 from __future__ import annotations
@@ -19,8 +23,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 
 from src.database import (
+    add_task_note,
     create_task,
+    delete_task_note,
     get_task,
+    list_task_notes,
     list_tasks,
     lookup_cached_task,
     mark_task_cancelled,
@@ -429,4 +436,78 @@ async def cancel_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found, not queued, or not owned by this user",
+        )
+
+
+# ── Task Notes (Phase 32) ──────────────────────────────────────────────────────
+
+
+class AddNoteRequest(BaseModel):
+    note: str = Field(
+        ..., min_length=1, max_length=2000, description="Note text (max 2000 chars)."
+    )
+
+
+@router.post("/{task_id}/notes", status_code=status.HTTP_201_CREATED)
+async def add_note(
+    task_id: str,
+    body: AddNoteRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Append a freeform note to a task.
+
+    Notes are visible only to the task owner.  Returns the new note with its ID.
+
+    Phase 32 — Task Notes & Annotations.
+    """
+    row = await add_task_note(task_id, user["user_id"], body.note)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or not owned by this user",
+        )
+    return row
+
+
+@router.get("/{task_id}/notes")
+async def get_notes(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    List all notes on a task, oldest-first.
+
+    Returns 404 if the task doesn't belong to the authenticated user.
+
+    Phase 32 — Task Notes & Annotations.
+    """
+    # Verify ownership (list_task_notes returns [] for non-owned tasks)
+    task_row = await get_task(task_id, user_id=user["user_id"])
+    if task_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
+    notes = await list_task_notes(task_id, user["user_id"])
+    return {"task_id": task_id, "count": len(notes), "notes": notes}
+
+
+@router.delete("/{task_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_note(
+    task_id: str,
+    note_id: int,
+    user: dict = Depends(require_user),
+) -> None:
+    """
+    Delete a specific note by ID.
+
+    Returns 404 if the note doesn't exist or doesn't belong to this user.
+
+    Phase 32 — Task Notes & Annotations.
+    """
+    deleted = await delete_task_note(note_id, task_id, user["user_id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found or not owned by this user",
         )

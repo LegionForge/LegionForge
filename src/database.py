@@ -1112,6 +1112,27 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON tasks (content_hash) WHERE status = 'complete'"
     )
 
+    # ── Phase 32: Task notes ───────────────────────────────────────────────────
+    # Users can attach freeform text notes to any of their tasks after submission.
+    # Notes are append-only by default; individual notes can be deleted.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_notes (
+            id          SERIAL PRIMARY KEY,
+            task_id     UUID NOT NULL REFERENCES tasks (task_id) ON DELETE CASCADE,
+            user_id     TEXT NOT NULL,
+            note        TEXT NOT NULL,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_notes_task_id ON task_notes (task_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_notes_user_id ON task_notes (user_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2911,6 +2932,84 @@ async def update_task_tags(
         )
         row = await cur.fetchone()
     return dict(row) if row else None
+
+
+# ── Phase 32: Task notes ───────────────────────────────────────────────────────
+
+
+async def add_task_note(task_id: str, user_id: str, note: str) -> dict | None:
+    """
+    Append a note to a task.  Returns the new note row, or None if the task
+    does not exist / does not belong to user_id (404 semantics).
+
+    Phase 32.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        # Verify ownership first (tasks WHERE task_id AND user_id)
+        cur = await conn.execute(
+            "SELECT 1 FROM tasks WHERE task_id = %s::uuid AND user_id = %s",
+            (task_id, user_id),
+        )
+        if await cur.fetchone() is None:
+            return None
+        cur = await conn.execute(
+            """
+            INSERT INTO task_notes (task_id, user_id, note)
+            VALUES (%s::uuid, %s, %s)
+            RETURNING id, task_id::text, user_id, note, created_at
+            """,
+            (task_id, user_id, note),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def list_task_notes(task_id: str, user_id: str) -> list[dict]:
+    """
+    Return all notes for task_id owned by user_id, ordered oldest-first.
+    Returns empty list if task not found or not owned by user.
+
+    Phase 32.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        # Ownership check via JOIN
+        cur = await conn.execute(
+            """
+            SELECT n.id, n.task_id::text, n.user_id, n.note, n.created_at
+            FROM task_notes n
+            JOIN tasks t ON t.task_id = n.task_id
+            WHERE n.task_id = %s::uuid
+              AND t.user_id = %s
+            ORDER BY n.created_at ASC
+            """,
+            (task_id, user_id),
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def delete_task_note(note_id: int, task_id: str, user_id: str) -> bool:
+    """
+    Delete a note by ID.  Returns True if deleted, False if not found / not owned.
+
+    Phase 32.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            DELETE FROM task_notes
+            WHERE id = %s
+              AND task_id = %s::uuid
+              AND user_id = %s
+            """,
+            (note_id, task_id, user_id),
+        )
+        return cur.rowcount > 0
 
 
 async def claim_next_queued_task() -> dict | None:

@@ -7883,3 +7883,81 @@ def test_p31_list_tasks_accepts_q_and_tags():
     sig = inspect.signature(list_tasks)
     assert "q" in sig.parameters
     assert "tags" in sig.parameters
+
+
+# ── Phase 32: Task Notes & Annotations ───────────────────────────────────────
+
+
+def test_p32_add_note_request_model():
+    """AddNoteRequest validates note text."""
+    from src.gateway.routes.tasks import AddNoteRequest
+
+    req = AddNoteRequest(note="This task needs follow-up")
+    assert req.note == "This task needs follow-up"
+
+
+def test_p32_add_note_request_rejects_empty():
+    """AddNoteRequest rejects empty note."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import AddNoteRequest
+
+    with pytest.raises(ValidationError):
+        AddNoteRequest(note="")
+
+
+def test_p32_add_note_request_rejects_too_long():
+    """AddNoteRequest rejects notes longer than 2000 chars."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import AddNoteRequest
+
+    with pytest.raises(ValidationError):
+        AddNoteRequest(note="x" * 2001)
+
+
+def test_p32_task_notes_db_functions_importable():
+    """Task notes DB functions are importable."""
+    from src.database import add_task_note, list_task_notes, delete_task_note
+
+    assert callable(add_task_note)
+    assert callable(list_task_notes)
+    assert callable(delete_task_note)
+
+
+def test_p32_task_notes_endpoints_registered():
+    """Gateway registers POST/GET /tasks/{id}/notes and DELETE .../notes/{note_id}."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("notes" in p for p in paths)
+
+
+def test_p32_add_task_note_signature():
+    """add_task_note() has task_id, user_id, note params."""
+    import inspect
+    from src.database import add_task_note
+
+    sig = inspect.signature(add_task_note)
+    for param in ("task_id", "user_id", "note"):
+        assert param in sig.parameters
+
+
+def test_p32_list_task_notes_signature():
+    """list_task_notes() has task_id, user_id params."""
+    import inspect
+    from src.database import list_task_notes
+
+    sig = inspect.signature(list_task_notes)
+    assert "task_id" in sig.parameters
+    assert "user_id" in sig.parameters
+
+
+def test_p32_delete_task_note_signature():
+    """delete_task_note() has note_id, task_id, user_id params."""
+    import inspect
+    from src.database import delete_task_note
+
+    sig = inspect.signature(delete_task_note)
+    for param in ("note_id", "task_id", "user_id"):
+        assert param in sig.parameters
