@@ -18,10 +18,10 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ✅ **Phases 0–16 are complete. v1.0.0 is shipped.**
 
-The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with Redis/DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (~35 tests), modular `AuthBackend` protocol, containerized gateway, multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos), Redis-backed state layer, multi-instance docker-compose, Redis global budget counters, Prometheus metrics endpoint, request trace IDs, polished web UI, and Telegram + Slack + Webhook channel connectors.
+The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with Redis/DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (38 tests), modular `AuthBackend` protocol, containerized gateway, multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos), Redis-backed state layer, multi-instance docker-compose, Redis global budget counters, Prometheus metrics endpoint, request trace IDs, polished web UI, and Telegram + Slack + Webhook channel connectors.
 
 **484/484 smoke tests passing** (~3.0s, no external services required).
-**35 integration tests** (PostgreSQL required — `make test-integration`).
+**38/38 integration tests** (PostgreSQL required — `make test-integration`).
 
 ✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
 ✅ **Phase 10 complete:** DB-backed stream tokens, per-user daily token budgets, `/usage/me` endpoint, user management CLI (`src/cli/manage_users.py`).
@@ -34,7 +34,7 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 
 ---
 
-## The Big Picture — Phases 0–11 Complete
+## The Big Picture — Phases 0–16 Complete
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -151,14 +151,13 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ---
 
-## Immediate Next Steps
+## Open Technical Debt
 
-### Phase 12 — OAuth + Redis + Multi-Datacenter
+All phases (0–16) are complete and v1.0.0 is shipped. Remaining items:
 
-1. **OAuth** — GitHub OAuth or Keycloak via `set_auth_backend()` (modular backend is ready)
-2. **Redis-backed state** — multi-datacenter stream tokens and rate counters
-3. **Multi-datacenter deployment** — two PostgreSQL replicas + Redis + Caddy/nginx load balancer
-4. **Output sanitization** — sanitize tool result content leaving external tool boundaries
+1. **GGUF hash pinning** — `gguf_sha256: ""` in the hardware profile disables model integrity checking at runtime. Run `make verify-models` to compute hashes and pin them.
+2. **Kerberos live KDC test** — `tests/test_kerberos_integration.py` skeleton exists; activate with `KERBEROS_TEST_KDC=1` plus an OS-level KDC + `gssapi` package.
+3. **Loop protection on resume** — documented edge case: if a caller passes a fresh `SafeguardedState.initial()` for an existing `thread_id`, step counters reset. Correct usage is in the `SafeguardedState.initial()` docstring.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
