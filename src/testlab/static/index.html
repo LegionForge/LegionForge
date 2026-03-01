@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegionForge TestLab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0d1117;
+      --panel:    #161b22;
+      --panel2:   #1c2128;
+      --border:   #30363d;
+      --text:     #c9d1d9;
+      --dim:      #8b949e;
+      --xdim:     #484f58;
+      --blue:     #58a6ff;
+      --green:    #3fb950;
+      --orange:   #f0883e;
+      --red:      #f85149;
+      --purple:   #d2a8ff;
+      --yellow:   #e3b341;
+      --mono:     'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      --radius:   6px;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+                 font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+
+    /* ── Layout ── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+              border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #header h1 { font-size: 16px; font-weight: 600; color: var(--blue); }
+    #header .sub { color: var(--dim); font-size: 11px; }
+    #header .spacer { flex: 1; }
+    #auth-row { display: flex; gap: 8px; align-items: center; }
+    #main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    #sidebar { width: 220px; flex-shrink: 0; display: flex; flex-direction: column;
+               border-right: 1px solid var(--border); overflow-y: auto; }
+    .side-section { padding: 8px; border-bottom: 1px solid var(--border2,#21262d); }
+    .side-title { font-size: 10px; font-weight: 600; text-transform: uppercase;
+                  letter-spacing: .08em; color: var(--dim); margin-bottom: 6px; padding: 0 4px; }
+    .suite-btn { display: block; width: 100%; text-align: left; padding: 6px 8px;
+                 background: none; border: none; color: var(--text); cursor: pointer;
+                 border-radius: var(--radius); font-family: var(--mono); font-size: 12px; }
+    .suite-btn:hover { background: var(--panel2); }
+    .suite-btn.active { background: var(--panel2); color: var(--blue); }
+    .suite-btn .suite-label { display: block; font-weight: 600; }
+    .suite-btn .suite-desc { display: block; font-size: 10px; color: var(--dim); }
+    .file-item { display: block; width: 100%; text-align: left; padding: 3px 8px;
+                 background: none; border: none; color: var(--dim); cursor: pointer;
+                 border-radius: 3px; font-family: var(--mono); font-size: 11px;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-item:hover { background: var(--panel2); color: var(--text); }
+    .file-item.active { color: var(--blue); background: var(--panel2); }
+
+    /* ── Content area ── */
+    #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Tabs ── */
+    #tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab { padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--dim);
+           border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .tab:hover { color: var(--text); }
+
+    /* ── Tab panels ── */
+    .panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .panel.active { display: flex; }
+
+    /* ── Run panel ── */
+    #run-toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+                   border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #run-status { font-size: 12px; }
+    #output-box { flex: 1; overflow-y: auto; background: #010409; padding: 10px 14px;
+                  font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+    .o-pass  { color: var(--green); }
+    .o-fail  { color: var(--red); }
+    .o-warn  { color: var(--yellow); }
+    .o-info  { color: var(--blue); }
+    .o-dim   { color: var(--dim); }
+
+    /* ── Editor panel ── */
+    #editor-toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 12px;
+                      border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #editor-filename { color: var(--blue); font-size: 12px; }
+    #editor-area { flex: 1; width: 100%; background: #010409; color: var(--text);
+                   border: none; outline: none; padding: 12px 14px; font-family: var(--mono);
+                   font-size: 12px; line-height: 1.6; resize: none; }
+
+    /* ── Generate panel ── */
+    #gen-form { padding: 16px; display: flex; flex-direction: column; gap: 10px; max-width: 700px; }
+    .field-label { font-size: 11px; color: var(--dim); margin-bottom: 3px; }
+    .field-input { width: 100%; background: var(--panel2); border: 1px solid var(--border);
+                   border-radius: var(--radius); color: var(--text); padding: 7px 10px;
+                   font-family: var(--mono); font-size: 12px; }
+    .field-input:focus { outline: 1px solid var(--blue); }
+    textarea.field-input { min-height: 70px; resize: vertical; }
+    #gen-output { flex: 1; overflow-y: auto; background: #010409; padding: 12px 14px;
+                  font-size: 12px; white-space: pre-wrap; color: var(--green); display: none; }
+    #gen-status { color: var(--dim); font-size: 11px; }
+
+    /* ── History panel ── */
+    #history-list { flex: 1; overflow-y: auto; }
+    .hist-row { padding: 8px 14px; border-bottom: 1px solid var(--border2,#21262d);
+                display: flex; gap: 10px; align-items: baseline; font-size: 12px; }
+    .hist-row:hover { background: var(--panel2); }
+    .hist-badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+    .badge-passed { background: #1a3a1a; color: var(--green); }
+    .badge-failed { background: #3a1a1a; color: var(--red); }
+    .hist-suite { color: var(--blue); min-width: 120px; }
+    .hist-time  { color: var(--dim); font-size: 11px; }
+    .hist-elapsed { color: var(--xdim); font-size: 11px; }
+
+    /* ── Buttons ── */
+    .btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+           background: var(--panel2); color: var(--text); cursor: pointer;
+           font-family: var(--mono); font-size: 12px; }
+    .btn:hover { border-color: var(--blue); color: var(--blue); }
+    .btn.primary { background: #1e3a5f; border-color: var(--blue); color: var(--blue); }
+    .btn.primary:hover { background: #2a4a6f; }
+    .btn.danger  { background: #3a1a1a; border-color: var(--red); color: var(--red); }
+    .btn.danger:hover  { background: #4a2a2a; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    #admin-key { background: var(--panel2); border: 1px solid var(--border);
+                 border-radius: var(--radius); color: var(--text); padding: 5px 8px;
+                 font-family: var(--mono); font-size: 12px; width: 220px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <h1>LegionForge TestLab</h1>
+    <span class="sub">admin test interface</span>
+    <div class="spacer"></div>
+    <div id="auth-row">
+      <input type="password" id="admin-key" placeholder="Admin API key" autocomplete="off">
+      <button class="btn" onclick="loadAll()">Connect</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="side-section">
+        <div class="side-title">Test Suites</div>
+        <div id="suite-list"><!-- populated by JS --></div>
+      </div>
+      <div class="side-section">
+        <div class="side-title">Test Files</div>
+        <div id="file-list"><!-- populated by JS --></div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div id="content">
+      <div id="tabs">
+        <div class="tab active" onclick="showTab('run')">▶ Run</div>
+        <div class="tab" onclick="showTab('editor')">✎ Editor</div>
+        <div class="tab" onclick="showTab('generate')">✦ Generate</div>
+        <div class="tab" onclick="showTab('history')">⏱ History</div>
+      </div>
+
+      <!-- Run Panel -->
+      <div id="panel-run" class="panel active">
+        <div id="run-toolbar">
+          <button class="btn primary" id="run-btn" onclick="runSuite()" disabled>▶ Run Selected Suite</button>
+          <button class="btn danger" id="stop-btn" onclick="stopRun()" style="display:none">■ Stop</button>
+          <span id="run-status" class="o-dim">Select a suite from the sidebar and click Run</span>
+        </div>
+        <div id="output-box"><span class="o-dim">Output will appear here…</span></div>
+      </div>
+
+      <!-- Editor Panel -->
+      <div id="panel-editor" class="panel">
+        <div id="editor-toolbar">
+          <span id="editor-filename" class="o-dim">No file open</span>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="saveFile()">💾 Save</button>
+          <button class="btn" onclick="runFile()">▶ Run File</button>
+        </div>
+        <textarea id="editor-area" spellcheck="false" placeholder="Select a test file from the sidebar…"></textarea>
+      </div>
+
+      <!-- Generate Panel -->
+      <div id="panel-generate" class="panel">
+        <div id="gen-form">
+          <div>
+            <div class="field-label">Source module to test (dotted path)</div>
+            <input type="text" id="gen-module" class="field-input" placeholder="e.g. src.gateway.events">
+          </div>
+          <div>
+            <div class="field-label">What should the tests verify?</div>
+            <textarea id="gen-desc" class="field-input" placeholder="e.g. Verify publish_event() caches terminal events and subscribe_task_events() returns cached events to late subscribers"></textarea>
+          </div>
+          <div>
+            <div class="field-label">Append generated tests to file (relative to tests/)</div>
+            <input type="text" id="gen-target" class="field-input" placeholder="e.g. test_smoke.py">
+          </div>
+          <div style="display:flex; gap:8px; align-items:center">
+            <button class="btn primary" onclick="generateTests()">✦ Generate Tests</button>
+            <label style="font-size:12px; color:var(--dim)">
+              <input type="checkbox" id="gen-append" checked> Append to file automatically
+            </label>
+            <span id="gen-status"></span>
+          </div>
+        </div>
+        <div id="gen-output"></div>
+      </div>
+
+      <!-- History Panel -->
+      <div id="panel-history" class="panel">
+        <div style="padding:8px 14px; border-bottom:1px solid var(--border); display:flex; gap:8px">
+          <button class="btn" onclick="loadHistory()">↻ Refresh</button>
+          <span class="o-dim" style="font-size:11px; align-self:center">Last 50 runs (in-process)</span>
+        </div>
+        <div id="history-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+const S = {
+  apiKey:      '',
+  selectedSuite: null,
+  selectedFile: null,
+  activeES:    null,
+};
+const APIKEY_KEY = 'lf_testlab_key';
+
+// ── Init ──────────────────────────────────────────────────────────
+(function init() {
+  const saved = localStorage.getItem(APIKEY_KEY);
+  if (saved) { document.getElementById('admin-key').value = saved; S.apiKey = saved; }
+  document.getElementById('admin-key').addEventListener('input', e => {
+    S.apiKey = e.target.value.trim();
+    if (S.apiKey) localStorage.setItem(APIKEY_KEY, S.apiKey);
+    else         localStorage.removeItem(APIKEY_KEY);
+  });
+  if (S.apiKey) loadAll();
+})();
+
+// ── Tab switching ─────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const panels = ['run','editor','generate','history'];
+    t.classList.toggle('active', panels[i] === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'history') loadHistory();
+}
+
+// ── Auth headers ──────────────────────────────────────────────────
+function headers() {
+  return { 'Authorization': 'Bearer ' + S.apiKey, 'Content-Type': 'application/json' };
+}
+
+// ── Load everything ───────────────────────────────────────────────
+async function loadAll() {
+  S.apiKey = document.getElementById('admin-key').value.trim();
+  if (!S.apiKey) { alert('Enter your admin API key first.'); return; }
+  localStorage.setItem(APIKEY_KEY, S.apiKey);
+  await Promise.all([loadSuites(), loadFiles()]);
+}
+
+async function loadSuites() {
+  try {
+    const r = await fetch('/suites', { headers: headers() });
+    if (!r.ok) { alert('Auth failed — check your admin key.'); return; }
+    const suites = await r.json();
+    const el = document.getElementById('suite-list');
+    el.innerHTML = '';
+    suites.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'suite-btn';
+      btn.innerHTML = `<span class="suite-label">${s.label}</span><span class="suite-desc">${s.description}</span>`;
+      btn.onclick = () => selectSuite(s.id, btn);
+      el.appendChild(btn);
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function loadFiles() {
+  try {
+    const r = await fetch('/files', { headers: headers() });
+    if (!r.ok) return;
+    const files = await r.json();
+    const el = document.getElementById('file-list');
+    el.innerHTML = '';
+    files.forEach(f => {
+      const btn = document.createElement('button');
+      btn.className = 'file-item';
+      btn.title = f.path;
+      btn.textContent = f.path;
+      btn.onclick = () => openFile(f.path, btn);
+      el.appendChild(btn);
+    });
+  } catch(e) { console.error(e); }
+}
+
+// ── Suite selection ───────────────────────────────────────────────
+function selectSuite(id, btn) {
+  S.selectedSuite = id;
+  document.querySelectorAll('.suite-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('run-status').textContent = 'Ready to run: ' + id;
+  document.getElementById('run-status').className = 'o-dim';
+  showTab('run');
+}
+
+// ── Run suite ─────────────────────────────────────────────────────
+function runSuite() {
+  if (!S.selectedSuite) return;
+  const out = document.getElementById('output-box');
+  out.innerHTML = '';
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('stop-btn').style.display = 'inline-block';
+  setRunStatus('running', '● Running ' + S.selectedSuite + '…');
+
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+
+  // Use fetch+ReadableStream for SSE (EventSource doesn't support POST + custom headers)
+  fetch('/run', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ suite: S.selectedSuite }),
+  }).then(r => {
+    if (!r.ok) { r.json().then(e => appendOut('[error] ' + (e.detail||JSON.stringify(e)) + '\n', 'o-fail')); finishRun('failed'); return; }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    function pump() {
+      reader.read().then(({ done, value }) => {
+        if (done) { finishRun('done'); return; }
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        lines.forEach(l => {
+          if (l.startsWith('data:')) {
+            try {
+              const d = JSON.parse(l.slice(5).trim());
+              if (d.line !== undefined) appendOutputLine(d.line);
+              else if (d.status) {
+                const ok = d.status === 'passed';
+                finishRun(d.status, d);
+              }
+            } catch(_) {}
+          }
+        });
+        pump();
+      }).catch(() => finishRun('disconnected'));
+    }
+    pump();
+  }).catch(e => { appendOut('[network error] ' + e.message + '\n', 'o-fail'); finishRun('failed'); });
+}
+
+function stopRun() {
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+  finishRun('stopped');
+}
+
+function appendOutputLine(line) {
+  const out = document.getElementById('output-box');
+  const span = document.createElement('span');
+  // Color-code PASS/FAIL/ERROR lines
+  if (/PASSED/.test(line))       span.className = 'o-pass';
+  else if (/FAILED|ERROR/.test(line)) span.className = 'o-fail';
+  else if (/WARN/.test(line))    span.className = 'o-warn';
+  else if (/^=/.test(line.trim())) span.className = 'o-info';
+  span.textContent = line;
+  out.appendChild(span);
+  out.scrollTop = out.scrollHeight;
+}
+
+function appendOut(text, cls) {
+  const out = document.getElementById('output-box');
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = text;
+  out.appendChild(span);
+}
+
+function setRunStatus(state, msg) {
+  const el = document.getElementById('run-status');
+  el.textContent = msg;
+  el.className = state === 'running' ? 'o-info' : state === 'passed' ? 'o-pass' : 'o-fail';
+}
+
+function finishRun(status, data) {
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('stop-btn').style.display = 'none';
+  S.activeES = null;
+  if (data && data.elapsed_seconds !== undefined) {
+    const msg = `${status.toUpperCase()} — ${data.elapsed_seconds}s`;
+    setRunStatus(status === 'passed' ? 'passed' : 'failed', msg);
+  } else {
+    setRunStatus(status, status.toUpperCase());
+  }
+  loadHistory();  // refresh history tab
+}
+
+// ── File editor ───────────────────────────────────────────────────
+async function openFile(path, btn) {
+  S.selectedFile = path;
+  document.querySelectorAll('.file-item').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  showTab('editor');
+  document.getElementById('editor-filename').textContent = path;
+
+  try {
+    const r = await fetch('/files/' + encodeURIComponent(path), { headers: headers() });
+    if (!r.ok) { alert('Failed to load file'); return; }
+    const d = await r.json();
+    document.getElementById('editor-area').value = d.content;
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function saveFile() {
+  if (!S.selectedFile) { alert('No file open'); return; }
+  const content = document.getElementById('editor-area').value;
+  try {
+    const r = await fetch('/files/' + encodeURIComponent(S.selectedFile), {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ content }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      document.getElementById('editor-filename').textContent = S.selectedFile + ' ✓ saved (' + d.size + ' bytes)';
+      setTimeout(() => { document.getElementById('editor-filename').textContent = S.selectedFile; }, 2000);
+    } else { alert('Save failed'); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function runFile() {
+  if (!S.selectedFile) { alert('No file open'); return; }
+  // Switch to run tab and trigger a "custom" run of this specific file
+  showTab('run');
+  const out = document.getElementById('output-box');
+  out.innerHTML = '';
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('stop-btn').style.display = 'inline-block';
+  setRunStatus('running', '● Running ' + S.selectedFile + '…');
+
+  fetch('/run', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ suite: 'smoke', extra_args: ['tests/' + S.selectedFile] }),
+  }).then(r => {
+    if (!r.ok) { finishRun('failed'); return; }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    function pump() {
+      reader.read().then(({ done, value }) => {
+        if (done) { finishRun('done'); return; }
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        lines.forEach(l => {
+          if (l.startsWith('data:')) {
+            try { const d = JSON.parse(l.slice(5).trim()); if (d.line) appendOutputLine(d.line); } catch(_) {}
+          }
+        });
+        pump();
+      }).catch(() => finishRun('disconnected'));
+    }
+    pump();
+  });
+}
+
+// ── LLM generate ─────────────────────────────────────────────────
+async function generateTests() {
+  const module = document.getElementById('gen-module').value.trim();
+  const desc   = document.getElementById('gen-desc').value.trim();
+  const target = document.getElementById('gen-target').value.trim();
+  const append = document.getElementById('gen-append').checked;
+
+  if (!module || !desc) { alert('Module path and description are required.'); return; }
+
+  const status = document.getElementById('gen-status');
+  const out    = document.getElementById('gen-output');
+  status.textContent = '⟳ Generating…';
+  status.className   = 'o-info';
+  out.style.display  = 'none';
+
+  try {
+    const r = await fetch('/generate', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ module_path: module, description: desc, target_file: target || null, append }),
+    });
+    const d = await r.json();
+    if (!r.ok) { status.textContent = '✗ ' + (d.detail || 'Error'); status.className = 'o-fail'; return; }
+
+    out.textContent   = d.generated;
+    out.style.display = 'block';
+    status.textContent = d.appended ? `✓ Appended to ${d.target_file}` : '✓ Generated (not appended)';
+    status.className   = 'o-pass';
+    if (d.appended) loadFiles();  // refresh file list
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.className = 'o-fail';
+  }
+}
+
+// ── History ───────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const r = await fetch('/history', { headers: headers() });
+    if (!r.ok) return;
+    const runs = await r.json();
+    const el = document.getElementById('history-list');
+    if (!runs.length) { el.innerHTML = '<div style="padding:12px; color:var(--dim)">No runs yet.</div>'; return; }
+    el.innerHTML = '';
+    runs.forEach(h => {
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      const badgeCls = h.status === 'passed' ? 'badge-passed' : 'badge-failed';
+      const ts = new Date(h.ts).toLocaleTimeString();
+      row.innerHTML = `
+        <span class="hist-badge ${badgeCls}">${h.status.toUpperCase()}</span>
+        <span class="hist-suite">${h.suite}</span>
+        <span class="hist-time">${ts}</span>
+        <span class="hist-elapsed">${h.elapsed_seconds}s</span>
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {}
+}
+</script>
+</body>
+</html>

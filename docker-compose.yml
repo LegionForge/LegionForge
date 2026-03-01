@@ -1,23 +1,31 @@
 # docker-compose.yml
 # LegionForge container stack.
 #
-# Phase 2 scope:
-#   - guardian: runs (security sidecar on 127.0.0.1:9766)
-#   - agent-base: build-only profile (not run in Phase 2)
+# Default services (always run):
+#   - guardian: security sidecar (127.0.0.1:9766)
 #
-# PostgreSQL and Ollama stay native (Homebrew) in Phase 2:
-#   - Containerising Postgres would require remapping pgvector's dylib
-#     (most fragile dependency in the stack).
-#   - Containerising Ollama loses Apple Silicon Metal GPU access.
+# Optional profile: ollama-docker
+#   Runs Ollama in a container on the internal legionforge-net network.
+#   NOT exposed to the host or external network — only LegionForge containers
+#   reach it via http://ollama:11434.
 #
-# Guardian connects to native services via host.docker.internal.
+#   ⚠️  IMPORTANT TRADE-OFF on Apple Silicon:
+#   Containerised Ollama runs CPU-only (no Metal GPU acceleration).
+#   Inference is 3–5x slower than native Homebrew Ollama on M-series chips.
+#   Use the Docker profile only when:
+#     - Deploying to Linux/cloud (Docker is the preferred mode there)
+#     - Testing in CI without a GPU
+#     - You want strict network isolation and accept the CPU-only penalty
+#
+#   Default (recommended for Apple Silicon dev): native Ollama via Homebrew.
+#   Services reach native Ollama via host.docker.internal:11434.
 #
 # Usage:
-#   make guardian-start   — start Guardian in background
-#   make guardian-stop    — stop Guardian
-#   make guardian-logs    — tail Guardian logs
-#   make docker-build     — build all images
-#   make docker-up        — start all runnable services
+#   make guardian-start                  — start Guardian (default)
+#   make ollama-docker-start             — start Dockerised Ollama (CPU-only)
+#   make ollama-docker-stop              — stop Dockerised Ollama
+#   make docker-build                    — build all images
+#   make docker-up                       — start all runnable default services
 
 services:
   guardian:
@@ -41,13 +49,17 @@ services:
       # Add to ~/.zshrc:
       #   export TASK_TOKEN_SECRET=$(security find-generic-password -s legionforge_task_tokens -a api_key -w 2>/dev/null)
       TASK_TOKEN_SECRET: ${TASK_TOKEN_SECRET:-}
-      # Ollama (native, Metal GPU) via host.docker.internal
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Ollama: defaults to native Homebrew Ollama via host.docker.internal.
+      # When using Dockerised Ollama (make ollama-docker-start), override with:
+      #   OLLAMA_BASE_URL=http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       # Guardian config — auth enabled by default; override with GUARDIAN_REQUIRE_AUTH=false
       # only in dev environments without a configured TASK_TOKEN_SECRET.
       GUARDIAN_REQUIRE_AUTH: "true"
       PYTHONPATH: /app
       LOG_LEVEL: info
+    networks:
+      - legionforge-net
     extra_hosts:
       # Required on Linux; macOS Docker Desktop provides this automatically
       - "host.docker.internal:host-gateway"
@@ -134,3 +146,78 @@ services:
       - "host.docker.internal:host-gateway"
     # No ports — pentest runs are one-shot jobs, not persistent services
     # No restart policy — runs once and exits
+
+  # ── Dockerised Ollama (optional, internal-only) ────────────────────────────
+  #
+  # Profile: ollama-docker
+  # Start:   docker-compose --profile ollama-docker up -d ollama
+  #          OR: make ollama-docker-start
+  #
+  # Network: Only reachable by other containers on legionforge-net.
+  #          NOT bound to a host port — external network cannot reach Ollama.
+  #
+  # CPU-only on Apple Silicon:
+  #   The official ollama/ollama image does not have access to the Metal GPU
+  #   from inside Docker Desktop. Inference will run on CPU cores only.
+  #   Throughput: ~5–15 tok/s for 8B models (vs ~60+ tok/s native with Metal).
+  #
+  # Models:
+  #   Stored in the named volume 'ollama-models' for persistence across restarts.
+  #   On first start, pull models manually:
+  #     docker exec legionforge-ollama ollama pull llama3.1:8b
+  #     docker exec legionforge-ollama ollama pull qwen2.5:3b
+  #     docker exec legionforge-ollama ollama pull nomic-embed-text
+  #   OR use: make ollama-docker-pull
+  #
+  # Config for gateway/agents when using Docker Ollama:
+  #   Set OLLAMA_BASE_URL=http://ollama:11434 inside other containers, OR
+  #   set OLLAMA_BASE_URL=http://localhost:11436 from the host
+  #   (port 11436 is the host-facing port only when OLLAMA_EXPOSE_HOST=true).
+  #
+  ollama:
+    image: ollama/ollama:latest
+    container_name: legionforge-ollama
+    profiles:
+      - ollama-docker
+    restart: unless-stopped
+    networks:
+      - legionforge-net
+    # No host-port binding by default — Ollama is internal only.
+    # Uncomment below ONLY for local dev debugging (never in production):
+    # ports:
+    #   - "127.0.0.1:11436:11434"  # 127.0.0.1 only, non-standard port
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      # Disable Ollama's own telemetry
+      OLLAMA_NO_PRUNE: "1"
+      # Bind to all container interfaces (required for container-to-container)
+      OLLAMA_HOST: "0.0.0.0:11434"
+    mem_limit: 12g          # Cap at 12GB — leaves headroom for gateway + guardian
+    cpus: 8.0               # Allow up to 8 CPU cores for inference
+    healthcheck:
+      test: >
+        sh -c "curl -sf http://localhost:11434/api/tags > /dev/null"
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Gateway (with Docker Ollama support) ──────────────────────────────────
+  # When running with the ollama-docker profile, other containers should
+  # set OLLAMA_BASE_URL=http://ollama:11434. The guardian and gateway
+  # services inherit this when the profile is active.
+
+networks:
+  legionforge-net:
+    driver: bridge
+    internal: true   # No external routing — containers only talk to each other
+
+volumes:
+  ollama-models:
+    name: legionforge-ollama-models

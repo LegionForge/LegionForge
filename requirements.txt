@@ -81,3 +81,5 @@ pytest~=8.0
 pytest-asyncio~=0.23
 black~=24.0                      # Code formatter (required for make lint / make format)
 bandit~=1.8                      # Static security analysis (required for make security-audit)
+playwright~=1.50                 # Browser automation for UI tests (make test-ui)
+pytest-playwright~=0.6           # Playwright pytest plugin

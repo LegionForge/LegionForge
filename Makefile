@@ -92,14 +92,33 @@ help:
 	@echo "  make db-init      — initialize PostgreSQL and tables"
 	@echo "  make db-start     — start PostgreSQL service"
 	@echo "  make db-stop      — stop PostgreSQL service"
-	@echo "  make ollama-start — start Ollama service"
+	@echo "  make ollama-start — start native Ollama service (Homebrew, Metal GPU)"
 	@echo "  make ollama-warm  — warm up local models"
+	@echo "  make ollama-docker-start — start Dockerised Ollama (CPU-only, internal network)"
+	@echo "  make ollama-docker-stop  — stop Dockerised Ollama"
+	@echo "  make ollama-docker-pull  — pull models into Dockerised Ollama"
+	@echo "  make ollama-docker-status — check Dockerised Ollama health"
 	@echo "  make models       — list loaded Ollama models"
 	@echo "  make install      — install/update Python packages"
 	@echo "  make test         — run all tests"
 	@echo "  make test-fast    — run tests excluding slow ones"
 	@echo "  make test-integration — run integration tests (requires PostgreSQL)"
 	@echo "  make test-all     — run smoke + integration tests"
+	@echo "  make test-ui      — run 40 Playwright UI tests (headless Chromium)"
+	@echo "  make test-ui-headed — run UI tests with browser visible (debug)"
+	@echo "  make install-browsers — install Playwright Chromium (one-time)"
+	@echo "  make build-testlab  — build legionforge-testlab Docker image (Phase 18)"
+	@echo "  make testlab-start  — start TestLab admin UI on :8090 (Docker)"
+	@echo "  make testlab-stop   — stop TestLab container"
+	@echo "  make testlab-dev    — run TestLab locally without Docker"
+	@echo "  make test-functional     — 25 functional gateway tests (mock, no services)"
+	@echo "  make test-security-attacks — 35 security attack tests (mock)"
+	@echo "  make test-dos        — 15 DOS resilience tests (mock)"
+	@echo "  make test-auth-attacks — 20 auth attack tests (mock)"
+	@echo "  make test-data-attacks — 15 data/PII attack tests (mock)"
+	@echo "  make test-novel      — LLM-generated tests (requires Ollama)"
+	@echo "  make test-cve        — CVE-based tests (requires network + Ollama)"
+	@echo "  make test-testlab-all — all 110+ testlab_suite tests"
 	@echo "  make build-gateway    — build legionforge-gateway Docker image (Phase 11)"
 	@echo "  make gateway-start-docker — run gateway in Docker (Phase 11)"
 	@echo "  make lint         — run black formatter check"
@@ -293,12 +312,57 @@ print('✅ Database initialized')"
 db-shell:
 	@psql -U "$${POSTGRES_USER:-jpc}" -d legionforge
 
-# ── Ollama ────────────────────────────────────────────────────
+# ── Ollama (native Homebrew) ───────────────────────────────────
 .PHONY: ollama-start
 ollama-start:
 	@brew services start ollama 2>/dev/null || true
 	@sleep 2
 	@echo "✅ Ollama started"
+
+## ── Dockerised Ollama (internal network, CPU-only on Apple Silicon) ─────────
+# ⚠ On Apple Silicon, containerised Ollama runs CPU-only (no Metal GPU).
+#   Inference is 3–5x slower than native Homebrew Ollama.
+#   Use for Linux/cloud deployments or when GPU access isn't required.
+#   Gateway/agents must set OLLAMA_BASE_URL=http://ollama:11434 (container)
+#   or http://localhost:11436 (host, only if port is exposed).
+.PHONY: ollama-docker-start
+ollama-docker-start:  ## Start Dockerised Ollama on internal network (CPU-only on Apple Silicon)
+	@echo "⚠️  Starting Dockerised Ollama (CPU-only on Apple Silicon — 3–5x slower than native)"
+	@docker-compose --profile ollama-docker up -d ollama
+	@echo "Waiting for Ollama to be ready..."
+	@for i in $$(seq 1 30); do \
+	  docker exec legionforge-ollama curl -sf http://localhost:11434/api/tags > /dev/null 2>&1 && break; \
+	  sleep 2; \
+	done
+	@echo "✅ Dockerised Ollama running (internal network only — not exposed to host)"
+	@echo "   Containers reach it at: http://ollama:11434"
+	@echo "   Pull models: make ollama-docker-pull"
+
+.PHONY: ollama-docker-stop
+ollama-docker-stop:  ## Stop Dockerised Ollama
+	@docker-compose --profile ollama-docker stop ollama
+	@echo "✅ Dockerised Ollama stopped"
+
+.PHONY: ollama-docker-logs
+ollama-docker-logs:  ## Tail Dockerised Ollama logs
+	@docker logs -f legionforge-ollama
+
+.PHONY: ollama-docker-pull
+ollama-docker-pull:  ## Pull required models into Dockerised Ollama
+	@echo "Pulling models into Dockerised Ollama..."
+	@echo "  ⏳ llama3.1:8b (primary agent — ~4.7GB)"
+	@docker exec legionforge-ollama ollama pull llama3.1:8b
+	@echo "  ⏳ qwen2.5:3b (router — ~1.9GB)"
+	@docker exec legionforge-ollama ollama pull qwen2.5:3b
+	@echo "  ⏳ nomic-embed-text (embeddings — ~274MB)"
+	@docker exec legionforge-ollama ollama pull nomic-embed-text
+	@echo "✅ Models pulled into Dockerised Ollama"
+
+.PHONY: ollama-docker-status
+ollama-docker-status:  ## Check Dockerised Ollama health and loaded models
+	@docker exec legionforge-ollama ollama list 2>/dev/null \
+	  && echo "✅ Dockerised Ollama healthy" \
+	  || echo "❌ Dockerised Ollama not running — run: make ollama-docker-start"
 
 .PHONY: ollama-warm
 ollama-warm:
@@ -353,6 +417,104 @@ test-kerberos:  ## Run Kerberos live-KDC tests (requires KERBEROS_TEST_KDC=1 + K
 .PHONY: test-all
 test-all:  ## Run all tests (smoke + integration)
 	@cd $(BASE) && $(PYTEST) tests/ -v
+
+## ── UI Tests — Playwright browser automation (Phase 18) ───────
+.PHONY: install-browsers
+install-browsers:  ## Install Playwright Chromium browser (one-time setup)
+	@cd $(BASE) && $(PYTHON) -m playwright install chromium
+	@echo "✅ Chromium installed for Playwright UI tests"
+
+.PHONY: test-ui
+test-ui:  ## Run Playwright UI tests (headless Chromium, requires no running services)
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
+	@echo "✅ UI tests complete"
+
+.PHONY: test-ui-headed
+test-ui-headed:  ## Run Playwright UI tests with browser window visible (debug mode)
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui --headed --slowmo=300
+	@echo "✅ UI tests complete (headed)"
+
+.PHONY: test-ui-smoke
+test-ui-smoke:  ## Run quick subset of UI tests (page-load only)
+	@cd $(BASE) && $(PYTEST) tests/ui/test_page_load.py -v -m ui
+
+## ── TestLab — admin test management UI (Phase 18) ─────────────
+.PHONY: build-testlab
+build-testlab:  ## Build legionforge-testlab:latest Docker image
+	docker build -f $(BASE)/Dockerfile.testlab -t legionforge-testlab:latest $(BASE)
+	@echo "✅ legionforge-testlab:latest built"
+
+.PHONY: testlab-start
+testlab-start:  ## Start TestLab in Docker on :8090 (mounts live tests/ and src/)
+	@echo "🔑 Resolving admin key from TESTLAB_ADMIN_KEY or Keychain legionforge_health…"
+	@TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$($(PYTHON) -c "import keyring; print(keyring.get_password('legionforge_health','api_key') or '')" 2>/dev/null)} ; \
+	if [ -z "$$TESTLAB_ADMIN_KEY" ]; then echo "❌ Set TESTLAB_ADMIN_KEY or populate legionforge_health Keychain item"; exit 1; fi ; \
+	docker run --rm -d --name legionforge-testlab -p 8090:8090 \
+	  -e TESTLAB_ADMIN_KEY="$$TESTLAB_ADMIN_KEY" \
+	  -e POSTGRES_PASSWORD="$${POSTGRES_PASSWORD:-}" \
+	  -e TASK_TOKEN_SECRET="$${TASK_TOKEN_SECRET:-}" \
+	  -v $(BASE)/tests:/app/tests \
+	  -v $(BASE)/src:/app/src:ro \
+	  -v $(BASE)/config:/app/config:ro \
+	  --add-host host.docker.internal:host-gateway \
+	  legionforge-testlab:latest && \
+	echo "✅ TestLab running — open http://localhost:8090"
+
+.PHONY: testlab-stop
+testlab-stop:  ## Stop TestLab container
+	docker stop legionforge-testlab 2>/dev/null || true
+	@echo "✅ TestLab stopped"
+
+.PHONY: testlab-dev
+testlab-dev:  ## Run TestLab locally (no Docker) — development mode
+	@cd $(BASE) && \
+	  TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$($(PYTHON) -c "import keyring; print(keyring.get_password('legionforge_health','api_key') or '')" 2>/dev/null)} \
+	  $(PYTHON) -m uvicorn src.testlab.app:app --host 127.0.0.1 --port 8090 --reload
+	@echo "✅ TestLab dev server started on http://127.0.0.1:8090"
+
+## ── TestLab Attack Suite — Phase 19 ───────────────────────────
+.PHONY: test-functional
+test-functional:  ## 25 functional tests — mock gateway, no services
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_functional.py -v -m functional --tb=short
+	@echo "✅ Functional tests complete"
+
+.PHONY: test-security-attacks
+test-security-attacks:  ## 35 security attack tests — injection, session, protocol
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_security_attacks.py -v -m security --tb=short
+	@echo "✅ Security attack tests complete"
+
+.PHONY: test-dos
+test-dos:  ## 15 DOS resilience tests — flood, oversized body, protocol attacks
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_dos.py -v -m dos --tb=short
+	@echo "✅ DOS resilience tests complete"
+
+.PHONY: test-auth-attacks
+test-auth-attacks:  ## 20 authentication attack tests — token replay, timing, multi-auth
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_auth_attacks.py -v -m auth_attack --tb=short
+	@echo "✅ Auth attack tests complete"
+
+.PHONY: test-data-attacks
+test-data-attacks:  ## 15 data attack tests — PII, exfiltration, cross-user isolation
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_data_attacks.py -v -m data_attack --tb=short
+	@echo "✅ Data attack tests complete"
+
+.PHONY: test-novel
+test-novel:  ## LLM-generated tests (requires Ollama at OLLAMA_BASE_URL)
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_novel_llm.py tests/testlab_suite/test_novel_security.py -v --tb=short
+	@echo "✅ Novel LLM tests complete"
+
+.PHONY: test-cve
+test-cve:  ## CVE-based tests from NVD API (requires network + Ollama)
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_cve.py -v --tb=short
+	@echo "✅ CVE tests complete"
+
+.PHONY: test-testlab-all
+test-testlab-all:  ## All 110+ testlab_suite tests (excludes LLM/CVE tests)
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v --tb=short \
+	  --ignore=tests/testlab_suite/test_novel_llm.py \
+	  --ignore=tests/testlab_suite/test_novel_security.py \
+	  --ignore=tests/testlab_suite/test_cve.py
+	@echo "✅ All TestLab attack suite tests complete"
 
 ## ── Gateway Docker (Phase 11) ─────────────────────────────────
 .PHONY: build-gateway
