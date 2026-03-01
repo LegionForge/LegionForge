@@ -337,6 +337,18 @@ test-smoke:
 test-integration:  ## Run integration tests (requires PostgreSQL — make db-start first)
 	@cd $(BASE) && $(PYTEST) tests/test_integration.py -v -m "integration"
 
+.PHONY: test-kerberos
+test-kerberos:  ## Run Kerberos live-KDC tests (requires KERBEROS_TEST_KDC=1 + KDC setup — see docs/SCALING.md)
+	@cd $(BASE) && \
+	  KRB5_CONFIG=$$HOME/.krb5.conf \
+	  KRB5_KDC_PROFILE=$$HOME/.krb5kdc/kdc.conf \
+	  KERBEROS_TEST_KDC=1 \
+	  KERBEROS_REALM=$${KERBEROS_REALM:-TEST.LOCAL} \
+	  KERBEROS_KEYTAB=$${KERBEROS_KEYTAB:-/tmp/test.keytab} \
+	  KERBEROS_TEST_USER=$${KERBEROS_TEST_USER:-testuser} \
+	  KERBEROS_TEST_PASS=$${KERBEROS_TEST_PASS:-testpass} \
+	  $(PYTEST) tests/test_kerberos_integration.py -v
+
 .PHONY: test-all
 test-all:  ## Run all tests (smoke + integration)
 	@cd $(BASE) && $(PYTEST) tests/ -v

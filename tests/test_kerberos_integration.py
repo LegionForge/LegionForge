@@ -40,6 +40,7 @@ import base64
 import os
 
 import pytest
+import pytest_asyncio
 
 # ── Skip guard ────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,26 @@ _REALM = os.environ.get("KERBEROS_REALM", "TEST.LOCAL")
 _KEYTAB = os.environ.get("KERBEROS_KEYTAB", "/tmp/test.keytab")
 _TEST_USER = os.environ.get("KERBEROS_TEST_USER", "testuser")
 _TEST_PASS = os.environ.get("KERBEROS_TEST_PASS", "testpass")
+
+
+# ── DB fixture (session-scoped) ────────────────────────────────────────────────
+
+
+@pytest_asyncio.fixture(scope="session")
+async def _db():
+    """
+    Initialize the database pool for tests that call KerberosBackend.authenticate(),
+    which provisions users into gateway_users on first login.
+
+    Skips automatically if PostgreSQL is not reachable.
+    """
+    try:
+        from src.database import init_db
+
+        await init_db()
+        yield
+    except Exception as exc:
+        pytest.skip(f"PostgreSQL not available — skipping DB provisioning tests: {exc}")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,7 +156,7 @@ async def test_kerberos_backend_empty_credential_returns_none():
 
 @skip_without_kdc
 @pytest.mark.asyncio
-async def test_kerberos_spnego_accept_context():
+async def test_kerberos_spnego_accept_context(_db):
     """Full SPNEGO round-trip: initiate from test user, accept on server."""
     try:
         import gssapi  # noqa: F401
@@ -160,7 +181,7 @@ async def test_kerberos_spnego_accept_context():
 
 @skip_without_kdc
 @pytest.mark.asyncio
-async def test_kerberos_user_provisioned_on_first_auth():
+async def test_kerberos_user_provisioned_on_first_auth(_db):
     """
     After successful Kerberos auth, a gateway_users row is created (or already exists).
     Requires PostgreSQL in addition to KDC.
