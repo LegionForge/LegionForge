@@ -170,6 +170,49 @@ def create_run_config(
     return config
 
 
+# ── Checkpoint resume helper ─────────────────────────────────────────────────
+
+
+def resume_run_config(
+    thread_id: str,
+    tracing_enabled: bool = True,
+) -> tuple[None, dict]:
+    """
+    Return the correct (input, config) pair for resuming an interrupted run.
+
+    When resuming from a LangGraph checkpoint the graph input MUST be None so
+    that LangGraph hydrates the full state (including safeguard counters) from
+    the checkpoint store.  Passing a new SafeguardedState.initial() dict instead
+    resets step_count, action_history, and token_count to zero, silently
+    bypassing all three loop-protection layers for the resumed portion of the run.
+
+    Correct pattern::
+
+        input, config = resume_run_config(thread_id="existing-thread-id")
+        result = await graph.ainvoke(input, config=config)
+        # LangGraph loads state from checkpoint; counters continue from
+        # wherever the interrupted run left off.
+
+    Wrong pattern (DO NOT DO)::
+
+        # This resets all loop-protection counters:
+        state = SafeguardedState.initial(agent_id="researcher")
+        config = create_run_config(thread_id="existing-thread-id")
+        result = await graph.ainvoke(state, config=config)
+
+    Args:
+        thread_id:       The checkpoint thread ID of the interrupted run.
+                         Must match the thread_id used in the original run.
+        tracing_enabled: Passed through to the run config; does not affect
+                         state hydration from the checkpoint.
+
+    Returns:
+        (None, config) — unpack directly into graph.ainvoke / astream_events.
+    """
+    config = create_run_config(thread_id=thread_id, tracing_enabled=tracing_enabled)
+    return None, config
+
+
 # ── Layer 1: Step counter check ───────────────────────────────────────────────
 
 
