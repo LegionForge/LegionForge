@@ -1,74 +1,247 @@
 # LegionForge Architecture
 
-**Version:** 1.0.0 — Phase 16 complete
-**Last updated:** 2026-02-28
+**Version:** 1.0.1 — Phases 0–16 complete
+**Last updated:** 2026-03-01
 
 ---
 
 ## 1. System Component Map
 
-Every running process/service and how they connect.
+### Service Directory
+
+| Service | Port | URL | Auth | Role |
+|---|---|---|---|---|
+| **Gateway** | 8080 | `http://localhost:8080` | Bearer / Basic / Negotiate | User-facing: task submission, SSE streaming, web UI, A2A, MCP |
+| **Operator / Health** | 8765 | `http://localhost:8765` | Bearer (except `/health`) | Operator-facing: system status, crystallization HITL, pentest reports, tool revocation |
+| **Guardian Sidecar** | 9766 | `http://localhost:9766` | Bearer (`GUARDIAN_REQUIRE_AUTH`) | Security: 7-check deterministic validation on every tool call |
+| **Webhook Connector** | 8081 | `http://localhost:8081` | HMAC-SHA256 (inbound) | Channel: inbound/outbound webhook bridge to gateway |
+| **Ollama** | 11434 | `http://localhost:11434` | None | LLM inference: `llama3.1:8b`, `qwen2.5:3b`, `nomic-embed-text` |
+| **PostgreSQL 17** | 5432 | `postgresql://localhost:5432/legionforge` | Password (Keychain) | Primary data store: 16 tables, pgvector RAG, LangGraph checkpoints, audit log |
+| **Redis** | 6379 | `redis://localhost:6379/0` | None (local) | Optional: stream token cache + global budget counters (multi-instance only) |
+| **Discord connector** | — | Discord API | Bot token + Keychain | Channel: `!<task>` → gateway API |
+| **Telegram connector** | — | Telegram API (polling) | Bot token + Keychain | Channel: `/<task>` → gateway API |
+| **Slack connector** | — | Slack API (Socket Mode) | xoxb/xapp tokens | Channel: `!<task>` → gateway (no public URL needed) |
+
+---
+
+### System Architecture Diagram
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                           Mac M4 Mini 16 GB                              │
-│                                                                          │
-│  ┌──────────────────┐    ┌──────────────────────────────────────────┐    │
-│  │   Ollama :11434  │    │          PostgreSQL :5432                 │    │
-│  │                  │    │                                          │    │
-│  │  llama3.1:8b     │    │  DB: legionforge  (17 tables)            │    │
-│  │  qwen2.5:3b      │    │  Users: legionforge (admin, DDL only)    │    │
-│  │  nomic-embed     │    │         legionforge_app (app runtime)    │    │
-│  │  (models on      │    │                                          │    │
-│  │   ext drive)     │    │  LangGraph: checkpoints / blobs / writes │    │
-│  └────────┬─────────┘    │  Security: threat_events / audit_log /  │    │
-│           │              │           tool_registry / threat_rules   │    │
-│           │              │  RAG:     documents (pgvector, 768-dim)  │    │
-│           │              │  Ops:     api_usage / health_metrics     │    │
-│           │              │  Crystal: candidates / packages / anal.  │    │
-│           │              │  Pentest: runs / findings / prop. rules  │    │
-│           │              └─────────────────┬────────────────────────┘    │
-│           │                                │                             │
-│  ┌────────▼──────────────────────────────► │                             │
-│  │  Operator Health Server  :8765         ◄┘                             │
-│  │  src/health.py                                                        │
-│  │  · /health  /status  /metrics  /usage  /bom                          │
-│  │  · /rules  (Guardian rule approval)                                   │
-│  │  · /crystallization  (HITL review queue)                              │
-│  │  · /tools/{id}/revoke  · /pentest/*                                   │
-│  │  Bearer auth on all except /health                                    │
-│  └───────────────────────────────────────────────────────────────────────┘
-│                                                                          │
-│  ┌──────────────────────────────────────────────────────────────────┐    │
-│  │  Docker: Guardian Sidecar  :9766                                 │    │
-│  │  src/security/guardian.py                                        │    │
-│  │                                                                  │    │
-│  │  7-check deterministic pipeline — no LLM in hot path            │    │
-│  │  Hot-reloads threat_rules from DB every 10s                     │    │
-│  │  All SecureToolNode calls route through here                    │    │
-│  │  Bearer auth required (GUARDIAN_REQUIRE_AUTH=true default)      │    │
-│  └──────────────────────────────────────────────────────────────────┘    │
-│                                                                          │
-│  ┌──────────────────────────────────────────────────────────────────┐    │
-│  │  Agent Runtime (Python process — not yet containerized)          │    │
-│  │                                                                  │    │
-│  │  Available agents:                                               │    │
-│  │  · run_agent()         — base_graph.py template                  │    │
-│  │  · run_researcher()    — web fetch, RAG, Ed25519 tools           │    │
-│  │  · run_orchestrator()  — task routing, derived JWT tokens        │    │
-│  │  · run_observer()      — nominates crystallization candidates    │    │
-│  │  · run_crystallizer()  — generates deterministic tools           │    │
-│  │  · run_threat_analyst()— proposes Guardian rules                 │    │
-│  │  · run_pentest()       — air-gapped attack suite (Docker)        │    │
-│  │                                                                  │    │
-│  │  Entry: python src/health.py or direct run_* call               │    │
-│  └──────────────────────────────────────────────────────────────────┘    │
-│                                                                          │
-│  Docker: Dockerfile.analyzer — deny-default (--network none, read-only)  │
-│  Docker: Dockerfile.pentest  — air-gapped  (--network none, read-only)   │
-│                                                                          │
-│  External:  DuckDuckGo (web_search)  ·  Public HTTPS URLs (web_fetch)   │
-└──────────────────────────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │                        USER INTERFACES                                   │
+ │                                                                          │
+ │   Browser       Discord      Telegram      Slack        Webhook client   │
+ │   (Web UI)       bot          bot           bot         (any HTTP)       │
+ └────┬──────────────┬─────────────┬────────────┬──────────────┬───────────┘
+      │ HTTP/SSE     │ discord.py  │ polling    │ Socket Mode  │ HMAC POST
+      │ :8080/ui     │ gateway API │ gateway API│ gateway API  │ :8081
+      │              │             │            │              │
+      ▼              ▼             ▼            ▼              ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                      GATEWAY  :8080                                    │
+ │                                                                        │
+ │  Auth: Bearer · Basic · Negotiate                                      │
+ │  Backends: ApiKey · OIDC · GitHub OAuth · LDAP · Kerberos (GSSAPI)    │
+ │  Middleware: X-Request-ID · Prometheus counters                        │
+ │                                                                        │
+ │  POST   /tasks                  Submit task → task queue               │
+ │  GET    /tasks/{id}/stream      Live SSE stream (per-token)            │
+ │  GET    /tasks/{id}             Final result                           │
+ │  DELETE /tasks/{id}             Cancel in-flight task                  │
+ │  GET    /tasks                  Task history for current user          │
+ │  GET    /ui                     Browser web UI (static HTML)           │
+ │  GET    /.well-known/agent.json A2A Agent Card (public)                │
+ │  POST   /a2a/tasks              A2A-compatible task endpoint           │
+ │  GET    /mcp/tools              MCP tool discovery                     │
+ │  POST   /mcp/tools/invoke       MCP tool invocation                    │
+ │  GET    /metrics                Prometheus-format metrics (Bearer)     │
+ │  GET    /usage/me               Current user token budget status       │
+ │                                                                        │
+ │  WEBHOOK CONNECTOR  :8081  (separate process — make webhook-start)     │
+ │  POST /inbound  — HMAC-SHA256 verify → POST /tasks on gateway          │
+ │  GET  /health   — liveness probe for webhook service                   │
+ └───────────────────────────────┬────────────────────────────────────────┘
+                                 │ task worker dequeues from tasks table
+                                 │ (asyncio, in-process, FOR UPDATE SKIP LOCKED)
+                                 ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                       AGENT RUNTIME  (in-process)                     │
+ │                                                                        │
+ │  Agents: Orchestrator · Researcher · ThreatAnalyst · Observer          │
+ │          Crystallizer · PentestAgent                                   │
+ │                                                                        │
+ │  Framework: LangGraph — astream_events() → events.py → SSE pub/sub    │
+ │  Security:  TOCTOU snapshot → Guardian pre-check → SecureToolNode      │
+ │             input sanitize → execute → output sanitize → TOCTOU verify │
+ │                                                                        │
+ │  Tools: web_search · web_fetch · http_get · http_post                  │
+ │         file_read · file_write · code_execute (Docker sandbox)         │
+ │         fan_out_researchers (asyncio.gather + Semaphore)               │
+ └────────────────┬───────────────────────────────────────────────────────┘
+                  │ HTTP  POST :9766/check  — every tool call, synchronous
+                  ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │              GUARDIAN SIDECAR  :9766  (Docker)                        │
+ │                                                                        │
+ │  Deterministic — no LLM in hot path. Unpoisonable.                    │
+ │                                                                        │
+ │  Check 0: Tool revocation       → HALT if REVOKED                     │
+ │  Check 1: Registry + SHA-256    → HALT on hash mismatch               │
+ │  Check 2: Capability boundary   → HALT on violation                   │
+ │  Check 3: Destructive patterns  → HALT or LOG per tier                │
+ │  Check 4: Sequence contract     → HALT or LOG                         │
+ │  Check 5: Ed25519 signature     → HALT on invalid sig                 │
+ │  Check 6: Adaptive threat rules → hot-reload from DB every 10s        │
+ └────────────────┬───────────────────────────────────────────────────────┘
+                  │ reads threat_rules table (hot-reload every 10s)
+                  │ writes threat_events on violations
+                  │
+ ┌────────────────▼───────────────────────────────────────────────────────┐
+ │           OPERATOR / HEALTH SERVER  :8765                              │
+ │                                                                        │
+ │  GET  /health              Liveness probe (no auth)                    │
+ │  GET  /status              Full system status (30s TTL cache)          │
+ │  GET  /metrics             Performance metrics                         │
+ │  GET  /usage               API usage last 24h                         │
+ │  GET  /bom                 AI Bill of Materials                        │
+ │  GET  /crystallization/candidates        Pending HITL review queue     │
+ │  POST /crystallization/.../approve       Approve → sign → register     │
+ │  POST /crystallization/.../reject        Reject with reason            │
+ │  GET  /pentest/reports                   Pentest run history           │
+ │  POST /tools/{id}/revoke                 Emergency tool revocation     │
+ └────────────────────────────────────────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                           DATA LAYER                                   │
+ │                                                                        │
+ │  PostgreSQL 17  :5432                Ollama  :11434      Redis (opt.)  │
+ │  ────────────────────────────        ─────────────────   ────────────  │
+ │  DB: legionforge  (16 tables)        llama3.1:8b         lf:stream:*   │
+ │  LangGraph checkpointer              qwen2.5:3b          lf:budget:*   │
+ │  pgvector RAG (768-dim HNSW)         nomic-embed-text    SETEX 1800s   │
+ │  SHA-256 audit log hash chain        Metal GPU (native)  INCRBY daily  │
+ │  gateway_users (TEXT user_id)        models on ext drive               │
+ │  stream_tokens · tasks                                                 │
+ │  tool_registry · threat_events                                         │
+ │  threat_rules  · audit_log                                             │
+ │  crystallization_* · pentest_*                                         │
+ │  Users: legionforge (DDL) · legionforge_app (SELECT/INSERT/UPDATE/DEL) │
+ └────────────────────────────────────────────────────────────────────────┘
+
+ Docker images:
+   legionforge-gateway:latest    Gateway service — non-root uid 1001
+   legionforge-analyzer:latest   Pre-HITL AST analyzer — deny-default, --network none
+   legionforge-pentest:latest    PentestAgent — air-gapped, --network none, read-only
+   legionforge-sandbox:latest    code_execute sandbox — --network none, 30s, 256MB RAM
+   legionforge-testclient:latest HTTP test client (4 suites: basic/load/pentest/injection)
+   guardian:latest               Guardian sidecar — :9766, hot-reloads rules every 10s
+
+ External (optional):
+   LangSmith         — sanitized trace upload
+   OpenAI/Anthropic  — cloud LLM fallback when local queue depth exceeds threshold
+   DuckDuckGo        — web_search tool (web_fetch hits public HTTPS URLs directly)
+```
+
+---
+
+### Connection Rationale — Why Each Link Exists
+
+**Browser / Connectors → Gateway (:8080)**
+The gateway is the single authenticated entry point for all task submission. Every user
+interaction — whether from a browser, a Discord message, a Telegram command, or a
+webhook POST — becomes an authenticated `/tasks` API call. This means security policy
+(auth, rate limits, token budgets, audit) is enforced exactly once, in one place.
+
+**Connectors → Gateway (not direct to Agent Runtime)**
+Channel connectors (Discord, Telegram, Slack, Webhook) are deliberately thin. They
+do one thing: bridge a messaging platform to the gateway REST API. No agent logic, no
+tool access, no auth state beyond the gateway API key. If a connector is compromised,
+the attacker can read messages but must still pass gateway auth for every action.
+
+**Webhook Connector on a separate port (:8081)**
+The webhook service exposes a public inbound HTTP endpoint. The gateway (:8080) is also
+externally reachable, but its only entry point is POST /tasks which requires auth. The
+webhook service accepts unauthenticated POSTs and verifies them via HMAC-SHA256 before
+forwarding. Separating them allows the webhook service to be independently firewalled,
+and means a webhook HMAC bypass doesn't automatically grant gateway task access.
+
+**Gateway → Agent Runtime (task worker, in-process)**
+The gateway dequeues tasks from the `tasks` PostgreSQL table using `FOR UPDATE SKIP LOCKED`.
+This means multiple gateway instances (horizontal scaling, see `docs/SCALING.md`) safely
+share one task queue without a coordinator. The worker runs in the same process to avoid
+inter-process serialization overhead on streaming events.
+
+**Agent Runtime → Guardian (:9766, every tool call)**
+Every tool invocation passes through a synchronous HTTP call to Guardian before execution.
+This is intentional overhead. Guardian runs in a separate Docker process so it: (a) survives
+agent crashes without losing security state, (b) enforces cross-agent policies, (c) can be
+audited and upgraded independently of agent code. The HTTP boundary is also the reason
+Guardian is unpoisonable — injected content in the agent process cannot modify Guardian's
+deterministic checks.
+
+**Guardian → PostgreSQL (threat_rules hot-reload every 10s)**
+New threat rules are proposed by the Threat Analyst agent, approved by a human operator
+via the Health server, then stored in `threat_rules`. Guardian polls this table every 10s.
+Zero Guardian restarts required for rule updates. The human approval gate remains intact
+regardless of how frequently the Threat Analyst proposes changes.
+
+**Operator Server (:8765) separated from Gateway (:8080)**
+Different threat models require different services. The gateway is externally exposed and
+handles untrusted multi-user input. The operator server is restricted to trusted operators
+and exposes crystallization approval (mutates the tool registry), tool revocation
+(immediately halts tools), and pentest reports (sensitive findings). A gateway compromise
+must not automatically give access to the operator surface. Hard process separation
+enforces this at the OS level.
+
+**Redis (optional, not required by default)**
+A single Mac Mini with 1–4 users doesn't need Redis. The PostgreSQL `stream_tokens` table
+handles token persistence; the rate limiter handles budget tracking. Redis becomes worth the
+operational complexity when running multiple gateway instances (token data must survive across
+replicas) or when daily budget atomicity is required at >10 concurrent users. Set
+`gateway.redis_url` in the hardware profile YAML or `REDIS_URL` env var to activate.
+
+**Ollama runs native, not in Docker**
+Ollama uses Metal GPU acceleration on Apple Silicon. Docker on macOS cannot pass through
+the Metal GPU to containers. Running Ollama natively (and leaving it native) is the
+correct architecture for this hardware. The rest of the stack is container-portable to
+AWS/GCP/Azure; only Ollama is Mac-specific.
+
+---
+
+### Trust Zones
+
+```
+ ╔════════════════════════════════════════════╗
+ ║  UNTRUSTED ZONE                            ║
+ ║  · Internet (web_fetch targets)            ║
+ ║  · Webhook inbound POST bodies             ║
+ ║  · Discord / Telegram / Slack messages     ║
+ ╚════════════════════════════════════════════╝
+                     │
+                     │ sanitize_input() + HMAC verify (webhook)
+                     ▼
+ ╔════════════════════════════════════════════╗
+ ║  AUTHENTICATED ZONE                        ║
+ ║  · Gateway :8080 (after require_user())    ║
+ ║  · Multi-user; rate-limited per user       ║
+ ╚════════════════════════════════════════════╝
+                     │
+                     │ task tokens (JWT, scoped to run)
+                     ▼
+ ╔════════════════════════════════════════════╗
+ ║  EXECUTION ZONE                            ║
+ ║  · Agent Runtime (in-process)              ║
+ ║  · Guardian sidecar :9766                  ║
+ ║  · Sandbox containers (code_execute)       ║
+ ╚════════════════════════════════════════════╝
+                     │
+                     │ Bearer (legionforge_health token)
+                     ▼
+ ╔════════════════════════════════════════════╗
+ ║  OPERATOR ZONE                             ║
+ ║  · Health server :8765                     ║
+ ║  · Human-gated mutations only              ║
+ ╚════════════════════════════════════════════╝
 ```
 
 ---
@@ -78,13 +251,26 @@ Every running process/service and how they connect.
 Arrow means "imports from". Security primitives are at the root (no project imports).
 
 ```
-agents/
-  researcher.py  orchestrator.py  observer.py  crystallizer.py
-  threat_analyst.py  pentest_agent.py
-       │                │                │
-       └────────────────┴────────────────┘
-                        │
-                        ▼
+gateway/
+  app.py  routes/*.py  worker.py  auth.py  events.py  metrics.py  middleware.py
+  state.py (Redis/DB stream token router)
+  backends/: api_key  oidc  github  ldap_backend  kerberos  registry
+       │
+       └──────────────────────────────────────────────────────┐
+                                                              │
+connectors/
+  discord.py  telegram.py  slack.py  webhook.py              │
+  base.py (_load_secret, _consume_sse, _run_task)            │
+       │                                                      │
+       └──────────────────────────────────────────────────────┤
+                                                              │
+agents/                                                       │
+  researcher.py  orchestrator.py  observer.py  crystallizer.py│
+  threat_analyst.py  pentest_agent.py                         │
+       │                │                │                    │
+       └────────────────┴────────────────┘                    │
+                        │                                     │
+                        ▼                                     │
                   base_graph.py ──────────────────► safeguards.py
                         │    │                           │
                         │    └────────────────┐          │
@@ -110,13 +296,16 @@ agents/
 
 tools/
   signing.py  crystallization_analyzer.py  model_integrity.py  pentest_tools.py
-       └──────── imported by agents as needed ────────────────────────────────┘
+  http_tools.py  file_tools.py  code_tools.py
+       └──────── imported by agents and gateway as needed ──────────────────────┘
 ```
 
 **Key rules:**
 - `security/core.py` has zero project-level imports — root of the security dependency tree. Independently testable, no circular import risk.
 - `config/settings.py` is the configuration singleton — imported by almost everything, depends on nothing.
 - New agents MUST import `base_graph.py` patterns, not re-implement them.
+- `gateway/backends/` implement the `AuthBackend` protocol — add new providers here without touching `auth.py` or `app.py`.
+- `connectors/base.py` contains the only shared connector logic — each connector is otherwise an independent process.
 
 ---
 
@@ -800,6 +989,19 @@ How a tool gets from "code" to "allowed to run inside an agent".
   config/settings.py            │  TelegramConfig, SlackConfig, WebhookConfig, ConnectorsConfig
   requirements.txt              │  python-telegram-bot~=21.0, slack-bolt~=1.18 added
   484 smoke tests        │  +13 from Phase 16
+
+  v1.0.1 ✅  Post-Release Patches (PRs #36–#42)
+  ─────────────────────────────────────────────────────────────────
+  pytest.ini session-scoped     │  asyncio_mode=strict, session event loop for DB fixture
+  Ollama integration tests      │  3 scaffolded → 3 real tests; PR #36
+  MODEL_INTEGRITY_STRICT        │  Runtime env var override + /status section; PR #38
+  resume_run_config()           │  Loop protection on checkpoint resume; PR #39
+  gateway_users.user_id TEXT    │  UUID→TEXT + idempotent ALTER TABLE migrations; PR #42
+  api_key_hash UNIQUE dropped   │  [OAUTH-NO-KEY] sentinel safe across all OAuth backends
+  KerberosBackend sentinel fix  │  [KERBEROS-NO-KEY] → [OAUTH-NO-KEY] (ApiKeyBackend guard)
+  Kerberos live KDC             │  MIT Kerberos 1.22.2 KDC; make test-kerberos 5/5; PR #41
+  492 smoke tests        │  +8 from v1.0.1 patches
+  38 integration tests   │  all Ollama tests live; 5/5 Kerberos
 ```
 
 ---
@@ -846,9 +1048,27 @@ threat models, different auth requirements, different rate limiting, different
 audit requirements. Coupling them in one process would mix trust levels and complicate
 independent security audit of each.
 
+**Why is `gateway_users.user_id` TEXT instead of UUID?**
+OAuth providers (OIDC, GitHub, LDAP, Kerberos) issue natural string identifiers:
+`"oidc:sub123"`, `"github:12345678"`, `"kerberos:user@REALM"`. PostgreSQL UUID columns
+reject these on insert. Using TEXT with `DEFAULT gen_random_uuid()::text` gives
+API-key users an auto-generated UUID-like ID while allowing OAuth users to use their
+natural provider-scoped identifiers. The `UNIQUE` constraint on `api_key_hash` was also
+dropped — the `[OAUTH-NO-KEY]` sentinel shared by all four OAuth backends would
+violate it on second-user insertion.
+
+**Why are connectors separate processes from the gateway?**
+Connectors bridge external messaging platforms to the gateway API. They are
+intentionally process-isolated so that: (a) a connector crash doesn't affect the
+gateway or other connectors, (b) each connector can be started/stopped independently
+(`make discord-start`, `make slack-start`), and (c) the gateway's threat surface does
+not expand when a new connector is added.
+
 *Related docs:*
-- [`docs/VISION.md`](./VISION.md) — product vision and Phase 8+ architecture
-- [`docs/PHASE_8_GATEWAY_SPEC.md`](./PHASE_8_GATEWAY_SPEC.md) — Phase 8 implementation plan
+- [`docs/quick-start.md`](./quick-start.md) — step-by-step setup and connection guide
+- [`docs/VISION.md`](./VISION.md) — product vision and architecture rationale
+- [`docs/SCALING.md`](./SCALING.md) — horizontal scaling, Redis, Kerberos KDC setup
+- [`docs/PHASE_8_GATEWAY_SPEC.md`](./PHASE_8_GATEWAY_SPEC.md) — gateway API contract
 - [`docs/A2A_CONFORMANCE.md`](./A2A_CONFORMANCE.md) — A2A protocol conformance
 - [`SECURITY.md`](../SECURITY.md) — threat model and security policy
 - [`PHASE_PLAN.md`](../PHASE_PLAN.md) — full phased roadmap

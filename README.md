@@ -14,6 +14,19 @@ LegionForge is an open-source framework for building hardened AI agent systems o
 
 ---
 
+## What Can It Do?
+
+Submit any task — research, summarization, code execution, data analysis — via the web UI, a REST API, or a messaging app. Watch it execute in real time as the agent reasons, calls tools, and streams results token by token.
+
+**User interfaces:**
+- **Web UI** at `http://localhost:8080/ui` — browser-based, no client install needed
+- **Discord** — `!<task>` in any channel the bot can see
+- **Telegram** — `/<task>` to your bot
+- **Slack** — `!<task>` (Socket Mode, no public URL needed)
+- **Webhook** — `POST :8081/inbound` from n8n, Zapier, or any HTTP client
+
+---
+
 ## Core Design Principles
 
 | Principle | Implementation |
@@ -29,15 +42,16 @@ LegionForge is an open-source framework for building hardened AI agent systems o
 ## Security Architecture
 
 ### Guardian Sidecar
-A standalone FastAPI process (`:9766`) that runs a **deterministic-only** 6-check pipeline — no LLM calls in the hot path. Fast, auditable, unpoisonable.
+A standalone FastAPI process (`:9766`) that runs a **deterministic-only** 7-check pipeline — no LLM calls in the hot path. Fast, auditable, unpoisonable.
 
 ```
-Check 0: Tool revocation (REVOKED status — immediate halt)
-Check 1: Tool registry + hash validation
+Check 0: Tool revocation  (immediate halt if REVOKED)
+Check 1: Tool registry + SHA-256 hash validation
 Check 2: Capability boundary enforcement (negative capability list)
-Check 3: Destructive pattern detection
+Check 3: Destructive pattern detection in tool args
 Check 4: Agent sequence contract validation
-Check 5: Hash integrity (Ed25519 signed tools)
+Check 5: Ed25519 signature verification
+Check 6: Adaptive threat rules (hot-reloaded every 10s — no restart needed)
 ```
 
 ### Crystallization Pipeline
@@ -47,16 +61,29 @@ When agents solve the same deterministic problem repeatedly, the Observer nomina
 Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signed tool
 ```
 
+### Multi-Provider Authentication
+The gateway supports five auth backends — swap without touching agent code:
+
+| Backend | Scheme | Use case |
+|---|---|---|
+| `ApiKeyBackend` | Bearer | Default — bcrypt API keys in PostgreSQL |
+| `OIDCBackend` | Bearer | Google, Okta, Auth0, Azure AD, Keycloak, Cognito |
+| `GitHubOAuthBackend` | Bearer | GitHub OAuth app tokens |
+| `LDAPBackend` | Basic | OpenLDAP, Active Directory |
+| `KerberosBackend` | Negotiate | Kerberos/GSSAPI (requires KDC + keytab) |
+
+Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
+
 ### Threat Coverage
 
 | Threat | Defense |
 |---|---|
 | **Tool Poisoning** | Hash validation at registration + cryptographic signing |
 | **Rug-Pull** | Hash mismatch detection + signed tool versions |
-| **Prompt Injection** (direct + indirect) | Input/output sanitizer + RAG provenance scoring |
+| **Prompt Injection** (direct + indirect) | Input/output sanitizer (29 patterns, 2-tier) + RAG provenance scoring |
 | **Capability Amplification** | Negative capability list enforced by Guardian |
-| **Resource Bomb / Economic DOS** | Pre-execution token cost estimator + rate limiter |
-| **Credential Theft** | Keychain storage + PII redaction from all outbound calls |
+| **Resource Bomb / Economic DOS** | Pre-execution token cost estimator + per-user daily budgets |
+| **Credential Theft** | macOS Keychain storage + PII redaction from all outbound calls |
 | **RAG / Memory Poisoning** | Document provenance + embedding trust scoring |
 | **Multi-Agent Cascade** | Orchestrator-only routing + signed inter-agent messages |
 | **Supply Chain** | AI-BOM + signed tool library |
@@ -68,26 +95,27 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 
 | Phase | What Was Built | Status |
 |---|---|---|
-| **0** | PostgreSQL + pgvector, async LLM factory, health server, 23 smoke tests | ✅ Complete |
+| **0** | PostgreSQL + pgvector, async LLM factory, health server | ✅ Complete |
 | **1** | Researcher agent, tool registry + hash validation, capability boundaries, threat event logging | ✅ Complete |
 | **2** | Docker containerization, Guardian security sidecar, immutable audit log (SHA-256 hash chain), RAG provenance | ✅ Complete |
 | **3** | JWT task tokens + ACLs, sub-agent orchestrator, sandbox retry tier | ✅ Complete |
 | **4** | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials | ✅ Complete |
 | **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, Ed25519-signed tools | ✅ Complete |
-| **5.5** | Security hardening: DB RBAC, AST bypass guards (subscript/MRO/globals), tool revocation, TOCTOU mitigation, Ollama model integrity | ✅ Complete |
+| **5.5** | Security hardening: DB RBAC, AST bypass guards, tool revocation, TOCTOU mitigation, model integrity | ✅ Complete |
 | **6** | PentestAgent — air-gapped red-team bot, 8 attack classes × 3 variants, stop-at-proof | ✅ Complete |
-| **7** | Guardian feedback loop, SECURITY.md, v1.0 readiness | ✅ Complete |
+| **7** | Guardian feedback loop, SECURITY.md, v1.0 readiness hardening | ✅ Complete |
 | **8** | Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP, Discord connector | ✅ Complete |
 | **9** | langchain 1.x migration, tool library (5 tools), parallel fan-out, Phase 9.5 hardening sprint | ✅ Complete |
 | **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Complete |
-| **11** | SecureToolNode security fix, integration tests (35), `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
-| **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold | ✅ Complete |
-| **13** | Kerberos GSSAPI real impl, Redis-backed stream tokens, `KerberosConfig`, multi-instance docker-compose + Nginx | ✅ Complete |
-| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware, Redis health in `/status`, Kerberos integration skeleton | ✅ Complete |
-| **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, timer, copy, keyboard shortcut, SSE retry | ✅ Complete |
-| **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC+async callback) | ✅ Complete |
+| **11** | SecureToolNode security fix, 38 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
+| **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend`; multi-scheme `require_user` | ✅ Complete |
+| **13** | Kerberos GSSAPI real implementation, Redis-backed stream tokens, multi-instance docker-compose + Nginx | ✅ Complete |
+| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware | ✅ Complete |
+| **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, live timer, copy, keyboard shortcut | ✅ Complete |
+| **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC + async callback) | ✅ Complete |
+| **v1.0.1** | schema fix (user_id TEXT), live Kerberos KDC, all integration tests real, MODEL_INTEGRITY_STRICT env var | ✅ Complete |
 
-**484/484 smoke tests passing.** 35 integration tests passing. No running services required for smoke tests. Runs in ~3 seconds.
+**492/492 smoke tests passing.** 38 integration tests passing. 5/5 Kerberos live-KDC tests. Runs in ~3 seconds (no external services required for smoke tests).
 
 ---
 
@@ -105,6 +133,8 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 
 ## Quick Start
 
+**→ Full setup guide:** [`docs/quick-start.md`](./docs/quick-start.md)
+
 ```bash
 # 1. Clone and set up the virtual environment
 git clone https://github.com/jp-cruz/LegionForge.git
@@ -113,19 +143,43 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Set your hardware profile
-export AGENT_HARDWARE_PROFILE=mac_m4_mini_16gb  # or mac_m5_mini_32gb
+export AGENT_HARDWARE_PROFILE=mac_m4_mini_16gb
 
-# 3. Initialize the database
+# 3. Store your PostgreSQL password in Keychain (no .env files)
+security add-generic-password -s postgres -a api_key -w yourpassword
+
+# 4. Initialize the database and generate secrets
 make db-init
+make setup-task-token-secret
+make setup-signing-key
 
-# 4. Run smoke tests (no services required)
+# 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 484 passed in ~3s
+# Expected: 492 passed in ~3s
 
-# 5. Start the health server
-make health-server
-# Verify: curl http://localhost:8765/health
+# 6. Start services (three separate terminals)
+make health-server   # Operator API at :8765
+make gateway-start   # User API at :8080
+make guardian-start  # Security sidecar at :9766 (requires Docker)
+
+# 7. Create a user and open the web UI
+make create-user USERNAME=myname
+open http://localhost:8080/ui
 ```
+
+---
+
+## Documentation
+
+| Document | What It Covers |
+|---|---|
+| [`docs/quick-start.md`](./docs/quick-start.md) | Step-by-step setup, connecting channels, first task |
+| [`docs/architecture.md`](./docs/architecture.md) | All components, ports, ASCII diagram, connection rationale |
+| [`docs/SCALING.md`](./docs/SCALING.md) | Horizontal scaling, Redis, Kerberos KDC, multi-instance Docker |
+| [`TLDR.md`](./TLDR.md) | Project orientation — what was built and why |
+| [`SECURITY.md`](./SECURITY.md) | Threat model, HITL policy, injection detection |
+| [`VERIFICATION.md`](./VERIFICATION.md) | Verification steps for each phase |
+| [`docs/VISION.md`](./docs/VISION.md) | Product vision, architecture rationale, design decisions |
 
 ---
 
@@ -135,12 +189,14 @@ make health-server
 |---|---|
 | `src/base_graph.py` | LangGraph agent template — copy to create new agents |
 | `src/security/guardian.py` | Guardian sidecar — deterministic 7-check security pipeline |
-| `src/security/core.py` | Keychain loader, PII redaction, injection detection, I/O sanitizer |
-| `src/database.py` | Async PostgreSQL pool, LangGraph checkpointer, pgvector, threat event logging |
+| `src/security/core.py` | Keychain loader, PII redaction (8 patterns), injection detection, I/O sanitizer |
+| `src/database.py` | Async PostgreSQL pool, LangGraph checkpointer, pgvector, audit log hash chain |
 | `src/safeguards.py` | Three-layer loop protection (step counter, action history, token budget) |
-| `src/tools/crystallization_analyzer.py` | Pre-HITL AST + behavioral diff analyzer |
+| `src/gateway/app.py` | FastAPI gateway (:8080) — task queue, SSE, web UI, A2A, MCP |
+| `src/gateway/backends/` | Auth backend package — ApiKey, OIDC, GitHub, LDAP, Kerberos |
+| `src/connectors/` | Channel connectors — Discord, Telegram, Slack, Webhook |
 | `src/tools/signing.py` | Ed25519 keypair management + tool manifest signing |
-| `src/tools/model_integrity.py` | SHA256 GGUF streaming verification |
+| `src/tools/crystallization_analyzer.py` | Pre-HITL AST + behavioral diff analyzer |
 | `config/settings.py` | Pydantic settings singleton (loaded from hardware YAML profile) |
 | `Makefile` | All development, test, and operational commands |
 
@@ -151,24 +207,23 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 484 smoke tests, ~3s, no services required
-make test-integration  # 35 integration tests (requires PostgreSQL)
+make test-smoke      # 492 smoke tests, ~3s, no services required
+make test-integration  # 38 integration tests (requires PostgreSQL)
+make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
 make lint            # Black formatter check
-make health-server   # Start health/status API at localhost:8765
-make setup-db-roles  # Provision legionforge_app restricted PostgreSQL role (idempotent)
-make verify-models   # Compute SHA256 of installed GGUF models for pinning
-make build-analyzer  # Build legionforge-analyzer:latest Docker image (deny-default)
-make revoke-tool     # POST /tools/{TOOL_ID}/revoke  (requires TOOL_ID=<id>)
-make guardian-start  # Build + start Guardian sidecar via Docker Compose
-make audit-log-verify # Verify SHA-256 hash chain integrity on audit_log
-make build-pentest   # Build legionforge-pentest:latest air-gapped container
-make pentest         # Run red-team attack suite in verify mode (stop-at-proof)
-make pentest-resilience  # Run in resilience mode — explicit opt-in, prompts confirmation
-make pentest-report  # Print most recent pentest report (or RUN_ID=<uuid>)
+make health-server   # Start operator health API at :8765
+make gateway-start   # Start user-facing gateway at :8080
+make guardian-start  # Build + start Guardian sidecar via Docker at :9766
+make create-user USERNAME=<name>     # Create gateway user (prints API key)
 make discord-start   # Start Discord bot connector
 make telegram-start  # Start Telegram bot connector
 make slack-start     # Start Slack Socket Mode connector
 make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
+make security-audit  # Smoke tests + bandit + secret scan
+make pentest         # Run red-team attack suite in verify mode (stop-at-proof)
+make pentest-report  # Print most recent pentest report
+make audit-log-verify # Verify SHA-256 hash chain integrity on audit_log
+make revoke-tool TOOL_ID=<id>  # Emergency tool revocation
 ```
 
 ---
@@ -176,8 +231,7 @@ make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
 ## Known Gaps (Accepted Residual Risk)
 
 - **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
-- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. `pip-audit` reports no known CVEs as of v1.0.0; transitive hash pinning is accepted residual risk.
-- **Kerberos live KDC** — `KerberosBackend` has full GSSAPI code; graceful fallback when `gssapi` package is absent. Requires OS-level KDC + keytab to activate — see `docs/SCALING.md`.
+- **pip-audit / dependency hash pinning** — `pip-audit` reports no known CVEs as of v1.0.1; transitive hash pinning is accepted residual risk.
 
 ---
 
@@ -191,6 +245,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v1.0.0** — all 16 phases complete. 484/484 smoke tests. 35 integration tests.
+**v1.0.1** — all 16 phases complete + post-release patches. 492/492 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests.
 
 This is the public release of LegionForge. Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
