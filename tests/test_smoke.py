@@ -7087,3 +7087,132 @@ def test_p22_ingestor_singleton():
     i1 = get_ingestor()
     i2 = get_ingestor()
     assert i1 is i2
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 23 — Scheduled Tasks
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p23_scheduler_importable():
+    """src.scheduler imports without error."""
+    from src import scheduler as _
+
+    assert hasattr(_, "Scheduler")
+    assert hasattr(_, "compute_next_run")
+    assert hasattr(_, "validate_cron_expr")
+
+
+def test_p23_validate_cron_valid_expressions():
+    """validate_cron_expr accepts known-good expressions."""
+    from src.scheduler import validate_cron_expr
+
+    valid = [
+        "* * * * *",
+        "0 0 * * *",
+        "*/15 * * * *",
+        "0 9 * * 1-5",
+        "@hourly",
+        "@daily",
+        "@weekly",
+        "@monthly",
+        "@yearly",
+        "@annually",
+        "@midnight",
+        "@every 5m",
+        "@every 2h",
+        "@every 1d",
+        "@every 30m",
+    ]
+    for expr in valid:
+        validate_cron_expr(expr)  # must not raise
+
+
+def test_p23_validate_cron_rejects_invalid():
+    """validate_cron_expr raises ValueError for bad expressions."""
+    import pytest
+    from src.scheduler import validate_cron_expr
+
+    bad = ["not-a-cron", "99 99 99 99 99", "@every", "@every 5x", "* * * *"]
+    for expr in bad:
+        with pytest.raises((ValueError, RuntimeError)):
+            validate_cron_expr(expr)
+
+
+def test_p23_compute_next_run_cron():
+    """compute_next_run returns a future datetime for a standard cron expression."""
+    from datetime import datetime, timezone
+    from src.scheduler import compute_next_run
+
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+    nxt = compute_next_run("0 * * * *", now)  # top of next hour
+    assert nxt > now
+    assert nxt.minute == 0
+
+
+def test_p23_compute_next_run_shortcut_daily():
+    """@daily next run is midnight UTC on the following day."""
+    from datetime import datetime, timezone
+    from src.scheduler import compute_next_run
+
+    now = datetime(2026, 3, 1, 15, 30, 0, tzinfo=timezone.utc)
+    nxt = compute_next_run("@daily", now)
+    assert nxt > now
+    assert nxt.hour == 0 and nxt.minute == 0
+
+
+def test_p23_compute_next_run_every_minutes():
+    """@every 10m advances next_run_at by exactly 10 minutes."""
+    from datetime import datetime, timezone, timedelta
+    from src.scheduler import compute_next_run
+
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+    nxt = compute_next_run("@every 10m", now)
+    assert nxt == now + timedelta(minutes=10)
+
+
+def test_p23_compute_next_run_every_hours():
+    """@every 3h advances next_run_at by exactly 3 hours."""
+    from datetime import datetime, timezone, timedelta
+    from src.scheduler import compute_next_run
+
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+    nxt = compute_next_run("@every 3h", now)
+    assert nxt == now + timedelta(hours=3)
+
+
+def test_p23_compute_next_run_every_days():
+    """@every 1d advances next_run_at by exactly 1 day."""
+    from datetime import datetime, timezone, timedelta
+    from src.scheduler import compute_next_run
+
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+    nxt = compute_next_run("@every 1d", now)
+    assert nxt == now + timedelta(days=1)
+
+
+def test_p23_scheduler_singleton():
+    """get_scheduler returns the same Scheduler instance."""
+    from src.scheduler import get_scheduler, reset_scheduler
+
+    reset_scheduler()
+    s1 = get_scheduler()
+    s2 = get_scheduler()
+    assert s1 is s2
+    reset_scheduler()
+
+
+def test_p23_schedules_route_importable():
+    """src.gateway.routes.schedules imports without error."""
+    from src.gateway.routes import schedules as _
+
+    assert hasattr(_, "router")
+
+
+def test_p23_gateway_app_includes_schedules_router():
+    """Gateway app registers the /schedules router."""
+    from src.gateway.app import app
+
+    routes = [r.path for r in app.routes if hasattr(r, "path")]
+    sched_routes = [r for r in routes if "/schedules" in r]
+    assert len(sched_routes) > 0, "No /schedules routes found in app"

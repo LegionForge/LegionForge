@@ -71,6 +71,9 @@ redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate cou
 #                               # Linux: apt-get install libkrb5-dev && pip install gssapi
 fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
 
+# ── Scheduled Tasks (Phase 23) ───────────────────────────────
+croniter~=6.0                   # Cron expression parsing for scheduled task recurrence
+
 # ── Channel Connectors (Phase 8 / Phase 16) ──────────────────
 discord.py~=2.3                 # Discord bot connector (Phase 8)
 python-telegram-bot~=21.0       # Telegram bot connector (Phase 16)

@@ -43,6 +43,7 @@ from src.gateway.routes import (
     mcp,
     memory as memory_route,
     documents as documents_route,
+    schedules as schedules_route,
 )
 from src.gateway.worker import task_worker
 
@@ -74,10 +75,18 @@ async def lifespan(app: FastAPI):
     await init_redis(redis_url)
 
     worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
-    logger.info("[gateway] Startup complete — worker running")
+
+    # Phase 23: start the cron scheduler daemon
+    from src.scheduler import get_scheduler
+
+    scheduler = get_scheduler()
+    await scheduler.start()
+
+    logger.info("[gateway] Startup complete — worker + scheduler running")
     try:
         yield
     finally:
+        await scheduler.stop()
         worker_task.cancel()
         try:
             await worker_task
@@ -135,6 +144,7 @@ app.include_router(a2a.router, tags=["a2a"])
 app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
 app.include_router(memory_route.router, prefix="/memory", tags=["memory"])
 app.include_router(documents_route.router, prefix="/documents", tags=["documents"])
+app.include_router(schedules_route.router, prefix="/schedules", tags=["schedules"])
 
 
 # ── Minimal Web UI ────────────────────────────────────────────────────────────

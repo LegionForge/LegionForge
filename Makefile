@@ -396,6 +396,38 @@ async def run(): \
     [print(f'  [{d[\"id\"]:6d}] {d[\"created_at\"][:19]}  {d[\"content_preview\"][:80]}') for d in docs]; \
 asyncio.run(run())"
 
+# ── Phase 23: Scheduled tasks ─────────────────────────────────────────────────
+
+.PHONY: schedule-list
+schedule-list:  ## List all scheduled tasks for USER (default: admin): make schedule-list [USER=user_id] (Phase 23)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db, list_scheduled_tasks; \
+async def run(): \
+    await init_db(); \
+    uid = '$(USER)' if '$(USER)' else 'admin'; \
+    schedules = await list_scheduled_tasks(uid); \
+    await close_db(); \
+    if not schedules: print(f'  (no schedules for user \"{uid}\")'); return; \
+    [print(f'  [{s[\"id\"]:4d}] {\"✓\" if s[\"enabled\"] else \"✗\"}  {s[\"cron_expr\"]:20s}  next={s[\"next_run_at\"][:19]}  {s[\"name\"]}') for s in schedules]; \
+asyncio.run(run())"
+
+.PHONY: schedule-create
+schedule-create:  ## Create a scheduled task: make schedule-create USER=uid NAME="label" CRON="@daily" TASK="..." [AGENT=orchestrator] (Phase 23)
+	@[ -n "$(USER)" ] || (echo "Usage: make schedule-create USER=uid NAME='label' CRON='@daily' TASK='...' [AGENT=orchestrator]" && exit 1)
+	@[ -n "$(NAME)" ] || (echo "NAME is required" && exit 1)
+	@[ -n "$(CRON)" ] || (echo "CRON is required" && exit 1)
+	@[ -n "$(TASK)" ] || (echo "TASK is required" && exit 1)
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio; \
+from src.database import init_db, close_db, create_scheduled_task; \
+async def run(): \
+    await init_db(); \
+    s = await create_scheduled_task('$(USER)', '$(NAME)', '$(TASK)', '$(CRON)', '$(AGENT)' or 'orchestrator'); \
+    await close_db(); \
+    print(f'Created schedule {s[\"id\"]}: {s[\"name\"]} ({s[\"cron_expr\"]}) next={s[\"next_run_at\"][:19]}'); \
+asyncio.run(run())"
+
 .PHONY: memory-stats
 memory-stats:  ## Show agent memory stats for all namespaces (Phase 21 — requires PostgreSQL)
 	@cd $(BASE) && $(PYTHON) -c "\

@@ -990,6 +990,36 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON stream_tokens (expires_at)"
     )
 
+    # ── Phase 23: Scheduled tasks ─────────────────────────────────────────────
+    # cron_expr accepts 5-field cron ("*/15 * * * *"), @shortcuts (@daily), or
+    # @every intervals (@every 5m).  Validated by src.scheduler.validate_cron_expr.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scheduled_tasks (
+            id              SERIAL PRIMARY KEY,
+            user_id         TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            task_text       TEXT NOT NULL,
+            agent_type      TEXT NOT NULL DEFAULT 'orchestrator',
+            cron_expr       TEXT NOT NULL,
+            next_run_at     TIMESTAMPTZ NOT NULL,
+            last_run_at     TIMESTAMPTZ,
+            last_task_id    TEXT,
+            enabled         BOOLEAN NOT NULL DEFAULT true,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sched_tasks_user "
+        "ON scheduled_tasks (user_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sched_tasks_next_run "
+        "ON scheduled_tasks (next_run_at) WHERE enabled = true"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -3116,3 +3146,197 @@ async def get_user_usage_summary_today(user_id: str) -> dict:
         },
         "providers": {r["provider"]: int(r["tokens"]) for r in provider_rows},
     }
+
+
+# ── Phase 23: Scheduled tasks CRUD ────────────────────────────────────────────
+
+
+def _row_to_schedule(row: dict) -> dict:
+    """Serialize a scheduled_tasks row to a JSON-safe dict."""
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "name": row["name"],
+        "task_text": row["task_text"],
+        "agent_type": row["agent_type"],
+        "cron_expr": row["cron_expr"],
+        "next_run_at": row["next_run_at"].isoformat() if row["next_run_at"] else None,
+        "last_run_at": row["last_run_at"].isoformat() if row["last_run_at"] else None,
+        "last_task_id": row["last_task_id"],
+        "enabled": row["enabled"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+    }
+
+
+async def create_scheduled_task(
+    user_id: str,
+    name: str,
+    task_text: str,
+    cron_expr: str,
+    agent_type: str = "orchestrator",
+) -> dict:
+    """
+    Insert a new scheduled task.
+
+    ``next_run_at`` is computed from ``cron_expr`` relative to now().
+    Raises ``ValueError`` if ``cron_expr`` is invalid.
+    """
+    from src.scheduler import compute_next_run, validate_cron_expr
+    from datetime import datetime, timezone
+
+    validate_cron_expr(cron_expr)
+    next_run = compute_next_run(cron_expr, datetime.now(timezone.utc))
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO scheduled_tasks
+                (user_id, name, task_text, agent_type, cron_expr, next_run_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (user_id, name, task_text, agent_type, cron_expr, next_run),
+        )
+        row = await cur.fetchone()
+    return _row_to_schedule(dict(row))
+
+
+async def get_scheduled_task(sched_id: int, user_id: str) -> dict | None:
+    """Fetch a scheduled task by ID, scoped to user_id (returns None if not found)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE id = %s AND user_id = %s",
+            (sched_id, user_id),
+        )
+        row = await cur.fetchone()
+    return _row_to_schedule(dict(row)) if row else None
+
+
+async def list_scheduled_tasks(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    include_disabled: bool = True,
+) -> list[dict]:
+    """Return scheduled tasks for user_id ordered by next_run_at."""
+    pool = get_pool()
+    where = "WHERE user_id = %s"
+    params: list = [user_id]
+    if not include_disabled:
+        where += " AND enabled = true"
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            f"SELECT * FROM scheduled_tasks {where} "
+            "ORDER BY next_run_at ASC LIMIT %s OFFSET %s",
+            (*params, limit, offset),
+        )
+        rows = await cur.fetchall()
+    return [_row_to_schedule(dict(r)) for r in rows]
+
+
+async def update_scheduled_task(
+    sched_id: int,
+    user_id: str,
+    *,
+    name: str | None = None,
+    task_text: str | None = None,
+    cron_expr: str | None = None,
+    agent_type: str | None = None,
+    enabled: bool | None = None,
+) -> dict | None:
+    """
+    Partially update a scheduled task.
+
+    Returns the updated row, or None if not found/not owned by user_id.
+    When ``cron_expr`` changes, ``next_run_at`` is recomputed.
+    """
+    from src.scheduler import compute_next_run, validate_cron_expr
+    from datetime import datetime, timezone
+
+    sets: list[str] = ["updated_at = now()"]
+    params: list = []
+
+    if name is not None:
+        sets.append("name = %s")
+        params.append(name)
+    if task_text is not None:
+        sets.append("task_text = %s")
+        params.append(task_text)
+    if agent_type is not None:
+        sets.append("agent_type = %s")
+        params.append(agent_type)
+    if enabled is not None:
+        sets.append("enabled = %s")
+        params.append(enabled)
+    if cron_expr is not None:
+        validate_cron_expr(cron_expr)
+        next_run = compute_next_run(cron_expr, datetime.now(timezone.utc))
+        sets.append("cron_expr = %s")
+        sets.append("next_run_at = %s")
+        params.extend([cron_expr, next_run])
+
+    if len(sets) == 1:  # only updated_at — nothing to change
+        return await get_scheduled_task(sched_id, user_id)
+
+    params.extend([sched_id, user_id])
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            f"UPDATE scheduled_tasks SET {', '.join(sets)} "
+            "WHERE id = %s AND user_id = %s RETURNING *",
+            params,
+        )
+        row = await cur.fetchone()
+    return _row_to_schedule(dict(row)) if row else None
+
+
+async def delete_scheduled_task(sched_id: int, user_id: str) -> bool:
+    """Delete a scheduled task. Returns True if deleted, False if not found."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM scheduled_tasks WHERE id = %s AND user_id = %s",
+            (sched_id, user_id),
+        )
+    deleted = int(result.split()[-1]) if result else 0
+    return bool(deleted)
+
+
+async def get_due_scheduled_tasks() -> list[dict]:
+    """Return all enabled scheduled tasks whose next_run_at <= now()."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM scheduled_tasks "
+            "WHERE enabled = true AND next_run_at <= now() "
+            "ORDER BY next_run_at ASC"
+        )
+        rows = await cur.fetchall()
+    return [_row_to_schedule(dict(r)) for r in rows]
+
+
+async def record_scheduled_run(
+    sched_id: int, task_id: str, next_run_at: "datetime"
+) -> None:
+    """Update last_run_at, last_task_id, and next_run_at after a job fires."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE scheduled_tasks
+            SET last_run_at = now(),
+                last_task_id = %s,
+                next_run_at = %s,
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (task_id, next_run_at, sched_id),
+        )
