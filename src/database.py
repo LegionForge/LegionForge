@@ -1031,6 +1031,55 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON scheduled_tasks (next_run_at) WHERE enabled = true"
     )
 
+    # ── Phase 27: Task Pipelines ───────────────────────────────────────────────
+    # A pipeline is a reusable sequence of steps.  Each step is a task with
+    # a task_text template that can reference the initial input ({{input}}) or
+    # results of earlier steps ({{step_0.result}}, {{step_1.result}}, …).
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pipelines (
+            id          SERIAL PRIMARY KEY,
+            user_id     TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            steps       JSONB NOT NULL DEFAULT '[]',
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pipelines_user " "ON pipelines (user_id)"
+    )
+
+    # A pipeline_run tracks one execution of a pipeline.
+    # step_results is a JSON array of step outcome dicts written as each
+    # step finishes; current_step advances after each step completes.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id              SERIAL PRIMARY KEY,
+            pipeline_id     INTEGER NOT NULL,
+            user_id         TEXT NOT NULL,
+            initial_input   TEXT NOT NULL DEFAULT '',
+            status          TEXT NOT NULL DEFAULT 'running'
+                                CHECK (status IN ('running','complete','failed','cancelled')),
+            current_step    INTEGER NOT NULL DEFAULT 0,
+            step_results    JSONB NOT NULL DEFAULT '[]',
+            started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completed_at    TIMESTAMPTZ
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_pipeline "
+        "ON pipeline_runs (pipeline_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_user "
+        "ON pipeline_runs (user_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -3388,4 +3437,196 @@ async def record_scheduled_run(
             WHERE id = %s
             """,
             (task_id, next_run_at, sched_id),
+        )
+
+
+# ── Phase 27: Pipeline CRUD ────────────────────────────────────────────────────
+
+
+def _row_to_pipeline(row: dict) -> dict:
+    d = dict(row)
+    for k in ("created_at", "updated_at"):
+        if d.get(k) and hasattr(d[k], "isoformat"):
+            d[k] = d[k].isoformat()
+    return d
+
+
+def _row_to_run(row: dict) -> dict:
+    d = dict(row)
+    for k in ("started_at", "completed_at"):
+        if d.get(k) and hasattr(d[k], "isoformat"):
+            d[k] = d[k].isoformat()
+    return d
+
+
+async def create_pipeline(
+    user_id: str,
+    name: str,
+    steps: list[dict],
+    description: str = "",
+) -> dict:
+    """Create a new pipeline definition. Steps is a list of step dicts."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO pipelines (user_id, name, description, steps)
+            VALUES (%s, %s, %s, %s::jsonb)
+            RETURNING *
+            """,
+            (user_id, name, description, json.dumps(steps)),
+        )
+        row = await cur.fetchone()
+    return _row_to_pipeline(dict(row))
+
+
+async def get_pipeline(pipeline_id: int, user_id: str) -> dict | None:
+    """Fetch a pipeline by ID scoped to user_id."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM pipelines WHERE id = %s AND user_id = %s",
+            (pipeline_id, user_id),
+        )
+        row = await cur.fetchone()
+    return _row_to_pipeline(dict(row)) if row else None
+
+
+async def list_pipelines(user_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List pipelines for user_id ordered by newest first."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM pipelines WHERE user_id = %s "
+            "ORDER BY created_at DESC LIMIT %s OFFSET %s",
+            (user_id, limit, offset),
+        )
+        rows = await cur.fetchall()
+    return [_row_to_pipeline(dict(r)) for r in rows]
+
+
+async def update_pipeline(
+    pipeline_id: int,
+    user_id: str,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    steps: list[dict] | None = None,
+) -> dict | None:
+    """Partially update a pipeline definition."""
+    sets: list[str] = ["updated_at = now()"]
+    params: list = []
+    if name is not None:
+        sets.append("name = %s")
+        params.append(name)
+    if description is not None:
+        sets.append("description = %s")
+        params.append(description)
+    if steps is not None:
+        sets.append("steps = %s::jsonb")
+        params.append(json.dumps(steps))
+    params.extend([pipeline_id, user_id])
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            f"UPDATE pipelines SET {', '.join(sets)} "
+            "WHERE id = %s AND user_id = %s RETURNING *",
+            params,
+        )
+        row = await cur.fetchone()
+    return _row_to_pipeline(dict(row)) if row else None
+
+
+async def delete_pipeline(pipeline_id: int, user_id: str) -> bool:
+    """Delete a pipeline. Returns True if deleted."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM pipelines WHERE id = %s AND user_id = %s",
+            (pipeline_id, user_id),
+        )
+    return bool(int(result.split()[-1]) if result else 0)
+
+
+async def create_pipeline_run(
+    pipeline_id: int,
+    user_id: str,
+    initial_input: str,
+) -> dict:
+    """Start a new pipeline run record."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO pipeline_runs (pipeline_id, user_id, initial_input)
+            VALUES (%s, %s, %s)
+            RETURNING *
+            """,
+            (pipeline_id, user_id, initial_input),
+        )
+        row = await cur.fetchone()
+    return _row_to_run(dict(row))
+
+
+async def get_pipeline_run(run_id: int, user_id: str) -> dict | None:
+    """Fetch a pipeline run by ID scoped to user_id."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM pipeline_runs WHERE id = %s AND user_id = %s",
+            (run_id, user_id),
+        )
+        row = await cur.fetchone()
+    return _row_to_run(dict(row)) if row else None
+
+
+async def list_pipeline_runs(
+    pipeline_id: int, user_id: str, limit: int = 20
+) -> list[dict]:
+    """List recent runs for a pipeline."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT * FROM pipeline_runs WHERE pipeline_id = %s AND user_id = %s "
+            "ORDER BY started_at DESC LIMIT %s",
+            (pipeline_id, user_id, limit),
+        )
+        rows = await cur.fetchall()
+    return [_row_to_run(dict(r)) for r in rows]
+
+
+async def update_pipeline_run_step(
+    run_id: int,
+    current_step: int,
+    step_results: list[dict],
+) -> None:
+    """Update current_step and step_results after a step finishes."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "UPDATE pipeline_runs SET current_step = %s, step_results = %s::jsonb "
+            "WHERE id = %s",
+            (current_step, json.dumps(step_results), run_id),
+        )
+
+
+async def finalize_pipeline_run(
+    run_id: int,
+    status: str,
+    step_results: list[dict],
+) -> None:
+    """Mark a pipeline run as complete or failed."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "UPDATE pipeline_runs SET status = %s, step_results = %s::jsonb, "
+            "completed_at = now() WHERE id = %s",
+            (status, json.dumps(step_results), run_id),
         )

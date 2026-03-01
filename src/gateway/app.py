@@ -46,6 +46,7 @@ from src.gateway.routes import (
     schedules as schedules_route,
     admin as admin_route,
     observability as observability_route,
+    pipelines as pipelines_route,
 )
 from src.gateway.worker import task_worker
 
@@ -149,6 +150,7 @@ app.include_router(documents_route.router, prefix="/documents", tags=["documents
 app.include_router(schedules_route.router, prefix="/schedules", tags=["schedules"])
 app.include_router(admin_route.router, prefix="/admin", tags=["admin"])
 app.include_router(observability_route.router, prefix="/admin", tags=["observability"])
+app.include_router(pipelines_route.router, prefix="/pipelines", tags=["pipelines"])
 
 
 # ── Minimal Web UI ────────────────────────────────────────────────────────────

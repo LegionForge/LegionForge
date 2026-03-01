@@ -7456,3 +7456,107 @@ def test_p26_create_task_accepts_callback_url_param():
 
     sig = inspect.signature(create_task)
     assert "callback_url" in sig.parameters
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase 27 — Task Pipelines
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_p27_pipeline_runner_importable():
+    """src.pipeline_runner imports without error."""
+    from src import pipeline_runner as _
+
+    assert hasattr(_, "execute_pipeline")
+    assert hasattr(_, "render_template")
+
+
+def test_p27_render_template_input():
+    """render_template substitutes {{input}} correctly."""
+    from src.pipeline_runner import render_template
+
+    result = render_template("Tell me about {{input}}", "LangGraph", [])
+    assert result == "Tell me about LangGraph"
+
+
+def test_p27_render_template_step_result():
+    """render_template substitutes {{step_0.result}} from completed steps."""
+    from src.pipeline_runner import render_template
+
+    steps = [{"step": 0, "result": "Paris is the capital of France."}]
+    result = render_template("Summarize: {{step_0.result}}", "", steps)
+    assert result == "Summarize: Paris is the capital of France."
+
+
+def test_p27_render_template_unresolved_leaves_placeholder():
+    """render_template leaves unresolved {{step_N.result}} intact."""
+    from src.pipeline_runner import render_template
+
+    result = render_template("Based on {{step_2.result}}", "", [])
+    assert "{{step_2.result}}" in result
+
+
+def test_p27_render_template_mixed():
+    """render_template handles multiple variables in one string."""
+    from src.pipeline_runner import render_template
+
+    steps = [{"step": 0, "result": "Answer A"}, {"step": 1, "result": "Answer B"}]
+    tmpl = "{{input}}: first={{step_0.result}}, second={{step_1.result}}"
+    result = render_template(tmpl, "Q", steps)
+    assert result == "Q: first=Answer A, second=Answer B"
+
+
+def test_p27_pipeline_step_model_validates_agent_type():
+    """PipelineStep rejects invalid agent_type."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.pipelines import PipelineStep
+
+    PipelineStep(task_text="hello", agent_type="orchestrator")
+    with pytest.raises(ValidationError):
+        PipelineStep(task_text="hello", agent_type="bad_agent")
+
+
+def test_p27_pipelines_route_importable():
+    """src.gateway.routes.pipelines imports without error."""
+    from src.gateway.routes import pipelines as _
+
+    assert hasattr(_, "router")
+
+
+def test_p27_gateway_app_includes_pipelines_router():
+    """Gateway app registers /pipelines routes."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("/pipelines" in p for p in paths)
+
+
+def test_p27_pipeline_db_functions_importable():
+    """Pipeline CRUD DB functions are importable."""
+    from src.database import (
+        create_pipeline,
+        get_pipeline,
+        list_pipelines,
+        update_pipeline,
+        delete_pipeline,
+        create_pipeline_run,
+        get_pipeline_run,
+        list_pipeline_runs,
+        update_pipeline_run_step,
+        finalize_pipeline_run,
+    )
+
+    for fn in (
+        create_pipeline,
+        get_pipeline,
+        list_pipelines,
+        update_pipeline,
+        delete_pipeline,
+        create_pipeline_run,
+        get_pipeline_run,
+        list_pipeline_runs,
+        update_pipeline_run_step,
+        finalize_pipeline_run,
+    ):
+        assert callable(fn)
