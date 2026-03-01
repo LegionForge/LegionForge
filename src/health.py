@@ -393,18 +393,26 @@ async def status(request: Request) -> JSONResponse:
                 headers={"X-Status-Cache": "hit"},
             )
 
-    # Run all checks concurrently
+    # Run all checks concurrently.
+    # Model integrity uses a process-lifetime cache (SHA256 of multi-GB GGUF
+    # files takes 30-60 s — only computed once, not on every /status poll).
+    from src.tools.model_integrity import get_model_integrity_status
+
     ollama_task = asyncio.create_task(_check_ollama())
     postgres_task = asyncio.create_task(_check_postgres())
     drive_task = asyncio.create_task(_check_external_drive())
     redis_task = asyncio.create_task(_check_redis())
+    integrity_task = asyncio.create_task(get_model_integrity_status(settings))
 
-    ollama_result, postgres_result, drive_result, redis_result = await asyncio.gather(
-        ollama_task,
-        postgres_task,
-        drive_task,
-        redis_task,
-        return_exceptions=True,
+    ollama_result, postgres_result, drive_result, redis_result, integrity_result = (
+        await asyncio.gather(
+            ollama_task,
+            postgres_task,
+            drive_task,
+            redis_task,
+            integrity_task,
+            return_exceptions=True,
+        )
     )
 
     memory_result = _check_memory()
@@ -434,6 +442,15 @@ async def status(request: Request) -> JSONResponse:
         components["redis"] = redis_result
     elif isinstance(redis_result, Exception):
         components["redis"] = {"status": "error", "error": str(redis_result)}
+
+    # Model integrity: always surface (shows "skipped" when hashes not pinned).
+    if isinstance(integrity_result, dict):
+        components["model_integrity"] = integrity_result
+    else:
+        components["model_integrity"] = {
+            "status": "error",
+            "error": str(integrity_result),
+        }
 
     all_ok = all(c.get("status") == "ok" for c in components.values())
     overall = "ok" if all_ok else "degraded"
