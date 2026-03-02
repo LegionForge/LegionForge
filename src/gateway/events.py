@@ -137,6 +137,51 @@ def build_heartbeat_event() -> dict:
     return {"event": "heartbeat", "data": {}}
 
 
+# Reason codes → user-visible labels.
+# Kept vague enough not to reveal attack-surface internals.
+_BLOCK_REASON_LABELS: dict[str, str] = {
+    "registry_check_failed": (
+        "Security registry check failed — tool integrity could not be verified. "
+        "Run: make verify-tool-registry"
+    ),
+    "sandbox_sequence_violation": (
+        "Tool call sequence was not in approved patterns — "
+        "model will retry with a different approach"
+    ),
+    "capability_boundary_violation": (
+        "Tool capability boundary exceeded — this action is not permitted"
+    ),
+    "action_loop_detected": (
+        "Repeated action detected — the same tool was called too many times in a row"
+    ),
+    "acl_token_violation": "Tool is not in the authorized scope for this task",
+    "ssrf_protection": "URL was blocked (private network address protection)",
+    "hitl_required": "This action requires human approval before it can proceed",
+    "injection_detected": "Security pattern detected in tool arguments — run halted",
+    "toctou_violation": "Tool call tampering detected — run halted for safety",
+}
+
+
+def build_tool_blocked_event(tool_name: str, reason: str) -> dict:
+    """
+    Published by the worker when SecureToolNode dispatches a 'tool_blocked'
+    custom LangChain event.  ``reason`` is a short machine-readable code;
+    ``description`` is the human-readable label shown as a UI tooltip.
+    Sensitive internal details are intentionally omitted.
+    """
+    return {
+        "event": "tool_blocked",
+        "data": {
+            "tool": tool_name,
+            "reason": reason,
+            "description": _BLOCK_REASON_LABELS.get(
+                reason, "Tool call was blocked by the security system"
+            ),
+            "timestamp": _now(),
+        },
+    }
+
+
 # ── In-process pub/sub channel ────────────────────────────────────────────────
 # Maps task_id → list of subscriber queues.  Multiple SSE clients can subscribe
 # to the same task (e.g. browser tab + Discord connector).

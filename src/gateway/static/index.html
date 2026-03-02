@@ -317,6 +317,39 @@
       color: var(--red);
     }
     .tool-block.blocked .tool-status { color: var(--red); }
+    /* (i) info icon shown on blocked tool blocks */
+    .tool-info {
+      cursor: help;
+      color: var(--text-dim);
+      font-size: 10px;
+      opacity: 0.75;
+      margin-left: 2px;
+    }
+    /* ── Inline [UNVERIFIED DATA] warning ───────────────────────── */
+    .o-unverified-marker {
+      display: inline-block;
+      background: rgba(248, 81, 73, 0.12);
+      border: 1px solid rgba(248, 81, 73, 0.35);
+      border-radius: 3px;
+      padding: 1px 7px;
+      color: var(--red);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: help;
+      margin: 0 2px;
+    }
+    /* ── All-tools-failed banner ────────────────────────────────── */
+    .all-tools-failed-banner {
+      display: block;
+      margin: 6px 0 2px;
+      padding: 6px 10px;
+      background: rgba(248, 81, 73, 0.10);
+      border: 1px solid rgba(248, 81, 73, 0.30);
+      border-radius: 4px;
+      color: var(--red);
+      font-size: 12px;
+      line-height: 1.5;
+    }
 
     /* ── Version footer ─────────────────────────────────────────── */
     #version-footer {
@@ -433,6 +466,9 @@ const S = {
   outputBuffer:   '',     // plain-text accumulator for copy
   activeToolName: null,   // current open tool block
   heartbeatCount: 0,      // incremented on each heartbeat; reset on new task
+  toolsAttempted: 0,      // tool_start events received this run
+  toolsCompleted: 0,      // tool_end events received this run
+  toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
 };
 
 const MAX_HISTORY = 20;
@@ -608,6 +644,65 @@ function closeToolBlock(toolName) {
   S.activeToolName = null;
 }
 
+// Called when a tool_blocked SSE event arrives (server-side confirmation)
+// OR from finishRun for any still-open block (client-side fallback).
+function markToolBlocked(toolName, description) {
+  S.toolsBlocked++;
+  const target = _toolBlockEl || document.getElementById('tool-block-' + (toolName || '').replace(/\W/g, '_'));
+  if (target) {
+    target.classList.add('blocked');
+    target.querySelector('.tool-status').textContent = '⚠';
+    // Add (i) icon only if not already present
+    if (!target.querySelector('.tool-info')) {
+      const info = document.createElement('span');
+      info.className = 'tool-info';
+      info.textContent = ' ⓘ';
+      info.title = description ||
+        'Tool call was blocked by the security system. ' +
+        'The model has been instructed to retry with alternatives. ' +
+        'If this persists, run: make verify-tool-registry';
+      target.appendChild(info);
+    }
+    if (target === _toolBlockEl) {
+      _toolBlockEl = null;
+      S.activeToolName = null;
+    }
+  }
+  appendSpan('\n');
+  S.outputBuffer += ' ⚠\n';
+}
+
+// Post-process output DOM: replace '[UNVERIFIED DATA]' text nodes
+// with a styled inline warning span. Called from finishRun after
+// all tokens have been rendered.
+function postProcessUnverified() {
+  const MARKER = '[UNVERIFIED DATA]';
+  const out = el.output();
+  const walker = document.createTreeWalker(out, NodeFilter.SHOW_TEXT, null, false);
+  const matches = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.textContent.includes(MARKER)) matches.push(node);
+  }
+  matches.forEach(textNode => {
+    const parts = textNode.textContent.split(MARKER);
+    const frag = document.createDocumentFragment();
+    parts.forEach((part, i) => {
+      if (part) frag.appendChild(document.createTextNode(part));
+      if (i < parts.length - 1) {
+        const warn = document.createElement('span');
+        warn.className = 'o-unverified-marker';
+        warn.textContent = '⚠ Unverified data';
+        warn.title = 'This content could not be verified with live tools. ' +
+                     'The model used training data or inference. Treat as speculative.';
+        frag.appendChild(warn);
+        S.outputBuffer = S.outputBuffer.replace(MARKER, '⚠ [UNVERIFIED DATA]');
+      }
+    });
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
+}
+
 function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -645,6 +740,9 @@ async function submitTask() {
   el.output().innerHTML = '';
   S.outputBuffer = '';
   S.heartbeatCount = 0;
+  S.toolsAttempted = 0;
+  S.toolsCompleted = 0;
+  S.toolsBlocked = 0;
   _toolBlockEl = null;
   el.submitBtn().disabled = true;
   el.cancelBtn().style.display = 'inline-flex';
@@ -713,15 +811,27 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   es.addEventListener('tool_start', e => {
     try {
       const d = JSON.parse(e.data);
+      S.toolsAttempted++;
       openToolBlock(d.tool || 'tool', d.hint || '');
-    } catch(_) { openToolBlock('tool', ''); }
+    } catch(_) { S.toolsAttempted++; openToolBlock('tool', ''); }
   });
 
   es.addEventListener('tool_end', e => {
     try {
       const d = JSON.parse(e.data);
+      S.toolsCompleted++;
       closeToolBlock(d.tool || S.activeToolName || 'tool');
-    } catch(_) { closeToolBlock(S.activeToolName || 'tool'); }
+    } catch(_) { S.toolsCompleted++; closeToolBlock(S.activeToolName || 'tool'); }
+  });
+
+  // tool_blocked: SecureToolNode rejected the call — mark it immediately
+  // so the user sees the ⚠ and (i) as soon as the event arrives, rather
+  // than waiting until finishRun.
+  es.addEventListener('tool_blocked', e => {
+    try {
+      const d = JSON.parse(e.data);
+      markToolBlocked(d.tool || S.activeToolName || 'tool', d.description || '');
+    } catch(_) { markToolBlocked(S.activeToolName || 'tool', ''); }
   });
 
   es.addEventListener('token', e => {
@@ -929,14 +1039,12 @@ function pollTaskUntilComplete(taskId, apiKey, agent, taskInputText) {
 
 // ── Finish run (all terminal states) ─────────────────────────────
 function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
-  // Close any tool block that was still open when the run ended.
-  // This happens when a tool call was blocked by the security registry —
-  // tool_start fires, but tool_end never arrives.
+  // Client-side fallback: if a tool block is still open (tool_start fired
+  // but neither tool_end nor tool_blocked arrived — e.g. stream disconnected),
+  // mark it blocked now.  tool_blocked SSE events mark blocks in real-time;
+  // this catches any that slipped through.
   if (_toolBlockEl) {
-    _toolBlockEl.classList.add('blocked');
-    _toolBlockEl.querySelector('.tool-status').textContent = '⚠';
-    _toolBlockEl = null;
-    S.activeToolName = null;
+    markToolBlocked(S.activeToolName || 'tool', '');
   }
   if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   stopTimer();
@@ -946,7 +1054,21 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
   el.cancelBtn().style.display = 'none';
   dotIdle();
 
+  // Replace any '[UNVERIFIED DATA]' markers with styled inline warnings.
+  postProcessUnverified();
+
   if (status === 'complete') {
+    // If every tool call was blocked (none succeeded), warn the user that
+    // the response is likely based on training data, not live information.
+    if (S.toolsAttempted > 0 && S.toolsBlocked > 0 && S.toolsCompleted === 0) {
+      appendHTML(
+        '<span class="all-tools-failed-banner">' +
+        '⚠ All tool calls were blocked — this response could not be verified with live data ' +
+        'and may be based on training knowledge. Treat it as speculative.' +
+        '</span>'
+      );
+      appendSpan('\n', '');
+    }
     const tokenStr = tokens ? ' · ' + tokens.toLocaleString() + ' tokens est.' : '';
     const summary = '✓ Complete' + tokenStr + ' · ' + elapsed + 's';
     setStatus('complete', summary, '');
