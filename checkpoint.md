@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 97
+UPDATE: 98
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T03:10Z
-LAST_OP: Phase 36 — Task Cost Estimation: cost_estimator.py, dry_run field on TaskRequest, 200 estimate response without queuing
-SMOKE_TESTS: 643/643
+TIMESTAMP: 2026-03-02T03:30Z
+LAST_OP: Phase 37 — Agent Capabilities Registry: agent_registry.py, GET /agents, GET /agents/{type} public endpoints
+SMOKE_TESTS: 651/651
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

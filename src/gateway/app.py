@@ -153,6 +153,43 @@ app.include_router(observability_route.router, prefix="/admin", tags=["observabi
 app.include_router(pipelines_route.router, prefix="/pipelines", tags=["pipelines"])
 
 
+# ── Agent Capabilities Registry (Phase 37) ────────────────────────────────────
+
+
+@app.get("/agents", tags=["agents"])
+async def list_agent_capabilities() -> dict:
+    """
+    List all available agent types and their capabilities.
+
+    Public endpoint — no authentication required.
+    Returns the complete agent registry with use-cases, limitations, and hints.
+    """
+    from src.agent_registry import list_agents
+
+    return {"count": 3, "agents": list_agents()}
+
+
+@app.get("/agents/{agent_type}", tags=["agents"])
+async def get_agent_capabilities(agent_type: str) -> dict:
+    """
+    Get capabilities for a specific agent type.
+
+    Public endpoint — no authentication required.
+    Returns 404 if the agent_type is not registered.
+    """
+    from fastapi import HTTPException
+    from src.agent_registry import get_agent
+
+    caps = get_agent(agent_type)
+    if caps is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Agent type {agent_type!r} not found. "
+            "Use GET /agents to list available types.",
+        )
+    return caps
+
+
 # ── Minimal Web UI ────────────────────────────────────────────────────────────
 
 

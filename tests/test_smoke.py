@@ -8259,3 +8259,93 @@ def test_p36_submit_task_returns_estimate_on_dry_run():
     src = inspect.getsource(tasks_mod.submit_task)
     assert "dry_run" in src
     assert "estimate_task_cost" in src
+
+
+# ── Phase 37: Agent Capabilities Registry ─────────────────────────────────────
+
+
+def test_p37_agent_registry_importable():
+    """agent_registry module is importable."""
+    from src.agent_registry import (
+        AGENT_REGISTRY,
+        VALID_AGENT_TYPES,
+        get_agent,
+        list_agents,
+    )
+
+    assert isinstance(AGENT_REGISTRY, dict)
+    assert len(AGENT_REGISTRY) >= 3
+
+
+def test_p37_all_standard_agents_registered():
+    """base_agent, orchestrator, researcher are all in the registry."""
+    from src.agent_registry import AGENT_REGISTRY
+
+    for agent in ("base_agent", "orchestrator", "researcher"):
+        assert agent in AGENT_REGISTRY
+
+
+def test_p37_registry_entries_have_required_fields():
+    """Each registry entry has the required capability fields."""
+    from src.agent_registry import AGENT_REGISTRY
+
+    required = {
+        "agent_type",
+        "name",
+        "description",
+        "supports_tools",
+        "max_steps",
+        "use_cases",
+        "limitations",
+    }
+    for agent_type, caps in AGENT_REGISTRY.items():
+        missing = required - caps.keys()
+        assert not missing, f"{agent_type} missing fields: {missing}"
+
+
+def test_p37_get_agent_returns_correct_entry():
+    """get_agent() returns the correct dict for a valid type."""
+    from src.agent_registry import get_agent
+
+    caps = get_agent("orchestrator")
+    assert caps is not None
+    assert caps["agent_type"] == "orchestrator"
+    assert caps["max_steps"] >= 10
+
+
+def test_p37_get_agent_returns_none_for_unknown():
+    """get_agent() returns None for an unknown agent type."""
+    from src.agent_registry import get_agent
+
+    assert get_agent("nonexistent_agent_xyz") is None
+
+
+def test_p37_list_agents_returns_all():
+    """list_agents() returns all registered agents."""
+    from src.agent_registry import list_agents, AGENT_REGISTRY
+
+    agents = list_agents()
+    assert len(agents) == len(AGENT_REGISTRY)
+    types = {a["agent_type"] for a in agents}
+    assert types == set(AGENT_REGISTRY.keys())
+
+
+def test_p37_app_has_agents_routes():
+    """Gateway app exposes /agents and /agents/{agent_type} endpoints."""
+    import inspect
+    import src.gateway.app as app_mod
+
+    src = inspect.getsource(app_mod)
+    assert "/agents" in src
+    assert "list_agent_capabilities" in src
+    assert "get_agent_capabilities" in src
+
+
+def test_p37_valid_agent_types_frozenset():
+    """VALID_AGENT_TYPES is a frozenset containing expected types."""
+    from src.agent_registry import VALID_AGENT_TYPES
+
+    assert isinstance(VALID_AGENT_TYPES, frozenset)
+    assert "base_agent" in VALID_AGENT_TYPES
+    assert "orchestrator" in VALID_AGENT_TYPES
+    assert "researcher" in VALID_AGENT_TYPES
