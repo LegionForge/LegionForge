@@ -100,3 +100,5 @@ jp.md
 # ── Session / Checkpoint Files (local dev sync, never commit) ─
 session.md
 checkpoint.md
+tests/testlab_suite/_novel_general_tmp.py
+tests/testlab_suite/_novel_security_tmp.py

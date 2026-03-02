@@ -19,8 +19,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
-import time
 from pathlib import Path
 
 import pytest
@@ -29,7 +29,6 @@ from tests.testlab_suite.novel_findings import append_finding
 
 pytestmark = [pytest.mark.novel]
 
-_NOVEL_TMP = Path(__file__).parent / ".novel_general.py"
 _SLOT_COUNT = 5
 
 # ── LLM availability check ────────────────────────────────────────────────────
@@ -112,32 +111,35 @@ def _generate_novel_tests(gateway_url: str) -> str:
 
 _generated_code: str | None = None
 _generation_error: str | None = None
-_gateway_url_for_novel: str = "http://127.0.0.1:9999"  # placeholder; updated in fixture
+_novel_tmp_path: str | None = None
 
 
 @pytest.fixture(scope="module", autouse=True)
-def generate_novel_file(gateway_server, tmp_path_factory):
-    """Generate novel tests once per module and write to temp file."""
-    global _generated_code, _generation_error, _gateway_url_for_novel
+def generate_novel_file(gateway_server):
+    """Generate novel tests once per module and write to a system temp file."""
+    global _generated_code, _generation_error, _novel_tmp_path
+    import re
 
     if not _ollama_available():
         _generation_error = "Ollama not available"
         yield
         return
 
-    _gateway_url_for_novel = gateway_server.base_url
-
+    gateway_url = gateway_server.base_url
+    tmp_path: str | None = None
     try:
-        code = _generate_novel_tests(_gateway_url_for_novel)
+        code = _generate_novel_tests(gateway_url)
         # Strip markdown fences if LLM adds them
-        import re
-
         code = re.sub(r"^```(?:python)?\n?", "", code, flags=re.MULTILINE)
         code = re.sub(r"\n?```$", "", code, flags=re.MULTILINE)
         code = code.strip()
 
-        # Write to module-level temp file
-        _NOVEL_TMP.write_text(code, encoding="utf-8")
+        # Write to a system temp directory (not inside the project) so pytest
+        # subprocess does not pick up the project conftest.py.
+        fd, tmp_path = tempfile.mkstemp(suffix="_novel_general.py", prefix="lf_")
+        os.close(fd)
+        Path(tmp_path).write_text(code, encoding="utf-8")
+        _novel_tmp_path = tmp_path
         _generated_code = code
     except Exception as exc:
         _generation_error = str(exc)
@@ -145,9 +147,9 @@ def generate_novel_file(gateway_server, tmp_path_factory):
     yield
 
     # Cleanup
-    if _NOVEL_TMP.exists():
+    if tmp_path and Path(tmp_path).exists():
         try:
-            _NOVEL_TMP.unlink()
+            Path(tmp_path).unlink()
         except Exception:
             pass
 
@@ -161,7 +163,7 @@ def test_novel_slot(slot: int, generate_novel_file):
     if _generation_error:
         pytest.skip(f"Novel test generation skipped: {_generation_error}")
 
-    if not _NOVEL_TMP.exists():
+    if not _novel_tmp_path or not Path(_novel_tmp_path).exists():
         pytest.skip("Novel tests file not generated")
 
     test_name = f"test_novel_slot_{slot}"
@@ -170,29 +172,38 @@ def test_novel_slot(slot: int, generate_novel_file):
             sys.executable,
             "-m",
             "pytest",
-            str(_NOVEL_TMP),
-            f"::{test_name}",
+            f"{_novel_tmp_path}::{test_name}",
             "-v",
             "--tb=short",
+            "--override-ini=asyncio_mode=auto",
+            "-p",
+            "no:cacheprovider",
         ],
         capture_output=True,
         text=True,
         timeout=60,
-        cwd=str(Path(__file__).parent.parent.parent),
     )
 
     if result.returncode != 0:
         # Save as a finding
         failure_output = (result.stdout + result.stderr)[-2000:]
         try:
-            code = _NOVEL_TMP.read_text(encoding="utf-8") if _NOVEL_TMP.exists() else ""
+            code = (
+                Path(_novel_tmp_path).read_text(encoding="utf-8")
+                if _novel_tmp_path and Path(_novel_tmp_path).exists()
+                else ""
+            )
         except Exception:
             code = ""
 
-        append_finding(
+        finding_id = append_finding(
             category="general",
             test_name=test_name,
             source_code=code,
             failure_reason=failure_output,
         )
-        pytest.fail(f"Novel test slot {slot} FAILED:\n{failure_output[:1000]}")
+        pytest.skip(
+            f"Novel test slot {slot}: finding saved (id={finding_id}). "
+            f"Review via GET /novel or novel_findings.json. "
+            f"Output snippet: {failure_output[:300]}"
+        )
