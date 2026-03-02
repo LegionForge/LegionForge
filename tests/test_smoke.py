@@ -9553,3 +9553,76 @@ def test_p52_rbac_includes_user_preferences():
 
     src = inspect.getsource(_setup_db_roles)
     assert "user_preferences" in src
+
+
+# ── Phase 53: Usage History ────────────────────────────────────────────────────
+
+
+def test_p53_get_user_usage_history_importable():
+    """get_user_usage_history is importable from src.database."""
+    from src.database import get_user_usage_history  # noqa: F401
+
+
+def test_p53_usage_history_in_app():
+    """app.py registers GET /usage/history."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert "/usage/history" in paths
+
+
+def test_p53_days_param_capped_at_90():
+    """get_user_usage_history caps days at 90."""
+    import inspect
+    from src.database import get_user_usage_history
+
+    src = inspect.getsource(get_user_usage_history)
+    assert "90" in src
+
+
+def test_p53_days_param_min_is_1():
+    """get_user_usage_history enforces minimum days of 1."""
+    import inspect
+    from src.database import get_user_usage_history
+
+    src = inspect.getsource(get_user_usage_history)
+    assert "max(1" in src
+
+
+def test_p53_history_response_has_daily_and_totals():
+    """get_user_usage_history returns daily and totals keys."""
+    import inspect
+    from src.database import get_user_usage_history
+
+    src = inspect.getsource(get_user_usage_history)
+    assert '"daily"' in src
+    assert '"totals"' in src
+    assert '"grand_total"' in src
+
+
+def test_p53_history_response_has_by_provider():
+    """get_user_usage_history includes by_provider breakdown."""
+    import inspect
+    from src.database import get_user_usage_history
+
+    src = inspect.getsource(get_user_usage_history)
+    assert '"by_provider"' in src
+
+
+def test_p53_history_queries_api_usage_table():
+    """get_user_usage_history reads from api_usage table."""
+    import inspect
+    from src.database import get_user_usage_history
+
+    src = inspect.getsource(get_user_usage_history)
+    assert "api_usage" in src
+    assert "total_tokens" in src
+
+
+def test_p53_app_usage_history_requires_auth():
+    """GET /usage/history endpoint uses require_user dependency."""
+    import inspect
+    from src.gateway.app import get_usage_history
+
+    src = inspect.getsource(get_usage_history)
+    assert "require_user" in src

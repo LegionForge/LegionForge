@@ -5037,3 +5037,83 @@ async def delete_user_preferences(user_id: str, keys: list[str] | None = None) -
             "prefs": row["prefs"] or {},
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }
+
+
+# ── Phase 53: Usage History ───────────────────────────────────────────────────
+
+
+async def get_user_usage_history(
+    user_id: str,
+    days: int = 30,
+) -> dict:
+    """
+    Return per-day, per-provider token usage for the last N days.
+
+    Args:
+        user_id — the gateway user
+        days    — how many days back to look (1–90, default 30)
+
+    Returns a dict with:
+        {
+          "user_id": str,
+          "days": int,
+          "daily": [
+            {"date": "YYYY-MM-DD", "total": int, "providers": {"ollama": N, ...}},
+            ...
+          ],
+          "totals": {"grand_total": int, "by_provider": {...}},
+        }
+
+    Phase 53 — Usage History.
+    """
+    days = max(1, min(90, days))
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT DATE(ts) AS day, provider,
+                   COALESCE(SUM(total_tokens), 0) AS tokens
+            FROM api_usage
+            WHERE user_id = %s
+              AND ts >= now() - (%s || ' days')::interval
+            GROUP BY DATE(ts), provider
+            ORDER BY DATE(ts) DESC, provider
+            """,
+            (user_id, str(days)),
+        )
+        rows = await cur.fetchall()
+
+    # Organise by date
+    by_date: dict[str, dict[str, int]] = {}
+    for row in rows:
+        day_str = str(row["day"])
+        if day_str not in by_date:
+            by_date[day_str] = {}
+        by_date[day_str][row["provider"]] = int(row["tokens"])
+
+    daily = [
+        {
+            "date": day,
+            "total": sum(prov_tokens.values()),
+            "providers": prov_tokens,
+        }
+        for day, prov_tokens in sorted(by_date.items(), reverse=True)
+    ]
+
+    # Grand totals
+    grand_total = sum(d["total"] for d in daily)
+    by_provider: dict[str, int] = {}
+    for d in daily:
+        for provider, tokens in d["providers"].items():
+            by_provider[provider] = by_provider.get(provider, 0) + tokens
+
+    return {
+        "user_id": user_id,
+        "days": days,
+        "daily": daily,
+        "totals": {
+            "grand_total": grand_total,
+            "by_provider": by_provider,
+        },
+    }

@@ -34,7 +34,12 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
-from src.database import init_db, close_db, get_user_usage_summary_today
+from src.database import (
+    init_db,
+    close_db,
+    get_user_usage_summary_today,
+    get_user_usage_history,
+)
 from src.gateway.auth import require_user
 from src.gateway.routes import (
     tasks,
@@ -292,6 +297,28 @@ async def get_my_usage(user: dict = Depends(require_user)) -> JSONResponse:
         )
     except Exception as exc:
         logger.error(f"[gateway] /usage/me failed: {exc}")
+        return JSONResponse({"error": str(exc)}, status_code=503)
+
+
+@app.get("/usage/history", tags=["usage"])
+async def get_usage_history(
+    days: int = 30,
+    user: dict = Depends(require_user),
+) -> JSONResponse:
+    """
+    Return per-day token usage history for the authenticated user.
+
+    Query params:
+        days — how many days back to include (1–90, default 30)
+
+    Phase 53 — Usage History.
+    """
+    try:
+        days = max(1, min(90, days))
+        history = await get_user_usage_history(user["user_id"], days=days)
+        return JSONResponse(history)
+    except Exception as exc:
+        logger.error(f"[gateway] /usage/history failed: {exc}")
         return JSONResponse({"error": str(exc)}, status_code=503)
 
 
