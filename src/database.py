@@ -255,7 +255,8 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
     )
 
-    # Mutable app tables — INSERT + UPDATE, no DELETE, no DDL
+    # Mutable app tables — INSERT + UPDATE + DELETE, no DDL
+    # Keep this list in sync with every new table added in _create_app_tables.
     for tbl in [
         "api_usage",
         "health_metrics",
@@ -268,11 +269,22 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "tool_registry",
         "tasks",  # Phase 8: gateway task queue
         "gateway_users",  # Phase 8: gateway users
-        "stream_tokens",  # Phase 10: DB-backed SSE stream tokens
+        "stream_tokens",  # Phase 10: DB-backed SSE stream tokens (also needs DELETE)
+        "scheduled_tasks",  # Phase 23: cron-scheduled tasks
+        "pipelines",  # Phase 27: task pipelines
+        "pipeline_runs",  # Phase 27: pipeline run log
+        "task_notes",  # Phase 32: task annotations
+        "task_events",  # Phase 39: task timeline events
+        "webhooks",  # Phase 48: webhook registry
+        "task_attachments",  # Phase 49: task text attachments
+        "task_templates",  # Phase 50: reusable task templates
+        "task_shares",  # Phase 51: read-only share tokens
     ]:
         try:
             await admin_conn.execute(
-                pgsql.SQL("GRANT INSERT, UPDATE ON {tbl} TO {user_id}").format(
+                pgsql.SQL(
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO {user_id}"
+                ).format(
                     tbl=pgsql.Identifier(tbl),
                     user_id=pgsql.Identifier(app_user),
                 )
@@ -281,15 +293,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             # Table might not exist yet on very first run — non-fatal
             logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
 
-    # stream_tokens also needs DELETE (purge removes expired rows)
+    # Ensure future tables automatically inherit grants (ALTER DEFAULT PRIVILEGES)
     try:
         await admin_conn.execute(
-            pgsql.SQL("GRANT DELETE ON stream_tokens TO {user_id}").format(
-                user_id=pgsql.Identifier(app_user),
-            )
+            pgsql.SQL(
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {user_id}"
+            ).format(user_id=pgsql.Identifier(app_user))
         )
     except Exception as e:
-        logger.debug(f"[db-rbac] GRANT DELETE on stream_tokens skipped: {e}")
+        logger.debug(f"[db-rbac] ALTER DEFAULT PRIVILEGES skipped: {e}")
 
     # LangGraph checkpoint tables — full CRUD required by LangGraph internals
     for tbl in [
