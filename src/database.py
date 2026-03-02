@@ -280,6 +280,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "task_templates",  # Phase 50: reusable task templates
         "task_shares",  # Phase 51: read-only share tokens
         "user_preferences",  # Phase 52: per-user task defaults
+        "sessions",  # Phase 54: multi-turn conversation sessions
     ]:
         try:
             await admin_conn.execute(
@@ -1208,6 +1209,11 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_tasks_fts ON tasks USING GIN (search_vector)"
     )
 
+    # ── Phase 54: sessions FK on tasks ───────────────────────────────────────────
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(session_id) ON DELETE SET NULL"
+    )
+
     # ── Phase 48: Webhook Registry ───────────────────────────────────────────────
     # Persistent webhook subscriptions per user.  The worker fires these alongside
     # the per-task callback_url (Phase 26) on task complete / failed events.
@@ -1301,6 +1307,25 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
+    )
+
+    # ── Phase 54: sessions ────────────────────────────────────────────────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id     TEXT NOT NULL,
+            name        TEXT NOT NULL DEFAULT '',
+            agent_type  TEXT NOT NULL DEFAULT 'orchestrator',
+            thread_id   UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+            turn_count  INT NOT NULL DEFAULT 0,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id, created_at DESC)"
     )
 
     logger.info("Application tables verified")
@@ -2932,6 +2957,7 @@ async def create_task(
     content_hash: str | None = None,
     tags: list[str] | None = None,
     depends_on: str | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'.
 
@@ -2939,6 +2965,7 @@ async def create_task(
     content_hash: SHA-256 of (agent_type:input_text) used for cache lookups.
     tags: freeform string labels (Phase 31).
     depends_on: UUID of a task that must complete before this one runs (Phase 34).
+    session_id: UUID of a conversation session (Phase 54).
     """
     pool = get_pool()
     async with pool.connection() as conn:
@@ -2947,11 +2974,11 @@ async def create_task(
             """
             INSERT INTO tasks
                 (user_id, input, agent_type, config, estimated_tokens,
-                 callback_url, priority, content_hash, tags, depends_on)
+                 callback_url, priority, content_hash, tags, depends_on, session_id)
             VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s,
-                    %s::uuid)
+                    %s::uuid, %s::uuid)
             RETURNING task_id::text, status, created_at, agent_type,
-                      priority, tags, depends_on::text
+                      priority, tags, depends_on::text, session_id::text
             """,
             (
                 user_id,
@@ -2964,6 +2991,7 @@ async def create_task(
                 content_hash,
                 list(tags) if tags else [],
                 depends_on,
+                session_id,
             ),
         )
         row = await cur.fetchone()
@@ -5117,3 +5145,161 @@ async def get_user_usage_history(
             "by_provider": by_provider,
         },
     }
+
+
+# ── Phase 54: Conversation Sessions ──────────────────────────────────────────
+
+_SESSION_NAME_MAX_LEN = 128
+
+
+async def create_session(
+    user_id: str,
+    name: str = "",
+    agent_type: str = "orchestrator",
+) -> dict:
+    """
+    Create a new conversation session.
+
+    A session generates a unique thread_id that is reused across all turns,
+    so LangGraph's checkpointer can resume state between turns.
+
+    Returns the new session row as a dict.
+
+    Phase 54 — Conversation Sessions.
+    """
+    if agent_type not in {"orchestrator", "researcher", "base_agent"}:
+        raise ValueError(
+            f"Invalid agent_type {agent_type!r}. "
+            "Must be orchestrator, researcher, or base_agent."
+        )
+    name = (name or "").strip()[:_SESSION_NAME_MAX_LEN]
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO sessions (user_id, name, agent_type)
+            VALUES (%s, %s, %s)
+            RETURNING session_id::text, user_id, name, agent_type,
+                      thread_id::text, turn_count, created_at, updated_at
+            """,
+            (user_id, name, agent_type),
+        )
+        return dict(await cur.fetchone())
+
+
+async def get_session(session_id: str, user_id: str) -> dict | None:
+    """
+    Return a session row or None if not found / not owned by user_id.
+
+    Phase 54 — Conversation Sessions.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT session_id::text, user_id, name, agent_type,
+                   thread_id::text, turn_count, created_at, updated_at
+            FROM sessions
+            WHERE session_id = %s::uuid AND user_id = %s
+            """,
+            (session_id, user_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_sessions(user_id: str, limit: int = 50, offset: int = 0) -> dict:
+    """
+    List conversation sessions for a user, newest first.
+
+    Phase 54 — Conversation Sessions.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur_count = await conn.execute(
+            "SELECT COUNT(*) AS cnt FROM sessions WHERE user_id = %s", (user_id,)
+        )
+        total = (await cur_count.fetchone())["cnt"]
+        cur = await conn.execute(
+            """
+            SELECT session_id::text, user_id, name, agent_type,
+                   thread_id::text, turn_count, created_at, updated_at
+            FROM sessions
+            WHERE user_id = %s
+            ORDER BY updated_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            (user_id, limit, offset),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+    return {"sessions": rows, "total": int(total)}
+
+
+async def delete_session(session_id: str, user_id: str) -> bool:
+    """
+    Delete a session (and cascade-nullify its tasks).
+    Returns True if deleted, False if not found / not owned.
+
+    Phase 54 — Conversation Sessions.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM sessions WHERE session_id = %s::uuid AND user_id = %s "
+            "RETURNING session_id",
+            (session_id, user_id),
+        )
+        return (await cur.fetchone()) is not None
+
+
+async def increment_session_turn(session_id: str) -> None:
+    """
+    Increment turn_count and update updated_at for a session.
+    Called by the worker when a task in a session completes.
+
+    Phase 54 — Conversation Sessions.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE sessions
+            SET turn_count = turn_count + 1,
+                updated_at = now()
+            WHERE session_id = %s::uuid
+            """,
+            (session_id,),
+        )
+
+
+async def get_session_tasks(session_id: str, user_id: str) -> list[dict]:
+    """
+    Return all tasks belonging to a session, ordered oldest-first.
+
+    Phase 54 — Conversation Sessions.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        # Verify ownership
+        cur = await conn.execute(
+            "SELECT session_id FROM sessions WHERE session_id = %s::uuid AND user_id = %s",
+            (session_id, user_id),
+        )
+        if not await cur.fetchone():
+            raise LookupError(f"Session {session_id} not found or not owned by user")
+        cur = await conn.execute(
+            """
+            SELECT task_id::text, status, agent_type, input, result,
+                   created_at, completed_at
+            FROM tasks
+            WHERE session_id = %s::uuid
+            ORDER BY created_at ASC
+            """,
+            (session_id,),
+        )
+        return [dict(r) for r in await cur.fetchall()]

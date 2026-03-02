@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 117
+UPDATE: 118
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T09:30Z
-LAST_OP: Phase 53 — Usage History: get_user_usage_history(), GET /usage/history?days=N
-SMOKE_TESTS: 780/780
+TIMESTAMP: 2026-03-02T10:00Z
+LAST_OP: Phase 54 — Conversation Sessions: sessions table, LangGraph thread_id persistence
+SMOKE_TESTS: 791/791
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

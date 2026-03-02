@@ -144,6 +144,14 @@ class TaskRequest(BaseModel):
             "input_tokens, output_tokens, provider.  Phase 36 — Cost Estimation."
         ),
     )
+    session_id: str | None = Field(
+        default=None,
+        description=(
+            "UUID of an existing session. When provided, the task is run using the "
+            "session's LangGraph thread_id so the agent can recall prior context.  "
+            "Phase 54 — Conversation Sessions."
+        ),
+    )
 
     @field_validator("task")
     @classmethod
@@ -271,6 +279,17 @@ async def submit_task(
             detail="Daily token budget exceeded. Try again tomorrow.",
         ) from budget_err
 
+    # Phase 54: validate session_id ownership before creating task
+    if body.session_id:
+        from src.database import get_session as db_get_session
+
+        sess = await db_get_session(body.session_id, user["user_id"])
+        if sess is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {body.session_id!r} not found",
+            )
+
     row = await create_task(
         user_id=user["user_id"],
         input_text=sanitized,
@@ -282,6 +301,7 @@ async def submit_task(
         content_hash=content_hash,
         tags=body.tags,
         depends_on=body.depends_on,
+        session_id=body.session_id,
     )
 
     task_id = row["task_id"]

@@ -9626,3 +9626,82 @@ def test_p53_app_usage_history_requires_auth():
 
     src = inspect.getsource(get_usage_history)
     assert "require_user" in src
+
+
+# ── Phase 54: Conversation Sessions ───────────────────────────────────────────
+
+
+def test_p54_sessions_table_ddl():
+    """sessions table DDL is in _create_app_tables."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "sessions" in src
+    assert "thread_id" in src
+    assert "turn_count" in src
+
+
+def test_p54_create_session_importable():
+    """create_session is importable from src.database."""
+    from src.database import create_session  # noqa: F401
+
+
+def test_p54_get_session_importable():
+    """get_session is importable from src.database."""
+    from src.database import get_session  # noqa: F401
+
+
+def test_p54_list_sessions_importable():
+    """list_sessions is importable from src.database."""
+    from src.database import list_sessions  # noqa: F401
+
+
+def test_p54_delete_session_importable():
+    """delete_session is importable from src.database."""
+    from src.database import delete_session  # noqa: F401
+
+
+def test_p54_increment_session_turn_importable():
+    """increment_session_turn is importable from src.database."""
+    from src.database import increment_session_turn  # noqa: F401
+
+
+def test_p54_sessions_router_registered():
+    """app.py registers /sessions router."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any("sessions" in p for p in paths)
+
+
+def test_p54_sessions_route_file_importable():
+    """sessions route module is importable."""
+    from src.gateway.routes import sessions  # noqa: F401
+
+
+def test_p54_create_task_accepts_session_id():
+    """create_task accepts session_id kwarg (Phase 54)."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "session_id" in sig.parameters
+
+
+def test_p54_task_request_has_session_id():
+    """TaskRequest has session_id field."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    assert hasattr(TaskRequest, "model_fields")
+    assert "session_id" in TaskRequest.model_fields
+
+
+def test_p54_worker_uses_session_thread_id():
+    """Worker _stream_agent uses session thread_id when session_id is set."""
+    import inspect
+    from src.gateway.worker import _stream_agent
+
+    src = inspect.getsource(_stream_agent)
+    assert "session_id" in src
+    assert "lg_thread_id" in src

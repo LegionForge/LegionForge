@@ -121,9 +121,20 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         "messages": [HumanMessage(content=input_text)],
     }
 
+    # Phase 54: use session thread_id for persistent context across turns
+    session_id = task.get("session_id")
+    if session_id:
+        from src.database import get_session as _db_get_session, increment_session_turn
+
+        _sess = await _db_get_session(session_id, task["user_id"])
+        lg_thread_id = _sess["thread_id"] if _sess else run_id
+    else:
+        lg_thread_id = run_id
+        increment_session_turn = None  # no-op reference
+
     config = {
         "configurable": {
-            "thread_id": run_id,
+            "thread_id": lg_thread_id,
             "tracing_enabled": task_config.get("tracing_enabled", True),
         }
     }
@@ -264,6 +275,15 @@ async def run_task(task: dict) -> None:
 
         await publish_event(task_id, build_task_complete_event(task_id))
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
+
+        # Phase 54: increment session turn counter
+        if session_id:
+            try:
+                from src.database import increment_session_turn as _inc_turn
+
+                await _inc_turn(session_id)
+            except Exception as sess_err:
+                logger.warning(f"[worker] session turn increment failed: {sess_err}")
 
         # Build completion payload (shared by per-task + registry webhooks)
         _complete_payload = {
