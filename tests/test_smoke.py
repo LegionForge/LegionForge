@@ -9288,3 +9288,89 @@ def test_p49_attachment_index_in_ddl():
 
     src = inspect.getsource(_create_app_tables)
     assert "idx_task_attachments_task_id" in src
+
+
+# ── Phase 50: Task Templates ──────────────────────────────────────────────────
+
+
+def test_p50_template_db_functions_importable():
+    """create/list/get/delete_task_template functions importable from src.database."""
+    from src.database import (
+        create_task_template,
+        list_task_templates,
+        get_task_template,
+        delete_task_template,
+    )
+
+    for fn in (
+        create_task_template,
+        list_task_templates,
+        get_task_template,
+        delete_task_template,
+    ):
+        assert callable(fn)
+
+
+def test_p50_template_ddl_in_init():
+    """_create_app_tables creates the task_templates table."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "task_templates" in src
+    assert "template_id" in src
+
+
+def test_p50_template_unique_constraint():
+    """task_templates has UNIQUE (user_id, name) constraint."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "UNIQUE" in src and "user_id, name" in src
+
+
+def test_p50_template_route_importable():
+    """templates router is importable."""
+    from src.gateway.routes.templates import router
+
+    assert router is not None
+
+
+def test_p50_template_route_registered_in_app():
+    """app.py registers the templates router."""
+    from src.gateway.app import app
+
+    routes = [r.path for r in app.routes]
+    assert any("/templates" in p for p in routes)
+
+
+def test_p50_template_run_endpoint_exists():
+    """templates router includes a /run endpoint."""
+    from src.gateway.routes.templates import router
+
+    paths = [r.path for r in router.routes]
+    assert any("run" in p for p in paths)
+
+
+def test_p50_template_variable_substitution():
+    """run_template route substitutes {var} placeholders."""
+    import inspect
+    from src.gateway.routes.templates import run_template
+
+    src = inspect.getsource(run_template)
+    assert "variables" in src
+    assert "replace" in src
+
+
+def test_p50_template_create_model():
+    """TemplateCreate pydantic model validates correctly."""
+    from src.gateway.routes.templates import TemplateCreate
+
+    m = TemplateCreate(
+        name="my-template",
+        input_template="Summarize {topic}",
+        agent_type="researcher",
+    )
+    assert m.name == "my-template"
+    assert "{topic}" in m.input_template

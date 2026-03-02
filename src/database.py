@@ -1235,6 +1235,31 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON task_attachments (task_id)"
     )
 
+    # ── Phase 50: Task Templates ─────────────────────────────────────────────────
+    # Reusable task configurations.  Expanding {var} placeholders in input_template
+    # is handled at the API layer (no DB-level string interpolation).
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_templates (
+            template_id     TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            user_id         TEXT NOT NULL REFERENCES gateway_users(user_id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            description     TEXT,
+            agent_type      TEXT NOT NULL DEFAULT 'base_agent',
+            input_template  TEXT NOT NULL,
+            default_tags    TEXT[] NOT NULL DEFAULT '{}',
+            default_priority INTEGER NOT NULL DEFAULT 5,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (user_id, name)
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_templates_user_id "
+        "ON task_templates (user_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -4628,5 +4653,98 @@ async def delete_task_attachment(
             "WHERE attachment_id = %s AND task_id = %s::uuid AND user_id = %s "
             "RETURNING attachment_id",
             (attachment_id, task_id, user_id),
+        )
+        return (await cur.fetchone()) is not None
+
+
+# ── Phase 50: Task Templates ───────────────────────────────────────────────────
+
+
+async def create_task_template(
+    user_id: str,
+    name: str,
+    input_template: str,
+    agent_type: str = "base_agent",
+    description: str | None = None,
+    default_tags: list[str] | None = None,
+    default_priority: int = 5,
+) -> dict:
+    """Create a reusable task template.  Raises ValueError on duplicate name."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        try:
+            cur = await conn.execute(
+                """
+                INSERT INTO task_templates
+                    (user_id, name, description, agent_type, input_template,
+                     default_tags, default_priority)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING template_id, user_id, name, description, agent_type,
+                          input_template, default_tags, default_priority, created_at
+                """,
+                (
+                    user_id,
+                    name,
+                    description,
+                    agent_type,
+                    input_template,
+                    default_tags or [],
+                    default_priority,
+                ),
+            )
+            return dict(await cur.fetchone())
+        except Exception as exc:
+            if "unique" in str(exc).lower():
+                raise ValueError(
+                    f"Template name {name!r} already exists for this user"
+                ) from exc
+            raise
+
+
+async def list_task_templates(user_id: str) -> list[dict]:
+    """List all templates for a user."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT template_id, user_id, name, description, agent_type,
+                   input_template, default_tags, default_priority, created_at
+            FROM task_templates
+            WHERE user_id = %s
+            ORDER BY name ASC
+            """,
+            (user_id,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_task_template(template_id: str, user_id: str) -> dict | None:
+    """Get a single template by ID."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT template_id, user_id, name, description, agent_type,
+                   input_template, default_tags, default_priority, created_at
+            FROM task_templates
+            WHERE template_id = %s AND user_id = %s
+            """,
+            (template_id, user_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_task_template(template_id: str, user_id: str) -> bool:
+    """Delete a template.  Returns True if deleted."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM task_templates WHERE template_id = %s AND user_id = %s "
+            "RETURNING template_id",
+            (template_id, user_id),
         )
         return (await cur.fetchone()) is not None
