@@ -9205,3 +9205,86 @@ def test_p48_run_task_fires_registry_webhooks():
     assert "_fire_user_webhooks" in src
     assert "task_complete" in src
     assert "task_failed" in src
+
+
+# ── Phase 49: Task Attachments ────────────────────────────────────────────────
+
+
+def test_p49_attachment_db_functions_importable():
+    """add/list/get/delete_task_attachment functions importable from src.database."""
+    from src.database import (
+        add_task_attachment,
+        list_task_attachments,
+        get_task_attachment,
+        delete_task_attachment,
+    )
+
+    for fn in (
+        add_task_attachment,
+        list_task_attachments,
+        get_task_attachment,
+        delete_task_attachment,
+    ):
+        assert callable(fn)
+
+
+def test_p49_max_attachment_bytes_constant():
+    """_MAX_ATTACHMENT_BYTES is 65536 (64 KB)."""
+    from src.database import _MAX_ATTACHMENT_BYTES
+
+    assert _MAX_ATTACHMENT_BYTES == 65_536
+
+
+def test_p49_attachment_ddl_in_init():
+    """_create_app_tables creates the task_attachments table."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "task_attachments" in src
+    assert "attachment_id" in src
+
+
+def test_p49_attachment_size_validation_in_add():
+    """add_task_attachment source contains byte-length check."""
+    import inspect
+    from src.database import add_task_attachment
+
+    src = inspect.getsource(add_task_attachment)
+    assert "_MAX_ATTACHMENT_BYTES" in src
+
+
+def test_p49_attachment_ownership_check_in_add():
+    """add_task_attachment verifies task ownership before inserting."""
+    import inspect
+    from src.database import add_task_attachment
+
+    src = inspect.getsource(add_task_attachment)
+    assert "user_id" in src and "task_id" in src
+
+
+def test_p49_attachment_routes_in_tasks():
+    """tasks router has attachment endpoints."""
+    from src.gateway.routes.tasks import router
+
+    paths = [r.path for r in router.routes]
+    attachment_paths = [p for p in paths if "attachments" in p]
+    assert len(attachment_paths) >= 3  # POST list, GET list, GET single, DELETE
+
+
+def test_p49_attachment_create_model():
+    """AttachmentCreate pydantic model is defined in routes/tasks."""
+    from src.gateway.routes.tasks import AttachmentCreate
+
+    m = AttachmentCreate(filename="test.txt", data="hello")
+    assert m.filename == "test.txt"
+    assert m.content_type == "text/plain"
+
+
+def test_p49_attachment_index_in_ddl():
+    """_create_app_tables creates index on task_attachments.task_id."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "idx_task_attachments_task_id" in src

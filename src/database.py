@@ -1214,6 +1214,27 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks (user_id)"
     )
 
+    # ── Phase 49: Task Attachments ───────────────────────────────────────────────
+    # Small text blobs (code snippets, file excerpts, structured context) attached
+    # to a task.  Max 64 KB per attachment enforced at the API layer.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_attachments (
+            attachment_id   TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            task_id         UUID NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+            user_id         TEXT NOT NULL,
+            filename        TEXT NOT NULL,
+            content_type    TEXT NOT NULL DEFAULT 'text/plain',
+            data            TEXT NOT NULL,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id "
+        "ON task_attachments (task_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -4515,3 +4536,97 @@ async def get_user_webhooks_for_event(user_id: str, event: str) -> list[dict]:
             (user_id, [event]),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Phase 49: Task Attachments ────────────────────────────────────────────────
+
+_MAX_ATTACHMENT_BYTES = 65_536  # 64 KB limit enforced here and at API layer
+
+
+async def add_task_attachment(
+    task_id: str,
+    user_id: str,
+    filename: str,
+    data: str,
+    content_type: str = "text/plain",
+) -> dict:
+    """
+    Attach a text blob to a task.
+
+    Returns the new attachment row (without ``data`` field to keep responses small).
+    Raises ValueError if data exceeds _MAX_ATTACHMENT_BYTES or task not owned by user.
+    """
+    if len(data.encode()) > _MAX_ATTACHMENT_BYTES:
+        raise ValueError(
+            f"Attachment data exceeds maximum size of {_MAX_ATTACHMENT_BYTES} bytes"
+        )
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        # Verify ownership: task must exist and belong to user
+        cur = await conn.execute(
+            "SELECT task_id FROM tasks WHERE task_id = %s::uuid AND user_id = %s",
+            (task_id, user_id),
+        )
+        if await cur.fetchone() is None:
+            raise ValueError(f"Task {task_id!r} not found or not owned by user")
+        cur = await conn.execute(
+            """
+            INSERT INTO task_attachments (task_id, user_id, filename, content_type, data)
+            VALUES (%s::uuid, %s, %s, %s, %s)
+            RETURNING attachment_id, task_id::text, user_id, filename, content_type, created_at
+            """,
+            (task_id, user_id, filename, content_type, data),
+        )
+        return dict(await cur.fetchone())
+
+
+async def list_task_attachments(task_id: str, user_id: str) -> list[dict]:
+    """List attachments for a task (data field excluded for brevity)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT attachment_id, task_id::text, user_id, filename, content_type, created_at
+            FROM task_attachments
+            WHERE task_id = %s::uuid AND user_id = %s
+            ORDER BY created_at ASC
+            """,
+            (task_id, user_id),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_task_attachment(
+    attachment_id: str, task_id: str, user_id: str
+) -> dict | None:
+    """Get a single attachment including its data field."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT attachment_id, task_id::text, user_id, filename, content_type, data, created_at
+            FROM task_attachments
+            WHERE attachment_id = %s AND task_id = %s::uuid AND user_id = %s
+            """,
+            (attachment_id, task_id, user_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_task_attachment(
+    attachment_id: str, task_id: str, user_id: str
+) -> bool:
+    """Delete an attachment.  Returns True if deleted."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM task_attachments "
+            "WHERE attachment_id = %s AND task_id = %s::uuid AND user_id = %s "
+            "RETURNING attachment_id",
+            (attachment_id, task_id, user_id),
+        )
+        return (await cur.fetchone()) is not None

@@ -48,6 +48,11 @@ from src.database import (
     VALID_TASK_LABELS,
     VALID_TASK_STATUSES,
     decode_task_cursor,
+    add_task_attachment,
+    list_task_attachments,
+    get_task_attachment,
+    delete_task_attachment,
+    _MAX_ATTACHMENT_BYTES,
 )
 import re as _re
 
@@ -893,6 +898,103 @@ async def get_timeline(
         )
     events = await get_task_timeline(task_id, user["user_id"])
     return {"task_id": task_id, "count": len(events), "events": events}
+
+
+# ── Task Attachments (Phase 49) ────────────────────────────────────────────────
+
+
+class AttachmentCreate(BaseModel):
+    filename: str = Field(..., max_length=255)
+    content_type: str = Field(default="text/plain", max_length=100)
+    data: str = Field(
+        ...,
+        description=f"Text content of the attachment (max {_MAX_ATTACHMENT_BYTES} bytes when encoded as UTF-8)",
+    )
+
+
+@router.post("/{task_id}/attachments", status_code=status.HTTP_201_CREATED)
+async def add_attachment(
+    task_id: str,
+    body: AttachmentCreate,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Attach a text blob to a task (code snippets, file excerpts, structured context).
+
+    Maximum attachment size: 64 KB (UTF-8 encoded).  Phase 49 — Task Attachments.
+    """
+    try:
+        return await add_task_attachment(
+            task_id=task_id,
+            user_id=user["user_id"],
+            filename=body.filename,
+            data=body.data,
+            content_type=body.content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/{task_id}/attachments")
+async def list_attachments(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    List all attachments for a task (data fields excluded).
+
+    Returns 404 if the task does not exist or is owned by another user.
+    Phase 49 — Task Attachments.
+    """
+    task = await get_task(task_id, user["user_id"])
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+    attachments = await list_task_attachments(task_id, user["user_id"])
+    return {"task_id": task_id, "count": len(attachments), "attachments": attachments}
+
+
+@router.get("/{task_id}/attachments/{attachment_id}")
+async def get_attachment(
+    task_id: str,
+    attachment_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Retrieve a single attachment including its data.
+
+    Phase 49 — Task Attachments.
+    """
+    row = await get_task_attachment(attachment_id, task_id, user["user_id"])
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Attachment {attachment_id!r} not found",
+        )
+    return row
+
+
+@router.delete(
+    "/{task_id}/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_attachment(
+    task_id: str,
+    attachment_id: str,
+    user: dict = Depends(require_user),
+) -> None:
+    """
+    Delete an attachment.
+
+    Phase 49 — Task Attachments.
+    """
+    deleted = await delete_task_attachment(attachment_id, task_id, user["user_id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Attachment {attachment_id!r} not found",
+        )
 
 
 # ── Task Retry (Phase 33) ──────────────────────────────────────────────────────
