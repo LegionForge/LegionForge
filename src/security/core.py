@@ -547,6 +547,14 @@ async def register_tool(
     )
 
     # Persist to DB — non-fatal if DB not available (smoke tests run without DB)
+    #
+    # Security note: input_schema is stored alongside schema_hash so that
+    # verify_tool_before_invocation can reconstruct a valid manifest on lazy-load.
+    # This makes the lazy-load hash check self-referential (both sides come from
+    # the same DB row), so it cannot detect DB-level tampering on the lazy path.
+    # The primary integrity guarantee is in-memory registration at gateway startup
+    # (register_researcher_tools / register_orchestrator_tools), which is the hot
+    # path.  Lazy-load is only a fallback for tools registered out-of-process.
     try:
         from src.database import get_pool
 
@@ -557,8 +565,8 @@ async def register_tool(
                 INSERT INTO tool_registry
                     (tool_id, source, version, description, description_hash,
                      schema_hash, entrypoint_hash, declared_side_effects,
-                     approved_by, approval_notes, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'APPROVED')
+                     approved_by, approval_notes, status, input_schema)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'APPROVED', %s)
                 ON CONFLICT (tool_id) DO UPDATE SET
                     source            = EXCLUDED.source,
                     version           = EXCLUDED.version,
@@ -569,6 +577,7 @@ async def register_tool(
                     declared_side_effects = EXCLUDED.declared_side_effects,
                     approved_by       = EXCLUDED.approved_by,
                     approval_notes    = EXCLUDED.approval_notes,
+                    input_schema      = EXCLUDED.input_schema,
                     status            = 'APPROVED',
                     approved_at       = NOW()
                 """,
@@ -583,6 +592,7 @@ async def register_tool(
                     manifest.declared_side_effects,
                     approved_by,
                     approval_notes,
+                    json.dumps(manifest.input_schema),
                 ),
             )
     except RuntimeError:

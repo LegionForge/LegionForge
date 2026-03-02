@@ -88,6 +88,20 @@ async def lifespan(app: FastAPI):
 
     worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
 
+    # Register agent tools in the security registry so verify_tool_before_invocation
+    # succeeds at runtime.  Without this, every invocation hits the lazy-load path
+    # which reconstructs the manifest with input_schema={} (not stored in DB),
+    # producing a hash mismatch that silently blocks every tool call.
+    try:
+        from src.agents.researcher import register_researcher_tools
+        from src.agents.orchestrator import register_orchestrator_tools
+
+        await register_researcher_tools()
+        await register_orchestrator_tools()
+        logger.info("[gateway] Agent tools registered in security registry")
+    except Exception as _reg_err:
+        logger.error("[gateway] Tool registration failed (non-fatal): %s", _reg_err)
+
     # Warm up local Ollama models so the first task doesn't hit cold-start
     # latency.  Non-fatal — gateway still starts if Ollama is unreachable.
     try:

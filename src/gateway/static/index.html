@@ -310,6 +310,14 @@
     .history-item .hi-tokens { color: var(--text-xdim); text-align: right; font-size: 10px; }
     #history-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
 
+    /* ── Tool block (blocked = security registry rejected the call) ── */
+    .tool-block.blocked {
+      background: rgba(248, 81, 73, 0.08);
+      border-color: rgba(248, 81, 73, 0.4);
+      color: var(--red);
+    }
+    .tool-block.blocked .tool-status { color: var(--red); }
+
     /* ── Version footer ─────────────────────────────────────────── */
     #version-footer {
       text-align: center;
@@ -573,13 +581,15 @@ function elapsedSec() {
 // ── Tool block management ─────────────────────────────────────────
 let _toolBlockEl = null;
 
-function openToolBlock(toolName) {
+function openToolBlock(toolName, hint) {
   S.activeToolName = toolName;
   // Ensure we're on a new line
   appendSpan('\n');
   const wrap = document.createElement('span');
   wrap.className = 'tool-block';
   wrap.id = 'tool-block-' + toolName.replace(/\W/g, '_');
+  // hint is the sanitized primary arg (query text or URL) — shown as tooltip
+  if (hint) wrap.title = hint;
   wrap.innerHTML = '<span class="tool-status">▶</span> ' + escapeHtml(toolName);
   el.output().appendChild(wrap);
   el.output().scrollTop = el.output().scrollHeight;
@@ -703,8 +713,8 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   es.addEventListener('tool_start', e => {
     try {
       const d = JSON.parse(e.data);
-      openToolBlock(d.tool || 'tool');
-    } catch(_) { openToolBlock('tool'); }
+      openToolBlock(d.tool || 'tool', d.hint || '');
+    } catch(_) { openToolBlock('tool', ''); }
   });
 
   es.addEventListener('tool_end', e => {
@@ -765,10 +775,16 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     if (S.heartbeatCount === 1 && !S.outputBuffer.trim()) {
       appendSpan('[model loading — first request may take up to 60 s…]\n', 'o-status');
     }
-    // After 2 heartbeats (≥30 s) with still no output, start silent backup
-    // polling every 5 s.  This catches the result even if the task_complete
-    // SSE event is dropped during a slow Ollama cold-start.
-    if (S.heartbeatCount >= 2 && !S.outputBuffer.trim() && !S.pollTimer) {
+    // Start silent backup polling every 5 s when:
+    //  (a) ≥2 heartbeats with no output yet  — slow Ollama cold-start, OR
+    //  (b) ≥1 heartbeat with output present  — tokens streamed but
+    //      task_complete event was dropped before the stream closed.
+    // Backup poll fires fetchTaskResult when the task reaches a terminal
+    // state, guaranteeing finishRun is called even if the SSE event is lost.
+    if (!S.pollTimer && (
+        (S.heartbeatCount >= 2 && !S.outputBuffer.trim()) ||
+        (S.heartbeatCount >= 1 &&  S.outputBuffer.trim())
+    )) {
       S.pollTimer = setInterval(async () => {
         if (S.activeTaskId !== taskId) { clearInterval(S.pollTimer); S.pollTimer = null; return; }
         try {
@@ -913,6 +929,15 @@ function pollTaskUntilComplete(taskId, apiKey, agent, taskInputText) {
 
 // ── Finish run (all terminal states) ─────────────────────────────
 function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
+  // Close any tool block that was still open when the run ended.
+  // This happens when a tool call was blocked by the security registry —
+  // tool_start fires, but tool_end never arrives.
+  if (_toolBlockEl) {
+    _toolBlockEl.classList.add('blocked');
+    _toolBlockEl.querySelector('.tool-status').textContent = '⚠';
+    _toolBlockEl = null;
+    S.activeToolName = null;
+  }
   if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   stopTimer();
   const elapsed = elapsedSec();
