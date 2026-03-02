@@ -48,6 +48,7 @@ from src.gateway.routes import (
     observability as observability_route,
     pipelines as pipelines_route,
     auth_routes as auth_route,
+    webhooks as webhooks_route,
 )
 from src.gateway.worker import task_worker
 
@@ -153,6 +154,7 @@ app.include_router(admin_route.router, prefix="/admin", tags=["admin"])
 app.include_router(observability_route.router, prefix="/admin", tags=["observability"])
 app.include_router(pipelines_route.router, prefix="/pipelines", tags=["pipelines"])
 app.include_router(auth_route.router, prefix="/auth", tags=["auth"])
+app.include_router(webhooks_route.router, prefix="/webhooks", tags=["webhooks"])
 
 
 # ── Agent Capabilities Registry (Phase 37) ────────────────────────────────────

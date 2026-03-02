@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 108
+UPDATE: 109
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T06:25Z
-LAST_OP: Phase 47 — Keyset Cursor Pagination: encode/decode_task_cursor, list_tasks cursor param, next_cursor in response
-SMOKE_TESTS: 730/730
+TIMESTAMP: 2026-03-02T06:40Z
+LAST_OP: Phase 48 — Webhook Registry: webhooks table, CRUD routes /webhooks, worker fires registry webhooks on complete/failed
+SMOKE_TESTS: 738/738
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

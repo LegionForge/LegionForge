@@ -1194,6 +1194,26 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_tasks_fts ON tasks USING GIN (search_vector)"
     )
 
+    # ── Phase 48: Webhook Registry ───────────────────────────────────────────────
+    # Persistent webhook subscriptions per user.  The worker fires these alongside
+    # the per-task callback_url (Phase 26) on task complete / failed events.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webhooks (
+            webhook_id  TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            user_id     TEXT NOT NULL REFERENCES gateway_users(user_id) ON DELETE CASCADE,
+            url         TEXT NOT NULL,
+            events      TEXT[] NOT NULL DEFAULT '{task_complete,task_failed}',
+            secret      TEXT,
+            is_active   BOOLEAN NOT NULL DEFAULT true,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks (user_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -4421,3 +4441,77 @@ async def reap_stuck_tasks(timeout_seconds: int = 1800) -> int:
             except Exception:
                 pass  # best-effort
         return len(rows)
+
+
+# ── Phase 48: Webhook Registry ────────────────────────────────────────────────
+
+VALID_WEBHOOK_EVENTS: frozenset[str] = frozenset(
+    {"task_complete", "task_failed", "all"}
+)
+
+
+async def create_webhook(
+    user_id: str,
+    url: str,
+    events: list[str],
+    secret: str | None = None,
+) -> dict:
+    """Register a new webhook subscription for a user."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO webhooks (user_id, url, events, secret)
+            VALUES (%s, %s, %s, %s)
+            RETURNING webhook_id, user_id, url, events, is_active, created_at
+            """,
+            (user_id, url, events, secret),
+        )
+        return dict(await cur.fetchone())
+
+
+async def list_webhooks(user_id: str) -> list[dict]:
+    """Return all webhook subscriptions for a user (secrets omitted)."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT webhook_id, user_id, url, events, is_active, created_at
+            FROM webhooks
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def delete_webhook(webhook_id: str, user_id: str) -> bool:
+    """Delete a webhook subscription.  Returns True if deleted, False if not found."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM webhooks WHERE webhook_id = %s AND user_id = %s RETURNING webhook_id",
+            (webhook_id, user_id),
+        )
+        return (await cur.fetchone()) is not None
+
+
+async def get_user_webhooks_for_event(user_id: str, event: str) -> list[dict]:
+    """Return active webhooks for a user that subscribe to a specific event."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT webhook_id, url, secret
+            FROM webhooks
+            WHERE user_id = %s
+              AND is_active = true
+              AND (events @> %s OR events @> '{all}')
+            """,
+            (user_id, [event]),
+        )
+        return [dict(r) for r in await cur.fetchall()]

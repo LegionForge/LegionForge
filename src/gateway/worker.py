@@ -52,6 +52,7 @@ from src.database import (
     reap_stuck_tasks,
     record_api_usage,
     purge_expired_stream_tokens,
+    get_user_webhooks_for_event,
 )
 from src.gateway.events import (
     build_sse_event,
@@ -193,6 +194,34 @@ _PURGE_INTERVAL_SECONDS = 600  # purge expired stream tokens every 10 minutes
 _last_purge: float = 0.0
 
 
+async def _fire_user_webhooks(
+    user_id: str | None,
+    event: str,
+    payload: dict,
+) -> None:
+    """
+    Fire all active user webhooks subscribed to ``event`` (Phase 48).
+
+    Runs as a fire-and-forget asyncio.create_task() — errors are logged,
+    never raised.  Uses the same send_callback() helper as the per-task
+    callback_url (Phase 26).
+    """
+    if not user_id:
+        return
+    try:
+        webhooks = await get_user_webhooks_for_event(user_id, event)
+        if not webhooks:
+            return
+        from src.webhook_sender import send_callback
+
+        for wh in webhooks:
+            asyncio.create_task(
+                send_callback(payload.get("task_id", ""), wh["url"], payload)
+            )
+    except Exception as err:
+        logger.warning("[worker] _fire_user_webhooks error: %s", err)
+
+
 async def run_task(task: dict) -> None:
     """Run a single claimed task end-to-end, updating DB and publishing events."""
     task_id = task["task_id"]
@@ -236,26 +265,27 @@ async def run_task(task: dict) -> None:
         await publish_event(task_id, build_task_complete_event(task_id))
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
 
+        # Build completion payload (shared by per-task + registry webhooks)
+        _complete_payload = {
+            "task_id": task_id,
+            "status": "complete",
+            "result": result_text,
+            "error": None,
+            "agent_type": agent_type,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
         # Phase 26: fire completion webhook if caller supplied a callback_url
         callback_url = task.get("callback_url")
         if callback_url:
             from src.webhook_sender import send_callback
-            from datetime import datetime, timezone
 
-            asyncio.create_task(
-                send_callback(
-                    task_id,
-                    callback_url,
-                    {
-                        "task_id": task_id,
-                        "status": "complete",
-                        "result": result_text,
-                        "error": None,
-                        "agent_type": agent_type,
-                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            )
+            asyncio.create_task(send_callback(task_id, callback_url, _complete_payload))
+
+        # Phase 48: fire all user-registered webhooks subscribed to task_complete
+        asyncio.create_task(
+            _fire_user_webhooks(user_id, "task_complete", _complete_payload)
+        )
 
     except Exception as exc:
         error_msg = str(exc)
@@ -275,26 +305,27 @@ async def run_task(task: dict) -> None:
         except Exception as dep_err:
             logger.warning("[worker] fail_dependent_tasks error: %s", dep_err)
 
+        # Build failure payload (shared by per-task + registry webhooks)
+        _failed_payload = {
+            "task_id": task_id,
+            "status": "failed",
+            "result": None,
+            "error": error_msg,
+            "agent_type": agent_type,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
         # Phase 26: fire failure webhook
         callback_url = task.get("callback_url")
         if callback_url:
             from src.webhook_sender import send_callback
-            from datetime import datetime, timezone
 
-            asyncio.create_task(
-                send_callback(
-                    task_id,
-                    callback_url,
-                    {
-                        "task_id": task_id,
-                        "status": "failed",
-                        "result": None,
-                        "error": error_msg,
-                        "agent_type": agent_type,
-                        "completed_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            )
+            asyncio.create_task(send_callback(task_id, callback_url, _failed_payload))
+
+        # Phase 48: fire all user-registered webhooks subscribed to task_failed
+        asyncio.create_task(
+            _fire_user_webhooks(user_id, "task_failed", _failed_payload)
+        )
 
 
 # ── Worker loop ───────────────────────────────────────────────────────────────

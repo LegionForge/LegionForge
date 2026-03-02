@@ -9122,3 +9122,86 @@ def test_p47_list_user_tasks_accepts_cursor_query_param():
 
     sig = inspect.signature(list_user_tasks)
     assert "cursor" in sig.parameters
+
+
+# ── Phase 48: Webhook Registry ────────────────────────────────────────────────
+
+
+def test_p48_webhook_db_functions_importable():
+    """create/list/delete/get_user_webhooks functions importable from src.database."""
+    from src.database import (
+        create_webhook,
+        list_webhooks,
+        delete_webhook,
+        get_user_webhooks_for_event,
+    )
+
+    for fn in (
+        create_webhook,
+        list_webhooks,
+        delete_webhook,
+        get_user_webhooks_for_event,
+    ):
+        assert callable(fn)
+
+
+def test_p48_valid_webhook_events_constant():
+    """VALID_WEBHOOK_EVENTS contains expected event types."""
+    from src.database import VALID_WEBHOOK_EVENTS
+
+    assert "task_complete" in VALID_WEBHOOK_EVENTS
+    assert "task_failed" in VALID_WEBHOOK_EVENTS
+    assert "all" in VALID_WEBHOOK_EVENTS
+
+
+def test_p48_webhook_ddl_in_init():
+    """_create_app_tables creates the webhooks table."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "webhooks" in src
+    assert "webhook_id" in src
+
+
+def test_p48_webhook_route_importable():
+    """webhooks router is importable from src.gateway.routes.webhooks."""
+    from src.gateway.routes.webhooks import router
+
+    assert router is not None
+
+
+def test_p48_webhook_route_registered_in_app():
+    """app.py registers the webhooks router."""
+    import inspect
+    from src.gateway.app import app
+
+    routes = [r.path for r in app.routes]
+    assert any("/webhooks" in p for p in routes)
+
+
+def test_p48_fire_user_webhooks_callable():
+    """_fire_user_webhooks helper exists in worker module."""
+    from src.gateway.worker import _fire_user_webhooks
+
+    assert callable(_fire_user_webhooks)
+
+
+def test_p48_worker_imports_get_user_webhooks_for_event():
+    """worker.py imports get_user_webhooks_for_event from database."""
+    import inspect
+    from src.gateway import worker
+
+    src = inspect.getsource(worker)
+    assert "get_user_webhooks_for_event" in src
+
+
+def test_p48_run_task_fires_registry_webhooks():
+    """run_task fires _fire_user_webhooks for both complete and failed events."""
+    import inspect
+    from src.gateway.worker import run_task
+
+    src = inspect.getsource(run_task)
+    assert "_fire_user_webhooks" in src
+    assert "task_complete" in src
+    assert "task_failed" in src
