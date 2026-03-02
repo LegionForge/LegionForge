@@ -723,16 +723,32 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   es.addEventListener('heartbeat', () => { dotPulse(); });
 
   es.onerror = () => {
+    es.close();
+    S.activeES = null;
     if (!retry) {
-      // Single retry
-      es.close();
-      S.activeES = null;
-      appendSpan('\n[stream disconnected — retrying…]\n', 'o-status');
-      setTimeout(() => openStream(taskId, streamToken, apiKey, agent, taskInput, true), 1500);
+      // First disconnect — could be normal server-side close after completion.
+      // Check task status before retrying.
+      appendSpan('\n[stream disconnected — checking status…]\n', 'o-status');
+      setTimeout(async () => {
+        try {
+          const res = await fetch('/tasks/' + taskId, {
+            headers: { 'Authorization': 'Bearer ' + apiKey },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'complete' || data.status === 'failed' || data.status === 'cancelled') {
+              // Task is already terminal — no need to retry stream
+              fetchTaskResult(taskId, apiKey, agent, taskInput);
+              return;
+            }
+          }
+        } catch(_) {}
+        // Task still in-flight — open a fresh stream
+        openStream(taskId, streamToken, apiKey, agent, taskInput, true);
+      }, 800);
     } else {
-      finishRun('error', 'Stream disconnected', taskId, agent, taskInput, 0);
-      es.close();
-      S.activeES = null;
+      // Second disconnect on retry — fetch result directly (task likely complete)
+      fetchTaskResult(taskId, apiKey, agent, taskInput);
     }
   };
 }
