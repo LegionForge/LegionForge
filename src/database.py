@@ -1179,6 +1179,21 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_tasks_labels ON tasks USING GIN (labels)"
     )
 
+    # ── Phase 45: Full-Text Search ──────────────────────────────────────────────
+    # Generated TSVECTOR column (stored, auto-updated on INSERT/UPDATE).
+    # Requires PostgreSQL 12+ (available since PG12 GA).
+    # ADD COLUMN IF NOT EXISTS silently skips if already present.
+    await conn.execute(
+        """
+        ALTER TABLE tasks
+        ADD COLUMN IF NOT EXISTS search_vector TSVECTOR
+            GENERATED ALWAYS AS (to_tsvector('english', COALESCE(input, ''))) STORED
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_fts ON tasks USING GIN (search_vector)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2950,8 +2965,10 @@ async def list_tasks(
             where += " AND status = %s"
             params.append(status)
         if q:
-            where += " AND input ILIKE %s"
-            params.append(f"%{q}%")
+            # Phase 45: prefer full-text search (search_vector GIN index) over
+            # ILIKE scan.  plainto_tsquery handles multi-word phrases gracefully.
+            where += " AND search_vector @@ plainto_tsquery('english', %s)"
+            params.append(q)
         if tags:
             where += " AND tags @> %s"
             params.append(list(tags))

@@ -8896,3 +8896,72 @@ def test_p44_stats_returns_first_last_timestamps():
     src = inspect.getsource(get_task_stats)
     assert "oldest_task_at" in src
     assert "last_task_at" in src
+
+
+# ── Phase 45: Task Full-Text Search ───────────────────────────────────────────
+
+
+def test_p45_search_vector_column_in_ddl():
+    """_create_app_tables adds the search_vector generated column."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "search_vector" in src
+    assert "TSVECTOR" in src or "tsvector" in src
+
+
+def test_p45_fts_index_in_ddl():
+    """_create_app_tables creates GIN index on search_vector."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "idx_tasks_fts" in src
+
+
+def test_p45_list_tasks_uses_plainto_tsquery():
+    """list_tasks uses plainto_tsquery for full-text search."""
+    import inspect
+    from src.database import list_tasks
+
+    src = inspect.getsource(list_tasks)
+    assert "plainto_tsquery" in src
+    assert "search_vector" in src
+
+
+def test_p45_fts_operator_in_list_tasks():
+    """list_tasks uses @@ operator for FTS matching."""
+    import inspect
+    from src.database import list_tasks
+
+    src = inspect.getsource(list_tasks)
+    assert "@@" in src
+
+
+def test_p45_english_language_config():
+    """Full-text search uses 'english' language configuration."""
+    import inspect
+    from src.database import _create_app_tables, list_tasks
+
+    for fn in (_create_app_tables, list_tasks):
+        src = inspect.getsource(fn)
+        assert "'english'" in src or "english" in src
+
+
+def test_p45_generated_column_uses_coalesce():
+    """search_vector generated expression handles NULL input safely via COALESCE."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "COALESCE" in src
+
+
+def test_p45_search_vector_stored():
+    """search_vector is a STORED generated column."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "STORED" in src
