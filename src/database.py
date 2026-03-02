@@ -2935,6 +2935,28 @@ async def get_task(task_id: str, user_id: str | None = None) -> dict | None:
     return dict(row)
 
 
+# ── Phase 47: Keyset Pagination Cursor Helpers ─────────────────────────────────
+
+
+def encode_task_cursor(created_at: str, task_id: str) -> str:
+    """Encode (created_at, task_id) into an opaque base64 cursor string."""
+    import base64
+
+    payload = json.dumps({"ts": created_at, "id": task_id})
+    return base64.urlsafe_b64encode(payload.encode()).decode()
+
+
+def decode_task_cursor(cursor: str) -> tuple[str | None, str | None]:
+    """Decode a cursor string back to (created_at, task_id).  Returns (None, None) on error."""
+    import base64
+
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+        return payload["ts"], payload["id"]
+    except Exception:
+        return None, None
+
+
 async def list_tasks(
     user_id: str,
     limit: int = 20,
@@ -2943,13 +2965,16 @@ async def list_tasks(
     q: str | None = None,
     tags: list[str] | None = None,
     label: str | None = None,
+    cursor: str | None = None,
 ) -> dict:
     """Return paginated task list for a user with total count.
 
     Optional filters (Phase 31 / Phase 40):
-        q     — case-insensitive substring search on task input text
-        tags  — return only tasks that contain ALL listed tags
-        label — filter tasks that have a specific label (Phase 40)
+        q      — full-text search on task input (Phase 45)
+        tags   — return only tasks that contain ALL listed tags
+        label  — filter tasks that have a specific label (Phase 40)
+        cursor — opaque keyset cursor for efficient deep pagination (Phase 47)
+                 When provided, OFFSET is ignored and keyset pagination is used.
     """
     if status is not None and status not in VALID_TASK_STATUSES:
         raise ValueError(f"Invalid status filter: {status!r}")
@@ -2976,6 +3001,17 @@ async def list_tasks(
             where += " AND labels @> %s"
             params.append([label])
 
+        # Phase 47: keyset cursor pagination.
+        # Cursor encodes (created_at ISO string, task_id UUID) as JSON+base64.
+        # Uses (created_at, task_id) < (cursor_ts, cursor_id) for stable ordering.
+        cursor_ts: str | None = None
+        cursor_id: str | None = None
+        if cursor:
+            cursor_ts, cursor_id = decode_task_cursor(cursor)
+        if cursor_ts and cursor_id:
+            where += " AND (created_at, task_id::text) < (%s::timestamptz, %s)"
+            params.extend([cursor_ts, cursor_id])
+
         # `where` is assembled from hardcoded string fragments only; all user
         # values go into parameterised `params` — no injection risk.
         _count_q = f"SELECT COUNT(*) AS cnt FROM tasks {where}"  # nosec B608
@@ -2986,17 +3022,35 @@ async def list_tasks(
             SELECT task_id::text, user_id, status, agent_type, input,
                    result, error, steps, tokens, tags, created_at, updated_at, completed_at
             FROM tasks {where}
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, task_id DESC
             LIMIT %s OFFSET %s
             """  # nosec B608
-        cur = await conn.execute(_list_q, params + [limit, offset])
+        # When using cursor pagination, OFFSET is always 0
+        effective_offset = 0 if (cursor_ts and cursor_id) else offset
+        cur = await conn.execute(_list_q, params + [limit, effective_offset])
         rows = await cur.fetchall()
 
+    task_dicts = [dict(r) for r in rows]
+
+    # Build next_cursor from the last row (None if fewer rows than limit returned)
+    next_cursor: str | None = None
+    if len(task_dicts) == limit:
+        last = task_dicts[-1]
+        next_cursor = encode_task_cursor(
+            (
+                str(last["created_at"].isoformat())
+                if hasattr(last["created_at"], "isoformat")
+                else str(last["created_at"])
+            ),
+            str(last["task_id"]),
+        )
+
     return {
-        "tasks": [dict(r) for r in rows],
+        "tasks": task_dicts,
         "total": total,
         "limit": limit,
         "offset": offset,
+        "next_cursor": next_cursor,
     }
 
 

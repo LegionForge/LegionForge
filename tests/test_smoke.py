@@ -9046,3 +9046,79 @@ def test_p46_watchdog_env_override():
         else:
             os.environ["TASK_WATCHDOG_TIMEOUT"] = original
         importlib.reload(w)
+
+
+# ── Phase 47: Keyset Cursor Pagination ────────────────────────────────────────
+
+
+def test_p47_encode_task_cursor_importable():
+    """encode_task_cursor and decode_task_cursor are importable from src.database."""
+    from src.database import encode_task_cursor, decode_task_cursor
+
+    assert callable(encode_task_cursor)
+    assert callable(decode_task_cursor)
+
+
+def test_p47_cursor_encode_decode_roundtrip():
+    """Cursor encode→decode is lossless."""
+    from src.database import encode_task_cursor, decode_task_cursor
+
+    ts = "2026-03-02T06:00:00+00:00"
+    tid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    cursor = encode_task_cursor(ts, tid)
+    out_ts, out_id = decode_task_cursor(cursor)
+    assert out_ts == ts
+    assert out_id == tid
+
+
+def test_p47_cursor_is_opaque_string():
+    """Encoded cursor is a non-empty string (opaque to clients)."""
+    from src.database import encode_task_cursor
+
+    cursor = encode_task_cursor("2026-01-01T00:00:00+00:00", "some-uuid")
+    assert isinstance(cursor, str) and len(cursor) > 0
+
+
+def test_p47_decode_invalid_cursor_returns_none_pair():
+    """decode_task_cursor returns (None, None) for invalid input — no exception."""
+    from src.database import decode_task_cursor
+
+    ts, tid = decode_task_cursor("not-valid-base64!!!")
+    assert ts is None and tid is None
+
+
+def test_p47_list_tasks_accepts_cursor_param():
+    """list_tasks signature includes cursor parameter."""
+    import inspect
+    from src.database import list_tasks
+
+    sig = inspect.signature(list_tasks)
+    assert "cursor" in sig.parameters
+
+
+def test_p47_list_tasks_response_includes_next_cursor():
+    """list_tasks docstring/source references next_cursor in the return dict."""
+    import inspect
+    from src.database import list_tasks
+
+    src = inspect.getsource(list_tasks)
+    assert "next_cursor" in src
+
+
+def test_p47_list_tasks_keyset_where_clause():
+    """list_tasks uses keyset comparison (created_at, task_id) < cursor when cursor present."""
+    import inspect
+    from src.database import list_tasks
+
+    src = inspect.getsource(list_tasks)
+    assert "cursor_ts" in src
+    assert "cursor_id" in src
+
+
+def test_p47_list_user_tasks_accepts_cursor_query_param():
+    """GET /tasks route accepts cursor query parameter."""
+    import inspect
+    from src.gateway.routes.tasks import list_user_tasks
+
+    sig = inspect.signature(list_user_tasks)
+    assert "cursor" in sig.parameters

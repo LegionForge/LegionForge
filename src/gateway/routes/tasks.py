@@ -47,6 +47,7 @@ from src.database import (
     VALID_AGENT_TYPES,
     VALID_TASK_LABELS,
     VALID_TASK_STATUSES,
+    decode_task_cursor,
 )
 import re as _re
 
@@ -410,14 +411,23 @@ async def list_user_tasks(
     label: str | None = Query(
         default=None, description="Filter tasks with a specific label (Phase 40)"
     ),
+    cursor: str | None = Query(
+        default=None,
+        description=(
+            "Opaque keyset cursor for efficient deep pagination (Phase 47). "
+            "Use the next_cursor value from the previous response. "
+            "When provided, offset is ignored."
+        ),
+    ),
 ) -> dict:
     """Return paginated task history for the authenticated user.
 
-    Optional filters (Phase 31 / Phase 40):
+    Optional filters (Phase 31 / Phase 40 / Phase 47):
     - ``status``  — filter by task status
-    - ``q``       — case-insensitive substring search on task input
+    - ``q``       — full-text search on task input (Phase 45)
     - ``tags``    — return only tasks containing ALL specified tags
     - ``label``   — return only tasks with a specific label (bookmarked, starred, …)
+    - ``cursor``  — keyset pagination cursor from previous response (Phase 47)
     """
     if status_filter and status_filter not in VALID_TASK_STATUSES:
         raise HTTPException(
@@ -429,6 +439,13 @@ async def list_user_tasks(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"label must be one of {sorted(VALID_TASK_LABELS)}",
         )
+    if cursor:
+        ts, tid = decode_task_cursor(cursor)
+        if ts is None or tid is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid cursor value",
+            )
 
     return await list_tasks(
         user_id=user["user_id"],
@@ -438,6 +455,7 @@ async def list_user_tasks(
         q=q,
         tags=tags,
         label=label,
+        cursor=cursor,
     )
 
 
