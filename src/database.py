@@ -1260,6 +1260,24 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON task_templates (user_id)"
     )
 
+    # ── Phase 51: Task Sharing ────────────────────────────────────────────────────
+    # Read-only share tokens for publicly accessible task results.
+    # Tokens expire after expires_at (NULL = never expires).
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_shares (
+            share_token TEXT PRIMARY KEY,
+            task_id     UUID NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+            user_id     TEXT NOT NULL,
+            expires_at  TIMESTAMPTZ,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_shares_task_id ON task_shares (task_id)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -4746,5 +4764,94 @@ async def delete_task_template(template_id: str, user_id: str) -> bool:
             "DELETE FROM task_templates WHERE template_id = %s AND user_id = %s "
             "RETURNING template_id",
             (template_id, user_id),
+        )
+        return (await cur.fetchone()) is not None
+
+
+# ── Phase 51: Task Sharing ─────────────────────────────────────────────────────
+
+
+async def create_task_share(
+    task_id: str,
+    user_id: str,
+    expires_at: "datetime | None" = None,
+) -> dict:
+    """
+    Create a read-only share token for a task.
+
+    Returns the new share row including the token.
+    Raises ValueError if the task does not exist or is not owned by user.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT task_id FROM tasks WHERE task_id = %s::uuid AND user_id = %s",
+            (task_id, user_id),
+        )
+        if await cur.fetchone() is None:
+            raise ValueError(f"Task {task_id!r} not found or not owned by user")
+        token = secrets.token_urlsafe(24)
+        cur = await conn.execute(
+            """
+            INSERT INTO task_shares (share_token, task_id, user_id, expires_at)
+            VALUES (%s, %s::uuid, %s, %s)
+            RETURNING share_token, task_id::text, user_id, expires_at, created_at
+            """,
+            (token, task_id, user_id, expires_at),
+        )
+        return dict(await cur.fetchone())
+
+
+async def get_shared_task(share_token: str) -> dict | None:
+    """
+    Look up and return a shared task by its token.
+
+    Returns None if the token is expired or does not exist.
+    Only returns: task_id, agent_type, status, result, steps, created_at, completed_at.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT t.task_id::text, t.agent_type, t.status, t.result,
+                   t.steps, t.created_at, t.completed_at
+            FROM task_shares s
+            JOIN tasks t ON t.task_id = s.task_id
+            WHERE s.share_token = %s
+              AND (s.expires_at IS NULL OR s.expires_at > now())
+            """,
+            (share_token,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_task_shares(task_id: str, user_id: str) -> list[dict]:
+    """List all share tokens for a task owned by user."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT share_token, task_id::text, user_id, expires_at, created_at
+            FROM task_shares
+            WHERE task_id = %s::uuid AND user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (task_id, user_id),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def revoke_task_share(share_token: str, user_id: str) -> bool:
+    """Revoke a share token.  Returns True if deleted."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM task_shares WHERE share_token = %s AND user_id = %s "
+            "RETURNING share_token",
+            (share_token, user_id),
         )
         return (await cur.fetchone()) is not None

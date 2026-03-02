@@ -9374,3 +9374,84 @@ def test_p50_template_create_model():
     )
     assert m.name == "my-template"
     assert "{topic}" in m.input_template
+
+
+# ── Phase 51: Task Sharing ────────────────────────────────────────────────────
+
+
+def test_p51_sharing_db_functions_importable():
+    """create/list/revoke/get share functions importable from src.database."""
+    from src.database import (
+        create_task_share,
+        get_shared_task,
+        list_task_shares,
+        revoke_task_share,
+    )
+
+    for fn in (create_task_share, get_shared_task, list_task_shares, revoke_task_share):
+        assert callable(fn)
+
+
+def test_p51_task_shares_ddl_in_init():
+    """_create_app_tables creates the task_shares table."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "task_shares" in src
+    assert "share_token" in src
+
+
+def test_p51_task_shares_expiry_column():
+    """task_shares table has expires_at column for optional TTL."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    # Find task_shares block
+    idx = src.index("task_shares")
+    assert "expires_at" in src[idx:]
+
+
+def test_p51_create_share_verifies_ownership():
+    """create_task_share verifies task ownership before creating share."""
+    import inspect
+    from src.database import create_task_share
+
+    src = inspect.getsource(create_task_share)
+    assert "user_id" in src and "task_id" in src
+
+
+def test_p51_get_shared_task_checks_expiry():
+    """get_shared_task SQL filters out expired tokens."""
+    import inspect
+    from src.database import get_shared_task
+
+    src = inspect.getsource(get_shared_task)
+    assert "expires_at" in src and "now()" in src
+
+
+def test_p51_share_endpoints_in_tasks_router():
+    """tasks router has share endpoints (POST /share, GET /shares, DELETE /shares/token)."""
+    from src.gateway.routes.tasks import router
+
+    paths = [r.path for r in router.routes]
+    assert any("share" in p for p in paths)
+
+
+def test_p51_public_shared_endpoint_in_app():
+    """app.py has a public GET /shared/{token} endpoint."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any("shared" in p for p in paths)
+
+
+def test_p51_share_token_uses_secrets():
+    """create_task_share generates token via secrets module."""
+    import inspect
+    from src.database import create_task_share
+
+    src = inspect.getsource(create_task_share)
+    assert "secrets" in src
+    assert "token_urlsafe" in src

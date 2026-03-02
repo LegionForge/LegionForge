@@ -53,6 +53,9 @@ from src.database import (
     get_task_attachment,
     delete_task_attachment,
     _MAX_ATTACHMENT_BYTES,
+    create_task_share,
+    list_task_shares,
+    revoke_task_share,
 )
 import re as _re
 
@@ -1092,3 +1095,94 @@ async def retry_task(
         "stream_url": f"/tasks/{new_task_id}/stream",
         "stream_token": stream_token,
     }
+
+
+# ── Task Sharing (Phase 51) ────────────────────────────────────────────────────
+
+
+class ShareRequest(BaseModel):
+    expires_hours: int | None = Field(
+        default=None,
+        ge=1,
+        le=8760,
+        description="Optional expiry in hours (1–8760).  Omit for no expiry.",
+    )
+
+
+@router.post("/{task_id}/share", status_code=status.HTTP_201_CREATED)
+async def share_task(
+    task_id: str,
+    body: ShareRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Create a read-only share token for a completed task.
+
+    The returned ``share_token`` can be passed to ``GET /shared/{token}`` by
+    anyone — no authentication required.  Optionally set ``expires_hours`` to
+    auto-expire the link.
+
+    Phase 51 — Task Sharing.
+    """
+    from datetime import timedelta
+
+    expires_at = None
+    if body.expires_hours:
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=body.expires_hours)
+
+    try:
+        share = await create_task_share(
+            task_id=task_id,
+            user_id=user["user_id"],
+            expires_at=expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    return {
+        "share_token": share["share_token"],
+        "task_id": task_id,
+        "expires_at": share["expires_at"].isoformat() if share["expires_at"] else None,
+        "created_at": share["created_at"].isoformat() if share["created_at"] else None,
+    }
+
+
+@router.get("/{task_id}/shares")
+async def list_shares(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    List all active share tokens for a task.
+
+    Phase 51 — Task Sharing.
+    """
+    task = await get_task(task_id, user["user_id"])
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+    shares = await list_task_shares(task_id, user["user_id"])
+    return {"task_id": task_id, "count": len(shares), "shares": shares}
+
+
+@router.delete(
+    "/{task_id}/shares/{share_token}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def revoke_share(
+    task_id: str,
+    share_token: str,
+    user: dict = Depends(require_user),
+) -> None:
+    """
+    Revoke a share token immediately.
+
+    Phase 51 — Task Sharing.
+    """
+    deleted = await revoke_task_share(share_token, user["user_id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Share token not found",
+        )

@@ -196,6 +196,32 @@ async def get_agent_capabilities(agent_type: str) -> dict:
     return caps
 
 
+# ── Public Task Share (Phase 51) ──────────────────────────────────────────────
+
+
+@app.get("/shared/{share_token}", tags=["sharing"])
+async def get_shared_task(share_token: str) -> dict:
+    """
+    Retrieve a publicly shared task result by its share token.
+
+    No authentication required.  Returns a subset of task fields (no user_id,
+    no input text).  Returns 404 if the token is invalid or expired.
+
+    Phase 51 — Task Sharing.
+    """
+    from src.database import get_shared_task as db_get_shared
+
+    row = await db_get_shared(share_token)
+    if row is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=404,
+            detail="Share token not found or expired",
+        )
+    return row
+
+
 # ── Minimal Web UI ────────────────────────────────────────────────────────────
 
 
