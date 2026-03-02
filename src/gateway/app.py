@@ -88,6 +88,16 @@ async def lifespan(app: FastAPI):
 
     worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
 
+    # Warm up local Ollama models so the first task doesn't hit cold-start
+    # latency.  Non-fatal — gateway still starts if Ollama is unreachable.
+    try:
+        from src.llm_factory import warmup_local_models
+
+        warmup_results = await warmup_local_models()
+        logger.info("[gateway] Model warmup: %s", warmup_results)
+    except Exception as _warmup_exc:
+        logger.warning("[gateway] Model warmup failed (non-fatal): %s", _warmup_exc)
+
     # Phase 23: start the cron scheduler daemon
     from src.scheduler import get_scheduler
 

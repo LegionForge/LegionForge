@@ -414,6 +414,7 @@ const S = {
   history:        [],     // [{task_id, agent_type, input_preview, status, elapsed_ms, tokens, ts}]
   outputBuffer:   '',     // plain-text accumulator for copy
   activeToolName: null,   // current open tool block
+  heartbeatCount: 0,      // incremented on each heartbeat; reset on new task
 };
 
 const MAX_HISTORY = 20;
@@ -617,6 +618,7 @@ async function submitTask() {
   // Reset UI
   el.output().innerHTML = '';
   S.outputBuffer = '';
+  S.heartbeatCount = 0;
   _toolBlockEl = null;
   el.submitBtn().disabled = true;
   el.cancelBtn().style.display = 'inline-flex';
@@ -739,7 +741,15 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     S.activeES = null;
   });
 
-  es.addEventListener('heartbeat', () => { dotPulse(); });
+  es.addEventListener('heartbeat', () => {
+    dotPulse();
+    S.heartbeatCount++;
+    // After the first silent heartbeat (15 s with no output) tell the user
+    // that the model is likely loading — prevents "is it frozen?" confusion.
+    if (S.heartbeatCount === 1 && !S.outputBuffer.trim()) {
+      appendSpan('[model loading — first request may take up to 60 s…]\n', 'o-status');
+    }
+  });
 
   es.onerror = () => {
     es.close();

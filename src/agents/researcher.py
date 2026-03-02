@@ -92,10 +92,10 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
             msg = (
                 "DuckDuckGo rate limit reached. "
                 "Do NOT retry the same query. "
-                "Either answer from your training knowledge or tell the user you cannot retrieve live results right now."
+                "Tell the user you cannot retrieve live search results right now."
             )
         else:
-            msg = f"Search failed ({exc_name}). Try a different approach or answer from knowledge."
+            msg = f"Search failed ({exc_name}). Tell the user you cannot retrieve live results right now."
         logger.warning(f"[web_search] DDG error ({exc_name}) for query={clean_query!r}")
         return [
             {
@@ -145,8 +145,34 @@ async def web_fetch(url: str, timeout: float = 10.0) -> str:
                 current_url = location
                 redirect_count += 1
             else:
-                resp.raise_for_status()
-                return resp.text[:10_000]
+                # Return a descriptive string for HTTP errors rather than
+                # raising — this gives the LLM a clear, unambiguous signal
+                # (e.g. "HTTP 404 Not Found — resource does not exist") instead
+                # of a Python exception traceback, which local models sometimes
+                # misinterpret as success.
+                if resp.status_code >= 400:
+                    phrase = resp.reason_phrase or "Error"
+                    hint = (
+                        " The resource does not exist at this URL."
+                        if resp.status_code == 404
+                        else " The server returned an error response."
+                    )
+                    return f"[web_fetch] HTTP {resp.status_code} {phrase}.{hint}"
+                # Strip HTML tags so the LLM receives readable text, not markup.
+                content_type = resp.headers.get("content-type", "")
+                text = resp.text
+                if "text/html" in content_type or text.lstrip().startswith("<"):
+                    import re as _re
+
+                    text = _re.sub(
+                        r"<(script|style)[^>]*>.*?</(script|style)>",
+                        "",
+                        text,
+                        flags=_re.S | _re.I,
+                    )
+                    text = _re.sub(r"<[^>]+>", " ", text)
+                    text = _re.sub(r"\s{3,}", "\n\n", text).strip()
+                return text[:10_000]
 
     raise RuntimeError(f"[web_fetch] Too many redirects fetching {url!r}")
 
@@ -499,7 +525,18 @@ async def run_researcher(
         "sources": [],
         "sequence_so_far": [],
         "task_token": task_token,
-        "messages": [HumanMessage(content=task)],
+        "messages": [
+            SystemMessage(
+                content=(
+                    "You are a research assistant with tools to search the web and fetch web pages. "
+                    "ALWAYS use your tools to look up current information — never fabricate URLs, "
+                    "headlines, facts, or content from memory. "
+                    "If a tool returns an error or no results, report that clearly to the user "
+                    "rather than guessing or inventing an answer."
+                )
+            ),
+            HumanMessage(content=task),
+        ],
     }
 
     config = create_run_config(

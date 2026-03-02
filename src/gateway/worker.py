@@ -238,6 +238,7 @@ async def run_task(task: dict) -> None:
     task_id = task["task_id"]
     user_id = task.get("user_id")
     agent_type = task.get("agent_type", "base_agent")
+    session_id = task.get("session_id")
     logger.info(
         f"[worker] Starting task_id={task_id} agent={agent_type} " f"user={user_id}"
     )

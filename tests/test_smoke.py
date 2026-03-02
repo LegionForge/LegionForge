@@ -5397,6 +5397,45 @@ def test_p10_worker_calls_record_api_usage_with_user_id():
     assert "record_api_usage" in src, "run_task does not call record_api_usage"
 
 
+def test_p54_run_task_extracts_session_id_before_try():
+    """run_task must extract session_id from task dict before the try block.
+
+    Phase 54 added session turn increment inside the try block that uses
+    session_id.  If session_id is not extracted at function scope, every
+    successful task raises NameError and is re-marked as failed.
+    """
+    import ast, inspect, textwrap
+    from src.gateway import worker as worker_module
+
+    src = textwrap.dedent(inspect.getsource(worker_module.run_task))
+    tree = ast.parse(src)
+    func_body = tree.body[0].body  # statements in run_task
+
+    # Find the index of the first Try node
+    try_idx = next(
+        (i for i, node in enumerate(func_body) if isinstance(node, ast.Try)),
+        None,
+    )
+    assert try_idx is not None, "run_task has no try block"
+
+    # Collect all names assigned before the try block
+    assigned_before_try = set()
+    for node in func_body[:try_idx]:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Assign):
+                for t in n.targets:
+                    if isinstance(t, ast.Name):
+                        assigned_before_try.add(t.id)
+            elif isinstance(n, (ast.AnnAssign,)):
+                if isinstance(n.target, ast.Name):
+                    assigned_before_try.add(n.target.id)
+
+    assert "session_id" in assigned_before_try, (
+        "session_id is not assigned before the try block in run_task — "
+        "any successful task will raise NameError and be re-marked as failed"
+    )
+
+
 def test_p10_worker_imports_record_api_usage():
     """worker.py imports record_api_usage from src.database."""
     import inspect

@@ -1209,6 +1209,25 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_tasks_fts ON tasks USING GIN (search_vector)"
     )
 
+    # ── Phase 54: sessions (must exist before the FK on tasks below) ─────────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id     TEXT NOT NULL,
+            name        TEXT NOT NULL DEFAULT '',
+            agent_type  TEXT NOT NULL DEFAULT 'orchestrator',
+            thread_id   UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+            turn_count  INT NOT NULL DEFAULT 0,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id, created_at DESC)"
+    )
+
     # ── Phase 54: sessions FK on tasks ───────────────────────────────────────────
     await conn.execute(
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(session_id) ON DELETE SET NULL"
@@ -1307,25 +1326,6 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
-    )
-
-    # ── Phase 54: sessions ────────────────────────────────────────────────────
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sessions (
-            session_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id     TEXT NOT NULL,
-            name        TEXT NOT NULL DEFAULT '',
-            agent_type  TEXT NOT NULL DEFAULT 'orchestrator',
-            thread_id   UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-            turn_count  INT NOT NULL DEFAULT 0,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-        """
-    )
-    await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id, created_at DESC)"
     )
 
     logger.info("Application tables verified")

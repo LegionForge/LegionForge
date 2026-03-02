@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 118
+UPDATE: 124
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T10:00Z
-LAST_OP: Phase 54 — Conversation Sessions: sessions table, LangGraph thread_id persistence
-SMOKE_TESTS: 791/791
+TIMESTAMP: 2026-03-02T13:00Z
+LAST_OP: fix: researcher hallucination (HTML strip, no-fabricate system prompt, DDG error wording), TestLab LAN bind
+SMOKE_TESTS: 792/792
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

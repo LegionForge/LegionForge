@@ -618,8 +618,8 @@ testlab-stop:  ## Stop TestLab container
 testlab-dev:  ## Run TestLab locally (no Docker) — development mode
 	@cd $(BASE) && \
 	  TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$($(PYTHON) -c "import keyring; print(keyring.get_password('legionforge_health','api_key') or '')" 2>/dev/null)} \
-	  $(PYTHON) -m uvicorn src.testlab.app:app --host 127.0.0.1 --port 8090 --reload
-	@echo "✅ TestLab dev server started on http://127.0.0.1:8090"
+	  $(PYTHON) -m uvicorn src.testlab.app:app --host 0.0.0.0 --port 8090 --reload
+	@echo "✅ TestLab dev server started on http://0.0.0.0:8090"
 
 ## ── TestLab Attack Suite — Phase 19 ───────────────────────────
 .PHONY: test-functional
