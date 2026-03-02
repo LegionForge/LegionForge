@@ -1168,6 +1168,17 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ON task_events (task_id, ts ASC)"
     )
 
+    # ── Phase 40: Task Labels ───────────────────────────────────────────────────
+    # Fixed-set system labels (bookmarked, starred, important, archived) stored
+    # as TEXT[] with a GIN index — same pattern as tags (Phase 31).
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "
+        "labels TEXT[] NOT NULL DEFAULT '{}'"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_labels ON tasks USING GIN (labels)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2916,12 +2927,14 @@ async def list_tasks(
     status: str | None = None,
     q: str | None = None,
     tags: list[str] | None = None,
+    label: str | None = None,
 ) -> dict:
     """Return paginated task list for a user with total count.
 
-    Optional filters (Phase 31):
-        q    — case-insensitive substring search on task input text
-        tags — return only tasks that contain ALL listed tags
+    Optional filters (Phase 31 / Phase 40):
+        q     — case-insensitive substring search on task input text
+        tags  — return only tasks that contain ALL listed tags
+        label — filter tasks that have a specific label (Phase 40)
     """
     if status is not None and status not in VALID_TASK_STATUSES:
         raise ValueError(f"Invalid status filter: {status!r}")
@@ -2942,6 +2955,9 @@ async def list_tasks(
         if tags:
             where += " AND tags @> %s"
             params.append(list(tags))
+        if label:
+            where += " AND labels @> %s"
+            params.append([label])
 
         # `where` is assembled from hardcoded string fragments only; all user
         # values go into parameterised `params` — no injection risk.
@@ -2989,6 +3005,47 @@ async def update_task_tags(
             RETURNING task_id::text, tags, status, updated_at
             """,
             (list(tags), task_id, user_id),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+# ── Phase 40: Task labels ───────────────────────────────────────────────────────
+
+VALID_TASK_LABELS: frozenset[str] = frozenset(
+    {"bookmarked", "starred", "important", "archived"}
+)
+
+
+async def update_task_labels(
+    task_id: str,
+    user_id: str,
+    labels: list[str],
+) -> dict | None:
+    """
+    Replace the labels on a task with the provided list.
+    Only labels from VALID_TASK_LABELS are allowed; ValueError on unknown labels.
+    Returns the updated task dict, or None if not found / not owned by user.
+
+    Phase 40 — Task Labels.
+    """
+    unknown = set(labels) - VALID_TASK_LABELS
+    if unknown:
+        raise ValueError(
+            f"Unknown labels: {sorted(unknown)}. "
+            f"Allowed: {sorted(VALID_TASK_LABELS)}"
+        )
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET labels = %s, updated_at = now()
+            WHERE task_id = %s::uuid AND user_id = %s
+            RETURNING task_id::text, labels, status, updated_at
+            """,
+            (list(labels), task_id, user_id),
         )
         row = await cur.fetchone()
     return dict(row) if row else None

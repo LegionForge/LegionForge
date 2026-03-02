@@ -8,6 +8,7 @@ Core task API:
     GET    /tasks                       — list tasks (authenticated user's own)
     GET    /tasks/{task_id}             — get a single task result
     PUT    /tasks/{task_id}/tags        — replace task tags (Phase 31)
+    PUT    /tasks/{task_id}/labels      — replace task labels (Phase 40)
     DELETE /tasks/{task_id}             — cancel a queued task
     POST   /tasks/{task_id}/notes      — add a note to a task (Phase 32)
     GET    /tasks/{task_id}/notes      — list notes on a task (Phase 32)
@@ -37,8 +38,10 @@ from src.database import (
     list_tasks,
     lookup_cached_task,
     mark_task_cancelled,
+    update_task_labels,
     update_task_tags,
     VALID_AGENT_TYPES,
+    VALID_TASK_LABELS,
     VALID_TASK_STATUSES,
 )
 import re as _re
@@ -389,18 +392,27 @@ async def list_user_tasks(
     tags: list[str] | None = Query(
         default=None, description="Filter tasks containing all listed tags"
     ),
+    label: str | None = Query(
+        default=None, description="Filter tasks with a specific label (Phase 40)"
+    ),
 ) -> dict:
     """Return paginated task history for the authenticated user.
 
-    Optional filters (Phase 31):
+    Optional filters (Phase 31 / Phase 40):
     - ``status``  — filter by task status
     - ``q``       — case-insensitive substring search on task input
     - ``tags``    — return only tasks containing ALL specified tags
+    - ``label``   — return only tasks with a specific label (bookmarked, starred, …)
     """
     if status_filter and status_filter not in VALID_TASK_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"status must be one of {sorted(VALID_TASK_STATUSES)}",
+        )
+    if label and label not in VALID_TASK_LABELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"label must be one of {sorted(VALID_TASK_LABELS)}",
         )
 
     return await list_tasks(
@@ -410,6 +422,7 @@ async def list_user_tasks(
         status=status_filter,
         q=q,
         tags=tags,
+        label=label,
     )
 
 
@@ -561,6 +574,59 @@ async def set_task_tags(
     Phase 31 — Task Tags.
     """
     row = await update_task_tags(task_id, user["user_id"], body.tags)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or not owned by this user",
+        )
+    return row
+
+
+# ── Task Labels (Phase 40) ─────────────────────────────────────────────────────
+
+
+class UpdateLabelsRequest(BaseModel):
+    labels: list[str] = Field(
+        ...,
+        max_length=4,
+        description=(
+            "New label list (replaces existing labels).  "
+            f"Allowed values: bookmarked, starred, important, archived."
+        ),
+    )
+
+    @field_validator("labels")
+    @classmethod
+    def labels_must_be_valid(cls, v: list[str]) -> list[str]:
+        unknown = set(v) - VALID_TASK_LABELS
+        if unknown:
+            raise ValueError(
+                f"Unknown labels: {sorted(unknown)}. "
+                f"Allowed: {sorted(VALID_TASK_LABELS)}"
+            )
+        return list(set(v))  # deduplicate
+
+
+@router.put("/{task_id}/labels")
+async def set_task_labels(
+    task_id: str,
+    body: UpdateLabelsRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Replace the labels on a task.
+
+    Allowed labels: ``bookmarked``, ``starred``, ``important``, ``archived``.
+    Returns the updated task.  404 if task not found or not owned.
+
+    Phase 40 — Task Labels.
+    """
+    try:
+        row = await update_task_labels(task_id, user["user_id"], body.labels)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

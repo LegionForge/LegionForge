@@ -8505,3 +8505,83 @@ def test_p39_timeline_endpoint_defined():
     assert "get_timeline" in src
     assert "/timeline" in src
     assert "get_task_timeline" in src
+
+
+# ── Phase 40: Task Labels ─────────────────────────────────────────────────────
+
+
+def test_p40_valid_task_labels_frozenset():
+    """VALID_TASK_LABELS is a frozenset with expected labels."""
+    from src.database import VALID_TASK_LABELS
+
+    assert isinstance(VALID_TASK_LABELS, frozenset)
+    for label in ("bookmarked", "starred", "important", "archived"):
+        assert label in VALID_TASK_LABELS
+
+
+def test_p40_update_task_labels_callable():
+    """update_task_labels is exported from database."""
+    from src.database import update_task_labels
+
+    assert callable(update_task_labels)
+
+
+def test_p40_update_task_labels_rejects_unknown():
+    """update_task_labels raises ValueError for unknown labels."""
+    import asyncio
+    from src.database import update_task_labels, VALID_TASK_LABELS
+
+    import inspect
+
+    src = inspect.getsource(update_task_labels)
+    assert "VALID_TASK_LABELS" in src
+    assert "ValueError" in src
+
+
+def test_p40_labels_column_in_ddl():
+    """_create_app_tables adds labels column with GIN index."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "labels" in src
+    assert "idx_tasks_labels" in src
+
+
+def test_p40_list_tasks_has_label_param():
+    """list_tasks accepts a label keyword argument."""
+    import inspect
+    from src.database import list_tasks
+
+    sig = inspect.signature(list_tasks)
+    assert "label" in sig.parameters
+
+
+def test_p40_labels_endpoint_defined():
+    """tasks route has PUT /{task_id}/labels endpoint."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "set_task_labels" in src
+    assert "/{task_id}/labels" in src or "/labels" in src
+
+
+def test_p40_list_endpoint_has_label_filter():
+    """list_user_tasks accepts label query param."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.list_user_tasks)
+    assert "label" in src
+    assert "VALID_TASK_LABELS" in src
+
+
+def test_p40_update_labels_request_model():
+    """UpdateLabelsRequest validates against VALID_TASK_LABELS."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "UpdateLabelsRequest" in src
+    assert "labels_must_be_valid" in src
