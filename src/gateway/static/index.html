@@ -310,6 +310,14 @@
     .history-item .hi-tokens { color: var(--text-xdim); text-align: right; font-size: 10px; }
     #history-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
 
+    /* ── Version footer ─────────────────────────────────────────── */
+    #version-footer {
+      text-align: center;
+      color: var(--text-xdim);
+      font-size: 11px;
+      padding: 8px 0 4px;
+    }
+
     /* ── Scrollbar styling ───────────────────────────────────────── */
     ::-webkit-scrollbar            { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track      { background: transparent; }
@@ -397,6 +405,8 @@
 
 </div><!-- #app -->
 
+<div id="version-footer">LegionForge <span id="footer-version">…</span></div>
+
 <script>
 // ════════════════════════════════════════════════════════════════
 //  LegionForge Web UI — Phase 15
@@ -459,6 +469,12 @@ const el = {
     if (h) S.history = JSON.parse(h);
   } catch (_) { S.history = []; }
   renderHistory();
+
+  // Fetch version from /health and display in footer
+  fetch('/health').then(r => r.json()).then(d => {
+    const v = d.version || '';
+    if (v) document.getElementById('footer-version').textContent = 'v' + v;
+  }).catch(() => {});
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
@@ -749,6 +765,25 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     if (S.heartbeatCount === 1 && !S.outputBuffer.trim()) {
       appendSpan('[model loading — first request may take up to 60 s…]\n', 'o-status');
     }
+    // After 2 heartbeats (≥30 s) with still no output, start silent backup
+    // polling every 5 s.  This catches the result even if the task_complete
+    // SSE event is dropped during a slow Ollama cold-start.
+    if (S.heartbeatCount >= 2 && !S.outputBuffer.trim() && !S.pollTimer) {
+      S.pollTimer = setInterval(async () => {
+        if (S.activeTaskId !== taskId) { clearInterval(S.pollTimer); S.pollTimer = null; return; }
+        try {
+          const res = await fetch('/tasks/' + taskId, {
+            headers: { 'Authorization': 'Bearer ' + apiKey },
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status !== 'queued' && data.status !== 'running') {
+            clearInterval(S.pollTimer); S.pollTimer = null;
+            fetchTaskResult(taskId, apiKey, agent, taskInput);
+          }
+        } catch(_) {}
+      }, 5000);
+    }
   });
 
   es.onerror = () => {
@@ -791,6 +826,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
 // ── Fetch task result ─────────────────────────────────────────────
 async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
   if (S.activeES) { S.activeES.close(); S.activeES = null; }
+  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   try {
     const res = await fetch('/tasks/' + taskId, {
       headers: { 'Authorization': 'Bearer ' + apiKey },

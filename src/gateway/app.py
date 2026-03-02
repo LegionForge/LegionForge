@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LegionForge Gateway",
-    version="1.0.0",
+    version="0.7.0-alpha",
     description="User-facing task API for LegionForge agents.",
     lifespan=lifespan,
     # Disable /docs and /redoc in production — enable in dev via env flag
@@ -258,7 +258,7 @@ async def web_ui() -> HTMLResponse:
 
 @app.get("/health", include_in_schema=False)
 async def health() -> dict:
-    return {"status": "ok", "service": "legionforge-gateway"}
+    return {"status": "ok", "service": "legionforge-gateway", "version": app.version}
 
 
 # ── Prometheus metrics (Phase 14) ─────────────────────────────────────────────

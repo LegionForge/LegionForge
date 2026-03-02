@@ -12,7 +12,7 @@ Serves a minimal FastAPI server (:8081 by default) that:
     Returns HTTP 202 immediately (fire-and-forget background task).
 
   GET /health
-    Returns {status: "ok", gateway_url: "...", version: "1.0.0"}
+    Returns {status: "ok", gateway_url: "...", version: "0.7.0-alpha"}
 
 This covers GitHub webhooks, Zapier, Make/Integromat, IFTTT, cron scripts,
 and any other HTTP client — no platform-specific SDK needed on the caller side.
@@ -145,7 +145,7 @@ def build_app(api_key: str, inbound_secret: str) -> FastAPI:
             {
                 "status": "ok",
                 "gateway_url": GATEWAY_URL,
-                "version": "1.0.0",
+                "version": "0.7.0-alpha",
             }
         )
 

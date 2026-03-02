@@ -603,7 +603,7 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         CREATE TABLE IF NOT EXISTS tool_registry (
             tool_id             TEXT PRIMARY KEY,
             source              TEXT NOT NULL,
-            version             TEXT NOT NULL DEFAULT '1.0.0',
+            version             TEXT NOT NULL DEFAULT '0.7.0-alpha',
             description         TEXT NOT NULL,
             description_hash    TEXT NOT NULL,
             schema_hash         TEXT NOT NULL,

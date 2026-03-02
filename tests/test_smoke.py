@@ -9744,3 +9744,101 @@ def test_p54_worker_uses_session_thread_id():
     src = inspect.getsource(_stream_agent)
     assert "session_id" in src
     assert "lg_thread_id" in src
+
+
+# ── Tool accuracy smoke tests (Phase 55 anti-hallucination suite) ──────────────
+
+
+def test_researcher_initial_messages_start_with_system_message():
+    """run_researcher() builds a messages list that starts with SystemMessage."""
+    import inspect
+    from src.agents.researcher import run_researcher
+
+    src = inspect.getsource(run_researcher)
+
+    # The SystemMessage must appear in the messages list before HumanMessage
+    system_pos = src.find("SystemMessage(")
+    human_pos = src.find("HumanMessage(content=task)")
+    assert system_pos != -1, "SystemMessage not found in run_researcher source"
+    assert (
+        human_pos != -1
+    ), "HumanMessage(content=task) not found in run_researcher source"
+    assert system_pos < human_pos, (
+        "SystemMessage must come before HumanMessage in the messages list "
+        f"(positions: system={system_pos}, human={human_pos})"
+    )
+
+    # Confirm the anti-hallucination instruction text is present
+    assert (
+        "never fabricate" in src.lower()
+        or "do not fabricate" in src.lower()
+        or "fabricate" in src.lower()
+    ), "Anti-hallucination instruction ('fabricate') not found in run_researcher system prompt"
+
+
+def test_web_fetch_html_stripping_removes_script_and_style():
+    """HTML stripping logic in web_fetch removes <script>/<style> blocks, keeps body text."""
+    import re
+
+    html = (
+        "<html><head><style>body{color:red}</style></head>"
+        "<body><h1>Hello</h1><p>World</p></body></html>"
+    )
+
+    text = re.sub(
+        r"<(script|style)[^>]*>.*?</(script|style)>",
+        "",
+        html,
+        flags=re.S | re.I,
+    )
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s{3,}", "\n\n", text).strip()
+
+    assert "<style>" not in text, "Style tag not stripped"
+    assert "color:red" not in text, "Style content not stripped"
+    assert "<html>" not in text, "html tag not stripped"
+    assert "Hello" in text, "Visible content must be preserved"
+
+
+def test_web_search_ddg_error_response_no_hallucination_invite():
+    """web_search rate-limit error response must not suggest using training knowledge."""
+    from unittest.mock import MagicMock, patch
+
+    from src.agents.researcher import web_search
+
+    with patch("duckduckgo_search.DDGS") as mock_ddgs_cls:
+        mock_ddgs_cls.return_value.__enter__ = lambda s: s
+        mock_ddgs_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_ddgs_cls.return_value.text.side_effect = Exception("ratelimit")
+
+        result = web_search.invoke({"query": "test"})
+
+    for entry in result:
+        for field_value in entry.values():
+            text = str(field_value).lower()
+            assert (
+                "training knowledge" not in text
+            ), f"Error response must not invite hallucination via 'training knowledge': {entry}"
+            assert (
+                "from knowledge" not in text
+            ), f"Error response must not invite hallucination via 'from knowledge': {entry}"
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://localhost/x",
+        "http://127.0.0.1/x",
+        "http://10.0.0.1/secret",
+        "http://192.168.1.1/admin",
+        "http://172.16.0.1/x",
+        "http://169.254.169.254/latest/meta-data",
+        "file:///etc/passwd",
+    ],
+)
+def test_validate_fetch_url_blocks_all_private_ranges(bad_url):
+    """validate_fetch_url blocks all private/reserved ranges and dangerous schemes."""
+    from src.security import SecurityError, validate_fetch_url
+
+    with pytest.raises(SecurityError):
+        validate_fetch_url(bad_url)

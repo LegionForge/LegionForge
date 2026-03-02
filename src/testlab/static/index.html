@@ -162,6 +162,7 @@
   <div id="header">
     <h1>LegionForge TestLab</h1>
     <span class="sub">admin test interface</span>
+    <span id="header-version" style="font-size:10px;color:var(--xdim);margin-left:6px"></span>
     <div class="spacer"></div>
     <div id="auth-row">
       <input type="password" id="admin-key" placeholder="Admin API key" autocomplete="off">
@@ -337,6 +338,12 @@ const APIKEY_KEY = 'lf_testlab_key';
     else         localStorage.removeItem(APIKEY_KEY);
   });
   if (S.apiKey) loadAll();
+
+  // Fetch version from /health and display in header
+  fetch('/health').then(r => r.json()).then(d => {
+    const v = d.version || '';
+    if (v) document.getElementById('header-version').textContent = 'v' + v;
+  }).catch(() => {});
 })();
 
 // ── Tab switching ─────────────────────────────────────────────────
