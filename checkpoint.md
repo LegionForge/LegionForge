@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 132
+UPDATE: 133
 BRANCH: dev
-COMMIT: 8d35ce3
-TIMESTAMP: 2026-03-02T22:00Z
-LAST_OP: Phase 56 — Configurable Search Providers (src/search/ module: DDG/Tavily/Brave/Exa/Perplexity/SearXNG, primary+fallback routing, per-provider settings, Keychain keys)
+COMMIT: fc8cde0
+TIMESTAMP: 2026-03-02T22:30Z
+LAST_OP: PR #97 — gateway startup fix (POSTGRES_PASSWORD trust-auth fallback + Makefile Keychain lookup)
 SMOKE_TESTS: 818/818
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
