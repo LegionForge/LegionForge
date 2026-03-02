@@ -24,7 +24,7 @@
       --purple:    #d2a8ff;
       --yellow:    #e3b341;
       --radius:    6px;
-      --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace, 'Noto Sans Mono', system-ui;
     }
 
     html, body {
@@ -225,6 +225,7 @@
       word-break: break-word;
       font-size: 13px;
       line-height: 1.65;
+      unicode-bidi: plaintext;   /* proper RTL rendering for Arabic/Hebrew */
     }
     /* Output text classes */
     .o-ready   { color: var(--text-xdim); font-style: italic; }
@@ -704,22 +705,23 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
 
   es.addEventListener('task_complete', e => {
     dotPulse();
+    es.close(); S.activeES = null;
     try {
       const d = JSON.parse(e.data);
-      // The SSE event carries the full result inline — display it directly.
+      // stream.py fast-path (task already done at connect time) sends result inline.
+      // Live build_task_complete_event() has no result field — fall through to REST fetch.
       const resultText = typeof d.result === 'string' ? d.result
                        : (d.result && d.result.output) ? d.result.output : '';
       if (resultText && resultText.trim()) {
         appendSpan('\n', '');
         appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+        const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
+        finishRun('complete', '', taskId, agent, taskInput, tokens);
+        return;
       }
-      const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
-      finishRun('complete', '', taskId, agent, taskInput, tokens);
-      es.close(); S.activeES = null;
-    } catch(_) {
-      // Fallback: fetch from REST if SSE data unparseable
-      fetchTaskResult(taskId, apiKey, agent, taskInput);
-    }
+    } catch(_) {}
+    // No inline result (live streaming path) — fetch the final answer from REST API
+    fetchTaskResult(taskId, apiKey, agent, taskInput);
   });
 
   es.addEventListener('task_error', e => {
