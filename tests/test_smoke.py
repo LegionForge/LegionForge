@@ -8585,3 +8585,81 @@ def test_p40_update_labels_request_model():
     src = inspect.getsource(tasks_mod)
     assert "UpdateLabelsRequest" in src
     assert "labels_must_be_valid" in src
+
+
+# ── Phase 41: API Key Rotation ────────────────────────────────────────────────
+
+
+def test_p41_rotate_api_key_db_function():
+    """rotate_api_key is exported from database module."""
+    from src.database import rotate_api_key
+
+    assert callable(rotate_api_key)
+
+
+def test_p41_rotate_api_key_updates_hash():
+    """rotate_api_key SQL updates api_key_hash field."""
+    import inspect
+    from src.database import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert "api_key_hash" in src
+    assert "UPDATE gateway_users" in src
+
+
+def test_p41_auth_routes_importable():
+    """auth_routes module is importable with expected endpoints."""
+    from src.gateway.routes.auth_routes import router, rotate_api_key, get_current_user
+
+    assert router is not None
+    assert callable(rotate_api_key)
+    assert callable(get_current_user)
+
+
+def test_p41_rotate_key_uses_secrets_token_hex():
+    """rotate_api_key endpoint uses secrets.token_hex for key generation."""
+    import inspect
+    from src.gateway.routes.auth_routes import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert "secrets.token_hex" in src or "token_hex" in src
+
+
+def test_p41_rotate_key_uses_bcrypt():
+    """rotate_api_key endpoint hashes new key with bcrypt."""
+    import inspect
+    from src.gateway.routes.auth_routes import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert "bcrypt" in src
+    assert "hashpw" in src
+
+
+def test_p41_rotate_key_returns_plaintext_once():
+    """rotate_api_key response includes api_key and message."""
+    import inspect
+    from src.gateway.routes.auth_routes import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert '"api_key"' in src
+    assert "not be shown again" in src or "shown once" in src or "once" in src
+
+
+def test_p41_get_current_user_no_sensitive_fields():
+    """get_current_user does not include api_key_hash in response."""
+    import inspect
+    from src.gateway.routes.auth_routes import get_current_user
+
+    src = inspect.getsource(get_current_user)
+    # api_key_hash must not appear in the returned dict keys
+    assert "api_key_hash" not in src.split("return")[1]
+
+
+def test_p41_app_registers_auth_router():
+    """Gateway app registers auth_route with /auth prefix."""
+    import inspect
+    import src.gateway.app as app_mod
+
+    src = inspect.getsource(app_mod)
+    assert "auth_route" in src
+    assert '"/auth"' in src or 'prefix="/auth"' in src or "prefix='/auth'" in src

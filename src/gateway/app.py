@@ -47,6 +47,7 @@ from src.gateway.routes import (
     admin as admin_route,
     observability as observability_route,
     pipelines as pipelines_route,
+    auth_routes as auth_route,
 )
 from src.gateway.worker import task_worker
 
@@ -151,6 +152,7 @@ app.include_router(schedules_route.router, prefix="/schedules", tags=["schedules
 app.include_router(admin_route.router, prefix="/admin", tags=["admin"])
 app.include_router(observability_route.router, prefix="/admin", tags=["observability"])
 app.include_router(pipelines_route.router, prefix="/pipelines", tags=["pipelines"])
+app.include_router(auth_route.router, prefix="/auth", tags=["auth"])
 
 
 # ── Agent Capabilities Registry (Phase 37) ────────────────────────────────────

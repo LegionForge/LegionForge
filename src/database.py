@@ -3427,6 +3427,28 @@ async def get_gateway_user_by_user_id(user_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
+    """
+    Replace the api_key_hash for user_id with new_key_hash.
+
+    Returns True if the row was found and updated, False if user_id not found.
+    The new_key_hash must be a bcrypt hash of the new plaintext key.
+
+    Phase 41 — API Key Rotation.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE gateway_users
+            SET api_key_hash = %s, updated_at = now()
+            WHERE user_id = %s
+            """,
+            (new_key_hash, user_id),
+        )
+        return cur.rowcount > 0
+
+
 # ── Phase 10: DB-backed stream tokens ────────────────────────────────────────
 
 
