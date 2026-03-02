@@ -20,6 +20,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from src.database import (
@@ -114,6 +115,14 @@ class TaskRequest(BaseModel):
             "completes (success or failure).  Phase 26 completion webhooks."
         ),
     )
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "If true, estimate token cost and return immediately without queuing "
+            "the task.  Response includes estimated_tokens, estimated_cost_usd, "
+            "input_tokens, output_tokens, provider.  Phase 36 — Cost Estimation."
+        ),
+    )
 
     @field_validator("task")
     @classmethod
@@ -185,6 +194,15 @@ async def submit_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Task rejected: invalid input",
         )
+
+    # Phase 36: dry_run — return cost estimate without queuing
+    if body.dry_run:
+        from src.cost_estimator import estimate_task_cost
+
+        estimate = estimate_task_cost(body.agent_type, sanitized)
+        estimate["agent_type"] = body.agent_type
+        estimate["dry_run"] = True
+        return JSONResponse(status_code=200, content=estimate)
 
     # Phase 29: always compute content_hash (stored on the task for future lookups)
     from src.task_cache import compute_task_hash

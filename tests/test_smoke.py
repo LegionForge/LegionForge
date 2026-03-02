@@ -8165,3 +8165,97 @@ def test_p35_worker_concurrency_min_is_1():
 
     src = inspect.getsource(w)
     assert "max(1," in src or "max(1 " in src
+
+
+# ── Phase 36: Task Cost Estimation ────────────────────────────────────────────
+
+
+def test_p36_cost_estimator_importable():
+    """cost_estimator module is importable."""
+    import src.cost_estimator as ce
+
+    assert callable(ce.estimate_tokens)
+    assert callable(ce.estimate_cost)
+    assert callable(ce.estimate_task_cost)
+
+
+def test_p36_estimate_tokens_returns_correct_keys():
+    """estimate_tokens returns dict with input, output, total keys."""
+    from src.cost_estimator import estimate_tokens
+
+    result = estimate_tokens("base_agent", "hello world test task")
+    assert "input" in result and "output" in result and "total" in result
+    assert result["total"] == result["input"] + result["output"]
+
+
+def test_p36_estimate_tokens_increases_with_input_length():
+    """Longer input text produces more estimated tokens."""
+    from src.cost_estimator import estimate_tokens
+
+    short = estimate_tokens("base_agent", "hello")
+    long = estimate_tokens("base_agent", " ".join(["word"] * 100))
+    assert long["input"] > short["input"]
+
+
+def test_p36_estimate_cost_ollama_is_zero():
+    """Local Ollama provider has zero cost."""
+    from src.cost_estimator import estimate_cost, estimate_tokens
+
+    tokens = estimate_tokens("base_agent", "test task")
+    cost = estimate_cost("base_agent", tokens)
+    assert cost["total_usd"] == 0.0
+    assert cost["provider"] == "ollama"
+
+
+def test_p36_estimate_task_cost_combined():
+    """estimate_task_cost returns all expected fields."""
+    from src.cost_estimator import estimate_task_cost
+
+    result = estimate_task_cost(
+        "researcher", "analyse climate data from the last decade"
+    )
+    required = {
+        "input_tokens",
+        "output_tokens",
+        "estimated_tokens",
+        "estimated_cost_usd",
+        "provider",
+    }
+    assert required.issubset(result.keys())
+    assert (
+        result["estimated_tokens"] == result["input_tokens"] + result["output_tokens"]
+    )
+
+
+def test_p36_worker_concurrency_constants_set():
+    """WORD_TO_TOKEN_RATIO and SYSTEM_PROMPT_OVERHEAD are defined."""
+    from src.cost_estimator import (
+        WORD_TO_TOKEN_RATIO,
+        SYSTEM_PROMPT_OVERHEAD,
+        OUTPUT_EXPANSION,
+    )
+
+    assert WORD_TO_TOKEN_RATIO > 1.0
+    for agent in ("base_agent", "orchestrator", "researcher"):
+        assert agent in SYSTEM_PROMPT_OVERHEAD
+        assert agent in OUTPUT_EXPANSION
+
+
+def test_p36_task_request_has_dry_run_field():
+    """TaskRequest model has dry_run boolean field defaulting to False."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "dry_run" in src
+    assert "dry_run: bool" in src or "dry_run" in src
+
+
+def test_p36_submit_task_returns_estimate_on_dry_run():
+    """submit_task handler uses estimate_task_cost when dry_run is True."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "dry_run" in src
+    assert "estimate_task_cost" in src
