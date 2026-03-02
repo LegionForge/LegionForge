@@ -1147,6 +1147,27 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "WHERE depends_on IS NOT NULL"
     )
 
+    # ── Phase 39: Task Timeline ─────────────────────────────────────────────────
+    # Lightweight event log: one row per state transition per task.
+    # event_type is a short string: 'queued', 'running', 'complete', 'failed',
+    # 'cancelled', 'dependency_failed', etc.
+    # metadata is a JSONB blob for type-specific detail (run_id, error, steps…).
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_events (
+            id          BIGSERIAL PRIMARY KEY,
+            task_id     UUID NOT NULL REFERENCES tasks (task_id) ON DELETE CASCADE,
+            event_type  TEXT NOT NULL,
+            metadata    JSONB NOT NULL DEFAULT '{}',
+            ts          TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_events_task_id "
+        "ON task_events (task_id, ts ASC)"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2811,7 +2832,27 @@ async def create_task(
             ),
         )
         row = await cur.fetchone()
-    return dict(row)
+    task_row = dict(row)
+    # Phase 39: record 'queued' timeline event (best-effort, non-blocking)
+    try:
+        pool2 = get_pool()
+        async with pool2.connection() as conn2:
+            await conn2.execute(
+                "INSERT INTO task_events (task_id, event_type, metadata) "
+                "VALUES (%s::uuid, 'queued', %s::jsonb)",
+                (
+                    task_row["task_id"],
+                    json.dumps(
+                        {
+                            "agent_type": agent_type,
+                            "priority": task_row.get("priority", 5),
+                        }
+                    ),
+                ),
+            )
+    except Exception:
+        pass  # timeline is best-effort; never block task creation
+    return task_row
 
 
 async def lookup_cached_task(
@@ -3067,7 +3108,10 @@ async def claim_next_queued_task() -> dict | None:
 
 
 async def mark_task_running(task_id: str, run_id: str) -> None:
-    """Record the LangGraph run_id against a task that is already 'running'."""
+    """Record the LangGraph run_id against a task that is already 'running'.
+
+    Phase 39: also inserts a 'running' timeline event.
+    """
     pool = get_pool()
     async with pool.connection() as conn:
         await conn.execute(
@@ -3077,6 +3121,12 @@ async def mark_task_running(task_id: str, run_id: str) -> None:
             WHERE task_id = %s::uuid
             """,
             (run_id, task_id),
+        )
+        # Phase 39: timeline event
+        await conn.execute(
+            "INSERT INTO task_events (task_id, event_type, metadata) "
+            "VALUES (%s::uuid, 'running', %s::jsonb)",
+            (task_id, json.dumps({"run_id": run_id})),
         )
 
 
@@ -3106,6 +3156,12 @@ async def mark_task_complete(
                 task_id,
             ),
         )
+        # Phase 39: timeline event
+        await conn.execute(
+            "INSERT INTO task_events (task_id, event_type, metadata) "
+            "VALUES (%s::uuid, 'complete', %s::jsonb)",
+            (task_id, json.dumps({"steps": steps, "tokens": tokens or {}})),
+        )
 
 
 async def mark_task_failed(task_id: str, error: str) -> None:
@@ -3119,6 +3175,12 @@ async def mark_task_failed(task_id: str, error: str) -> None:
             WHERE task_id = %s::uuid
             """,
             (error, task_id),
+        )
+        # Phase 39: timeline event
+        await conn.execute(
+            "INSERT INTO task_events (task_id, event_type, metadata) "
+            "VALUES (%s::uuid, 'failed', %s::jsonb)",
+            (task_id, json.dumps({"error": error[:500]})),
         )
 
 
@@ -3896,3 +3958,67 @@ async def finalize_pipeline_run(
             "completed_at = now() WHERE id = %s",
             (status, json.dumps(step_results), run_id),
         )
+
+
+# ── Phase 39: Task Timeline ────────────────────────────────────────────────────
+
+
+async def record_task_event(
+    task_id: str,
+    event_type: str,
+    metadata: dict | None = None,
+) -> None:
+    """
+    Insert a timeline event for a task.
+
+    Args:
+        task_id:    The task UUID (string).
+        event_type: Short label for the transition, e.g. 'queued', 'running',
+                    'complete', 'failed', 'cancelled', 'dependency_failed'.
+        metadata:   Optional JSONB payload (run_id, steps, error, etc.).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO task_events (task_id, event_type, metadata) "
+            "VALUES (%s::uuid, %s, %s::jsonb)",
+            (task_id, event_type, json.dumps(metadata or {})),
+        )
+
+
+async def get_task_timeline(task_id: str, user_id: str) -> list[dict]:
+    """
+    Return the ordered timeline of events for a task, user-scoped.
+
+    Returns an empty list if the task does not exist or belongs to another user.
+    Events are ordered oldest-first (ts ASC).
+
+    Args:
+        task_id: The task UUID (string).
+        user_id: The requesting user's ID — used to enforce ownership.
+
+    Returns:
+        List of dicts with keys: id, event_type, metadata, ts.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT e.id, e.event_type, e.metadata, e.ts
+            FROM task_events e
+            JOIN tasks t ON t.task_id = e.task_id
+            WHERE e.task_id = %s::uuid
+              AND t.user_id = %s
+            ORDER BY e.ts ASC, e.id ASC
+            """,
+            (task_id, user_id),
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            **dict(r),
+            "ts": r["ts"].isoformat() if hasattr(r["ts"], "isoformat") else r["ts"],
+        }
+        for r in rows
+    ]

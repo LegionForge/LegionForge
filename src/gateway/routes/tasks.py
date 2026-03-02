@@ -32,6 +32,7 @@ from src.database import (
     create_task,
     delete_task_note,
     get_task,
+    get_task_timeline,
     list_task_notes,
     list_tasks,
     lookup_cached_task,
@@ -657,6 +658,32 @@ async def delete_note(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Note not found or not owned by this user",
         )
+
+
+# ── Task Timeline (Phase 39) ───────────────────────────────────────────────────
+
+
+@router.get("/{task_id}/timeline")
+async def get_timeline(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Return the chronological event timeline for a task.
+
+    Events represent state transitions: queued → running → complete/failed.
+    Returns 404 if the task does not exist or belongs to another user.
+
+    Phase 39 — Task Timeline.
+    """
+    task = await get_task(task_id, user["user_id"])
+    if task is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+    events = await get_task_timeline(task_id, user["user_id"])
+    return {"task_id": task_id, "count": len(events), "events": events}
 
 
 # ── Task Retry (Phase 33) ──────────────────────────────────────────────────────

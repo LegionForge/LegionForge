@@ -8427,3 +8427,81 @@ def test_p38_tasks_route_imports_streaming_response():
 
     src = inspect.getsource(tasks_mod)
     assert "StreamingResponse" in src
+
+
+# ── Phase 39: Task Timeline ───────────────────────────────────────────────────
+
+
+def test_p39_task_events_table_in_ddl():
+    """_create_app_tables creates the task_events table."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "task_events" in src
+    assert "event_type" in src
+
+
+def test_p39_record_task_event_callable():
+    """record_task_event is exported from database module."""
+    from src.database import record_task_event
+
+    assert callable(record_task_event)
+
+
+def test_p39_get_task_timeline_callable():
+    """get_task_timeline is exported from database module."""
+    from src.database import get_task_timeline
+
+    assert callable(get_task_timeline)
+
+
+def test_p39_mark_task_running_records_event():
+    """mark_task_running inserts a 'running' timeline event."""
+    import inspect
+    from src.database import mark_task_running
+
+    src = inspect.getsource(mark_task_running)
+    assert "task_events" in src
+    assert "'running'" in src
+
+
+def test_p39_mark_task_complete_records_event():
+    """mark_task_complete inserts a 'complete' timeline event."""
+    import inspect
+    from src.database import mark_task_complete
+
+    src = inspect.getsource(mark_task_complete)
+    assert "task_events" in src
+    assert "'complete'" in src
+
+
+def test_p39_mark_task_failed_records_event():
+    """mark_task_failed inserts a 'failed' timeline event."""
+    import inspect
+    from src.database import mark_task_failed
+
+    src = inspect.getsource(mark_task_failed)
+    assert "task_events" in src
+    assert "'failed'" in src
+
+
+def test_p39_create_task_records_queued_event():
+    """create_task inserts a 'queued' timeline event."""
+    import inspect
+    from src.database import create_task
+
+    src = inspect.getsource(create_task)
+    assert "task_events" in src
+    assert "'queued'" in src
+
+
+def test_p39_timeline_endpoint_defined():
+    """tasks route has a /{task_id}/timeline endpoint."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "get_timeline" in src
+    assert "/timeline" in src
+    assert "get_task_timeline" in src
