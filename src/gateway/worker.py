@@ -8,6 +8,10 @@ At Phase 8 scale (household, 1–2 users) a single embedded asyncio.Task is
 sufficient.  Phase 10 adds per-user token attribution and a stream-token
 purge heartbeat (every 10 min) via purge_expired_stream_tokens().
 
+Phase 35 adds configurable concurrency: up to WORKER_CONCURRENCY tasks run
+simultaneously (default 3, override via WORKER_CONCURRENCY env var).  The
+FOR UPDATE SKIP LOCKED claim query is already safe for concurrent use.
+
 Usage (started by app.py lifespan):
     asyncio.create_task(task_worker())
 """
@@ -17,8 +21,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
+
+# ── Concurrency control ────────────────────────────────────────────────────────
+
+WORKER_CONCURRENCY: int = max(1, int(os.environ.get("WORKER_CONCURRENCY", "3")))
+
+# Tracks how many tasks are currently executing (incremented before run,
+# decremented in a finally block — always consistent).
+_active_tasks: int = 0
 
 from src.database import (
     claim_next_queued_task,
@@ -276,27 +289,43 @@ async def run_task(task: dict) -> None:
 # ── Worker loop ───────────────────────────────────────────────────────────────
 
 
+async def _run_task_tracked(task: dict) -> None:
+    """Wrap run_task() with active-task counter bookkeeping."""
+    global _active_tasks
+    _active_tasks += 1
+    try:
+        await run_task(task)
+    finally:
+        _active_tasks -= 1
+
+
 async def task_worker() -> None:
     """
-    Main worker loop.  Polls the tasks table every second for queued tasks
-    and runs them one at a time.
+    Main worker loop.  Polls the tasks table for queued tasks and launches
+    up to WORKER_CONCURRENCY tasks concurrently.
 
-    A single worker is appropriate at household scale.  The FOR UPDATE SKIP
-    LOCKED in claim_next_queued_task() is safe for future multi-worker
-    scenarios without code changes here.
+    Phase 35: concurrent execution via asyncio.create_task() + _active_tasks
+    counter.  The FOR UPDATE SKIP LOCKED claim query is safe for concurrent
+    use — each create_task() call claims a distinct row.
 
     Phase 10 addition: purges expired stream tokens every 10 minutes as an
     opportunistic heartbeat (not a hot path).
     """
     global _last_purge
-    logger.info("[worker] Task worker started")
+    logger.info("[worker] Task worker started (concurrency=%d)", WORKER_CONCURRENCY)
     while True:
         try:
-            task = await claim_next_queued_task()
-            if task:
-                await run_task(task)
+            if _active_tasks < WORKER_CONCURRENCY:
+                task = await claim_next_queued_task()
+                if task:
+                    asyncio.create_task(_run_task_tracked(task))
+                    # Don't sleep — immediately check for more queued tasks
+                    # so we can fill all concurrency slots quickly.
+                else:
+                    await asyncio.sleep(1)
             else:
-                await asyncio.sleep(1)
+                # All slots busy — yield briefly before rechecking.
+                await asyncio.sleep(0.2)
 
             # Opportunistic purge of expired stream tokens (every 10 min)
             now = asyncio.get_event_loop().time()

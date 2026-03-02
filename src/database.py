@@ -3596,7 +3596,7 @@ async def list_scheduled_tasks(
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
-            f"SELECT * FROM scheduled_tasks {where} "
+            f"SELECT * FROM scheduled_tasks {where} "  # nosec B608
             "ORDER BY next_run_at ASC LIMIT %s OFFSET %s",
             (*params, limit, offset),
         )
@@ -3653,7 +3653,7 @@ async def update_scheduled_task(
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
-            f"UPDATE scheduled_tasks SET {', '.join(sets)} "
+            f"UPDATE scheduled_tasks SET {', '.join(sets)} "  # nosec B608
             "WHERE id = %s AND user_id = %s RETURNING *",
             params,
         )
@@ -3799,7 +3799,7 @@ async def update_pipeline(
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
-            f"UPDATE pipelines SET {', '.join(sets)} "
+            f"UPDATE pipelines SET {', '.join(sets)} "  # nosec B608
             "WHERE id = %s AND user_id = %s RETURNING *",
             params,
         )

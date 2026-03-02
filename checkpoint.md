@@ -1,11 +1,11 @@
 VERSION: 1.0.1
-UPDATE: 95
+UPDATE: 96
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T02:30Z
-LAST_OP: Phase 34 — Task Dependencies: depends_on column, worker skips blocked tasks, fail_dependent_tasks() auto-propagates failures
-SMOKE_TESTS: 627/627
-INTEGRATION_TESTS: 38/38 (0 skipped)
+TIMESTAMP: 2026-03-02T02:50Z
+LAST_OP: Phase 35 — Worker Concurrency: WORKER_CONCURRENCY constant, _active_tasks counter, concurrent task dispatch via create_task
+SMOKE_TESTS: 635/635
+INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
 TESTLAB_SUITE: 104/104

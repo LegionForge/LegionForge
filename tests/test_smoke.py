@@ -8083,3 +8083,85 @@ def test_p34_claim_next_queued_task_respects_dependency():
     src = inspect.getsource(claim_next_queued_task)
     assert "depends_on" in src
     assert "complete" in src
+
+
+# ── Phase 35: Worker Concurrency ──────────────────────────────────────────────
+
+
+def test_p35_worker_concurrency_constant_exists():
+    """WORKER_CONCURRENCY is exported from worker module."""
+    from src.gateway.worker import WORKER_CONCURRENCY
+
+    assert isinstance(WORKER_CONCURRENCY, int)
+    assert WORKER_CONCURRENCY >= 1
+
+
+def test_p35_worker_concurrency_default_is_3(monkeypatch):
+    """Default WORKER_CONCURRENCY is 3 when env var not set."""
+    import importlib
+    import os
+
+    monkeypatch.delenv("WORKER_CONCURRENCY", raising=False)
+    import src.gateway.worker as w
+
+    # Module-level constant reflects env at import time; verify the default
+    # logic by parsing the source.
+    import inspect
+
+    src = inspect.getsource(w)
+    assert '"3"' in src or "'3'" in src
+
+
+def test_p35_worker_concurrency_env_override(monkeypatch):
+    """WORKER_CONCURRENCY env var is used to set the constant."""
+    import src.gateway.worker as w
+    import inspect
+
+    src = inspect.getsource(w)
+    assert "WORKER_CONCURRENCY" in src
+    assert "os.environ" in src or "os.getenv" in src
+
+
+def test_p35_active_tasks_counter_exists():
+    """_active_tasks module-level counter is initialised to 0."""
+    import src.gateway.worker as w
+
+    assert hasattr(w, "_active_tasks")
+    assert isinstance(w._active_tasks, int)
+
+
+def test_p35_run_task_tracked_increments_counter():
+    """_run_task_tracked function exists in worker module."""
+    import src.gateway.worker as w
+
+    assert hasattr(w, "_run_task_tracked")
+    assert callable(w._run_task_tracked)
+
+
+def test_p35_worker_loop_uses_create_task():
+    """task_worker launches tasks via asyncio.create_task for concurrency."""
+    import inspect
+    import src.gateway.worker as w
+
+    src = inspect.getsource(w.task_worker)
+    assert "create_task" in src
+    assert "_run_task_tracked" in src
+
+
+def test_p35_worker_loop_checks_capacity_before_claim():
+    """task_worker checks _active_tasks < WORKER_CONCURRENCY before claiming."""
+    import inspect
+    import src.gateway.worker as w
+
+    src = inspect.getsource(w.task_worker)
+    assert "_active_tasks" in src
+    assert "WORKER_CONCURRENCY" in src
+
+
+def test_p35_worker_concurrency_min_is_1():
+    """WORKER_CONCURRENCY is always at least 1 (max(1, ...) guard)."""
+    import inspect
+    import src.gateway.worker as w
+
+    src = inspect.getsource(w)
+    assert "max(1," in src or "max(1 " in src

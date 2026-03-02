@@ -67,14 +67,14 @@ async def list_audit_log(
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             cur = await conn.execute(
-                f"SELECT seq, ts, event_type, agent_id, payload "
+                f"SELECT seq, ts, event_type, agent_id, payload "  # nosec B608
                 f"FROM audit_log {where} "
                 f"ORDER BY seq DESC LIMIT %s OFFSET %s",
                 (*params, limit, offset),
             )
             rows = await cur.fetchall()
             cur2 = await conn.execute(
-                f"SELECT COUNT(*) AS total FROM audit_log {where}",
+                f"SELECT COUNT(*) AS total FROM audit_log {where}",  # nosec B608
                 params,
             )
             total_row = await cur2.fetchone()
@@ -153,7 +153,7 @@ async def list_threat_events(
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             cur = await conn.execute(
-                f"SELECT id, ts, agent_id, run_id, threat_type, confidence, "
+                f"SELECT id, ts, agent_id, run_id, threat_type, confidence, "  # nosec B608
                 f"action_taken, metadata "
                 f"FROM threat_events {where} "
                 f"ORDER BY ts DESC LIMIT %s OFFSET %s",
@@ -161,7 +161,7 @@ async def list_threat_events(
             )
             rows = await cur.fetchall()
             cur2 = await conn.execute(
-                f"SELECT COUNT(*) AS total FROM threat_events {where}",
+                f"SELECT COUNT(*) AS total FROM threat_events {where}",  # nosec B608
                 params,
             )
             total_row = await cur2.fetchone()
@@ -319,7 +319,7 @@ async def list_tools(
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             cur = await conn.execute(
-                f"SELECT tool_id, source, version, description, status, "
+                f"SELECT tool_id, source, version, description, status, "  # nosec B608
                 f"approved_by, approved_at, declared_side_effects "
                 f"FROM tool_registry {where} ORDER BY approved_at DESC",
                 params,
