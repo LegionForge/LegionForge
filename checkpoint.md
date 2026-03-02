@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 113
+UPDATE: 116
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T07:25Z
-LAST_OP: Phase 51 — Task Sharing: task_shares table, share/list/revoke endpoints, public GET /shared/{token}
-SMOKE_TESTS: 762/762
+TIMESTAMP: 2026-03-02T09:00Z
+LAST_OP: Phase 52 — User Preferences: JSONB prefs table, GET/PUT/DELETE /auth/preferences
+SMOKE_TESTS: 772/772
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

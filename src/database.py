@@ -279,6 +279,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "task_attachments",  # Phase 49: task text attachments
         "task_templates",  # Phase 50: reusable task templates
         "task_shares",  # Phase 51: read-only share tokens
+        "user_preferences",  # Phase 52: per-user task defaults
     ]:
         try:
             await admin_conn.execute(
@@ -1289,6 +1290,17 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     )
     await conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_task_shares_task_id ON task_shares (task_id)"
+    )
+
+    # ── Phase 52: user_preferences ────────────────────────────────────────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id    TEXT PRIMARY KEY REFERENCES gateway_users(user_id) ON DELETE CASCADE,
+            prefs      JSONB NOT NULL DEFAULT '{}',
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
     )
 
     logger.info("Application tables verified")
@@ -4868,3 +4880,160 @@ async def revoke_task_share(share_token: str, user_id: str) -> bool:
             (share_token, user_id),
         )
         return (await cur.fetchone()) is not None
+
+
+# ── Phase 52: User Preferences ───────────────────────────────────────────────
+
+# Allowed preference keys and their types/ranges.
+_PREF_SCHEMA: dict[str, tuple[type, object, object]] = {
+    # key: (type, min_or_choices, max_or_None)
+    "default_agent_type": (str, {"orchestrator", "researcher", "base_agent"}, None),
+    "default_max_steps": (int, 1, 100),
+    "default_tracing_enabled": (bool, None, None),
+    "default_priority": (int, 1, 10),
+    "ui_theme": (str, {"dark", "light", "system"}, None),
+    "notification_on_complete": (bool, None, None),
+    "notification_on_fail": (bool, None, None),
+}
+
+
+def _validate_prefs(prefs: dict) -> dict:
+    """
+    Validate and coerce user preference values.
+
+    Only keys listed in _PREF_SCHEMA are accepted.
+    Raises ValueError with a descriptive message on unknown/invalid values.
+    Returns the validated (possibly coerced) dict.
+    """
+    if not isinstance(prefs, dict):
+        raise ValueError("Preferences must be a JSON object")
+    unknown = set(prefs) - set(_PREF_SCHEMA)
+    if unknown:
+        raise ValueError(
+            f"Unknown preference key(s): {sorted(unknown)}. "
+            f"Allowed: {sorted(_PREF_SCHEMA)}"
+        )
+    result: dict = {}
+    for key, value in prefs.items():
+        expected_type, constraint_min, constraint_max = _PREF_SCHEMA[key]
+        if expected_type is bool:
+            if not isinstance(value, bool):
+                raise ValueError(f"{key!r} must be a boolean")
+            result[key] = value
+        elif expected_type is int:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(f"{key!r} must be an integer")
+            if value < constraint_min or value > constraint_max:
+                raise ValueError(
+                    f"{key!r} must be between {constraint_min} and {constraint_max}"
+                )
+            result[key] = value
+        elif expected_type is str:
+            if not isinstance(value, str):
+                raise ValueError(f"{key!r} must be a string")
+            if isinstance(constraint_min, set) and value not in constraint_min:
+                raise ValueError(f"{key!r} must be one of {sorted(constraint_min)}")
+            result[key] = value
+    return result
+
+
+async def get_user_preferences(user_id: str) -> dict:
+    """
+    Return the stored preferences for user_id.
+    Returns {} if no preferences have been saved yet.
+
+    Phase 52 — User Preferences.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT prefs, updated_at FROM user_preferences WHERE user_id = %s",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return {}
+        return {
+            "prefs": row["prefs"] or {},
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+
+async def update_user_preferences(user_id: str, prefs: dict) -> dict:
+    """
+    Upsert preferences for user_id.
+
+    Only keys present in prefs are written — existing keys not in prefs are
+    merged (JSONB ||) so partial updates are supported.
+
+    Validates values against _PREF_SCHEMA.  Raises ValueError on invalid input.
+    Returns the full updated preference object.
+
+    Phase 52 — User Preferences.
+    """
+    validated = _validate_prefs(prefs)
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        # UPSERT: merge new keys into existing JSONB
+        cur = await conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, prefs)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT (user_id) DO UPDATE
+              SET prefs = user_preferences.prefs || EXCLUDED.prefs,
+                  updated_at = now()
+            RETURNING prefs, updated_at
+            """,
+            (user_id, json.dumps(validated)),
+        )
+        row = await cur.fetchone()
+        return {
+            "prefs": row["prefs"] or {},
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+
+async def delete_user_preferences(user_id: str, keys: list[str] | None = None) -> dict:
+    """
+    Delete all or specific preference keys for user_id.
+
+    If keys is None, delete the entire preferences row.
+    If keys is a list, remove only those keys from the JSONB object.
+    Returns the remaining preferences (empty dict if all deleted).
+
+    Phase 52 — User Preferences.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        if not keys:
+            # Delete the entire row
+            await conn.execute(
+                "DELETE FROM user_preferences WHERE user_id = %s", (user_id,)
+            )
+            return {"prefs": {}, "updated_at": None}
+
+        unknown = set(keys) - set(_PREF_SCHEMA)
+        if unknown:
+            raise ValueError(f"Unknown preference key(s): {sorted(unknown)}")
+
+        # Remove specific keys from JSONB using the - operator
+        cur = await conn.execute(
+            """
+            UPDATE user_preferences
+            SET prefs = prefs - %s::text[],
+                updated_at = now()
+            WHERE user_id = %s
+            RETURNING prefs, updated_at
+            """,
+            (list(keys), user_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return {"prefs": {}, "updated_at": None}
+        return {
+            "prefs": row["prefs"] or {},
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }

@@ -3,10 +3,15 @@ src/gateway/routes/auth_routes.py
 ──────────────────────────────────
 Self-service auth endpoints for authenticated gateway users.
 
-    GET  /auth/me           — return current user profile
-    POST /auth/rotate-key   — generate + return a new API key (shown once)
+    GET  /auth/me                  — return current user profile
+    POST /auth/rotate-key          — generate + return a new API key (shown once)
+    GET  /auth/preferences         — get stored user preferences (Phase 52)
+    PUT  /auth/preferences         — merge update user preferences (Phase 52)
+    DELETE /auth/preferences       — clear all preferences (Phase 52)
+    DELETE /auth/preferences/{key} — remove one preference key (Phase 52)
 
 Phase 41 — API Key Rotation.
+Phase 52 — User Preferences.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from src.gateway.auth import require_user
 
@@ -89,3 +95,90 @@ async def rotate_api_key(user: dict = Depends(require_user)) -> dict:
             "Store this key securely — it will not be shown again."
         ),
     }
+
+
+# ── Phase 52: User Preferences ───────────────────────────────────────────────
+
+
+class PreferencesUpdate(BaseModel):
+    prefs: dict
+
+    model_config = {"extra": "forbid"}
+
+
+@router.get("/preferences")
+async def get_preferences(user: dict = Depends(require_user)) -> dict:
+    """
+    Return the current user's stored preferences.
+
+    Preferences are merged with task submissions as defaults.
+    Returns {} if no preferences have been set.
+
+    Phase 52 — User Preferences.
+    """
+    from src.database import get_user_preferences
+
+    return await get_user_preferences(user["user_id"])
+
+
+@router.put("/preferences")
+async def update_preferences(
+    body: PreferencesUpdate,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Merge-update stored preferences.
+
+    Only send the keys you want to change — existing keys not included in the
+    request body are preserved.  Allowed preference keys:
+
+    - ``default_agent_type``       — ``orchestrator`` | ``researcher`` | ``base_agent``
+    - ``default_max_steps``        — integer 1–100
+    - ``default_tracing_enabled``  — boolean
+    - ``default_priority``         — integer 1–10
+    - ``ui_theme``                 — ``dark`` | ``light`` | ``system``
+    - ``notification_on_complete`` — boolean
+    - ``notification_on_fail``     — boolean
+
+    Phase 52 — User Preferences.
+    """
+    from src.database import update_user_preferences
+
+    try:
+        return await update_user_preferences(user["user_id"], body.prefs)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.delete("/preferences", status_code=status.HTTP_200_OK)
+async def clear_preferences(user: dict = Depends(require_user)) -> dict:
+    """
+    Clear all stored preferences for the current user.
+
+    Phase 52 — User Preferences.
+    """
+    from src.database import delete_user_preferences
+
+    return await delete_user_preferences(user["user_id"])
+
+
+@router.delete("/preferences/{key}", status_code=status.HTTP_200_OK)
+async def remove_preference_key(
+    key: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Remove a single preference key.
+
+    Phase 52 — User Preferences.
+    """
+    from src.database import delete_user_preferences
+
+    try:
+        return await delete_user_preferences(user["user_id"], keys=[key])
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc

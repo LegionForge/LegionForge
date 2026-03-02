@@ -9455,3 +9455,101 @@ def test_p51_share_token_uses_secrets():
     src = inspect.getsource(create_task_share)
     assert "secrets" in src
     assert "token_urlsafe" in src
+
+
+# ── Phase 52: User Preferences ────────────────────────────────────────────────
+
+
+def test_p52_user_preferences_table_ddl():
+    """user_preferences table DDL is in _create_app_tables."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "user_preferences" in src
+    assert "JSONB" in src
+
+
+def test_p52_get_user_preferences_importable():
+    """get_user_preferences is importable from src.database."""
+    from src.database import get_user_preferences  # noqa: F401
+
+
+def test_p52_update_user_preferences_importable():
+    """update_user_preferences is importable from src.database."""
+    from src.database import update_user_preferences  # noqa: F401
+
+
+def test_p52_delete_user_preferences_importable():
+    """delete_user_preferences is importable from src.database."""
+    from src.database import delete_user_preferences  # noqa: F401
+
+
+def test_p52_pref_schema_has_all_expected_keys():
+    """_PREF_SCHEMA contains all documented preference keys."""
+    from src.database import _PREF_SCHEMA
+
+    expected = {
+        "default_agent_type",
+        "default_max_steps",
+        "default_tracing_enabled",
+        "default_priority",
+        "ui_theme",
+        "notification_on_complete",
+        "notification_on_fail",
+    }
+    assert expected <= set(_PREF_SCHEMA)
+
+
+def test_p52_validate_prefs_rejects_unknown_key():
+    """_validate_prefs raises ValueError for unknown keys."""
+    from src.database import _validate_prefs
+
+    try:
+        _validate_prefs({"not_a_real_key": True})
+        assert False, "Should have raised"
+    except ValueError as exc:
+        assert "Unknown" in str(exc)
+
+
+def test_p52_validate_prefs_rejects_invalid_agent_type():
+    """_validate_prefs rejects invalid agent types."""
+    from src.database import _validate_prefs
+
+    try:
+        _validate_prefs({"default_agent_type": "llm_bot"})
+        assert False, "Should have raised"
+    except ValueError as exc:
+        assert "default_agent_type" in str(exc)
+
+
+def test_p52_validate_prefs_accepts_valid_prefs():
+    """_validate_prefs accepts a valid preference dict."""
+    from src.database import _validate_prefs
+
+    result = _validate_prefs(
+        {
+            "default_agent_type": "researcher",
+            "default_max_steps": 25,
+            "ui_theme": "dark",
+        }
+    )
+    assert result["default_agent_type"] == "researcher"
+    assert result["default_max_steps"] == 25
+
+
+def test_p52_preferences_routes_in_auth_router():
+    """auth router has GET/PUT/DELETE /preferences routes."""
+    from src.gateway.routes.auth_routes import router
+
+    paths = [r.path for r in router.routes]
+    assert any("preferences" in p for p in paths)
+
+
+def test_p52_rbac_includes_user_preferences():
+    """_setup_db_roles grants legionforge_app on user_preferences."""
+    import inspect
+    from src.database import _setup_db_roles
+
+    src = inspect.getsource(_setup_db_roles)
+    assert "user_preferences" in src
