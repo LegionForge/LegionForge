@@ -177,18 +177,52 @@ check:
 		echo "⚠️  Guardian not running (warning only) — run: make guardian-start"
 
 .PHONY: start
-start: check ollama-start db-start ollama-warm guardian-start
+start: check ollama-start db-start ollama-warm guardian-start servers-start
 	@echo ""
 	@echo "✅ Framework ready."
-	@echo "   Run 'make health-server' in a separate terminal to start the status endpoint."
+	@echo "   Health  → http://localhost:8765/health"
+	@echo "   Gateway → http://localhost:8080"
+	@echo "   TestLab → http://localhost:8090"
 	@echo "   Run 'make test' to verify everything is working."
 
 .PHONY: stop
-stop:
-	@echo "Stopping services..."
+stop: servers-stop
+	@echo "Stopping infrastructure services..."
+	@docker-compose stop guardian 2>/dev/null || true
 	@brew services stop postgresql@17 2>/dev/null || true
 	@brew services stop ollama 2>/dev/null || true
-	@echo "✅ Services stopped"
+	@echo "✅ All services stopped"
+
+## ── Server management (health + gateway + testlab) ────────────
+.PHONY: servers-start
+servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8090) in background
+	@echo "Starting health server on :8765..."
+	@cd $(BASE) && $(PYTHON) -m src.health &
+	@sleep 1
+	@echo "Starting gateway on :8080..."
+	@cd $(BASE) && $(PYTHON) -m src.gateway.app &
+	@sleep 1
+	@echo "Starting TestLab on :8090..."
+	@cd $(BASE) && \
+	  TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null)} \
+	  $(PYTHON) -m uvicorn src.testlab.app:app --host 0.0.0.0 --port 8090 &
+	@sleep 1
+	@echo ""
+	@echo "✅ Servers started:"
+	@echo "   Health  → http://localhost:8765/health"
+	@echo "   Gateway → http://localhost:8080"
+	@echo "   TestLab → http://localhost:8090"
+
+.PHONY: servers-stop
+servers-stop:  ## Kill health-server (:8765), gateway (:8080), and testlab (:8090)
+	@echo "Stopping servers..."
+	@lsof -ti :8765 | xargs kill 2>/dev/null || true
+	@lsof -ti :8080 | xargs kill 2>/dev/null || true
+	@lsof -ti :8090 | xargs kill 2>/dev/null || true
+	@echo "✅ Servers stopped (8765, 8080, 8090)"
+
+.PHONY: servers-restart
+servers-restart: servers-stop servers-start  ## Restart all three servers
 
 # ── Health & Status ───────────────────────────────────────────
 .PHONY: health
@@ -664,6 +698,21 @@ test-testlab-all:  ## All 110+ testlab_suite tests (excludes LLM/CVE tests)
 	  --ignore=tests/testlab_suite/test_novel_security.py \
 	  --ignore=tests/testlab_suite/test_cve.py
 	@echo "✅ All TestLab attack suite tests complete"
+
+.PHONY: test-tool-accuracy
+test-tool-accuracy:  ## Tool unit tests — web_fetch/web_search accuracy (no LLM, fast)
+	@cd $(BASE) && $(PYTEST) tests/tool_accuracy/ -m tool_accuracy -v --tb=short
+	@echo "✅ Tool accuracy tests complete"
+
+.PHONY: test-researcher-accuracy
+test-researcher-accuracy:  ## Researcher anti-hallucination tests (require Ollama + PostgreSQL, 90s timeout)
+	@cd $(BASE) && $(PYTEST) tests/tool_accuracy/ -m tool_accuracy_llm -v --tb=short --timeout=90
+	@echo "✅ Researcher accuracy tests complete"
+
+.PHONY: test-tool-all
+test-tool-all:  ## All tool accuracy tests (fast + LLM)
+	@cd $(BASE) && $(PYTEST) tests/tool_accuracy/ -v --tb=short --timeout=90
+	@echo "✅ All tool accuracy tests complete"
 
 ## ── Gateway Docker (Phase 11) ─────────────────────────────────
 .PHONY: build-gateway

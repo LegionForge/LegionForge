@@ -306,15 +306,45 @@ SUITES: dict[str, dict] = {
             "--ignore=tests/testlab_suite/test_cve.py",
         ],
     },
+    "tool_accuracy": {
+        "label": "Tool Accuracy",
+        "description": "Tool unit tests — web_fetch/web_search accuracy (no LLM, self-contained)",
+        "cmd": [
+            "python",
+            "-m",
+            "pytest",
+            "tests/tool_accuracy/test_web_fetch.py",
+            "tests/tool_accuracy/test_web_search.py",
+            "-v",
+            "-m",
+            "tool_accuracy",
+            "--tb=short",
+        ],
+    },
+    "researcher_accuracy": {
+        "label": "Researcher Anti-Hallucination",
+        "description": "Researcher anti-hallucination tests (require Ollama + PostgreSQL)",
+        "cmd": [
+            "python",
+            "-m",
+            "pytest",
+            "tests/tool_accuracy/test_researcher_accuracy.py",
+            "-v",
+            "-m",
+            "tool_accuracy_llm",
+            "--tb=short",
+            "--timeout=90",
+        ],
+    },
 }
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
-app = FastAPI(title="LegionForge TestLab", version="1.0.0")
+app = FastAPI(title="LegionForge TestLab", version="0.7.0-alpha")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "testlab"}
+    return {"status": "ok", "service": "testlab", "version": app.version}
 
 
 @app.get("/")

@@ -210,7 +210,7 @@ def sign_tool_manifest(
     description: str,
     input_schema: dict,
     declared_side_effects: list,
-    version: str = "1.0.0",
+    version: str = "0.7.0-alpha",
 ) -> str:
     """
     Ed25519-sign a tool manifest.

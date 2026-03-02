@@ -1,11 +1,12 @@
-VERSION: 1.0.1
-UPDATE: 124
+VERSION: 0.7.0-alpha
+UPDATE: 128
 BRANCH: dev
-COMMIT: pending
-TIMESTAMP: 2026-03-02T13:00Z
-LAST_OP: fix: researcher hallucination (HTML strip, no-fabricate system prompt, DDG error wording), TestLab LAN bind
-SMOKE_TESTS: 792/792
+COMMIT: 738e9cb
+TIMESTAMP: 2026-03-02T15:00Z
+LAST_OP: UI — version footer (gateway + testlab), backup SSE polling fix for first-submit cold-start bug
+SMOKE_TESTS: 802/802
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
 TESTLAB_SUITE: 104/104
+TOOL_ACCURACY_TESTS: 29/29
