@@ -8965,3 +8965,84 @@ def test_p45_search_vector_stored():
 
     src = inspect.getsource(_create_app_tables)
     assert "STORED" in src
+
+
+# ── Phase 46: Task Watchdog ────────────────────────────────────────────────────
+
+
+def test_p46_reap_stuck_tasks_callable():
+    """reap_stuck_tasks is importable from src.database."""
+    from src.database import reap_stuck_tasks
+    import asyncio
+
+    assert callable(reap_stuck_tasks)
+
+
+def test_p46_watchdog_timeout_constant():
+    """TASK_WATCHDOG_TIMEOUT is a positive integer (default 1800s)."""
+    from src.gateway.worker import TASK_WATCHDOG_TIMEOUT
+
+    assert isinstance(TASK_WATCHDOG_TIMEOUT, int)
+    assert TASK_WATCHDOG_TIMEOUT >= 60
+
+
+def test_p46_watchdog_interval_constant():
+    """_WATCHDOG_INTERVAL_SECONDS is defined and equals 300."""
+    from src.gateway.worker import _WATCHDOG_INTERVAL_SECONDS
+
+    assert _WATCHDOG_INTERVAL_SECONDS == 300
+
+
+def test_p46_reap_stuck_tasks_sql_checks_running_status():
+    """reap_stuck_tasks targets tasks with status = 'running'."""
+    import inspect
+    from src.database import reap_stuck_tasks
+
+    src = inspect.getsource(reap_stuck_tasks)
+    assert "running" in src
+
+
+def test_p46_reap_stuck_tasks_uses_interval_operator():
+    """reap_stuck_tasks uses PostgreSQL interval arithmetic for timeout."""
+    import inspect
+    from src.database import reap_stuck_tasks
+
+    src = inspect.getsource(reap_stuck_tasks)
+    assert "interval" in src.lower()
+
+
+def test_p46_watchdog_calls_reap_in_worker_loop():
+    """task_worker loop calls reap_stuck_tasks for the watchdog heartbeat."""
+    import inspect
+    from src.gateway.worker import task_worker
+
+    src = inspect.getsource(task_worker)
+    assert "reap_stuck_tasks" in src
+
+
+def test_p46_watchdog_uses_last_watchdog_timestamp():
+    """task_worker uses _last_watchdog timestamp to throttle the watchdog."""
+    import inspect
+    from src.gateway.worker import task_worker
+
+    src = inspect.getsource(task_worker)
+    assert "_last_watchdog" in src
+
+
+def test_p46_watchdog_env_override():
+    """TASK_WATCHDOG_TIMEOUT can be overridden via environment variable."""
+    import os, importlib
+
+    original = os.environ.get("TASK_WATCHDOG_TIMEOUT")
+    try:
+        os.environ["TASK_WATCHDOG_TIMEOUT"] = "120"
+        import src.gateway.worker as w
+
+        importlib.reload(w)
+        assert w.TASK_WATCHDOG_TIMEOUT == 120
+    finally:
+        if original is None:
+            os.environ.pop("TASK_WATCHDOG_TIMEOUT", None)
+        else:
+            os.environ["TASK_WATCHDOG_TIMEOUT"] = original
+        importlib.reload(w)

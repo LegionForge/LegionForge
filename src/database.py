@@ -4317,3 +4317,53 @@ async def get_task_stats(user_id: str) -> dict:
         "oldest_task_at": oldest_at,
         "last_task_at": newest_at,
     }
+
+
+# ── Phase 46: Task Watchdog ────────────────────────────────────────────────────
+
+
+async def reap_stuck_tasks(timeout_seconds: int = 1800) -> int:
+    """
+    Find tasks stuck in 'running' state for longer than timeout_seconds and
+    mark them 'failed' with an automated error message.
+
+    Returns the number of tasks reaped.
+
+    A task is considered stuck if its updated_at timestamp is older than
+    timeout_seconds ago.  This catches worker crashes mid-task.
+
+    Phase 46 — Task Watchdog.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'failed',
+                error  = 'Task timed out — reaped by watchdog after '
+                         || %s || ' seconds',
+                completed_at = now(),
+                updated_at   = now()
+            WHERE status = 'running'
+              AND updated_at < now() - (%s || ' seconds')::interval
+            RETURNING task_id::text
+            """,
+            (timeout_seconds, timeout_seconds),
+        )
+        rows = await cur.fetchall()
+        # Record timeline events for each reaped task
+        for row in rows:
+            try:
+                await conn.execute(
+                    "INSERT INTO task_events (task_id, event_type, metadata) "
+                    "VALUES (%s::uuid, 'failed', %s::jsonb)",
+                    (
+                        row[0],
+                        json.dumps(
+                            {"error": f"Watchdog timeout after {timeout_seconds}s"}
+                        ),
+                    ),
+                )
+            except Exception:
+                pass  # best-effort
+        return len(rows)

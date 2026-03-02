@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 106
+UPDATE: 107
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T05:55Z
-LAST_OP: Phase 45 — Task Full-Text Search: search_vector TSVECTOR GENERATED STORED, GIN index, list_tasks uses plainto_tsquery
-SMOKE_TESTS: 714/714
+TIMESTAMP: 2026-03-02T06:10Z
+LAST_OP: Phase 46 — Task Watchdog: reap_stuck_tasks() DB fn, TASK_WATCHDOG_TIMEOUT env var, 5-min heartbeat in worker loop
+SMOKE_TESTS: 722/722
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

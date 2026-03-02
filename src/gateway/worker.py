@@ -12,6 +12,9 @@ Phase 35 adds configurable concurrency: up to WORKER_CONCURRENCY tasks run
 simultaneously (default 3, override via WORKER_CONCURRENCY env var).  The
 FOR UPDATE SKIP LOCKED claim query is already safe for concurrent use.
 
+Phase 46 adds a watchdog heartbeat (every 5 min) that reaps tasks stuck in
+'running' for longer than TASK_WATCHDOG_TIMEOUT seconds (default 1800 / 30 min).
+
 Usage (started by app.py lifespan):
     asyncio.create_task(task_worker())
 """
@@ -29,6 +32,13 @@ from datetime import datetime, timezone
 
 WORKER_CONCURRENCY: int = max(1, int(os.environ.get("WORKER_CONCURRENCY", "3")))
 
+# Watchdog: tasks stuck in 'running' for longer than this are reaped (Phase 46)
+TASK_WATCHDOG_TIMEOUT: int = max(
+    60, int(os.environ.get("TASK_WATCHDOG_TIMEOUT", "1800"))
+)
+_WATCHDOG_INTERVAL_SECONDS = 300  # run watchdog every 5 minutes
+_last_watchdog: float = 0.0
+
 # Tracks how many tasks are currently executing (incremented before run,
 # decremented in a finally block — always consistent).
 _active_tasks: int = 0
@@ -39,6 +49,7 @@ from src.database import (
     mark_task_running,
     mark_task_complete,
     mark_task_failed,
+    reap_stuck_tasks,
     record_api_usage,
     purge_expired_stream_tokens,
 )
@@ -310,8 +321,11 @@ async def task_worker() -> None:
 
     Phase 10 addition: purges expired stream tokens every 10 minutes as an
     opportunistic heartbeat (not a hot path).
+
+    Phase 46 addition: watchdog heartbeat every 5 minutes reaps tasks stuck
+    in 'running' for longer than TASK_WATCHDOG_TIMEOUT seconds.
     """
-    global _last_purge
+    global _last_purge, _last_watchdog
     logger.info("[worker] Task worker started (concurrency=%d)", WORKER_CONCURRENCY)
     while True:
         try:
@@ -335,6 +349,21 @@ async def task_worker() -> None:
                     _last_purge = now
                 except Exception as purge_err:
                     logger.debug(f"[worker] Stream token purge failed: {purge_err}")
+
+            # Watchdog: reap tasks stuck in 'running' (every 5 min, Phase 46)
+            if now - _last_watchdog >= _WATCHDOG_INTERVAL_SECONDS:
+                try:
+                    reaped = await reap_stuck_tasks(TASK_WATCHDOG_TIMEOUT)
+                    if reaped:
+                        logger.warning(
+                            "[worker] Watchdog reaped %d stuck task(s) "
+                            "(timeout=%ds)",
+                            reaped,
+                            TASK_WATCHDOG_TIMEOUT,
+                        )
+                    _last_watchdog = now
+                except Exception as watchdog_err:
+                    logger.warning(f"[worker] Watchdog error: {watchdog_err}")
 
         except asyncio.CancelledError:
             logger.info("[worker] Task worker shutting down")
