@@ -63,14 +63,34 @@ def _get_postgres_password() -> str:
 
     # ── Environment variable fallback ─────────────────────────────────────
     password = os.environ.get("POSTGRES_PASSWORD", "")
-    if not password:
-        raise RuntimeError(
-            "POSTGRES_PASSWORD not set. Store it with:\n"
-            "  python -m keyring set postgres api_key\n"
-            "Or: export POSTGRES_PASSWORD=<value>\n"
-            "Or: initialize CredentialStore before calling init_db()."
+    if password:
+        return password
+
+    # ── Local trust-auth fallback ──────────────────────────────────────────
+    # PostgreSQL's trust auth (pg_hba.conf: "local all all trust" /
+    # "host all all 127.0.0.1/32 trust") ignores the password entirely.
+    # When the host is localhost and no password is configured, returning ""
+    # lets the connection succeed without raising, avoiding a hard startup
+    # failure in dev environments where Keychain is inaccessible from subprocesses.
+    # Non-localhost hosts still raise so misconfigured production setups fail loudly.
+    pg_host = os.environ.get("POSTGRES_HOST", "localhost")
+    if pg_host in ("localhost", "127.0.0.1", "::1"):
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "POSTGRES_PASSWORD not found in CredentialStore or env — "
+            "falling back to empty string (trust auth assumed for host=%s). "
+            "Store with: python -m keyring set postgres api_key",
+            pg_host,
         )
-    return password
+        return ""
+
+    raise RuntimeError(
+        "POSTGRES_PASSWORD not set. Store it with:\n"
+        "  python -m keyring set postgres api_key\n"
+        "Or: export POSTGRES_PASSWORD=<value>\n"
+        "Or: initialize CredentialStore before calling init_db()."
+    )
 
 
 def _build_conninfo_no_password() -> str:

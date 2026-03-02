@@ -200,7 +200,9 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@cd $(BASE) && $(PYTHON) -m src.health &
 	@sleep 1
 	@echo "Starting gateway on :8080..."
-	@cd $(BASE) && $(PYTHON) -m src.gateway.app &
+	@cd $(BASE) && \
+	  POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || echo "")} \
+	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
 	@cd $(BASE) && \
