@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 98
+UPDATE: 99
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T03:30Z
-LAST_OP: Phase 37 — Agent Capabilities Registry: agent_registry.py, GET /agents, GET /agents/{type} public endpoints
-SMOKE_TESTS: 651/651
+TIMESTAMP: 2026-03-02T03:50Z
+LAST_OP: Phase 38 — Task Export API: GET /tasks/export?format=json|csv, StreamingResponse, Content-Disposition header
+SMOKE_TESTS: 659/659
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

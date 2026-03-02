@@ -8349,3 +8349,81 @@ def test_p37_valid_agent_types_frozenset():
     assert "base_agent" in VALID_AGENT_TYPES
     assert "orchestrator" in VALID_AGENT_TYPES
     assert "researcher" in VALID_AGENT_TYPES
+
+
+# ── Phase 38: Task Export API ─────────────────────────────────────────────────
+
+
+def test_p38_export_endpoint_defined():
+    """tasks route has an /export endpoint."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "export_tasks" in src
+    assert "/export" in src
+
+
+def test_p38_export_csv_fields_defined():
+    """_EXPORT_CSV_FIELDS constant is defined with required columns."""
+    import src.gateway.routes.tasks as tasks_mod
+
+    fields = tasks_mod._EXPORT_CSV_FIELDS
+    assert isinstance(fields, list)
+    for col in ("task_id", "status", "input", "result", "created_at"):
+        assert col in fields
+
+
+def test_p38_valid_export_formats():
+    """_VALID_EXPORT_FORMATS contains json and csv."""
+    import src.gateway.routes.tasks as tasks_mod
+
+    assert "json" in tasks_mod._VALID_EXPORT_FORMATS
+    assert "csv" in tasks_mod._VALID_EXPORT_FORMATS
+
+
+def test_p38_export_uses_streaming_response():
+    """export_tasks uses StreamingResponse for both formats."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.export_tasks)
+    assert "StreamingResponse" in src
+
+
+def test_p38_export_csv_flattens_tags():
+    """export_tasks CSV path converts tags list to semicolon string."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.export_tasks)
+    assert "semicolon" in src or ";" in src
+
+
+def test_p38_export_sets_content_disposition_header():
+    """export_tasks sets Content-Disposition header for file download."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.export_tasks)
+    assert "Content-Disposition" in src
+    assert "attachment" in src
+
+
+def test_p38_export_format_validation():
+    """export_tasks rejects unknown formats with 400."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.export_tasks)
+    assert "_VALID_EXPORT_FORMATS" in src
+    assert "400" in src or "HTTP_400_BAD_REQUEST" in src
+
+
+def test_p38_tasks_route_imports_streaming_response():
+    """tasks module imports StreamingResponse."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "StreamingResponse" in src

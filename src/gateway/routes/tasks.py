@@ -19,8 +19,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import csv
+import io
+import json as _json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from src.database import (
@@ -405,6 +409,106 @@ async def list_user_tasks(
         status=status_filter,
         q=q,
         tags=tags,
+    )
+
+
+# ── Task Export (Phase 38) ─────────────────────────────────────────────────────
+
+_EXPORT_CSV_FIELDS = [
+    "task_id",
+    "status",
+    "agent_type",
+    "priority",
+    "input",
+    "result",
+    "error",
+    "steps",
+    "created_at",
+    "completed_at",
+    "tags",
+]
+
+_VALID_EXPORT_FORMATS = {"json", "csv"}
+
+
+@router.get("/export")
+async def export_tasks(
+    user: dict = Depends(require_user),
+    format: str = Query(default="json", description="Export format: 'json' or 'csv'"),
+    limit: int = Query(default=500, ge=1, le=5000, description="Max tasks to export"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None, max_length=200),
+    tags: list[str] | None = Query(default=None),
+):
+    """
+    Export the authenticated user's tasks as JSON or CSV.
+
+    Query params:
+    - ``format`` — ``json`` (default) or ``csv``
+    - ``limit``  — max tasks to include (1–5000, default 500)
+    - ``status`` — filter by task status
+    - ``q``      — substring search on task input
+    - ``tags``   — filter by tags
+
+    Phase 38 — Task Export API.
+    """
+    if format not in _VALID_EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"format must be one of {sorted(_VALID_EXPORT_FORMATS)}",
+        )
+    if status_filter and status_filter not in VALID_TASK_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"status must be one of {sorted(VALID_TASK_STATUSES)}",
+        )
+
+    data = await list_tasks(
+        user_id=user["user_id"],
+        limit=limit,
+        offset=0,
+        status=status_filter,
+        q=q,
+        tags=tags,
+    )
+    tasks_rows = data.get("tasks", [])
+
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.DictWriter(
+            buf,
+            fieldnames=_EXPORT_CSV_FIELDS,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        for row in tasks_rows:
+            # Flatten tags list to semicolon-separated string for CSV
+            row_copy = dict(row)
+            if isinstance(row_copy.get("tags"), list):
+                row_copy["tags"] = ";".join(row_copy["tags"])
+            writer.writerow(row_copy)
+        csv_bytes = buf.getvalue().encode("utf-8")
+        return StreamingResponse(
+            iter([csv_bytes]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": 'attachment; filename="tasks_export.csv"',
+                "X-Export-Count": str(len(tasks_rows)),
+            },
+        )
+
+    # JSON export
+    payload = _json.dumps(
+        {"count": len(tasks_rows), "tasks": tasks_rows}, default=str
+    ).encode("utf-8")
+    return StreamingResponse(
+        iter([payload]),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="tasks_export.json"',
+            "X-Export-Count": str(len(tasks_rows)),
+        },
     )
 
 
