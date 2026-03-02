@@ -8663,3 +8663,85 @@ def test_p41_app_registers_auth_router():
     src = inspect.getsource(app_mod)
     assert "auth_route" in src
     assert '"/auth"' in src or 'prefix="/auth"' in src or "prefix='/auth'" in src
+
+
+# ── Phase 42: Rate Limit Headers ──────────────────────────────────────────────
+
+
+def test_p42_rate_limit_headers_module_importable():
+    """rate_limit_headers module is importable."""
+    from src.gateway.rate_limit_headers import (
+        compute_rate_limit_headers,
+        _midnight_utc_epoch,
+    )
+
+    assert callable(compute_rate_limit_headers)
+    assert callable(_midnight_utc_epoch)
+
+
+def test_p42_midnight_utc_epoch_is_future():
+    """_midnight_utc_epoch returns a timestamp after now."""
+    import time
+    from src.gateway.rate_limit_headers import _midnight_utc_epoch
+
+    reset_ts = _midnight_utc_epoch()
+    assert reset_ts > int(time.time())
+
+
+def test_p42_rate_limit_header_names_defined():
+    """Expected X-RateLimit-* header names are present in module source."""
+    import inspect
+    import src.gateway.rate_limit_headers as rl_mod
+
+    src = inspect.getsource(rl_mod)
+    assert "X-RateLimit-Limit" in src
+    assert "X-RateLimit-Remaining" in src
+    assert "X-RateLimit-Reset" in src
+    assert "X-RateLimit-Provider" in src
+
+
+def test_p42_submit_task_includes_rate_limit_headers():
+    """submit_task handler calls compute_rate_limit_headers and uses JSONResponse."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "compute_rate_limit_headers" in src
+    assert "rl_headers" in src
+    assert "JSONResponse" in src
+
+
+def test_p42_compute_rate_limit_headers_is_async():
+    """compute_rate_limit_headers is an async function."""
+    import asyncio
+    import inspect
+    from src.gateway.rate_limit_headers import compute_rate_limit_headers
+
+    assert asyncio.iscoroutinefunction(compute_rate_limit_headers)
+
+
+def test_p42_rate_limit_remaining_is_clamped():
+    """remaining tokens clamped to 0 (max(0, limit - used))."""
+    import inspect
+    import src.gateway.rate_limit_headers as rl_mod
+
+    src = inspect.getsource(rl_mod)
+    assert "max(0," in src
+
+
+def test_p42_rate_limit_headers_fallback_on_db_error():
+    """compute_rate_limit_headers has try/except for DB query fallback."""
+    import inspect
+    import src.gateway.rate_limit_headers as rl_mod
+
+    src = inspect.getsource(rl_mod.compute_rate_limit_headers)
+    assert "except" in src
+    assert "used = 0" in src
+
+
+def test_p42_rate_limit_module_has_docstring():
+    """rate_limit_headers module has a docstring explaining the headers."""
+    import src.gateway.rate_limit_headers as rl_mod
+
+    assert rl_mod.__doc__ is not None
+    assert "X-RateLimit" in rl_mod.__doc__

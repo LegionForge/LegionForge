@@ -281,14 +281,25 @@ async def submit_task(
         f"agent={body.agent_type} user={user['username']}"
     )
 
-    return {
-        "task_id": task_id,
-        "status": "queued",
-        "priority": row.get("priority", 5),
-        "created_at": row["created_at"],
-        "stream_url": f"/tasks/{task_id}/stream",
-        "stream_token": stream_token,
-    }
+    # Phase 42: rate limit headers
+    from src.gateway.rate_limit_headers import compute_rate_limit_headers
+    import json as _json_mod
+
+    rl_headers = await compute_rate_limit_headers(
+        user["user_id"], provider, daily_limit
+    )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={
+            "task_id": task_id,
+            "status": "queued",
+            "priority": row.get("priority", 5),
+            "created_at": str(row["created_at"]),
+            "stream_url": f"/tasks/{task_id}/stream",
+            "stream_token": stream_token,
+        },
+        headers=rl_headers,
+    )
 
 
 # ── Batch submission (Phase 28) ────────────────────────────────────────────────
