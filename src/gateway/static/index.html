@@ -701,8 +701,22 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
 
   es.addEventListener('task_complete', e => {
     dotPulse();
-    // Fetch full result for token count
-    fetchTaskResult(taskId, apiKey, agent, taskInput);
+    try {
+      const d = JSON.parse(e.data);
+      // The SSE event carries the full result inline — display it directly.
+      const resultText = typeof d.result === 'string' ? d.result
+                       : (d.result && d.result.output) ? d.result.output : '';
+      if (resultText && resultText.trim()) {
+        appendSpan('\n', '');
+        appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+      }
+      const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
+      finishRun('complete', '', taskId, agent, taskInput, tokens);
+      es.close(); S.activeES = null;
+    } catch(_) {
+      // Fallback: fetch from REST if SSE data unparseable
+      fetchTaskResult(taskId, apiKey, agent, taskInput);
+    }
   });
 
   es.addEventListener('task_error', e => {
@@ -761,15 +775,15 @@ async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
     });
     if (res.ok) {
       const data = await res.json();
-      const tokens = data.estimated_tokens || 0;
+      const tokObj = data.tokens || {};
+      const tokens = (tokObj.input || 0) + (tokObj.output || 0);
       const result = data.result;
-      // Display result summary if available and not already shown via tokens
-      if (result && result.output && typeof result.output === 'string') {
-        const preview = result.output.slice(0, 300);
-        if (preview && !S.outputBuffer.includes(preview.slice(0, 50))) {
-          appendSpan('\n', '');
-          appendHTML('<span class="o-result">' + escapeHtml(preview) + (result.output.length > 300 ? '…' : '') + '</span>');
-        }
+      // result is a plain string from the DB
+      const resultText = typeof result === 'string' ? result
+                       : (result && result.output) ? result.output : '';
+      if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
+        appendSpan('\n', '');
+        appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
       }
       finishRun('complete', '', taskId, agent, taskInputText, tokens);
     } else {
