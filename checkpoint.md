@@ -1,7 +1,7 @@
 VERSION: 0.7.0-alpha
 UPDATE: 132
 BRANCH: dev
-COMMIT: TBD
+COMMIT: 8d35ce3
 TIMESTAMP: 2026-03-02T22:00Z
 LAST_OP: Phase 56 — Configurable Search Providers (src/search/ module: DDG/Tavily/Brave/Exa/Perplexity/SearXNG, primary+fallback routing, per-provider settings, Keychain keys)
 SMOKE_TESTS: 818/818
