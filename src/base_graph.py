@@ -28,6 +28,7 @@ from typing import Annotated, Any, TypedDict
 import operator
 
 import httpx
+from langchain_core.callbacks import adispatch_custom_event
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -584,21 +585,40 @@ class SecureToolNode:
                 logger.error(
                     f"[SecureToolNode] Tool '{tool_id}' failed registry check. Halting."
                 )
-                # Inject an error ToolMessage so the LLM reports the block to the
-                # user rather than silently falling back to training data (which
-                # causes hallucination).  Run still halts via force_end=True.
+                # Notify the SSE stream so the UI can show a blocked indicator
+                # and tooltip. Uses LangChain custom event dispatch so the worker
+                # can forward it as a 'tool_blocked' SSE event — no circular import.
+                try:
+                    await adispatch_custom_event(
+                        "tool_blocked",
+                        {"tool": tool_id, "reason": "registry_check_failed"},
+                    )
+                except Exception:
+                    pass  # Non-fatal: UI falls back to client-side detection
+                # Inject an error ToolMessage so the LLM can:
+                #   (a) retry with a different tool if one is available, OR
+                #   (b) explicitly flag unverified output with [UNVERIFIED DATA].
+                # Without this the LLM silently fills the dangling tool call
+                # from training data (hallucination).
                 # Note: tool_id is LLM-generated but LangChain validates it against
                 # bound tools before SecureToolNode runs, so arbitrary names are
                 # rejected upstream.
                 sandbox_messages.append(
                     ToolMessage(
                         content=(
-                            f"[TOOL BLOCKED] '{tool_id}' failed the security "
-                            "registry check (hash mismatch). "
-                            "Do NOT answer from training data. "
-                            "Tell the user this tool is temporarily unavailable "
-                            "and an administrator must re-register it by running: "
-                            "make register-researcher-tools"
+                            f"[TOOL BLOCKED] '{tool_id}' could not execute — "
+                            "security registry check failed "
+                            "(tool integrity hash mismatch).\n"
+                            "Follow these rules exactly:\n"
+                            "1. If another available tool can accomplish the same goal, "
+                            "call it now instead.\n"
+                            "2. If no alternative tool is available, you MUST write the "
+                            "exact text '[UNVERIFIED DATA]' on its own line before your "
+                            "response, then clearly state you cannot verify the information "
+                            "and why.\n"
+                            "3. NEVER state unverified information as fact.\n"
+                            "4. Tell the user which tool failed. An administrator can "
+                            "restore it with: make verify-tool-registry"
                         ),
                         tool_call_id=tc_id,
                         name=tool_id,
@@ -618,6 +638,13 @@ class SecureToolNode:
                     f"[SecureToolNode] ACL denied tool='{tool_id}' "
                     "— token scope violation or invalid token. Halting."
                 )
+                try:
+                    await adispatch_custom_event(
+                        "tool_blocked",
+                        {"tool": tool_id, "reason": "acl_token_violation"},
+                    )
+                except Exception:
+                    pass
                 return {"force_end": True, "loop_detected": False}
 
             # 2b. Guardian capability boundary + sequence check (Phase 3)
@@ -651,12 +678,24 @@ class SecureToolNode:
                     except Exception:
                         pass  # Non-fatal — run continues regardless
 
+                    try:
+                        await adispatch_custom_event(
+                            "tool_blocked",
+                            {"tool": tool_id, "reason": "sandbox_sequence_violation"},
+                        )
+                    except Exception:
+                        pass
                     sandbox_messages.append(
                         ToolMessage(
                             content=(
-                                f"[SANDBOX] Tool '{tool_id}' was blocked: "
-                                f"novel sequence not in approved patterns. "
-                                f"Try a different tool or approach."
+                                f"[TOOL SKIPPED] '{tool_id}' was skipped — "
+                                "the call sequence requires approval.\n"
+                                "Follow these rules:\n"
+                                "1. If another available tool can accomplish the same goal, "
+                                "call it now instead.\n"
+                                "2. If no alternative is available, write '[UNVERIFIED DATA]' "
+                                "before your response and clearly state you cannot verify "
+                                "the information."
                             ),
                             tool_call_id=tc_id,
                             name=tool_id,
@@ -670,6 +709,16 @@ class SecureToolNode:
                         f"[SecureToolNode] Guardian HALT '{tool_id}': "
                         f"{guardian_resp.reason}"
                     )
+                    try:
+                        await adispatch_custom_event(
+                            "tool_blocked",
+                            {
+                                "tool": tool_id,
+                                "reason": "capability_boundary_violation",
+                            },
+                        )
+                    except Exception:
+                        pass
                     return {"force_end": True, "loop_detected": False}
 
             # 3. Action loop detection
@@ -679,6 +728,13 @@ class SecureToolNode:
                 logger.warning(
                     f"[SecureToolNode] Loop detected for '{tool_id}'. Halting."
                 )
+                try:
+                    await adispatch_custom_event(
+                        "tool_blocked",
+                        {"tool": tool_id, "reason": "action_loop_detected"},
+                    )
+                except Exception:
+                    pass
                 return result
 
             # 4. Sanitize and validate every tool argument (belt-and-suspenders)
@@ -727,6 +783,13 @@ class SecureToolNode:
                             logger.debug(
                                 f"[SecureToolNode] Could not log TOOL_ARG_INJECTION: {_db_err}"
                             )
+                        try:
+                            await adispatch_custom_event(
+                                "tool_blocked",
+                                {"tool": tool_id, "reason": "injection_detected"},
+                            )
+                        except Exception:
+                            pass
                         return {"force_end": True, "loop_detected": False}
                     else:
                         # Tier 2: soft pattern — log event and continue.
@@ -765,6 +828,13 @@ class SecureToolNode:
                         logger.error(
                             f"[SecureToolNode] SSRF blocked for '{tool_id}': {e}"
                         )
+                        try:
+                            await adispatch_custom_event(
+                                "tool_blocked",
+                                {"tool": tool_id, "reason": "ssrf_protection"},
+                            )
+                        except Exception:
+                            pass
                         return {"force_end": True, "loop_detected": False}
 
                 # 4c. Destructive / HITL pattern detection
@@ -782,6 +852,13 @@ class SecureToolNode:
                             f"[SecureToolNode] HITL halt on '{tool_id}' "
                             f"arg='{arg_name}' categories={categories}"
                         )
+                        try:
+                            await adispatch_custom_event(
+                                "tool_blocked",
+                                {"tool": tool_id, "reason": "hitl_required"},
+                            )
+                        except Exception:
+                            pass
                         return result
 
             # All checks passed — mark as approved
@@ -863,6 +940,13 @@ class SecureToolNode:
                                 "approved_snapshot": approved_snapshot,
                                 "unexpected_call_id": tc_id,
                             },
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        await adispatch_custom_event(
+                            "tool_blocked",
+                            {"tool": "unknown", "reason": "toctou_violation"},
                         )
                     except Exception:
                         pass

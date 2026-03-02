@@ -161,6 +161,22 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
                     collected_events.append(sse_event)
                     await publish_event(task_id, sse_event)
 
+                # Forward tool_blocked custom events dispatched by SecureToolNode.
+                # These arrive as on_custom_event with name="tool_blocked".
+                if (
+                    lg_event.get("event") == "on_custom_event"
+                    and lg_event.get("name") == "tool_blocked"
+                ):
+                    from src.gateway.events import build_tool_blocked_event
+
+                    _d = lg_event.get("data") or {}
+                    _tb_event = build_tool_blocked_event(
+                        _d.get("tool", "unknown"),
+                        _d.get("reason", "security_check_failed"),
+                    )
+                    collected_events.append(_tb_event)
+                    await publish_event(task_id, _tb_event)
+
                 # Track step count (each on_chain_end at the root level = one node)
                 if lg_event.get("event") == "on_chain_end" and lg_event.get("name") in (
                     "agent_node",
