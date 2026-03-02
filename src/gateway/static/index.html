@@ -409,6 +409,7 @@ const S = {
   streamToken:    null,   // string
   startTime:      null,   // Date
   elapsedTimer:   null,   // setInterval handle
+  pollTimer:      null,   // setInterval handle for fallback polling
   history:        [],     // [{task_id, agent_type, input_preview, status, elapsed_ms, tokens, ts}]
   outputBuffer:   '',     // plain-text accumulator for copy
   activeToolName: null,   // current open tool block
@@ -661,6 +662,8 @@ async function submitTask() {
 
 // ── SSE stream ────────────────────────────────────────────────────
 function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false) {
+  // Stop any fallback polling before opening a fresh SSE connection
+  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   const url = '/tasks/' + taskId + '/stream?stream_token=' + encodeURIComponent(streamToken);
   const es = new EventSource(url);
   S.activeES = es;
@@ -739,64 +742,130 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   es.onerror = () => {
     es.close();
     S.activeES = null;
-    if (!retry) {
-      // First disconnect — could be normal server-side close after completion.
-      // Check task status before retrying.
-      appendSpan('\n[stream disconnected — checking status…]\n', 'o-status');
-      setTimeout(async () => {
-        try {
-          const res = await fetch('/tasks/' + taskId, {
-            headers: { 'Authorization': 'Bearer ' + apiKey },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'complete' || data.status === 'failed' || data.status === 'cancelled') {
-              // Task is already terminal — no need to retry stream
-              fetchTaskResult(taskId, apiKey, agent, taskInput);
-              return;
-            }
+    appendSpan('\n[stream disconnected — checking status…]\n', 'o-status');
+    setTimeout(async () => {
+      try {
+        const res = await fetch('/tasks/' + taskId, {
+          headers: { 'Authorization': 'Bearer ' + apiKey },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'complete' || data.status === 'failed' || data.status === 'cancelled') {
+            // Already terminal — resolve immediately
+            fetchTaskResult(taskId, apiKey, agent, taskInput);
+            return;
           }
-        } catch(_) {}
-        // Task still in-flight — open a fresh stream
+          // Still running: one SSE reconnect, then fall back to polling
+          if (!retry) {
+            appendSpan('[reconnecting stream…]\n', 'o-status');
+            openStream(taskId, streamToken, apiKey, agent, taskInput, true);
+          } else {
+            // Second disconnect and still running — switch to polling
+            pollTaskUntilComplete(taskId, apiKey, agent, taskInput);
+          }
+          return;
+        }
+      } catch(_) {}
+      // Can't reach server: same reconnect/poll logic
+      if (!retry) {
         openStream(taskId, streamToken, apiKey, agent, taskInput, true);
-      }, 800);
-    } else {
-      // Second disconnect on retry — fetch result directly (task likely complete)
-      fetchTaskResult(taskId, apiKey, agent, taskInput);
-    }
+      } else {
+        pollTaskUntilComplete(taskId, apiKey, agent, taskInput);
+      }
+    }, 800);
   };
 }
 
 // ── Fetch task result ─────────────────────────────────────────────
 async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
+  if (S.activeES) { S.activeES.close(); S.activeES = null; }
   try {
     const res = await fetch('/tasks/' + taskId, {
       headers: { 'Authorization': 'Bearer ' + apiKey },
     });
-    if (res.ok) {
+    if (!res.ok) {
+      finishRun('complete', '', taskId, agent, taskInputText, 0);
+      return;
+    }
+    const data = await res.json();
+    // Task still in-progress — don't show empty result; switch to polling
+    if (data.status === 'queued' || data.status === 'running') {
+      pollTaskUntilComplete(taskId, apiKey, agent, taskInputText);
+      return;
+    }
+    const tokObj = data.tokens || {};
+    const tokens = (tokObj.input || 0) + (tokObj.output || 0);
+    const result = data.result;
+    const resultText = typeof result === 'string' ? result
+                     : (result && result.output) ? result.output : '';
+    if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
+      appendSpan('\n', '');
+      appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+    }
+    if (data.status === 'failed') {
+      finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
+    } else if (data.status === 'cancelled') {
+      finishRun('cancelled', 'Task cancelled', taskId, agent, taskInputText, tokens);
+    } else {
+      finishRun('complete', '', taskId, agent, taskInputText, tokens);
+    }
+  } catch(_) {
+    finishRun('complete', '', taskId, agent, taskInputText, 0);
+  }
+}
+
+// ── Fallback polling (used when SSE disconnects twice mid-run) ────
+function pollTaskUntilComplete(taskId, apiKey, agent, taskInputText) {
+  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
+  appendSpan('[switching to polling — task still running…]\n', 'o-status');
+  setStatus('running', '● Polling…', taskId.slice(0, 8) + '…');
+
+  const poll = async () => {
+    // Stop if the active task changed (user submitted a new task or cancelled)
+    if (S.activeTaskId !== taskId) {
+      clearInterval(S.pollTimer); S.pollTimer = null;
+      return;
+    }
+    try {
+      const res = await fetch('/tasks/' + taskId, {
+        headers: { 'Authorization': 'Bearer ' + apiKey },
+      });
+      if (!res.ok) return; // transient — keep polling
       const data = await res.json();
+      if (data.status === 'queued' || data.status === 'running') {
+        setStatus('running', '● Still running…', taskId.slice(0, 8) + '… ' + elapsedSec() + 's');
+        return; // keep polling
+      }
+      // Terminal state reached
+      clearInterval(S.pollTimer); S.pollTimer = null;
       const tokObj = data.tokens || {};
       const tokens = (tokObj.input || 0) + (tokObj.output || 0);
       const result = data.result;
-      // result is a plain string from the DB
       const resultText = typeof result === 'string' ? result
                        : (result && result.output) ? result.output : '';
       if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
         appendSpan('\n', '');
         appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
       }
-      finishRun('complete', '', taskId, agent, taskInputText, tokens);
-    } else {
-      finishRun('complete', '', taskId, agent, taskInputText, 0);
+      if (data.status === 'failed') {
+        finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
+      } else if (data.status === 'cancelled') {
+        finishRun('cancelled', 'Task cancelled', taskId, agent, taskInputText, tokens);
+      } else {
+        finishRun('complete', '', taskId, agent, taskInputText, tokens);
+      }
+    } catch(_) {
+      // Network hiccup — keep polling
     }
-  } catch(_) {
-    finishRun('complete', '', taskId, agent, taskInputText, 0);
-  }
-  if (S.activeES) { S.activeES.close(); S.activeES = null; }
+  };
+
+  poll(); // immediate first check
+  S.pollTimer = setInterval(poll, 4000);
 }
 
 // ── Finish run (all terminal states) ─────────────────────────────
 function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
+  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   stopTimer();
   const elapsed = elapsedSec();
 
@@ -850,6 +919,7 @@ async function cancelTask() {
 // ── Clear output ──────────────────────────────────────────────────
 function clearOutput() {
   if (S.activeES) { S.activeES.close(); S.activeES = null; }
+  if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
   stopTimer();
   clearOutputEl();
   clearStatus();
