@@ -64,49 +64,19 @@ class ResearcherState(AgentState):
 
 @tool
 def web_search(query: str, max_results: int = 5) -> list[dict]:
-    """Search the web using DuckDuckGo. Returns list of {title, url, snippet} dicts."""
-    # TODO Phase 2: replace DDGS with self-hosted SearxNG to keep queries off
-    # third-party infrastructure entirely and gain full audit logging.
-
+    """Search the web for current information. Returns list of {title, url, snippet} dicts."""
     # Last-line-of-defense: sanitize the query before it leaves the process.
     # SecureToolNode also calls this, but belt-and-suspenders is warranted here
-    # because query leakage to DDG is unrecoverable once the request fires.
+    # because query leakage is unrecoverable once the request fires.
     clean_query, meta = sanitize_tool_input(query, tool_id="web_search")
     if meta.get("pii_redacted"):
-        logger.warning(
-            "[web_search] PII redacted from search query before sending to DDG."
-        )
+        logger.warning("[web_search] PII redacted from search query.")
     if meta.get("injection_detected"):
         logger.warning("[web_search] Injection pattern detected in search query.")
 
-    from duckduckgo_search import DDGS
+    from src.search import search_web
 
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(clean_query, max_results=max_results))
-        return results
-    except Exception as exc:
-        # Catch RatelimitException and any other DDG errors.
-        # Return a structured result so the LLM gets a clear signal rather than
-        # a raw Python traceback — prevents blind retry loops.
-        exc_name = type(exc).__name__
-        if "Ratelimit" in exc_name or "ratelimit" in str(exc).lower():
-            msg = (
-                "DuckDuckGo rate limit reached. "
-                "Do NOT retry the same query. "
-                "Tell the user you cannot retrieve live search results right now."
-            )
-        else:
-            msg = f"Search failed ({exc_name}). Tell the user you cannot retrieve live results right now."
-        logger.warning(f"[web_search] DDG error ({exc_name}) for query={clean_query!r}")
-        return [
-            {
-                "error": exc_name,
-                "title": "Search unavailable",
-                "snippet": msg,
-                "url": "",
-            }
-        ]
+    return search_web(clean_query, max_results=max_results)
 
 
 @tool

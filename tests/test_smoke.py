@@ -9842,3 +9842,203 @@ def test_validate_fetch_url_blocks_all_private_ranges(bad_url):
 
     with pytest.raises(SecurityError):
         validate_fetch_url(bad_url)
+
+
+# ── Phase 56: Search Provider smoke tests ─────────────────────────────────────
+
+
+def test_search_provider_registry_lists_all_providers():
+    """search registry lists all 6 built-in provider names."""
+    from src.search.registry import list_providers
+
+    providers = list_providers()
+    for expected in ("ddg", "tavily", "brave", "exa", "perplexity", "searxng"):
+        assert expected in providers, f"Provider {expected!r} missing from registry"
+
+
+def test_search_provider_registry_unknown_raises_key_error():
+    """Requesting an unknown provider name raises KeyError."""
+    from src.search.registry import get_provider
+
+    with pytest.raises(KeyError, match="Unknown search provider"):
+        get_provider("nonexistent_provider_xyz")
+
+
+def test_search_ddg_provider_is_available():
+    """DDG provider reports available (duckduckgo_search is installed)."""
+    from src.search.registry import get_provider
+
+    ddg = get_provider("ddg")
+    assert ddg.is_available() is True
+
+
+def test_search_ddg_provider_requires_no_key():
+    """DDG provider does not require an API key."""
+    from src.search.registry import get_provider
+
+    ddg = get_provider("ddg")
+    assert ddg.requires_key is False
+
+
+def test_search_provider_status_returns_dict_with_all_names():
+    """provider_status() returns availability info for every registered provider."""
+    from src.search.registry import list_providers, provider_status
+
+    status = provider_status()
+    for name in list_providers():
+        assert name in status
+        assert "available" in status[name]
+        assert "requires_key" in status[name]
+
+
+def test_search_result_typeddict_structure():
+    """SearchResult TypedDict accepts the required keys without error."""
+    from src.search.base import SearchResult
+
+    r = SearchResult(title="Test", url="https://example.com", snippet="A test result.")
+    assert r["title"] == "Test"
+    assert r["url"] == "https://example.com"
+
+
+def test_search_result_error_key_is_optional():
+    """SearchResult error key is optional (total=False)."""
+    from src.search.base import SearchResult
+
+    # No error key — valid result
+    r = SearchResult(title="OK", url="https://example.com", snippet="Fine")
+    assert "error" not in r
+
+    # With error key — also valid
+    r2 = SearchResult(error="timeout", title="Fail", snippet="msg", url="")
+    assert r2["error"] == "timeout"
+
+
+def test_search_has_real_results_helper():
+    """_has_real_results returns True for good results, False for error-only."""
+    from src.search import _has_real_results
+    from src.search.base import SearchResult
+
+    good = [SearchResult(title="A", url="https://x.com", snippet="content")]
+    bad = [SearchResult(error="ratelimit", title="Fail", snippet="err", url="")]
+    assert _has_real_results(good) is True
+    assert _has_real_results(bad) is False
+
+
+def test_search_web_returns_error_list_when_all_providers_fail(monkeypatch):
+    """search_web returns structured error list (never raises) when providers fail."""
+    from src.search import registry as reg
+
+    original_get = reg.get_provider
+
+    def _fake_get(name):
+        p = original_get(name)
+        # Override search to always fail
+        p.search = lambda q, max_results=5: [
+            {"error": "forced_fail", "title": "Fail", "snippet": "err", "url": ""}
+        ]
+        p.is_available = lambda: True
+        return p
+
+    monkeypatch.setattr(reg, "get_provider", _fake_get)
+
+    from src.search import search_web
+
+    result = search_web("test query")
+    assert isinstance(result, list)
+    assert len(result) >= 1
+
+
+def test_search_settings_loads_from_config():
+    """SearchSettings is present on settings and has default provider=ddg."""
+    from config.settings import settings
+
+    assert hasattr(settings, "search")
+    assert settings.search.provider in (
+        "ddg",
+        "tavily",
+        "brave",
+        "exa",
+        "perplexity",
+        "searxng",
+    )
+
+
+def test_search_settings_sub_configs_exist():
+    """All six per-provider sub-configs are accessible on settings.search."""
+    from config.settings import settings
+
+    s = settings.search
+    assert hasattr(s, "ddg")
+    assert hasattr(s, "tavily")
+    assert hasattr(s, "brave")
+    assert hasattr(s, "exa")
+    assert hasattr(s, "perplexity")
+    assert hasattr(s, "searxng")
+
+
+def test_search_settings_ddg_defaults():
+    """DDGSearchConfig has expected defaults."""
+    from config.settings import settings
+
+    assert settings.search.ddg.region == "wt-wt"
+
+
+def test_search_ddg_error_returns_structured_result(monkeypatch):
+    """DDGProvider.search never raises — returns structured error on DDG failure."""
+    from unittest.mock import MagicMock
+
+    from src.search.providers.ddg import DDGProvider
+
+    provider = DDGProvider()
+
+    import duckduckgo_search
+
+    monkeypatch.setattr(
+        duckduckgo_search,
+        "DDGS",
+        type(
+            "DDGS",
+            (),
+            {
+                "__enter__": lambda s: s,
+                "__exit__": MagicMock(return_value=False),
+                "text": MagicMock(side_effect=Exception("ratelimit")),
+            },
+        ),
+    )
+
+    result = provider.search("test")
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert "error" in result[0]
+
+
+def test_search_module_re_exports_search_result():
+    """src.search re-exports SearchResult for convenience."""
+    from src.search import SearchResult  # noqa: F401
+
+
+def test_search_module_re_exports_list_providers():
+    """src.search re-exports list_providers for convenience."""
+    from src.search import list_providers
+
+    assert callable(list_providers)
+
+
+def test_researcher_web_search_uses_search_module(monkeypatch):
+    """web_search @tool in researcher.py delegates to src.search.search_web."""
+    import src.search as search_mod
+
+    calls = []
+
+    def _fake_search_web(query, max_results=5):
+        calls.append(query)
+        return [{"title": "T", "url": "https://example.com", "snippet": "S"}]
+
+    monkeypatch.setattr(search_mod, "search_web", _fake_search_web)
+
+    from src.agents.researcher import web_search
+
+    result = web_search.invoke({"query": "unit test query"})
+    assert len(calls) == 1
+    assert isinstance(result, list)

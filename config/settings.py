@@ -536,6 +536,75 @@ class ToolsConfig(BaseModel):
     sandbox_max_output_bytes: int = 10240  # 10 KB
 
 
+# ── Search Provider Config (Phase 56) ─────────────────────────────────────────
+
+
+class DDGSearchConfig(BaseModel):
+    """DuckDuckGo provider config — no API key required."""
+
+    region: str = "wt-wt"
+    safe_search: str = "off"
+
+
+class TavilySearchConfig(BaseModel):
+    """Tavily AI search config. Keychain: legionforge_tavily_api_key."""
+
+    search_depth: str = "basic"  # "basic" | "advanced"
+    max_tokens: int = 4096
+
+
+class BraveSearchConfig(BaseModel):
+    """Brave Search API config. Keychain: legionforge_brave_api_key."""
+
+    country: str = "us"
+    search_lang: str = "en"
+
+
+class ExaSearchConfig(BaseModel):
+    """Exa (Metaphor) neural search config. Keychain: legionforge_exa_api_key."""
+
+    use_autoprompt: bool = True
+    type: str = "auto"  # "auto" | "neural" | "keyword"
+
+
+class PerplexitySearchConfig(BaseModel):
+    """Perplexity Sonar API config. Keychain: legionforge_perplexity_api_key."""
+
+    model: str = "sonar"  # "sonar" | "sonar-pro" | "sonar-reasoning"
+
+
+class SearXNGSearchConfig(BaseModel):
+    """SearXNG self-hosted meta-search config — no API key required."""
+
+    url: str = "http://localhost:8888"
+    engines: list[str] = []  # empty = SearXNG default engines
+
+
+class SearchSettings(BaseModel):
+    """
+    Phase 56 — Configurable Search Providers.
+
+    ``provider`` names the primary search backend.  ``fallback`` is tried if
+    the primary is unavailable or returns only error results.  Both values must
+    be one of: ddg | tavily | brave | exa | perplexity | searxng.
+
+    Per-provider sub-configs below carry defaults that work out of the box;
+    override individual fields in your hardware YAML profile under ``search:``.
+    """
+
+    provider: str = "ddg"
+    fallback: str = "ddg"
+    max_results: int = 5
+    timeout: float = 10.0
+
+    ddg: DDGSearchConfig = DDGSearchConfig()
+    tavily: TavilySearchConfig = TavilySearchConfig()
+    brave: BraveSearchConfig = BraveSearchConfig()
+    exa: ExaSearchConfig = ExaSearchConfig()
+    perplexity: PerplexitySearchConfig = PerplexitySearchConfig()
+    searxng: SearXNGSearchConfig = SearXNGSearchConfig()
+
+
 class HardwareSettings(BaseModel):
     profile: ProfileMeta
     memory: MemoryConfig
@@ -551,6 +620,7 @@ class HardwareSettings(BaseModel):
     gateway: GatewayConfig = GatewayConfig()
     connectors: ConnectorsConfig = ConnectorsConfig()
     agent_memory: AgentMemoryConfig = AgentMemoryConfig()
+    search: SearchSettings = SearchSettings()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

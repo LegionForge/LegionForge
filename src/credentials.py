@@ -72,6 +72,12 @@ _SERVICE_TO_ENV: dict[str, str] = {
     "legionforge_tool_signer": "TOOL_SIGNING_PRIVATE_KEY",
     # Phase 6: DB RBAC — restricted runtime DB user (no DDL, no DELETE on audit tables)
     "legionforge_db_app": "POSTGRES_APP_PASSWORD",
+    # Phase 56: Search provider API keys
+    "legionforge_tavily_api_key": "TAVILY_API_KEY",
+    "legionforge_brave_api_key": "BRAVE_API_KEY",
+    "legionforge_exa_api_key": "EXA_API_KEY",
+    "legionforge_perplexity_api_key": "PERPLEXITY_API_KEY",
+    "legionforge_firecrawl_api_key": "FIRECRAWL_API_KEY",
 }
 
 # All environment variable names that contain secrets.
