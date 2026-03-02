@@ -836,6 +836,13 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS revocation_reason TEXT"
     )
 
+    # Phase 92: store input_schema alongside schema_hash so the lazy-load path
+    # in verify_tool_before_invocation can recompute the correct hash without
+    # re-importing the tool module.  TEXT (JSON-serialised dict).
+    await conn.execute(
+        "ALTER TABLE tool_registry ADD COLUMN IF NOT EXISTS input_schema TEXT"
+    )
+
     # Phase 6: PentestAgent — air-gapped red-team run tracking
     await conn.execute(
         """
