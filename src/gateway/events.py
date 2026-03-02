@@ -73,7 +73,20 @@ def build_sse_event(lg_event: dict) -> dict | None:
         return {"event": "token", "data": {"delta": delta, "timestamp": ts}}
 
     if kind == "on_tool_start":
-        return {"event": "tool_start", "data": {"tool": name, "timestamp": ts}}
+        # Include a sanitized one-line hint of what the tool was called with,
+        # so the UI can show it as a tooltip.  Raw args are NOT forwarded —
+        # only the primary identifying argument (query text or URL).
+        args = lg_event.get("data", {}).get("input") or {}
+        if isinstance(args, dict):
+            hint = (
+                str(args.get("query") or args.get("url") or args.get("focus") or "")
+            )[:120]
+        else:
+            hint = ""
+        return {
+            "event": "tool_start",
+            "data": {"tool": name, "hint": hint, "timestamp": ts},
+        }
 
     if kind == "on_tool_end":
         return {"event": "tool_end", "data": {"tool": name, "timestamp": ts}}

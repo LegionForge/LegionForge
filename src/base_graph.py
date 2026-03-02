@@ -584,7 +584,30 @@ class SecureToolNode:
                 logger.error(
                     f"[SecureToolNode] Tool '{tool_id}' failed registry check. Halting."
                 )
-                return {"force_end": True, "loop_detected": False}
+                # Inject an error ToolMessage so the LLM reports the block to the
+                # user rather than silently falling back to training data (which
+                # causes hallucination).  Run still halts via force_end=True.
+                # Note: tool_id is LLM-generated but LangChain validates it against
+                # bound tools before SecureToolNode runs, so arbitrary names are
+                # rejected upstream.
+                sandbox_messages.append(
+                    ToolMessage(
+                        content=(
+                            f"[TOOL BLOCKED] '{tool_id}' failed the security "
+                            "registry check (hash mismatch). "
+                            "Do NOT answer from training data. "
+                            "Tell the user this tool is temporarily unavailable "
+                            "and an administrator must re-register it by running: "
+                            "make register-researcher-tools"
+                        ),
+                        tool_call_id=tc_id,
+                        name=tool_id,
+                    )
+                )
+                result["messages"] = sandbox_messages
+                result["force_end"] = True
+                result["loop_detected"] = False
+                return result
 
             # 2a. Task token ACL check (Phase 3)
             # Validates the JWT in state["task_token"] and checks tool is in scope.
