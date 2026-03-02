@@ -8745,3 +8745,77 @@ def test_p42_rate_limit_module_has_docstring():
 
     assert rl_mod.__doc__ is not None
     assert "X-RateLimit" in rl_mod.__doc__
+
+
+# ── Phase 43: Task Bulk Operations ────────────────────────────────────────────
+
+
+def test_p43_bulk_cancel_tasks_callable():
+    """bulk_cancel_tasks is exported from database."""
+    from src.database import bulk_cancel_tasks
+
+    assert callable(bulk_cancel_tasks)
+
+
+def test_p43_bulk_delete_tasks_callable():
+    """bulk_delete_tasks is exported from database."""
+    from src.database import bulk_delete_tasks
+
+    assert callable(bulk_delete_tasks)
+
+
+def test_p43_bulk_tag_tasks_callable():
+    """bulk_tag_tasks is exported from database."""
+    from src.database import bulk_tag_tasks
+
+    assert callable(bulk_tag_tasks)
+
+
+def test_p43_bulk_operations_use_any_array():
+    """Bulk DB functions use PostgreSQL ANY(array) for efficient multi-row update."""
+    import inspect
+    from src.database import bulk_cancel_tasks, bulk_delete_tasks, bulk_tag_tasks
+
+    for fn in (bulk_cancel_tasks, bulk_delete_tasks, bulk_tag_tasks):
+        src = inspect.getsource(fn)
+        assert "ANY(%s" in src or "ANY(%" in src, f"{fn.__name__} missing ANY()"
+
+
+def test_p43_bulk_endpoints_defined():
+    """tasks route has /bulk/cancel, /bulk/delete, /bulk/tag endpoints."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "bulk_cancel" in src
+    assert "bulk_delete" in src
+    assert "bulk_tag" in src
+
+
+def test_p43_bulk_task_ids_request_validates_uuids():
+    """BulkTaskIdsRequest validates UUID format."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "BulkTaskIdsRequest" in src
+    assert "ids_must_be_uuid" in src
+
+
+def test_p43_bulk_tag_request_extends_ids_request():
+    """BulkTagRequest inherits from BulkTaskIdsRequest and adds tags field."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "BulkTagRequest(BulkTaskIdsRequest)" in src
+
+
+def test_p43_bulk_cancel_returns_count():
+    """bulk_cancel endpoint returns cancelled and requested counts."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.bulk_cancel)
+    assert '"cancelled"' in src
+    assert '"requested"' in src

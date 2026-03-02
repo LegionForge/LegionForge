@@ -3283,6 +3283,81 @@ async def mark_task_cancelled(task_id: str, user_id: str) -> bool:
         return cur.rowcount == 1
 
 
+# ── Phase 43: Task Bulk Operations ────────────────────────────────────────────
+
+
+async def bulk_cancel_tasks(task_ids: list[str], user_id: str) -> int:
+    """
+    Cancel all queued tasks in task_ids that belong to user_id.
+    Running/complete/failed tasks are silently skipped.
+    Returns the number of tasks actually cancelled.
+
+    Phase 43 — Task Bulk Operations.
+    """
+    if not task_ids:
+        return 0
+    pool = get_pool()
+    async with pool.connection() as conn:
+        # psycopg ANY(%s) with a list cast to uuid[]
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'cancelled', completed_at = now(), updated_at = now()
+            WHERE task_id = ANY(%s::uuid[])
+              AND user_id = %s
+              AND status = 'queued'
+            """,
+            (list(task_ids), user_id),
+        )
+        return cur.rowcount
+
+
+async def bulk_delete_tasks(task_ids: list[str], user_id: str) -> int:
+    """
+    Hard-delete tasks in task_ids that belong to user_id.
+    Returns the number of tasks actually deleted.
+    Cascades to task_notes, task_events, stream_tokens (ON DELETE CASCADE).
+
+    Phase 43 — Task Bulk Operations.
+    """
+    if not task_ids:
+        return 0
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            DELETE FROM tasks
+            WHERE task_id = ANY(%s::uuid[])
+              AND user_id = %s
+            """,
+            (list(task_ids), user_id),
+        )
+        return cur.rowcount
+
+
+async def bulk_tag_tasks(task_ids: list[str], user_id: str, tags: list[str]) -> int:
+    """
+    Replace tags on all tasks in task_ids that belong to user_id.
+    Returns the number of tasks updated.
+
+    Phase 43 — Task Bulk Operations.
+    """
+    if not task_ids:
+        return 0
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET tags = %s, updated_at = now()
+            WHERE task_id = ANY(%s::uuid[])
+              AND user_id = %s
+            """,
+            (list(tags), list(task_ids), user_id),
+        )
+        return cur.rowcount
+
+
 # ── Phase 8: Gateway user management ─────────────────────────────────────────
 
 

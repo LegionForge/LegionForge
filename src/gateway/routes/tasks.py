@@ -30,6 +30,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.database import (
     add_task_note,
+    bulk_cancel_tasks,
+    bulk_delete_tasks,
+    bulk_tag_tasks,
     create_task,
     delete_task_note,
     get_task,
@@ -435,6 +438,99 @@ async def list_user_tasks(
         tags=tags,
         label=label,
     )
+
+
+# ── Task Bulk Operations (Phase 43) ────────────────────────────────────────────
+
+_MAX_BULK_IDS = 100
+
+
+class BulkTaskIdsRequest(BaseModel):
+    task_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=_MAX_BULK_IDS,
+        description="List of task UUIDs (max 100).",
+    )
+
+    @field_validator("task_ids")
+    @classmethod
+    def ids_must_be_uuid(cls, v: list[str]) -> list[str]:
+        import re
+
+        uuid_re = re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+        )
+        bad = [tid for tid in v if not uuid_re.match(tid)]
+        if bad:
+            raise ValueError(f"Invalid UUID(s): {bad[:3]}")
+        return v
+
+
+class BulkTagRequest(BulkTaskIdsRequest):
+    tags: list[str] = Field(
+        ...,
+        max_length=10,
+        description="Tags to apply to all listed tasks (replaces existing tags).",
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def tags_must_be_short(cls, v: list[str]) -> list[str]:
+        for tag in v:
+            if len(tag) > 50:
+                raise ValueError(f"tag {tag!r} exceeds 50 characters")
+        return [t.strip() for t in v if t.strip()]
+
+
+@router.post("/bulk/cancel", status_code=status.HTTP_200_OK)
+async def bulk_cancel(
+    body: BulkTaskIdsRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Cancel multiple queued tasks in a single request.
+
+    Only queued tasks owned by the authenticated user are cancelled.
+    Running/completed/failed tasks are silently skipped.
+
+    Phase 43 — Task Bulk Operations.
+    """
+    count = await bulk_cancel_tasks(body.task_ids, user["user_id"])
+    return {"cancelled": count, "requested": len(body.task_ids)}
+
+
+@router.post("/bulk/delete", status_code=status.HTTP_200_OK)
+async def bulk_delete(
+    body: BulkTaskIdsRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Hard-delete multiple tasks in a single request.
+
+    Only tasks owned by the authenticated user are deleted.
+    Cascades to task_notes, task_events, stream_tokens.
+
+    Phase 43 — Task Bulk Operations.
+    """
+    count = await bulk_delete_tasks(body.task_ids, user["user_id"])
+    return {"deleted": count, "requested": len(body.task_ids)}
+
+
+@router.post("/bulk/tag", status_code=status.HTTP_200_OK)
+async def bulk_tag(
+    body: BulkTagRequest,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Apply a tag list to multiple tasks in a single request.
+
+    Replaces existing tags on all matching tasks owned by the authenticated user.
+
+    Phase 43 — Task Bulk Operations.
+    """
+    count = await bulk_tag_tasks(body.task_ids, user["user_id"], body.tags)
+    return {"tagged": count, "requested": len(body.task_ids)}
 
 
 # ── Task Export (Phase 38) ─────────────────────────────────────────────────────
