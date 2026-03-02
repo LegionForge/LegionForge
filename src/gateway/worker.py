@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from src.database import (
     claim_next_queued_task,
+    fail_dependent_tasks,
     mark_task_running,
     mark_task_complete,
     mark_task_failed,
@@ -239,6 +240,16 @@ async def run_task(task: dict) -> None:
         )
         await mark_task_failed(task_id, error=error_msg)
         await publish_event(task_id, build_task_error_event(task_id, error_msg))
+
+        # Phase 34: auto-fail any queued tasks that depended on this one
+        try:
+            n = await fail_dependent_tasks(task_id)
+            if n:
+                logger.info(
+                    "[worker] Auto-failed %d dependent task(s) of %s", n, task_id
+                )
+        except Exception as dep_err:
+            logger.warning("[worker] fail_dependent_tasks error: %s", dep_err)
 
         # Phase 26: fire failure webhook
         callback_url = task.get("callback_url")

@@ -8018,3 +8018,68 @@ def test_p33_conflict_status_constant():
 
     src = inspect.getsource(tasks_mod)
     assert "HTTP_409_CONFLICT" in src
+
+
+# ── Phase 34: Task Dependencies ───────────────────────────────────────────────
+
+
+def test_p34_task_request_accepts_depends_on():
+    """TaskRequest accepts a valid UUID depends_on field."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello", depends_on="12345678-1234-1234-1234-123456789abc")
+    assert req.depends_on == "12345678-1234-1234-1234-123456789abc"
+
+
+def test_p34_task_request_depends_on_default_none():
+    """TaskRequest defaults depends_on to None."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello")
+    assert req.depends_on is None
+
+
+def test_p34_task_request_depends_on_rejects_invalid_uuid():
+    """TaskRequest rejects non-UUID depends_on value."""
+    import pytest
+    from pydantic import ValidationError
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", depends_on="not-a-uuid")
+
+
+def test_p34_create_task_accepts_depends_on_param():
+    """create_task() signature includes depends_on kwarg."""
+    import inspect
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "depends_on" in sig.parameters
+    assert sig.parameters["depends_on"].default is None
+
+
+def test_p34_fail_dependent_tasks_importable():
+    """fail_dependent_tasks is importable from src.database."""
+    from src.database import fail_dependent_tasks
+
+    assert callable(fail_dependent_tasks)
+
+
+def test_p34_worker_imports_fail_dependent_tasks():
+    """Worker module imports fail_dependent_tasks."""
+    import inspect
+    import src.gateway.worker as worker_mod
+
+    src = inspect.getsource(worker_mod)
+    assert "fail_dependent_tasks" in src
+
+
+def test_p34_claim_next_queued_task_respects_dependency():
+    """claim_next_queued_task SQL contains dependency check."""
+    import inspect
+    from src.database import claim_next_queued_task
+
+    src = inspect.getsource(claim_next_queued_task)
+    assert "depends_on" in src
+    assert "complete" in src

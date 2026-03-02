@@ -1133,6 +1133,20 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_task_notes_user_id ON task_notes (user_id)"
     )
 
+    # ── Phase 34: Task dependencies ────────────────────────────────────────────
+    # A task may optionally depend on another task completing first.
+    # Worker skips tasks whose dependency is not yet complete.
+    # ON DELETE SET NULL: if the dependency task is deleted, the dependent task
+    # becomes unconstrained and is immediately eligible for execution.
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "
+        "depends_on UUID REFERENCES tasks (task_id) ON DELETE SET NULL"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_depends_on ON tasks (depends_on) "
+        "WHERE depends_on IS NOT NULL"
+    )
+
     logger.info("Application tables verified")
 
 
@@ -2761,12 +2775,14 @@ async def create_task(
     priority: int = 5,
     content_hash: str | None = None,
     tags: list[str] | None = None,
+    depends_on: str | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'.
 
     priority: 1 (low) … 5 (normal, default) … 10 (high).
     content_hash: SHA-256 of (agent_type:input_text) used for cache lookups.
     tags: freeform string labels (Phase 31).
+    depends_on: UUID of a task that must complete before this one runs (Phase 34).
     """
     pool = get_pool()
     async with pool.connection() as conn:
@@ -2775,9 +2791,11 @@ async def create_task(
             """
             INSERT INTO tasks
                 (user_id, input, agent_type, config, estimated_tokens,
-                 callback_url, priority, content_hash, tags)
-            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
-            RETURNING task_id::text, status, created_at, agent_type, priority, tags
+                 callback_url, priority, content_hash, tags, depends_on)
+            VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s,
+                    %s::uuid)
+            RETURNING task_id::text, status, created_at, agent_type,
+                      priority, tags, depends_on::text
             """,
             (
                 user_id,
@@ -2789,6 +2807,7 @@ async def create_task(
                 max(1, min(10, int(priority))),
                 content_hash,
                 list(tags) if tags else [],
+                depends_on,
             ),
         )
         row = await cur.fetchone()
@@ -3026,9 +3045,17 @@ async def claim_next_queued_task() -> dict | None:
             UPDATE tasks
             SET status = 'running', updated_at = now()
             WHERE task_id = (
-                SELECT task_id FROM tasks
-                WHERE status = 'queued'
-                ORDER BY priority DESC, created_at ASC
+                SELECT t.task_id FROM tasks t
+                WHERE t.status = 'queued'
+                  AND (
+                      t.depends_on IS NULL
+                      OR EXISTS (
+                          SELECT 1 FROM tasks dep
+                          WHERE dep.task_id = t.depends_on
+                            AND dep.status = 'complete'
+                      )
+                  )
+                ORDER BY t.priority DESC, t.created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
@@ -3093,6 +3120,30 @@ async def mark_task_failed(task_id: str, error: str) -> None:
             """,
             (error, task_id),
         )
+
+
+async def fail_dependent_tasks(failed_task_id: str) -> int:
+    """
+    Auto-fail queued tasks whose dependency (depends_on) is the given failed task.
+    Returns the number of tasks that were auto-failed.
+
+    Phase 34 — Task Dependencies.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'failed',
+                error = 'Dependency task failed or was cancelled',
+                completed_at = now(),
+                updated_at = now()
+            WHERE depends_on = %s::uuid
+              AND status = 'queued'
+            """,
+            (failed_task_id,),
+        )
+        return cur.rowcount
 
 
 async def mark_task_cancelled(task_id: str, user_id: str) -> bool:

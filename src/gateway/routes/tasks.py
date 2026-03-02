@@ -35,6 +35,8 @@ from src.database import (
     VALID_AGENT_TYPES,
     VALID_TASK_STATUSES,
 )
+import re as _re
+
 from src.gateway.auth import create_stream_token, require_user
 from src.gateway.metrics import inc_counter
 from src.rate_limiter import per_user_budget_check
@@ -47,6 +49,10 @@ _AGENT_TYPE_TO_PROVIDER: dict[str, str] = {
     "researcher": "ollama",
     "base_agent": "ollama",
 }
+
+_UUID_RE = _re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +98,14 @@ class TaskRequest(BaseModel):
         description="Up to 10 freeform string tags for filtering and organisation.  "
         "Each tag max 50 characters.  Phase 31.",
     )
+    depends_on: str | None = Field(
+        default=None,
+        description=(
+            "UUID of a task that must complete before this task is picked up "
+            "by the worker.  If the dependency fails, this task is auto-failed.  "
+            "Phase 34 — Task Dependencies."
+        ),
+    )
     callback_url: str | None = Field(
         default=None,
         max_length=2048,
@@ -122,6 +136,15 @@ class TaskRequest(BaseModel):
             if len(tag) > 50:
                 raise ValueError(f"tag {tag!r} exceeds 50 characters")
         return [t.strip() for t in v if t.strip()]
+
+    @field_validator("depends_on")
+    @classmethod
+    def depends_on_must_be_uuid(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not _UUID_RE.match(v):
+            raise ValueError("depends_on must be a valid UUID")
+        return v
 
     @field_validator("callback_url")
     @classmethod
@@ -219,6 +242,7 @@ async def submit_task(
         priority=body.priority,
         content_hash=content_hash,
         tags=body.tags,
+        depends_on=body.depends_on,
     )
 
     task_id = row["task_id"]
