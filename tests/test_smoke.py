@@ -7961,3 +7961,60 @@ def test_p32_delete_task_note_signature():
     sig = inspect.signature(delete_task_note)
     for param in ("note_id", "task_id", "user_id"):
         assert param in sig.parameters
+
+
+# ── Phase 33: Task Retry API ───────────────────────────────────────────────────
+
+
+def test_p33_retryable_statuses():
+    """_RETRYABLE_STATUSES contains failed and cancelled."""
+    from src.gateway.routes.tasks import _RETRYABLE_STATUSES
+
+    assert "failed" in _RETRYABLE_STATUSES
+    assert "cancelled" in _RETRYABLE_STATUSES
+    assert "queued" not in _RETRYABLE_STATUSES
+    assert "running" not in _RETRYABLE_STATUSES
+
+
+def test_p33_retry_endpoint_registered():
+    """Gateway registers POST /tasks/{task_id}/retry."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert any("retry" in p for p in paths)
+
+
+def test_p33_retry_task_function_importable():
+    """retry_task function is importable from tasks module."""
+    from src.gateway.routes.tasks import retry_task
+
+    assert callable(retry_task)
+
+
+def test_p33_task_notes_cascade_delete_pattern():
+    """task_notes schema includes ON DELETE CASCADE reference."""
+    import inspect
+    import src.database as db
+
+    # _create_app_tables() contains all table DDL including task_notes
+    src_text = inspect.getsource(db._create_app_tables)
+    assert "CASCADE" in src_text
+    assert "task_notes" in src_text
+
+
+def test_p33_retry_returns_original_task_id_key():
+    """retry_task response includes original_task_id key (verified in source)."""
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "original_task_id" in src
+
+
+def test_p33_conflict_status_constant():
+    """HTTP_409_CONFLICT is used in retry_task for non-retryable tasks."""
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "HTTP_409_CONFLICT" in src

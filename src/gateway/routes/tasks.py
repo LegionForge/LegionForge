@@ -511,3 +511,100 @@ async def delete_note(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Note not found or not owned by this user",
         )
+
+
+# ── Task Retry (Phase 33) ──────────────────────────────────────────────────────
+
+_RETRYABLE_STATUSES = {"failed", "cancelled"}
+
+
+@router.post("/{task_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_task(
+    task_id: str,
+    user: dict = Depends(require_user),
+) -> dict:
+    """
+    Retry a failed or cancelled task.
+
+    Creates a new task with the same input, agent_type, priority, tags, and
+    callback_url as the original.  The original task is not modified.
+
+    Only tasks in ``failed`` or ``cancelled`` status can be retried.
+    Returns 409 for tasks still queued/running, 404 for unknown tasks.
+
+    Phase 33 — Task Retry API.
+    """
+    original = await get_task(task_id, user_id=user["user_id"])
+    if original is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
+
+    if original.get("status") not in _RETRYABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Only failed or cancelled tasks can be retried; "
+                f"task is '{original.get('status')}'"
+            ),
+        )
+
+    input_text = original.get("input", "")
+    agent_type = original.get("agent_type", "orchestrator")
+    priority = original.get("priority", 5)
+    tags = original.get("tags") or []
+    callback_url = original.get("callback_url")
+
+    # Budget check for the retry
+    estimated_tokens = int(len(input_text.split()) * 1.3 + 500)
+    provider = _AGENT_TYPE_TO_PROVIDER.get(agent_type, "ollama")
+    daily_limit = user.get("daily_token_limit", 100000)
+
+    try:
+        await per_user_budget_check(
+            user_id=user["user_id"],
+            provider=provider,
+            estimated_tokens=estimated_tokens,
+            daily_limit=daily_limit,
+        )
+    except RuntimeError as budget_err:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily token budget exceeded. Try again tomorrow.",
+        ) from budget_err
+
+    from src.task_cache import compute_task_hash
+
+    content_hash = compute_task_hash(agent_type, input_text)
+
+    row = await create_task(
+        user_id=user["user_id"],
+        input_text=input_text,
+        agent_type=agent_type,
+        config=original.get("config") or {},
+        estimated_tokens=estimated_tokens,
+        callback_url=callback_url,
+        priority=priority,
+        content_hash=content_hash,
+        tags=list(tags),
+    )
+    new_task_id = row["task_id"]
+    stream_token = await create_stream_token(new_task_id, user["user_id"])
+    inc_counter("legionforge_tasks_submitted_total")
+
+    logger.info(
+        "[gateway] Retried task original=%s new=%s user=%s",
+        task_id,
+        new_task_id,
+        user["username"],
+    )
+
+    return {
+        "task_id": new_task_id,
+        "original_task_id": task_id,
+        "status": "queued",
+        "priority": row.get("priority", 5),
+        "created_at": row["created_at"],
+        "stream_url": f"/tasks/{new_task_id}/stream",
+        "stream_token": stream_token,
+    }
