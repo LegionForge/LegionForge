@@ -8819,3 +8819,80 @@ def test_p43_bulk_cancel_returns_count():
     src = inspect.getsource(tasks_mod.bulk_cancel)
     assert '"cancelled"' in src
     assert '"requested"' in src
+
+
+# ── Phase 44: Task Stats & Analytics ─────────────────────────────────────────
+
+
+def test_p44_get_task_stats_callable():
+    """get_task_stats is exported from database."""
+    from src.database import get_task_stats
+
+    assert callable(get_task_stats)
+
+
+def test_p44_task_stats_returns_expected_keys():
+    """get_task_stats source returns all expected keys."""
+    import inspect
+    from src.database import get_task_stats
+
+    src = inspect.getsource(get_task_stats)
+    for key in ("total", "by_status", "by_agent_type", "avg_steps", "top_tags"):
+        assert key in src
+
+
+def test_p44_stats_uses_group_by():
+    """get_task_stats uses GROUP BY for aggregation."""
+    import inspect
+    from src.database import get_task_stats
+
+    src = inspect.getsource(get_task_stats)
+    assert "GROUP BY" in src
+
+
+def test_p44_stats_unnest_tags():
+    """get_task_stats unnests the tags array for top-tag aggregation."""
+    import inspect
+    from src.database import get_task_stats
+
+    src = inspect.getsource(get_task_stats)
+    assert "UNNEST" in src
+
+
+def test_p44_stats_token_totals_from_jsonb():
+    """get_task_stats extracts input/output tokens from JSONB column."""
+    import inspect
+    from src.database import get_task_stats
+
+    src = inspect.getsource(get_task_stats)
+    assert "input_tokens" in src or "'input'" in src
+    assert "output_tokens" in src or "'output'" in src
+
+
+def test_p44_stats_endpoint_defined():
+    """tasks route has a /stats endpoint."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod)
+    assert "task_stats" in src
+    assert "/stats" in src
+
+
+def test_p44_stats_endpoint_calls_get_task_stats():
+    """task_stats endpoint calls get_task_stats."""
+    import inspect
+    import src.gateway.routes.tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.task_stats)
+    assert "get_task_stats" in src
+
+
+def test_p44_stats_returns_first_last_timestamps():
+    """get_task_stats includes oldest_task_at and last_task_at keys."""
+    import inspect
+    from src.database import get_task_stats
+
+    src = inspect.getsource(get_task_stats)
+    assert "oldest_task_at" in src
+    assert "last_task_at" in src

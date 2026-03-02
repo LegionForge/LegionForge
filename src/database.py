@@ -4176,3 +4176,127 @@ async def get_task_timeline(task_id: str, user_id: str) -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ── Phase 44: Task Stats & Analytics ─────────────────────────────────────────
+
+
+async def get_task_stats(user_id: str) -> dict:
+    """
+    Return aggregate task statistics for user_id.
+
+    Stats computed:
+    - total: total task count
+    - by_status: {status: count} dict
+    - by_agent_type: {agent_type: count} dict
+    - avg_steps: average step count for completed tasks
+    - total_input_tokens: sum of input tokens (from tokens JSONB column)
+    - total_output_tokens: sum of output tokens
+    - top_tags: up to 10 most-used tags with counts
+    - last_task_at: timestamp of the most recent task
+    - oldest_task_at: timestamp of the oldest task
+
+    Phase 44 — Task Stats & Analytics.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+
+        # Counts by status
+        cur = await conn.execute(
+            """
+            SELECT status, COUNT(*) AS cnt
+            FROM tasks
+            WHERE user_id = %s
+            GROUP BY status
+            """,
+            (user_id,),
+        )
+        by_status_rows = await cur.fetchall()
+        by_status = {r["status"]: r["cnt"] for r in by_status_rows}
+        total = sum(by_status.values())
+
+        # Counts by agent_type
+        cur = await conn.execute(
+            """
+            SELECT agent_type, COUNT(*) AS cnt
+            FROM tasks
+            WHERE user_id = %s
+            GROUP BY agent_type
+            """,
+            (user_id,),
+        )
+        by_agent_rows = await cur.fetchall()
+        by_agent = {r["agent_type"]: r["cnt"] for r in by_agent_rows}
+
+        # Average steps for complete tasks
+        cur = await conn.execute(
+            """
+            SELECT ROUND(AVG(steps)::numeric, 2) AS avg_steps
+            FROM tasks
+            WHERE user_id = %s AND status = 'complete' AND steps IS NOT NULL
+            """,
+            (user_id,),
+        )
+        avg_row = await cur.fetchone()
+        avg_steps = (
+            float(avg_row["avg_steps"]) if avg_row and avg_row["avg_steps"] else 0.0
+        )
+
+        # Token totals (tokens is a JSONB column: {input: N, output: N})
+        cur = await conn.execute(
+            """
+            SELECT
+                COALESCE(SUM((tokens->>'input')::bigint), 0)  AS input_tokens,
+                COALESCE(SUM((tokens->>'output')::bigint), 0) AS output_tokens
+            FROM tasks
+            WHERE user_id = %s AND tokens IS NOT NULL AND tokens != '{}'::jsonb
+            """,
+            (user_id,),
+        )
+        tok_row = await cur.fetchone()
+        input_tokens = int(tok_row["input_tokens"]) if tok_row else 0
+        output_tokens = int(tok_row["output_tokens"]) if tok_row else 0
+
+        # Top tags (unnest TEXT[] and count occurrences)
+        cur = await conn.execute(
+            """
+            SELECT tag, COUNT(*) AS cnt
+            FROM tasks, UNNEST(tags) AS tag
+            WHERE user_id = %s
+            GROUP BY tag
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
+            (user_id,),
+        )
+        tag_rows = await cur.fetchall()
+        top_tags = [{"tag": r["tag"], "count": r["cnt"]} for r in tag_rows]
+
+        # First/last task timestamps
+        cur = await conn.execute(
+            """
+            SELECT MIN(created_at) AS oldest, MAX(created_at) AS newest
+            FROM tasks WHERE user_id = %s
+            """,
+            (user_id,),
+        )
+        ts_row = await cur.fetchone()
+        oldest_at = (
+            ts_row["oldest"].isoformat() if ts_row and ts_row["oldest"] else None
+        )
+        newest_at = (
+            ts_row["newest"].isoformat() if ts_row and ts_row["newest"] else None
+        )
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_agent_type": by_agent,
+        "avg_steps_completed": avg_steps,
+        "total_input_tokens": input_tokens,
+        "total_output_tokens": output_tokens,
+        "top_tags": top_tags,
+        "oldest_task_at": oldest_at,
+        "last_task_at": newest_at,
+    }

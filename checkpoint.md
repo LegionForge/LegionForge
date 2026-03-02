@@ -1,10 +1,10 @@
 VERSION: 1.0.1
-UPDATE: 104
+UPDATE: 105
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-02T05:25Z
-LAST_OP: Phase 43 — Task Bulk Operations: bulk_cancel/delete/tag DB fns, POST /tasks/bulk/cancel|delete|tag endpoints, BulkTaskIdsRequest with UUID validation
-SMOKE_TESTS: 699/699
+TIMESTAMP: 2026-03-02T05:40Z
+LAST_OP: Phase 44 — Task Stats & Analytics: get_task_stats() with GROUP BY/UNNEST/JSONB token totals, GET /tasks/stats endpoint
+SMOKE_TESTS: 707/707
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

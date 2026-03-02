@@ -36,6 +36,7 @@ from src.database import (
     create_task,
     delete_task_note,
     get_task,
+    get_task_stats,
     get_task_timeline,
     list_task_notes,
     list_tasks,
@@ -438,6 +439,23 @@ async def list_user_tasks(
         tags=tags,
         label=label,
     )
+
+
+# ── Task Stats & Analytics (Phase 44) ─────────────────────────────────────────
+
+
+@router.get("/stats")
+async def task_stats(user: dict = Depends(require_user)) -> dict:
+    """
+    Return aggregate task statistics for the authenticated user.
+
+    Includes: total count, breakdown by status and agent type, average steps
+    for completed tasks, cumulative token usage, top 10 tags, and first/last
+    task timestamps.
+
+    Phase 44 — Task Stats & Analytics.
+    """
+    return await get_task_stats(user["user_id"])
 
 
 # ── Task Bulk Operations (Phase 43) ────────────────────────────────────────────
