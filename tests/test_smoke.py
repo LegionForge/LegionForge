@@ -12115,3 +12115,146 @@ def test_p94_ui_annotations_renders_rating_emoji():
     fn_body = html[fn_start : fn_start + 1200]
     assert "👍" in fn_body
     assert "👎" in fn_body
+
+
+# ── Phase 95 — Who Am I Identity Badge ───────────────────────────────────────
+
+
+def test_p95_ui_identity_card_present():
+    """Phase 95 identity card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "identity-card" in html
+    assert "identity-badge" in html
+
+
+def test_p95_ui_load_identity_function_defined():
+    """loadIdentity() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadIdentity(" in html
+
+
+def test_p95_ui_load_identity_calls_auth_me():
+    """loadIdentity() calls GET /auth/me."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadIdentity(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/auth/me" in fn_body
+
+
+def test_p95_ui_identity_shows_username_and_role():
+    """loadIdentity() renders username and admin/user role."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadIdentity(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "username" in fn_body
+    assert "is_admin" in fn_body
+
+
+# ── Phase 96 — Pipeline Run History ──────────────────────────────────────────
+
+
+def test_p96_ui_run_history_card_present():
+    """Phase 96 pipeline run history card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "run-history-card" in html
+    assert "run-history-list" in html
+
+
+def test_p96_ui_load_pipeline_runs_function_defined():
+    """loadPipelineRuns() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineRuns(" in html
+
+
+def test_p96_ui_load_pipeline_runs_calls_endpoint():
+    """loadPipelineRuns() calls GET /pipelines/{id}/runs."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineRuns(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/pipelines/" in fn_body
+    assert "/runs" in fn_body
+
+
+# ── Phase 97 — Audit Chain Verify ────────────────────────────────────────────
+
+
+def test_p97_ui_audit_verify_card_present():
+    """Phase 97 audit chain verify card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-verify-card" in html
+    assert "audit-verify-result" in html
+
+
+def test_p97_ui_verify_audit_chain_function_defined():
+    """verifyAuditChain() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function verifyAuditChain(" in html
+
+
+def test_p97_ui_verify_calls_admin_audit_verify():
+    """verifyAuditChain() calls GET /admin/audit/verify."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function verifyAuditChain(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/admin/audit/verify" in fn_body
+
+
+def test_p97_ui_verify_renders_valid_and_invalid():
+    """verifyAuditChain() renders ✓ Chain intact and ✗ Chain broken messages."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function verifyAuditChain(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "Chain intact" in fn_body
+    assert "Chain broken" in fn_body
+
+
+# ── Phase 98 — Task Attachments Viewer ───────────────────────────────────────
+
+
+def test_p98_ui_attachments_card_present():
+    """Phase 98 attachments card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "attachments-card" in html
+    assert "attach-list" in html
+
+
+def test_p98_ui_load_attachments_function_defined():
+    """loadAttachments() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAttachments(" in html
+
+
+def test_p98_ui_load_attachments_calls_endpoint():
+    """loadAttachments() calls GET /tasks/{id}/attachments."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAttachments(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/attachments" in fn_body

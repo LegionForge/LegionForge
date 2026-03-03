@@ -113,6 +113,19 @@
     .annot-row { display:grid; grid-template-columns:70px 80px 1fr; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .annot-row:last-child { border-bottom:none; }
     .annot-rating { font-size:14px; text-align:center; }
+    /* ── Phase 95: Who Am I badge ────────────────────────────── */
+    #identity-badge { display:flex; flex-wrap:wrap; gap:10px; font-size:12px; padding:4px 0; }
+    .id-field { display:flex; flex-direction:column; gap:2px; }
+    .id-label { font-size:10px; color:var(--text-xdim); }
+    .id-value { color:var(--text); font-family:var(--mono); }
+    /* ── Phase 96: Pipeline Run History ─────────────────────── */
+    .run-row { display:grid; grid-template-columns:50px 60px 1fr; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .run-row:last-child { border-bottom:none; }
+    .run-status { font-family:var(--mono); font-size:10px; }
+    /* ── Phase 98: Task Attachments ──────────────────────────── */
+    .attach-row { display:flex; gap:8px; align-items:center; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .attach-row:last-child { border-bottom:none; }
+    .attach-name { color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .sched-cron { color:var(--text-dim); font-size:11px; }
     .sched-next { color:var(--text-xdim); font-size:11px; }
     .sched-enabled { color:var(--green); text-align:center; }
@@ -874,6 +887,46 @@
     <details id="annotations-section">
       <summary style="cursor:pointer">Annotations <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAnnotations(event)" title="Refresh">↻</button></summary>
       <div id="annotations-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load annotations.</div>
+    </details>
+  </div>
+
+  <!-- ── Who Am I card (Phase 95) ─────────────────────────── -->
+  <div class="card" id="identity-card">
+    <details id="identity-section">
+      <summary style="cursor:pointer">Who Am I <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadIdentity(event)" title="Refresh">↻</button></summary>
+      <div id="identity-badge" style="color:var(--text-xdim);font-size:12px">Click ↻ or open to load identity.</div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Run History card (Phase 96) ─────────────── -->
+  <div class="card" id="run-history-card">
+    <details id="run-history-section">
+      <summary style="cursor:pointer">Pipeline Run History</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <select id="run-history-pipe-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)"><option value="">— select pipeline —</option></select>
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadPipelineRuns()">↻</button>
+      </div>
+      <div id="run-history-list" style="color:var(--text-xdim);font-size:12px">Select a pipeline above and click ↻.</div>
+    </details>
+  </div>
+
+  <!-- ── Audit Chain Verify card (Phase 97) ───────────────── -->
+  <div class="card" id="audit-verify-card">
+    <details id="audit-verify-section">
+      <summary style="cursor:pointer">Audit Chain Integrity <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="verifyAuditChain(event)" title="Verify">✓ Verify</button></summary>
+      <div id="audit-verify-result" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click "✓ Verify" to check audit log hash chain integrity.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Attachments card (Phase 98) ─────────────────── -->
+  <div class="card" id="attachments-card">
+    <details id="attachments-section">
+      <summary style="cursor:pointer">Task Attachments</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <input id="attach-task-id" placeholder="Task ID (UUID or prefix)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadAttachments()">↻</button>
+      </div>
+      <div id="attach-list" style="color:var(--text-xdim);font-size:12px">Enter a task ID above and click ↻.</div>
     </details>
   </div>
 
@@ -2668,6 +2721,128 @@ async function loadAnnotations(evt) {
   } catch(e) { listEl.textContent = 'Error: ' + e.message; }
 }
 
+// ── Phase 95: Who Am I ────────────────────────────────────────────────────────
+async function loadIdentity(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const badge = document.getElementById('identity-badge');
+  if (!badge) return;
+  if (!apiKey) { badge.textContent = 'Enter API key.'; return; }
+  badge.textContent = 'Loading…';
+  try {
+    const res = await fetch('/auth/me', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { badge.textContent = 'Could not load identity.'; return; }
+    const u = await res.json();
+    const roleLabel = u.is_admin ? '👑 admin' : '👤 user';
+    const quota = u.daily_token_limit ? u.daily_token_limit.toLocaleString() + ' tokens/day' : 'unlimited';
+    badge.innerHTML =
+      '<div class="id-field"><span class="id-label">Username</span><span class="id-value">' + escapeHtml(u.username || '') + '</span></div>' +
+      '<div class="id-field"><span class="id-label">Role</span><span class="id-value">' + roleLabel + '</span></div>' +
+      '<div class="id-field"><span class="id-label">Daily quota</span><span class="id-value">' + quota + '</span></div>' +
+      '<div class="id-field"><span class="id-label">Status</span><span class="id-value" style="color:' + (u.is_active ? 'var(--green)' : 'var(--red)') + '">' + (u.is_active ? '● active' : '○ inactive') + '</span></div>';
+  } catch(e) { badge.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 96: Pipeline Run History ────────────────────────────────────────────
+async function loadPipelineRuns() {
+  const apiKey = el.apiKey().value.trim();
+  const sel = document.getElementById('run-history-pipe-sel');
+  const listEl = document.getElementById('run-history-list');
+  if (!listEl || !sel) return;
+  const pipeId = sel.value;
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  if (!pipeId) { listEl.textContent = 'Select a pipeline first.'; return; }
+  listEl.textContent = 'Loading runs…';
+  try {
+    const res = await fetch('/pipelines/' + pipeId + '/runs?limit=10', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { listEl.textContent = 'Could not load runs (status ' + res.status + ').'; return; }
+    const runs = await res.json();
+    const items = Array.isArray(runs) ? runs : (runs.runs || []);
+    if (!items.length) { listEl.textContent = 'No runs found for this pipeline.'; return; }
+    listEl.innerHTML = items.map(r => {
+      const status = r.status || '?';
+      const statusColor = status === 'complete' ? 'var(--green)' : status === 'failed' ? 'var(--red)' : 'var(--text-dim)';
+      const steps = (r.completed_steps !== undefined) ? r.completed_steps + '/' + r.total_steps : '—';
+      const ts = r.started_at ? new Date(r.started_at).toLocaleString() : '';
+      return '<div class="run-row">' +
+        '<span class="run-status" style="color:' + statusColor + '">' + escapeHtml(status) + '</span>' +
+        '<span style="color:var(--text-xdim)">' + steps + ' steps</span>' +
+        '<span style="color:var(--text-xdim)">' + escapeHtml(ts) + '</span>' +
+      '</div>';
+    }).join('');
+    // Populate selector from loadPipelines data too
+    const phSel = document.getElementById('run-history-pipe-sel');
+    if (phSel && phSel.options.length <= 1) {
+      // Pipelines not loaded yet — lazy-load them into this selector
+      const r2 = await fetch('/pipelines?limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
+      if (r2.ok) {
+        const d = await r2.json();
+        (d.pipelines || []).forEach(p => {
+          if (!phSel.querySelector('option[value="' + p.pipeline_id + '"]')) {
+            const opt = document.createElement('option'); opt.value = p.pipeline_id || p.id; opt.textContent = p.name; phSel.appendChild(opt);
+          }
+        });
+      }
+    }
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 97: Audit Chain Verify ──────────────────────────────────────────────
+async function verifyAuditChain(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('audit-verify-result');
+  if (!resultEl) return;
+  if (!apiKey) { resultEl.textContent = 'Enter admin API key.'; return; }
+  resultEl.textContent = 'Verifying…';
+  try {
+    const res = await fetch('/admin/audit/verify', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (res.status === 403) { resultEl.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { resultEl.textContent = 'Verification request failed (status ' + res.status + ').'; return; }
+    const d = await res.json();
+    if (d.valid) {
+      resultEl.innerHTML = '<span style="color:var(--green)">✓ Chain intact</span> — ' + (d.rows_checked || 0) + ' rows verified';
+    } else {
+      resultEl.innerHTML = '<span style="color:var(--red)">✗ Chain broken</span> at sequence ' + (d.broken_at_seq || '?') + ': ' + escapeHtml(d.error || 'unknown error');
+    }
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 98: Task Attachments ─────────────────────────────────────────────────
+async function loadAttachments() {
+  const apiKey = el.apiKey().value.trim();
+  const taskIdInput = document.getElementById('attach-task-id');
+  const listEl = document.getElementById('attach-list');
+  if (!listEl || !taskIdInput) return;
+  const taskId = taskIdInput.value.trim();
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  if (!taskId) { listEl.textContent = 'Enter a task ID.'; return; }
+  listEl.textContent = 'Loading attachments…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId) + '/attachments', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 404) { listEl.textContent = 'Task not found.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load attachments (status ' + res.status + ').'; return; }
+    const d = await res.json();
+    const items = d.attachments || [];
+    if (!items.length) { listEl.textContent = 'No attachments on this task.'; return; }
+    listEl.innerHTML = items.map(a => {
+      const name = a.filename || a.attachment_id || 'attachment';
+      const mime = a.media_type || a.content_type || '';
+      const size = a.size_bytes ? (a.size_bytes / 1024).toFixed(1) + ' KB' : '';
+      return '<div class="attach-row">' +
+        '<span class="attach-name">' + escapeHtml(name) + '</span>' +
+        '<span style="color:var(--text-xdim);font-size:10px">' + escapeHtml(mime) + '</span>' +
+        '<span style="color:var(--text-xdim);font-size:10px">' + size + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">' + d.count + ' attachment(s)</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
 // ── Phase 88: Health Metrics ─────────────────────────────────────────────────
 async function loadHealthMetrics(evt) {
   if (evt) evt.stopPropagation();
@@ -2910,6 +3085,14 @@ async function loadPipelines() {
     }
     if (emptyEl) emptyEl.style.display = 'none';
     listEl.querySelectorAll('.pipe-row').forEach(n => n.remove());
+    // Also populate Phase 96 run-history selector
+    const rhSel = document.getElementById('run-history-pipe-sel');
+    if (rhSel) {
+      rhSel.innerHTML = '<option value="">— select pipeline —</option>';
+      pipes.forEach(p => {
+        const opt = document.createElement('option'); opt.value = p.pipeline_id || p.id; opt.textContent = p.name; rhSel.appendChild(opt);
+      });
+    }
     pipes.forEach(p => {
       const row = document.createElement('div');
       row.className = 'pipe-row';
