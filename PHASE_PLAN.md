@@ -1907,5 +1907,9 @@ Added as compact addendum. See git log for full details.
 | 251 | #167 | Admin User Tokens (admin-user-tokens-card, loadAdminUserTokens, GET /admin/users/{name}, token usage fields) | +3 | 1525 |
 | 252 | #167 | Pipeline Run Info (pipeline-run-info-card, loadPipelineRunInfo, GET /pipelines/runs/{id}, status/timing/steps; renamed to avoid collision) | +3 | 1528 |
 | 253 | #167 | Webhook Detail (webhook-by-id-card, loadWebhookById, GET /webhooks/{id}, URL/active/event_types/created_at) | +3 | 1531 |
+| 254 | #168 | Session List (session-list-card, loadSessionList, GET /sessions, ID/title/task-count/created table) | +3 | 1534 |
+| 255 | #168 | User Quota (user-quota-card, loadUserQuota, GET /usage/me, daily_token_quota/tokens_used/remaining/is_admin) | +3 | 1537 |
+| 256 | #168 | Model Preferences (model-prefs-card, loadModelPrefs, GET /preferences, model/agent/preference key filter) | +3 | 1540 |
+| 257 | #168 | Task Prompt History (task-prompt-history-card, loadTaskPromptHistory, GET /tasks?limit=20, ordered prompt list) | +3 | 1543 |
 
-**Current state:** 1531/1531 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1543/1543 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

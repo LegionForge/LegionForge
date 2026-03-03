@@ -17168,3 +17168,119 @@ def test_p257_ui_task_prompt_history_renders_prompts():
     idx = html.index("async function loadTaskPromptHistory()")
     fn_body = html[idx : idx + 900]
     assert "prompt" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 258: Recent Task Errors ─────────────────────────────────────────────
+
+
+def test_p258_ui_recent_errors_card_present():
+    """recent-errors-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "recent-errors-card" in html
+
+
+def test_p258_ui_load_recent_errors_function_defined():
+    """loadRecentErrors() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRecentErrors()" in html
+
+
+def test_p258_ui_recent_errors_filters_failed():
+    """loadRecentErrors queries /tasks?status=failed."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadRecentErrors()")
+    fn_body = html[idx : idx + 800]
+    assert "failed" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 259: Threats by Type ────────────────────────────────────────────────
+
+
+def test_p259_ui_threats_by_type_card_present():
+    """threats-by-type-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threats-by-type-card" in html
+
+
+def test_p259_ui_load_threats_by_type_function_defined():
+    """loadThreatsByType() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadThreatsByType()" in html
+
+
+def test_p259_ui_threats_by_type_calls_threats_summary():
+    """loadThreatsByType calls /admin/threats/summary."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadThreatsByType()")
+    fn_body = html[idx : idx + 700]
+    assert "/admin/threats/summary" in fn_body
+
+
+# ── Phase 260: Document Ingest Status ─────────────────────────────────────────
+
+
+def test_p260_ui_ingest_status_card_present():
+    """ingest-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ingest-status-card" in html
+
+
+def test_p260_ui_load_ingest_status_function_defined():
+    """loadIngestStatus() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadIngestStatus()" in html
+
+
+def test_p260_ui_ingest_status_calls_documents():
+    """loadIngestStatus calls /documents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadIngestStatus()")
+    fn_body = html[idx : idx + 700]
+    assert "/documents" in fn_body
+
+
+# ── Phase 261: Available Agents ───────────────────────────────────────────────
+
+
+def test_p261_ui_agent_list_card_present():
+    """agent-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-list-card" in html
+
+
+def test_p261_ui_load_agent_list_function_defined():
+    """loadAgentList() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAgentList()" in html
+
+
+def test_p261_ui_agent_list_calls_agents():
+    """loadAgentList calls /agents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAgentList()")
+    fn_body = html[idx : idx + 700]
+    assert "/agents" in fn_body

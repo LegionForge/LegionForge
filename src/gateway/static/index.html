@@ -1233,6 +1233,46 @@
     </details>
   </div>
 
+  <!-- ── Recent Errors card (Phase 258) ───────────────────────── -->
+  <div class="card" id="recent-errors-card">
+    <details id="recent-errors-section">
+      <summary style="cursor:pointer">Recent Task Errors <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRecentErrors()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="recent-errors-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Threats by Type card (Phase 259) ─────────────────────── -->
+  <div class="card" id="threats-by-type-card">
+    <details id="threats-by-type-section">
+      <summary style="cursor:pointer">Threats by Type <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatsByType()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="threats-by-type-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Ingest Status card (Phase 260) ────────────────────────── -->
+  <div class="card" id="ingest-status-card">
+    <details id="ingest-status-section">
+      <summary style="cursor:pointer">Document Ingest Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadIngestStatus()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="ingest-status-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Agent List card (Phase 261) ──────────────────────────── -->
+  <div class="card" id="agent-list-card">
+    <details id="agent-list-section">
+      <summary style="cursor:pointer">Available Agents <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAgentList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="agent-list-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Session List card (Phase 254) ───────────────────────── -->
   <div class="card" id="session-list-card">
     <details id="session-list-section">
@@ -4777,6 +4817,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 258: Recent Task Errors ─────────────────────────────────────────────
+async function loadRecentErrors() {
+  const el = document.getElementById('recent-errors-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?status=failed&limit=15');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = 'No failed tasks found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Error</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Date</th></tr>' +
+      tasks.map(t => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(t.task_id||t.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.error||t.result||'unknown error'}</td>
+        <td style="padding:2px 4px">${(t.updated_at||t.created_at||'').slice(0,10)}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 259: Threats by Type ────────────────────────────────────────────────
+async function loadThreatsByType() {
+  const el = document.getElementById('threats-by-type-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/threats/summary');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const summary = typeof data === 'object' && !Array.isArray(data) ? data : {};
+    const entries = Object.entries(summary.by_type || summary);
+    if (!entries.length) { el.textContent = 'No threat data.'; return; }
+    el.innerHTML = entries
+      .sort((a, b) => (b[1] - a[1]))
+      .map(([type, count]) =>
+        `<div class="td-field"><span class="td-label">${type}</span><span class="td-value">${count}</span></div>`
+      ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 260: Document Ingest Status ─────────────────────────────────────────
+async function loadIngestStatus() {
+  const el = document.getElementById('ingest-status-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/documents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const docs = Array.isArray(data) ? data : (data.documents || data.items || []);
+    const total = docs.length;
+    const totalChunks = docs.reduce((s, d) => s + (d.chunk_count || 0), 0);
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Documents</span><span class="td-value">${total}</span></div>`,
+      `<div class="td-field"><span class="td-label">Total Chunks</span><span class="td-value">${totalChunks}</span></div>`,
+      total > 0 ? `<div class="td-field"><span class="td-label">Latest</span><span class="td-value">${docs[0].filename||docs[0].title||docs[0].id||'—'}</span></div>` : '',
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 261: Available Agents ───────────────────────────────────────────────
+async function loadAgentList() {
+  const el = document.getElementById('agent-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/agents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const agents = Array.isArray(data) ? data : (data.agents || []);
+    if (!agents.length) { el.textContent = 'No agents registered.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Type</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Model</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Description</th></tr>' +
+      agents.map(a => `<tr>
+        <td style="padding:2px 4px">${a.type||a.name||'?'}</td>
+        <td style="padding:2px 4px">${a.model||'—'}</td>
+        <td style="padding:2px 4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.description||''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 254: Session List ───────────────────────────────────────────────────
