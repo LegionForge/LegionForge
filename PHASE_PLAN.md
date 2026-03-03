@@ -1793,4 +1793,9 @@ Added as compact addendum. See git log for full details.
 | 148 | #141 | Task Attachments List (attachments-list-card, loadTaskAttachmentsList, GET /tasks/{id}/attachments) | +3 | 1207 |
 | 149 | #141 | Audit Log Event Filter (audit-filter-card, loadAuditFiltered, GET /admin/audit?event_type=X) | +3 | 1210 |
 
-**Current state:** 1210/1210 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 150 | #142 | Task Quick Clone (task-clone-card, cloneTask, GET /tasks/{id} → fill textarea + agent_type) | +3 | 1213 |
+| 151 | #142 | Gateway Health Card (gateway-health-card, loadGatewayHealth, GET /health, status color indicator) | +3 | 1216 |
+| 152 | #142 | Recent Tasks Live Refresh (recent-tasks-card, loadRecentTasks, GET /tasks?limit=5, status-colored rows) | +3 | 1219 |
+| 153 | #142 | Tag Cloud Explorer (tag-cloud-card, loadTagCloud, GET /tasks?limit=100, tag aggregation pill cloud) | +3 | 1222 |
+
+**Current state:** 1222/1222 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
