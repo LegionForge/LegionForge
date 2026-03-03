@@ -1927,5 +1927,13 @@ Added as compact addendum. See git log for full details.
 | 271 | #172 | Schedule List (schedule-list-card, loadScheduleList, GET /schedules?limit=20, name/cron/enabled/next_run table) | +3 | 1585 |
 | 272 | #172 | Task Notes by ID (notes-by-id-card, loadNotesById, GET /tasks/{id}/notes, card-per-note with timestamp) | +3 | 1588 |
 | 273 | #172 | Batch Status by Label (batch-by-id-card, loadBatchById, GET /tasks?label=X&limit=50, grouped by-status count) | +3 | 1591 |
+| 274 | #173 | Memory Store Info (memory-store-info-card, loadMemoryStoreInfo, GET /memory/stats, chunk count/docs/dims/model; renamed) | +3 | 1594 |
+| 275 | #173 | Webhook Deliveries (webhook-deliveries-card, loadWebhookDeliveries, GET /webhooks/{id}/deliveries, status/event/date table) | +3 | 1597 |
+| 276 | #173 | System Health (system-health-card, loadSystemHealth, GET /health, all fields with green/red colour coding) | +3 | 1600 |
+| 277 | #173 | Task Labels List (task-labels-list-card, loadTaskLabelsList, GET /tasks/{id}, labels/tags as pill chips; renamed) | +3 | 1603 |
+| 278 | #174 | Task Retry Log (retry-log-card, loadTaskRetryLog, GET /tasks/{id}, retry_count + status detail) | +3 | 1606 |
+| 279 | #174 | Cost Estimate (cost-estimate-card, loadCostEstimate, POST /tasks dry_run=true, estimated_tokens/cost) | +3 | 1609 |
+| 280 | #174 | Pipeline List (pipeline-list-card, loadPipelineList, GET /pipelines?limit=50, id/name/enabled/steps table) | +3 | 1612 |
+| 281 | #174 | Schedule Run Log (schedule-run-log-card, loadScheduleRunLog, GET /schedules/{id}/runs, run history table) | +3 | 1615 |
 
-**Current state:** 1591/1591 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1615/1615 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

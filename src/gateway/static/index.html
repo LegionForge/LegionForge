@@ -1233,6 +1233,48 @@
     </details>
   </div>
 
+  <!-- ── Annotation Summary card (Phase 282) ───────────────────── -->
+  <div class="card" id="annotation-summary-card">
+    <details id="annotation-summary-section">
+      <summary style="cursor:pointer">Annotation Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAnnotationSummary()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="annotation-summary-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document List card (Phase 283) ───────────────────── -->
+  <div class="card" id="document-list-card">
+    <details id="document-list-section">
+      <summary style="cursor:pointer">Document List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="document-list-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Batch Status card (Phase 284) ───────────────────── -->
+  <div class="card" id="batch-status-card">
+    <details id="batch-status-section">
+      <summary style="cursor:pointer">Batch Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadBatchStatus()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Label <input id="batch-status-label" class="input" style="width:160px;margin-left:6px" placeholder="batch-label"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadBatchStatus()">Load</button>
+        <div id="batch-status-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── API Usage Stats card (Phase 285) ───────────────────── -->
+  <div class="card" id="api-usage-stats-card">
+    <details id="api-usage-stats-section">
+      <summary style="cursor:pointer">API Usage Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadApiUsageStats()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="api-usage-stats-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Retry Log card (Phase 278) ───────────────────── -->
   <div class="card" id="retry-log-card">
     <details id="retry-log-section">
@@ -5044,6 +5086,100 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 282: Annotation Summary ──────────────────────────────────────────────
+async function loadAnnotationSummary() {
+  const el = document.getElementById('annotation-summary-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/annotations');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.annotations || data.items || []);
+    const total = items.length;
+    const thumbsUp = items.filter(a => a.rating === 1 || a.rating === 'up').length;
+    const thumbsDown = items.filter(a => a.rating === -1 || a.rating === 'down').length;
+    const rows = [
+      ['Total Annotations', total],
+      ['Thumbs Up', thumbsUp],
+      ['Thumbs Down', thumbsDown],
+      ['No Rating', total - thumbsUp - thumbsDown],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 283: Document List ──────────────────────────────────────────────
+async function loadDocumentList() {
+  const el = document.getElementById('document-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/documents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const docs = Array.isArray(data) ? data : (data.documents || data.items || []);
+    if (!docs.length) { el.textContent = 'No documents found.'; return; }
+    const cols = ['ID', 'Source', 'Chunks', 'Ingested'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const d of docs.slice(0, 20)) {
+      tbl += `<tr><td style="padding:2px 6px">${d.document_id ?? d.id ?? '—'}</td><td style="padding:2px 6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.source || d.filename || '—'}</td><td style="padding:2px 6px">${d.chunk_count ?? '—'}</td><td style="padding:2px 6px">${d.created_at ? d.created_at.slice(0, 10) : '—'}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 284: Batch Status ──────────────────────────────────────────────
+async function loadBatchStatus() {
+  const el = document.getElementById('batch-status-body');
+  const label = document.getElementById('batch-status-label').value.trim();
+  if (!label) { el.textContent = 'Enter a batch label.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?label=' + encodeURIComponent(label) + '&limit=100');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const counts = { pending: 0, running: 0, complete: 0, failed: 0, cancelled: 0 };
+    for (const t of tasks) counts[t.status] = (counts[t.status] || 0) + 1;
+    const rows = [
+      ['Label', label],
+      ['Total Tasks', tasks.length],
+      ...Object.entries(counts).filter(([, v]) => v > 0).map(([k, v]) => [k.charAt(0).toUpperCase() + k.slice(1), v]),
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 285: API Usage Stats ──────────────────────────────────────────────
+async function loadApiUsageStats() {
+  const el = document.getElementById('api-usage-stats-body');
+  el.textContent = 'Loading…';
+  try {
+    const [meR, histR] = await Promise.all([
+      apiFetch('/usage/me'),
+      apiFetch('/usage/history?days=7'),
+    ]);
+    if (!meR.ok) { el.textContent = 'HTTP ' + meR.status; return; }
+    const me = await meR.json();
+    const hist = histR.ok ? await histR.json() : [];
+    const days = Array.isArray(hist) ? hist : (hist.history || hist.items || []);
+    const weekTotal = days.reduce((s, d) => s + (d.tokens_used || d.total_tokens || 0), 0);
+    const rows = [
+      ['Daily Quota', me.quota_tokens != null ? me.quota_tokens : '—'],
+      ['Used Today', me.tokens_used != null ? me.tokens_used : '—'],
+      ['Remaining Today', me.tokens_remaining != null ? me.tokens_remaining : '—'],
+      ['7-Day Total', weekTotal],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 278: Task Retry Log ──────────────────────────────────────────────

@@ -17844,3 +17844,99 @@ def test_p281_ui_schedule_run_log_calls_schedules_runs():
     idx = html.index("async function loadScheduleRunLog()")
     fn_body = html[idx : idx + 800]
     assert "/runs" in fn_body
+
+
+# ── Phase 282: Annotation Summary ──────────────────────────────────────────────
+def test_p282_ui_annotation_summary_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="annotation-summary-card"' in html
+
+
+def test_p282_ui_annotation_summary_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAnnotationSummary()" in html
+
+
+def test_p282_ui_annotation_summary_calls_admin_annotations():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAnnotationSummary()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/annotations" in fn_body
+
+
+# ── Phase 283: Document List ──────────────────────────────────────────────────
+def test_p283_ui_document_list_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="document-list-card"' in html
+
+
+def test_p283_ui_document_list_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentList()" in html
+
+
+def test_p283_ui_document_list_calls_documents_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadDocumentList()")
+    fn_body = html[idx : idx + 800]
+    assert "/documents" in fn_body
+
+
+# ── Phase 284: Batch Status ──────────────────────────────────────────────────
+def test_p284_ui_batch_status_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="batch-status-card"' in html
+
+
+def test_p284_ui_batch_status_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBatchStatus()" in html
+
+
+def test_p284_ui_batch_status_calls_tasks_label_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadBatchStatus()")
+    fn_body = html[idx : idx + 800]
+    assert "label=" in fn_body
+
+
+# ── Phase 285: API Usage Stats ──────────────────────────────────────────────
+def test_p285_ui_api_usage_stats_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="api-usage-stats-card"' in html
+
+
+def test_p285_ui_api_usage_stats_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadApiUsageStats()" in html
+
+
+def test_p285_ui_api_usage_stats_calls_usage_me():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadApiUsageStats()")
+    fn_body = html[idx : idx + 900]
+    assert "/usage/me" in fn_body
