@@ -11639,3 +11639,86 @@ def test_p83_ui_agents_renders_description():
     fn_body = html[fn_start : fn_start + 800]
     assert "description" in fn_body
     assert "agent-type-badge" in fn_body
+
+
+# ── Phase 84 — Document Ingestor UI ───────────────────────────────────────────
+
+
+def test_p84_ui_ingestor_card_present():
+    """Phase 84 document ingestor card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ingestor-card" in html
+    assert "ingest-content" in html
+
+
+def test_p84_ui_ingest_document_function_defined():
+    """ingestDocument() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function ingestDocument(" in html
+
+
+def test_p84_ui_ingest_calls_documents_endpoint():
+    """ingestDocument() calls POST /documents/ingest."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function ingestDocument(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/documents/ingest" in fn_body
+    assert "POST" in fn_body
+
+
+def test_p84_ui_ingest_shows_chunk_count():
+    """ingestDocument() renders chunks_stored in the result span."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function ingestDocument(")
+    fn_body = html[fn_start : fn_start + 1500]
+    assert "chunks_stored" in fn_body
+
+
+# ── Phase 85 — Memory Search UI ───────────────────────────────────────────────
+
+
+def test_p85_ui_memory_search_card_present():
+    """Phase 85 memory search card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-search-card" in html
+    assert "memsearch-query" in html
+
+
+def test_p85_ui_search_memory_function_defined():
+    """searchMemory() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function searchMemory(" in html
+
+
+def test_p85_ui_search_calls_memory_endpoint():
+    """searchMemory() calls POST /memory/search."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchMemory(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/memory/search" in fn_body
+    assert "POST" in fn_body
+
+
+def test_p85_ui_search_renders_similarity_score():
+    """searchMemory() renders similarity scores in results."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchMemory(")
+    fn_body = html[fn_start : fn_start + 1500]
+    assert "similarity" in fn_body
+    assert "mem-result" in fn_body
