@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 174
+UPDATE: 175
 BRANCH: main
-COMMIT: da243ee
-TIMESTAMP: 2026-03-03T23:30Z
-LAST_OP: PR #139 — Phase 138-141 — Admin Stats, Share Revoke, Pipeline Runs, Task Annotation Viewer
-SMOKE_TESTS: 1185/1185
+COMMIT: 5e57bab
+TIMESTAMP: 2026-03-03T23:50Z
+LAST_OP: PR #140 — Phase 142-145 — Schedule Detail, Template Detail, Label Filter, Notes Browser
+SMOKE_TESTS: 1198/1198
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
