@@ -1184,6 +1184,59 @@
     </details>
   </div>
 
+  <!-- ── Bulk Delete Tasks card (Phase 198) ───────────────── -->
+  <div class="card" id="bulk-delete-card">
+    <details id="bulk-delete-section">
+      <summary style="cursor:pointer">Bulk Delete Tasks</summary>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-xdim)">Paste task IDs (one per line or comma-separated)</div>
+      <textarea id="bulk-delete-ids" rows="3" placeholder="UUID1&#10;UUID2&#10;UUID3" style="width:100%;margin-top:4px;font-size:11px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <button class="btn danger" style="font-size:11px;padding:3px 8px" onclick="bulkDeleteTasks()">🗑 Delete All</button>
+        <span id="bulk-delete-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Shares Viewer card (Phase 199) ───────────────── -->
+  <div class="card" id="task-shares-card">
+    <details id="task-shares-section">
+      <summary style="cursor:pointer">Task Share Links</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-shares-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskShares()">↻ Load</button>
+      </div>
+      <div id="task-shares-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Attachments card (Phase 200) ─────────────────── -->
+  <div class="card" id="task-attachments-card">
+    <details id="task-attachments-section">
+      <summary style="cursor:pointer">Task Attachments</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-attachments-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskAttachments()">↻ Load</button>
+      </div>
+      <div id="task-attachments-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Bulk Tag Tasks card (Phase 201) ───────────────────── -->
+  <div class="card" id="bulk-tag-card">
+    <details id="bulk-tag-section">
+      <summary style="cursor:pointer">Bulk Tag Tasks</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="bulk-tag-name" placeholder="Tag name" style="width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+      </div>
+      <div style="margin-top:4px;font-size:11px;color:var(--text-xdim)">Task IDs (one per line or comma-separated)</div>
+      <textarea id="bulk-tag-ids" rows="3" placeholder="UUID1&#10;UUID2" style="width:100%;margin-top:4px;font-size:11px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="bulkTagTasks()">🏷 Apply Tag</button>
+        <span id="bulk-tag-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Result Length Analyzer card (Phase 194) ──────────── -->
   <div class="card" id="result-length-card">
     <details id="result-length-section">
@@ -4112,6 +4165,87 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 198: Bulk Delete Tasks ──────────────────────────────────────────────
+async function bulkDeleteTasks() {
+  const raw = document.getElementById('bulk-delete-ids').value;
+  const ids = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  if (!ids.length) { setEl('bulk-delete-status', 'No IDs entered.'); return; }
+  const confirmed = confirm(`Delete ${ids.length} task(s)? This cannot be undone.`);
+  if (!confirmed) { setEl('bulk-delete-status', 'Cancelled.'); return; }
+  setEl('bulk-delete-status', `Deleting ${ids.length} task(s)…`);
+  let ok = 0, fail = 0;
+  await Promise.all(ids.map(async id => {
+    try {
+      const r = await apiFetch('/tasks/' + id, { method: 'DELETE' });
+      if (r.ok) ok++; else fail++;
+    } catch { fail++; }
+  }));
+  setEl('bulk-delete-status', `✓ Deleted: ${ok}  ✗ Failed: ${fail}`);
+}
+
+// ── Phase 199: Task Share Links ───────────────────────────────────────────────
+async function loadTaskShares() {
+  const id = document.getElementById('task-shares-id').value.trim();
+  const el = document.getElementById('task-shares-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + id + '/shares');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const shares = Array.isArray(data) ? data : (data.shares || []);
+    if (!shares.length) { el.textContent = 'No share links found for this task.'; return; }
+    el.innerHTML = shares.map(s => {
+      const url = s.share_url || s.url || ('/shared/' + (s.share_token || s.token || ''));
+      return `<div style="margin-bottom:4px"><a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">${url}</a></div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 200: Task Attachments ───────────────────────────────────────────────
+async function loadTaskAttachments() {
+  const id = document.getElementById('task-attachments-id').value.trim();
+  const el = document.getElementById('task-attachments-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + id + '/attachments');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.attachments || []);
+    if (!items.length) { el.textContent = 'No attachments for this task.'; return; }
+    el.innerHTML = items.map(a => {
+      const name = a.filename || a.name || a.attachment_id || 'file';
+      const size = a.size_bytes ? ` (${(a.size_bytes/1024).toFixed(1)} KB)` : '';
+      return `<div style="margin-bottom:4px;font-size:12px">📎 <strong>${name}</strong>${size}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 201: Bulk Tag Tasks ─────────────────────────────────────────────────
+async function bulkTagTasks() {
+  const tag = document.getElementById('bulk-tag-name').value.trim();
+  const raw = document.getElementById('bulk-tag-ids').value;
+  const ids = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  const statusEl = document.getElementById('bulk-tag-status');
+  if (!tag) { statusEl.textContent = 'Enter a tag name.'; return; }
+  if (!ids.length) { statusEl.textContent = 'No IDs entered.'; return; }
+  statusEl.textContent = `Tagging ${ids.length} task(s)…`;
+  try {
+    const r = await apiFetch('/tasks/bulk/tag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_ids: ids, tag }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      statusEl.textContent = `✓ Tagged ${d.updated ?? ids.length} task(s) with "${tag}"`;
+    } else {
+      statusEl.textContent = 'HTTP ' + r.status;
+    }
+  } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 194: Result Length Analyzer ─────────────────────────────────────────

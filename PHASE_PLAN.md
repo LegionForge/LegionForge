@@ -1847,5 +1847,9 @@ Added as compact addendum. See git log for full details.
 | 191 | #152 | Schedule Enable/Disable (schedule-toggle-card, toggleScheduleEnabled, PUT /schedules/{id} enabled) | +3 | 1345 |
 | 192 | #152 | Task Notes Export (notes-export-card, exportTaskNotes, GET notes, Blob .txt download numbered) | +3 | 1348 |
 | 193 | #152 | Annotation Stats (annotation-stats-card, loadAnnotationStats, 👍/👎/neutral count + pct) | +3 | 1351 |
+| 194 | #153 | Result Length Analyzer (result-length-card, checkResultLength, chars/words/lines/estTokens) | +3 | 1354 |
+| 195 | #153 | Agent/Model List (ollama-models-card, loadOllamaModels, GET /agents, type+model+desc) | +3 | 1357 |
+| 196 | #153 | Task Sources Viewer (task-sources-card, loadTaskSources, sources[] as anchor links) | +3 | 1360 |
+| 197 | #153 | Quick Agent Run (quick-agent-card, quickAgentRun, POST /tasks, preset agent dropdown) | +3 | 1363 |
 
-**Current state:** 1351/1351 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1363/1363 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

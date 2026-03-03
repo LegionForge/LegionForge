@@ -15428,3 +15428,119 @@ def test_p197_ui_quick_agent_has_preset_options():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "quick-agent-type" in html and "researcher" in html and "analyst" in html
+
+
+# ── Phase 198: Bulk Delete Tasks ──────────────────────────────────────────────
+
+
+def test_p198_ui_bulk_delete_card_present():
+    """bulk-delete-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "bulk-delete-card" in html
+
+
+def test_p198_ui_bulk_delete_function_defined():
+    """bulkDeleteTasks function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function bulkDeleteTasks()" in html
+
+
+def test_p198_ui_bulk_delete_uses_delete_endpoint():
+    """bulkDeleteTasks calls DELETE /tasks/ endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function bulkDeleteTasks()")
+    fn_body = html[idx : idx + 800]
+    assert "DELETE" in fn_body and "/tasks/" in fn_body
+
+
+# ── Phase 199: Task Share Links ───────────────────────────────────────────────
+
+
+def test_p199_ui_task_shares_card_present():
+    """task-shares-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-shares-card" in html
+
+
+def test_p199_ui_load_task_shares_function_defined():
+    """loadTaskShares function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskShares()" in html
+
+
+def test_p199_ui_task_shares_hits_shares_endpoint():
+    """loadTaskShares fetches /shares endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskShares()")
+    fn_body = html[idx : idx + 800]
+    assert "/shares" in fn_body
+
+
+# ── Phase 200: Task Attachments ───────────────────────────────────────────────
+
+
+def test_p200_ui_task_attachments_card_present():
+    """task-attachments-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-attachments-card" in html
+
+
+def test_p200_ui_load_task_attachments_function_defined():
+    """loadTaskAttachments function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskAttachments()" in html
+
+
+def test_p200_ui_task_attachments_hits_attachments_endpoint():
+    """loadTaskAttachments fetches /attachments endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskAttachments()")
+    fn_body = html[idx : idx + 700]
+    assert "/attachments" in fn_body
+
+
+# ── Phase 201: Bulk Tag Tasks ─────────────────────────────────────────────────
+
+
+def test_p201_ui_bulk_tag_card_present():
+    """bulk-tag-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "bulk-tag-card" in html
+
+
+def test_p201_ui_bulk_tag_tasks_function_defined():
+    """bulkTagTasks function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function bulkTagTasks()" in html
+
+
+def test_p201_ui_bulk_tag_uses_bulk_tag_endpoint():
+    """bulkTagTasks posts to /tasks/bulk/tag endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function bulkTagTasks()")
+    fn_body = html[idx : idx + 700]
+    assert "bulk/tag" in fn_body
