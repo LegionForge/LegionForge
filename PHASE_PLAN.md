@@ -1828,4 +1828,9 @@ Added as compact addendum. See git log for full details.
 | 176 | #148 | Task JSON Inspector (task-json-card, inspectTaskJson, JSON.stringify null 2 pretty-print in pre) | +3 | 1298 |
 | 177 | #148 | Pipeline Run Detail (pipeline-run-detail-card, loadPipelineRunDetail, GET /pipelines/runs/{id}) | +3 | 1301 |
 
-**Current state:** 1301/1301 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 178 | #149 | Quick Template Apply (template-apply-card, applyTemplate, fills textarea + onTaskInput, template-apply-sel) | +4 | 1305 |
+| 179 | #149 | Task Stats Mini Dashboard (task-stats-mini-card, loadTaskStatsMini, GET /tasks/stats, ▓/░ bar chart) | +3 | 1308 |
+| 180 | #149 | Agent Error Log (agent-errors-card, loadAgentErrors, GET /tasks?status=failed, error + timestamp) | +3 | 1311 |
+| 181 | #149 | Session Task Count (session-tasks-count-card, refreshSessionBadge, GET /sessions/{id}/tasks, breakdown) | +3 | 1314 |
+
+**Current state:** 1314/1314 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

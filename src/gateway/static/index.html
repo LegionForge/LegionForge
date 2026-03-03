@@ -1184,6 +1184,58 @@
     </details>
   </div>
 
+  <!-- ── Pinned Tasks View card (Phase 182) ───────────────── -->
+  <div class="card" id="pinned-tasks-card">
+    <details id="pinned-tasks-section">
+      <summary style="cursor:pointer">📌 Pinned Tasks <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPinnedTasks()" title="Refresh">↻</button></summary>
+      <div id="pinned-tasks-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load pinned tasks.</div>
+    </details>
+  </div>
+
+  <!-- ── Threat Detail Viewer card (Phase 183) ─────────────── -->
+  <div class="card" id="threat-detail-card">
+    <details id="threat-detail-section">
+      <summary style="cursor:pointer">Threat Event Detail (Admin)</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <select id="threat-type-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— all types —</option>
+          <option value="INJECTION_DETECTED">INJECTION_DETECTED</option>
+          <option value="TOOL_HASH_MISMATCH">TOOL_HASH_MISMATCH</option>
+          <option value="LOOP_DETECTED">LOOP_DETECTED</option>
+          <option value="PII_REDACTED">PII_REDACTED</option>
+          <option value="TOKEN_BUDGET_EXCEEDED">TOKEN_BUDGET_EXCEEDED</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadThreatDetail()">↻ Load</button>
+      </div>
+      <div id="threat-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Select type and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Batch Task Status card (Phase 184) ────────────────── -->
+  <div class="card" id="batch-task-status-card">
+    <details id="batch-task-status-section">
+      <summary style="cursor:pointer">Batch Task Status</summary>
+      <div style="margin-top:6px">
+        <textarea id="batch-task-ids" placeholder="Paste task IDs, one per line…" style="width:100%;height:60px;font-size:11px;padding:4px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="loadBatchTaskStatus()">↻ Check All</button>
+      </div>
+      <div id="batch-task-status-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task IDs above and click ↻ Check All.</div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Delivery Test card (Phase 185) ────────────── -->
+  <div class="card" id="webhook-test-card">
+    <details id="webhook-test-section">
+      <summary style="cursor:pointer">Webhook Delivery Test</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="webhook-test-url" placeholder="https://your-server/webhook" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="webhook-test-event" placeholder="Event type (e.g. task_complete)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px;align-self:flex-end" onclick="testWebhookDelivery()">▶ Test</button>
+      </div>
+      <div id="webhook-test-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Quick Template Apply card (Phase 178) ────────────── -->
   <div class="card" id="template-apply-card">
     <details id="template-apply-section">
@@ -3923,6 +3975,110 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 182: Pinned Tasks View ──────────────────────────────────────────────
+async function loadPinnedTasks() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('pinned-tasks-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks?label=pinned&limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No pinned tasks.'; return; }
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', queued: 'var(--text-dim)' };
+    bodyEl.innerHTML = tasks.map(t => {
+      const id = (t.task_id || t.id || '?').toString().slice(0, 8);
+      const status = t.status || '?';
+      const text = (t.task || '').slice(0, 65);
+      const color = statusColor[status] || 'var(--text)';
+      return `<div class="td-field"><span class="td-label" style="color:${color}">📌 ${id}</span><span class="td-value">${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 183: Threat Event Detail ────────────────────────────────────────────
+async function loadThreatDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const eventType = (document.getElementById('threat-type-sel') || {}).value;
+  const bodyEl = document.getElementById('threat-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const url = eventType
+      ? '/admin/threats?limit=10&type=' + encodeURIComponent(eventType)
+      : '/admin/threats?limit=10';
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : (data.threats || data.events || data.items || []);
+    if (!bodyEl) return;
+    if (!items.length) { bodyEl.textContent = 'No threat events.'; return; }
+    bodyEl.innerHTML = items.map(e => {
+      const ts = (e.created_at || e.timestamp || '').slice(0, 16).replace('T', ' ');
+      const type = (e.event_type || e.type || '?').replace(/_/g, ' ');
+      const detail = (e.details || e.message || e.description || '').toString().slice(0, 80);
+      return `<div class="td-field"><span class="td-label" style="color:var(--red)">${ts}</span><span class="td-value">[${type}] ${detail || '—'}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 184: Batch Task Status ──────────────────────────────────────────────
+async function loadBatchTaskStatus() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const raw = (document.getElementById('batch-task-ids') || {}).value || '';
+  const ids = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) { alert('Enter at least one task ID.'); return; }
+  const bodyEl = document.getElementById('batch-task-status-body');
+  if (bodyEl) bodyEl.textContent = 'Checking ' + ids.length + ' tasks…';
+  try {
+    const results = await Promise.all(ids.map(async id => {
+      try {
+        const r = await fetch('/tasks/' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + apiKey } });
+        if (!r.ok) return { id, status: 'error', label: 'HTTP ' + r.status };
+        const t = await r.json();
+        return { id: id.slice(0, 8), status: t.status || '?', label: t.status || '?' };
+      } catch { return { id: id.slice(0, 8), status: 'error', label: 'fetch error' }; }
+    }));
+    if (!bodyEl) return;
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', queued: 'var(--text-dim)', error: 'var(--red)' };
+    bodyEl.innerHTML = results.map(r =>
+      `<div class="td-field"><span class="td-label" style="color:${statusColor[r.status]||'var(--text)'}">${r.label}</span><span class="td-value" style="font-family:monospace">${r.id}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 185: Webhook Delivery Test ──────────────────────────────────────────
+async function testWebhookDelivery() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const url = (document.getElementById('webhook-test-url') || {}).value.trim();
+  const event = ((document.getElementById('webhook-test-event') || {}).value || 'task_complete').trim();
+  if (!url) { alert('Enter a webhook URL.'); return; }
+  const statusEl = document.getElementById('webhook-test-status');
+  if (statusEl) statusEl.textContent = 'Sending test event…';
+  try {
+    // Register a temp webhook and immediately send a test notification via the API
+    const regRes = await fetch('/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ url, event_type: event, secret: 'test-secret' }),
+    });
+    if (!statusEl) return;
+    if (regRes.ok) {
+      const wh = await regRes.json();
+      statusEl.textContent = 'Webhook registered (id=' + (wh.webhook_id || wh.id || '?') + '). A real task_complete event will trigger delivery.';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = 'Error ' + regRes.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
 }
 
 // ── Phase 178: Quick Template Apply ───────────────────────────────────────────

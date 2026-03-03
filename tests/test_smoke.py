@@ -14958,3 +14958,117 @@ def test_p181_ui_session_badge_uses_sessions_tasks_endpoint():
     fn_start = html.find("function refreshSessionBadge(")
     fn_body = html[fn_start : fn_start + 900]
     assert "/sessions/" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 182: Pinned Tasks View ──────────────────────────────────────────────
+
+
+def test_p182_ui_pinned_tasks_card_present():
+    """#pinned-tasks-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pinned-tasks-card" in html
+
+
+def test_p182_ui_load_pinned_tasks_function_defined():
+    """loadPinnedTasks() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPinnedTasks(" in html
+
+
+def test_p182_ui_pinned_tasks_fetches_label_pinned():
+    """loadPinnedTasks() uses ?label=pinned filter."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPinnedTasks(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "label=pinned" in fn_body
+
+
+# ── Phase 183: Threat Event Detail ────────────────────────────────────────────
+
+
+def test_p183_ui_threat_detail_card_present():
+    """#threat-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threat-detail-card" in html
+
+
+def test_p183_ui_load_threat_detail_function_defined():
+    """loadThreatDetail() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadThreatDetail(" in html
+
+
+def test_p183_ui_threat_type_select_has_options():
+    """#threat-type-sel has threat event type options."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threat-type-sel" in html and "INJECTION_DETECTED" in html
+
+
+# ── Phase 184: Batch Task Status ──────────────────────────────────────────────
+
+
+def test_p184_ui_batch_task_status_card_present():
+    """#batch-task-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-task-status-card" in html
+
+
+def test_p184_ui_load_batch_task_status_function_defined():
+    """loadBatchTaskStatus() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadBatchTaskStatus(" in html
+
+
+def test_p184_ui_batch_status_uses_promise_all():
+    """loadBatchTaskStatus() fetches in parallel with Promise.all."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadBatchTaskStatus(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "Promise.all" in fn_body
+
+
+# ── Phase 185: Webhook Delivery Test ──────────────────────────────────────────
+
+
+def test_p185_ui_webhook_test_card_present():
+    """#webhook-test-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-test-card" in html
+
+
+def test_p185_ui_test_webhook_delivery_function_defined():
+    """testWebhookDelivery() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function testWebhookDelivery(" in html
+
+
+def test_p185_ui_webhook_test_registers_webhook():
+    """testWebhookDelivery() calls POST /webhooks to register."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function testWebhookDelivery(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "/webhooks" in fn_body and "POST" in fn_body
