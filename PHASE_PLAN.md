@@ -1693,5 +1693,15 @@ Added as compact addendum. See git log for full details.
 | — | #90 | Bug fixes: task failures, DB init, web fetch, TestLab LAN | +0 | 828 |
 | 58 | #99 | Model Selection per Task (ContextVar, Fast/Balanced/Powerful) | +8 | 836 |
 | 59 | #100 | Task Rating & Feedback (thumbs up/down, /annotate endpoints) | +10 | 846 |
+| 60 | #101 | Documentation Update (PHASE_PLAN.md addendum Phases 17–59) | +0 | 846 |
+| 61 | #102 | Prompt Templates UI (save/load/delete backed by Phase 50 API) | +10 | 856 |
+| 62 | #103 | Task Search UI (search card, 400ms debounce, GET /tasks?q=) | +6 | 862 |
+| 63 | #104 | Usage Summary in Web UI (today's token count in footer) | +5 | 867 |
+| 64 | #105 | Markdown Rendering in Output (marked.js, renderMarkdown, appendResult) | +7 | 874 |
+| 65-67 | #106 | Copy Result, Keyboard Shortcuts, Syntax Highlighting | +12 | 886 |
+| 68 | #107 | Task Pinning / Starring (toggleStar, starred label, sort) | +6 | 892 |
+| 69 | #108 | Streaming Token Output + pytest-timeout fix | +8 | 900 |
+| 70 | #109 | File Attachment on Tasks (FileReader, attachment_text, inject) | +8 | 908 |
+| 71 | #110 | Agent Self-Verification Loop (verify_node, MAX_VERIFY_ROUNDS=1) | +6 | 914 |
 
-**Current state:** 846/846 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 914/914 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
