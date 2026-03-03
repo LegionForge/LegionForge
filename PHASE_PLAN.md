@@ -1788,4 +1788,9 @@ Added as compact addendum. See git log for full details.
 | 144 | #140 | Task Label Filter (label-filter-card, loadTasksByLabel, GET /tasks?label=X, 4 preset labels) | +3 | 1195 |
 | 145 | #140 | Task Notes Browser (notes-browser-card, browseTaskNotes, GET /tasks/{id}/notes, standalone viewer) | +3 | 1198 |
 
-**Current state:** 1198/1198 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 146 | #141 | Provider Usage Breakdown (provider-usage-card, loadProviderUsage, GET /usage/me, per-provider tokens) | +3 | 1201 |
+| 147 | #141 | Task Timeline Standalone (task-timeline-card, loadTaskTimeline, GET /tasks/{id}/timeline, event-type rows) | +3 | 1204 |
+| 148 | #141 | Task Attachments List (attachments-list-card, loadTaskAttachmentsList, GET /tasks/{id}/attachments) | +3 | 1207 |
+| 149 | #141 | Audit Log Event Filter (audit-filter-card, loadAuditFiltered, GET /admin/audit?event_type=X) | +3 | 1210 |
+
+**Current state:** 1210/1210 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
