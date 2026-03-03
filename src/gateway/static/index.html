@@ -548,11 +548,11 @@
 
 </div><!-- #app -->
 
-<div id="version-footer">LegionForge <span id="footer-version">…</span></div>
+<div id="version-footer">LegionForge <span id="footer-version">…</span> · <span id="footer-usage" style="display:none">Today: <span id="footer-usage-today">—</span> tok</span></div>
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  LegionForge Web UI — Phase 62
+//  LegionForge Web UI — Phase 63
 //  Vanilla JS, no framework, single file.
 // ════════════════════════════════════════════════════════════════
 
@@ -616,7 +616,7 @@ const el = {
     else   localStorage.removeItem(APIKEY_KEY);
   });
   el.apiKey().addEventListener('blur', () => {
-    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); }
+    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); loadUsage(); }
   });
 
   // Load sessions + templates on startup if key is already saved
@@ -634,6 +634,9 @@ const el = {
     const v = d.version || '';
     if (v) document.getElementById('footer-version').textContent = 'v' + v;
   }).catch(() => {});
+
+  // Phase 63: load today's usage counter if API key is available
+  if (saved) loadUsage();
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
@@ -670,6 +673,26 @@ async function rateTask(taskId, rating) {
     if (upBtn)   upBtn.classList.toggle('rated',   rating === 1);
     if (downBtn) downBtn.classList.toggle('rated', rating === -1);
   } catch (_) { /* silent */ }
+}
+
+// ── Usage summary (Phase 63) ─────────────────────────────────────
+async function loadUsage() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    const res = await fetch('/usage/history?days=1', {
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const todayTok = (data.totals && data.totals.grand_total) || 0;
+    const el2 = document.getElementById('footer-usage');
+    const el3 = document.getElementById('footer-usage-today');
+    if (el2 && el3) {
+      el3.textContent = todayTok.toLocaleString();
+      el2.style.display = '';
+    }
+  } catch (_) {}
 }
 
 // ── Task search (Phase 62) ────────────────────────────────────────
@@ -1471,6 +1494,9 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
 
   // Refresh session list to update turn counts after a session task completes
   if (S.sessionId) loadSessions();
+
+  // Phase 63: refresh today's usage counter after every task
+  loadUsage();
 }
 
 // ── Cancel task ───────────────────────────────────────────────────

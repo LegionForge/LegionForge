@@ -10467,3 +10467,50 @@ def test_p62_tasks_list_endpoint_has_q_param():
     # The list_user_tasks function signature should include `q`
     source = inspect.getsource(tasks)
     assert "q: str | None" in source or "q=Query" in source or "q: str" in source
+
+
+# ── Phase 63: Usage Summary in Web UI ────────────────────────────────────────
+
+
+def test_p63_ui_has_load_usage():
+    """Web UI defines loadUsage() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadUsage" in html
+
+
+def test_p63_ui_has_footer_usage_element():
+    """Web UI has footer-usage span for today's token count."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "footer-usage" in html
+    assert "footer-usage-today" in html
+
+
+def test_p63_ui_usage_fetches_from_history():
+    """Web UI loadUsage() calls /usage/history endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "/usage/history" in html
+
+
+def test_p63_usage_history_route_exists():
+    """GET /usage/history route is registered in gateway app."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any(
+        "usage" in p and "history" in p for p in paths
+    ), f"No /usage/history route in {paths}"
+
+
+def test_p63_ui_load_usage_called_on_init():
+    """Web UI calls loadUsage() at init when API key is saved."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # loadUsage() should appear at least 3 times: definition + init + blur + finishRun
+    assert html.count("loadUsage") >= 3
