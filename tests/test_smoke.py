@@ -10412,3 +10412,58 @@ def test_p61_templates_delete_route_registered():
 
     paths = [r.path for r in app.routes]
     assert any("{template_id}" in p and "templates" in p for p in paths)
+
+
+# ── Phase 62: Task Search UI ──────────────────────────────────────────────────
+
+
+def test_p62_ui_has_search_section():
+    """Web UI includes the task search collapsible section."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "search-section" in html
+    assert "search-q" in html
+
+
+def test_p62_ui_has_do_search():
+    """Web UI defines doSearch() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "doSearch" in html
+
+
+def test_p62_ui_has_render_search_results():
+    """Web UI defines renderSearchResults() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "renderSearchResults" in html
+
+
+def test_p62_ui_has_load_search_result():
+    """Web UI defines loadSearchResult() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSearchResult" in html
+
+
+def test_p62_ui_search_uses_q_param():
+    """Web UI search calls /tasks?q= with the user's search term."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "/tasks?q=" in html
+
+
+def test_p62_tasks_list_endpoint_has_q_param():
+    """GET /tasks endpoint supports q= substring search param."""
+    import inspect
+
+    from src.gateway.routes import tasks
+
+    # The list_user_tasks function signature should include `q`
+    source = inspect.getsource(tasks)
+    assert "q: str | None" in source or "q=Query" in source or "q: str" in source

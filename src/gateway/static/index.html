@@ -321,6 +321,31 @@
     .history-item .hi-tokens { color: var(--text-xdim); text-align: right; font-size: 10px; }
     #history-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
 
+    /* ── Task search (Phase 62) ─────────────────────────────────── */
+    #search-section summary {
+      cursor: pointer; user-select: none;
+      color: var(--text); font-size: 13px; font-weight: 600;
+      list-style: none; padding: 4px 0;
+    }
+    #search-section summary::before { content: '▶ '; font-size: 9px; }
+    #search-section[open] summary::before { content: '▼ '; }
+    #search-input-row { display: flex; gap: 6px; margin-top: 8px; }
+    #search-q { flex: 1; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font-size: 12px; }
+    #search-q:focus { border-color: var(--blue); outline: none; }
+    #search-results { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .sr-item {
+      display: grid; grid-template-columns: 10px 70px 80px 1fr 55px; gap: 6px;
+      align-items: center; padding: 5px 8px; background: var(--panel2);
+      border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .sr-item:hover { border-color: var(--blue); }
+    .sr-item .sr-badge { width:8px;height:8px;border-radius:50%; }
+    .sr-item .sr-id    { color: var(--text-dim); }
+    .sr-item .sr-agent { color: var(--purple); }
+    .sr-item .sr-input { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .sr-item .sr-date  { color: var(--text-xdim); text-align: right; }
+    #search-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
+
     /* ── Templates (Phase 61) ───────────────────────────────────── */
     #tmpl-section summary {
       cursor: pointer; user-select: none;
@@ -484,6 +509,20 @@
     <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
   </div>
 
+  <!-- ── Task Search (Phase 62) ──────────────────────────── -->
+  <div class="card">
+    <details id="search-section">
+      <summary>Search Tasks</summary>
+      <div id="search-input-row">
+        <input id="search-q" type="search" placeholder="Search past tasks…" oninput="onSearchInput(this.value)" onkeydown="if(event.key==='Enter')doSearch()">
+        <button class="btn ghost" style="font-size:11px;" onclick="doSearch()">Search</button>
+      </div>
+      <div id="search-results">
+        <div id="search-empty" style="display:none">No results.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Templates (Phase 61) ───────────────────────────── -->
   <div class="card">
     <details id="tmpl-section">
@@ -513,7 +552,7 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  LegionForge Web UI — Phase 61
+//  LegionForge Web UI — Phase 62
 //  Vanilla JS, no framework, single file.
 // ════════════════════════════════════════════════════════════════
 
@@ -631,6 +670,78 @@ async function rateTask(taskId, rating) {
     if (upBtn)   upBtn.classList.toggle('rated',   rating === 1);
     if (downBtn) downBtn.classList.toggle('rated', rating === -1);
   } catch (_) { /* silent */ }
+}
+
+// ── Task search (Phase 62) ────────────────────────────────────────
+let _searchDebounce = null;
+
+function onSearchInput(val) {
+  clearTimeout(_searchDebounce);
+  if (val.trim().length < 2) { clearSearchResults(); return; }
+  _searchDebounce = setTimeout(() => doSearch(), 400);
+}
+
+function clearSearchResults() {
+  const res = $('search-results');
+  if (!res) return;
+  res.querySelectorAll('.sr-item').forEach(n => n.remove());
+  $('search-empty').style.display = 'none';
+}
+
+async function doSearch() {
+  const apiKey = el.apiKey().value.trim();
+  const q = ($('search-q') || {}).value?.trim();
+  if (!apiKey || !q || q.length < 2) return;
+  clearSearchResults();
+  try {
+    const res = await fetch('/tasks?q=' + encodeURIComponent(q) + '&limit=10', {
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderSearchResults(data.tasks || []);
+  } catch (_) {}
+}
+
+function renderSearchResults(tasks) {
+  const container = $('search-results');
+  const empty = $('search-empty');
+  container.querySelectorAll('.sr-item').forEach(n => n.remove());
+  if (!tasks.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tasks.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'sr-item';
+    div.title = t.input || '';
+    div.onclick = () => loadSearchResult(t);
+    const badgeCls = t.status === 'complete' ? 'complete'
+                   : t.status === 'failed'   ? 'error'
+                   : t.status === 'running'  ? 'running'
+                   : 'queued';
+    const shortId = (t.task_id || '').slice(0, 8);
+    const dateStr = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+    div.innerHTML =
+      '<span class="hi-badge ' + badgeCls + '"></span>' +
+      '<span class="sr-id">' + escapeHtml(shortId) + '…</span>' +
+      '<span class="sr-agent">' + escapeHtml(t.agent_type || '') + '</span>' +
+      '<span class="sr-input">' + escapeHtml((t.input || '').slice(0, 100)) + '</span>' +
+      '<span class="sr-date">' + escapeHtml(dateStr) + '</span>';
+    container.appendChild(div);
+  });
+}
+
+function loadSearchResult(task) {
+  el.taskInput().value = task.input || '';
+  onTaskInput(el.taskInput());
+  if (task.agent_type) el.agentType().value = task.agent_type;
+  clearOutput();
+  if (task.result) {
+    appendHTML('<span class="o-result">' + escapeHtml((task.result || '').trim()) + '</span>');
+    appendSpan('\n[restored from search: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
+  } else {
+    appendSpan('[task: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
+  }
+  el.taskInput().focus();
 }
 
 // ── Prompt templates (Phase 61) ───────────────────────────────────
