@@ -1758,4 +1758,9 @@ Added as compact addendum. See git log for full details.
 | 120 | #134 | Admin User Actions (admin-user-actions-card, adminDeactivateUser/adminSetQuota, DELETE+PUT /admin/users) | +4 | 1115 |
 | 121 | #134 | Schedule Edit UI (schedule-edit-card, editSchedule, PUT /schedules/{id}, cron+name+enabled) | +4 | 1119 |
 
-**Current state:** 1119/1119 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 122 | #135 | Pipeline Run Detail (pipeline-run-detail-card, loadPipelineRunDetail, GET /pipelines/runs/{id}) | +3 | 1122 |
+| 123 | #135 | A2A Task Submit (a2a-submit-card, submitA2ATask, POST /a2a/tasks, A2A message format) | +4 | 1126 |
+| 124 | #135 | Admin Privilege Toggle (admin-toggle-card, toggleUserAdmin, PUT /admin/users/{u}/admin) | +3 | 1129 |
+| 125 | #135 | Admin Schedules Viewer (admin-schedules-card, loadAdminSchedules, GET /admin/schedules) | +3 | 1132 |
+
+**Current state:** 1132/1132 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
