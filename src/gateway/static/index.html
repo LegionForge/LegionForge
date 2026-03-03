@@ -100,6 +100,19 @@
     .audit-type { color:var(--blue); font-family:var(--mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .audit-ts { color:var(--text-xdim); font-size:10px; text-align:right; }
     .sched-name { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* ── Phase 92: Webhook Management ───────────────────────── */
+    .wh-row { display:grid; grid-template-columns:1fr 90px 60px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .wh-row:last-child { border-bottom:none; }
+    .wh-url { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:var(--mono); }
+    .wh-events { color:var(--text-dim); font-size:10px; }
+    /* ── Phase 93: User Preferences ─────────────────────────── */
+    .pref-row { display:grid; grid-template-columns:130px 1fr 40px; gap:6px; align-items:center; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .pref-row:last-child { border-bottom:none; }
+    .pref-key { color:var(--text-dim); font-family:var(--mono); font-size:10px; }
+    /* ── Phase 94: Admin Annotations Viewer ─────────────────── */
+    .annot-row { display:grid; grid-template-columns:70px 80px 1fr; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .annot-row:last-child { border-bottom:none; }
+    .annot-rating { font-size:14px; text-align:center; }
     .sched-cron { color:var(--text-dim); font-size:11px; }
     .sched-next { color:var(--text-xdim); font-size:11px; }
     .sched-enabled { color:var(--green); text-align:center; }
@@ -828,6 +841,39 @@
     <details id="tool-registry-section">
       <summary style="cursor:pointer">Tool Registry <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTools(event)" title="Refresh">↻</button></summary>
       <div id="tools-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load tool registry.</div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Management card (Phase 92) ──────────────────── -->
+  <div class="card" id="webhooks-card">
+    <details id="webhooks-section">
+      <summary style="cursor:pointer">Webhooks <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhooks(event)" title="Refresh">↻</button></summary>
+      <div id="webhooks-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load webhooks.</div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2);display:flex;gap:6px;flex-wrap:wrap">
+        <input id="wh-url-input" type="url" placeholder="https://example.com/hook" style="flex:1;min-width:180px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="registerWebhook()">+ Register</button>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Preferences card (Phase 93) ─────────────────────── -->
+  <div class="card" id="preferences-card">
+    <details id="preferences-section">
+      <summary style="cursor:pointer">User Preferences <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPreferences(event)" title="Refresh">↻</button></summary>
+      <div id="prefs-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load preferences.</div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2);display:flex;gap:6px;flex-wrap:wrap">
+        <input id="pref-key-input" placeholder="key" style="width:100px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="pref-val-input" placeholder="value" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="savePreference()">Save</button>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Admin Annotations Viewer card (Phase 94) ──────────────── -->
+  <div class="card" id="annotations-card">
+    <details id="annotations-section">
+      <summary style="cursor:pointer">Annotations <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAnnotations(event)" title="Refresh">↻</button></summary>
+      <div id="annotations-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load annotations.</div>
     </details>
   </div>
 
@@ -2489,6 +2535,137 @@ function toggleHelpModal() {
   const modal = document.getElementById('help-modal');
   if (!modal) return;
   modal.classList.toggle('open');
+}
+
+// ── Phase 92: Webhook Management ──────────────────────────────────────────────
+async function loadWebhooks(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('webhooks-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/webhooks', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { listEl.textContent = 'Could not load webhooks.'; return; }
+    const d = await res.json();
+    const hooks = d.webhooks || [];
+    if (!hooks.length) { listEl.textContent = 'No webhooks registered.'; return; }
+    listEl.innerHTML = hooks.map(h => {
+      const events = (h.events || []).join(', ');
+      return '<div class="wh-row">' +
+        '<span class="wh-url">' + escapeHtml(h.url || '') + '</span>' +
+        '<span class="wh-events">' + escapeHtml(events) + '</span>' +
+        '<button class="btn ghost icon" style="font-size:11px;color:var(--red)" onclick="deleteWebhook(' + JSON.stringify(h.webhook_id) + ')">✕</button>' +
+      '</div>';
+    }).join('');
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+async function registerWebhook() {
+  const apiKey = el.apiKey().value.trim();
+  const url = (document.getElementById('wh-url-input') || {}).value?.trim();
+  if (!apiKey || !url) return;
+  try {
+    const res = await fetch('/webhooks', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, events: ['task_complete', 'task_failed'] }),
+    });
+    if (!res.ok) { const e = await res.json(); alert('Error: ' + (e.detail || res.status)); return; }
+    document.getElementById('wh-url-input').value = '';
+    await loadWebhooks(null);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deleteWebhook(webhookId) {
+  if (!confirm('Delete this webhook?')) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    await fetch('/webhooks/' + webhookId, { method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey } });
+    await loadWebhooks(null);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 93: User Preferences ─────────────────────────────────────────────────
+async function loadPreferences(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('prefs-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/auth/preferences', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { listEl.textContent = 'Could not load preferences.'; return; }
+    const prefs = await res.json();
+    const keys = Object.keys(prefs);
+    if (!keys.length) { listEl.textContent = 'No preferences saved.'; return; }
+    listEl.innerHTML = keys.map(k =>
+      '<div class="pref-row">' +
+        '<span class="pref-key">' + escapeHtml(k) + '</span>' +
+        '<span style="color:var(--text)">' + escapeHtml(String(prefs[k])) + '</span>' +
+        '<button class="btn ghost icon" style="font-size:11px;color:var(--red)" onclick="deletePreference(' + JSON.stringify(k) + ')">✕</button>' +
+      '</div>'
+    ).join('');
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+async function savePreference() {
+  const apiKey = el.apiKey().value.trim();
+  const key = (document.getElementById('pref-key-input') || {}).value?.trim();
+  const val = (document.getElementById('pref-val-input') || {}).value?.trim();
+  if (!apiKey || !key || val === undefined) return;
+  try {
+    const res = await fetch('/auth/preferences', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: val }),
+    });
+    if (!res.ok) { const e = await res.json(); alert('Error: ' + (e.detail || res.status)); return; }
+    document.getElementById('pref-key-input').value = '';
+    document.getElementById('pref-val-input').value = '';
+    await loadPreferences(null);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deletePreference(key) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    await fetch('/auth/preferences/' + encodeURIComponent(key), { method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey } });
+    await loadPreferences(null);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 94: Admin Annotations Viewer ────────────────────────────────────────
+async function loadAnnotations(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('annotations-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter admin API key.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/annotations?limit=20', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (res.status === 403) { listEl.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load annotations.'; return; }
+    const d = await res.json();
+    const items = Array.isArray(d) ? d : (d.annotations || []);
+    if (!items.length) { listEl.textContent = 'No annotations found.'; return; }
+    listEl.innerHTML = items.map(a => {
+      const rating = a.rating === 1 ? '👍' : a.rating === -1 ? '👎' : '—';
+      const taskId = (a.task_id || '').slice(0, 8) + '…';
+      const fb = a.feedback ? escapeHtml(a.feedback.slice(0, 60)) : '';
+      return '<div class="annot-row">' +
+        '<span class="annot-rating">' + rating + '</span>' +
+        '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px">' + escapeHtml(taskId) + '</span>' +
+        '<span style="color:var(--text-dim)">' + fb + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing ' + items.length + ' annotation(s)</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 88: Health Metrics ─────────────────────────────────────────────────
