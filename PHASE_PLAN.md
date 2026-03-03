@@ -1725,5 +1725,8 @@ Added as compact addendum. See git log for full details.
 | 89 | #125 | User Management Admin UI (admin, user-mgmt-card, loadUsers/createUser, POST /admin/users) | +5 | 1002 |
 | 90 | #126 | Audit Log Viewer (admin, audit-log-card, loadAuditLog, GET /admin/audit, event_type+ts) | +4 | 1006 |
 | 91 | #126 | Keyboard Shortcuts Help Modal (? button, toggleHelpModal, #help-modal overlay, Escape closes) | +5 | 1011 |
+| 92 | #127 | Webhook Management UI (webhooks-card, loadWebhooks/registerWebhook/deleteWebhook, POST/DELETE /webhooks) | +4 | 1015 |
+| 93 | #127 | User Preferences UI (preferences-card, loadPreferences/savePreference/deletePreference, /auth/preferences) | +4 | 1019 |
+| 94 | #127 | Admin Annotations Viewer (annotations-card, loadAnnotations, /admin/annotations, 👍/👎 rendering) | +4 | 1023 |
 
-**Current state:** 1011/1011 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1023/1023 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
