@@ -1184,6 +1184,46 @@
     </details>
   </div>
 
+  <!-- ── Rate Limit History card (Phase 218) ──────────────── -->
+  <div class="card" id="rate-limit-history-card">
+    <details id="rate-limit-history-section">
+      <summary style="cursor:pointer">Rate Limit History (30d) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRateLimitHistory()" title="Refresh">↻</button></summary>
+      <div id="rate-limit-history-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Admin User Detail card (Phase 219) ────────────────── -->
+  <div class="card" id="admin-user-detail-card">
+    <details id="admin-user-detail-section">
+      <summary style="cursor:pointer">Admin User Detail</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="admin-user-detail-name" placeholder="Username" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadAdminUserDetail()">↻ Load</button>
+      </div>
+      <div id="admin-user-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter username and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Dependents card (Phase 220) ──────────────────── -->
+  <div class="card" id="task-dependents-card">
+    <details id="task-dependents-section">
+      <summary style="cursor:pointer">Task Dependents</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-dependents-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskDependents()">↻ Load</button>
+      </div>
+      <div id="task-dependents-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID to find tasks that depend on it.</div>
+    </details>
+  </div>
+
+  <!-- ── Memory Store Stats card (Phase 221) ───────────────── -->
+  <div class="card" id="memory-store-stats-card">
+    <details id="memory-store-stats-section">
+      <summary style="cursor:pointer">Memory Store Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMemoryStoreStats()" title="Refresh">↻</button></summary>
+      <div id="memory-store-stats-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
   <!-- ── A2A Task Status card (Phase 214) ─────────────────── -->
   <div class="card" id="a2a-task-status-card">
     <details id="a2a-task-status-section">
@@ -4329,6 +4369,81 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 218: Rate Limit History ─────────────────────────────────────────────
+async function loadRateLimitHistory() {
+  const el = document.getElementById('rate-limit-history-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/history?days=30');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const rows = Array.isArray(data) ? data : (data.history || data.usage || []);
+    if (!rows.length) { el.textContent = 'No usage history.'; return; }
+    const total = rows.reduce((s, d) => s + (d.total_tokens ?? d.tokens ?? 0), 0);
+    el.innerHTML = `<div style="margin-bottom:6px;font-size:11px;color:var(--text-xdim)">30-day total: ${total.toLocaleString()} tokens</div>`
+      + '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">Date</th><th style="text-align:right;padding:2px 6px">Tokens</th><th style="text-align:right;padding:2px 6px">Requests</th></tr>'
+      + rows.slice(-10).map(d => `<tr><td style="padding:2px 6px">${d.date ?? d.day ?? '-'}</td><td style="padding:2px 6px;text-align:right">${(d.total_tokens ?? d.tokens ?? 0).toLocaleString()}</td><td style="padding:2px 6px;text-align:right">${d.requests ?? '-'}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 219: Admin User Detail ──────────────────────────────────────────────
+async function loadAdminUserDetail() {
+  const name = document.getElementById('admin-user-detail-name').value.trim();
+  const el = document.getElementById('admin-user-detail-body');
+  if (!name) { el.textContent = 'Enter a username.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users/' + encodeURIComponent(name));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const u = await r.json();
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">User ID</span><span class="td-value">${u.user_id ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Provider</span><span class="td-value">${u.provider ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Admin</span><span class="td-value">${u.is_admin ? '✓' : '✗'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Daily Quota</span><span class="td-value">${u.daily_token_quota ?? 'unlimited'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Created</span><span class="td-value">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 220: Task Dependents ────────────────────────────────────────────────
+async function loadTaskDependents() {
+  const id = document.getElementById('task-dependents-id').value.trim();
+  const el = document.getElementById('task-dependents-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=100');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    const dependents = tasks.filter(t => t.depends_on === id);
+    if (!dependents.length) { el.textContent = 'No tasks depend on this task.'; return; }
+    el.innerHTML = dependents.map(t =>
+      `<div style="margin-bottom:4px;font-size:12px">🔗 <strong>${t.task_id ?? t.id ?? '-'}</strong> — ${t.status ?? '-'} — ${t.prompt ? t.prompt.slice(0, 50) + '…' : '-'}</div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 221: Memory Store Stats ─────────────────────────────────────────────
+async function loadMemoryStoreStats() {
+  const el = document.getElementById('memory-store-stats-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/memory/stats');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Total Chunks</span><span class="td-value">${d.total_chunks ?? d.count ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Total Documents</span><span class="td-value">${d.total_documents ?? d.doc_count ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Embedding Dim</span><span class="td-value">${d.embedding_dim ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Store Enabled</span><span class="td-value">${d.enabled !== false ? '✓' : '✗'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 214: A2A Task Status ────────────────────────────────────────────────

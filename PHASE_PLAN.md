@@ -1867,5 +1867,9 @@ Added as compact addendum. See git log for full details.
 | 211 | #157 | Webhook List (webhook-list-card, loadWebhookList, GET /webhooks, ID+URL list) | +3 | 1405 |
 | 212 | #157 | Pipeline Edit by ID (pipeline-edit-by-id-card, editPipelineById, PUT /pipelines/{id}, rename) | +3 | 1408 |
 | 213 | #157 | Template Runner by ID (template-runner-card, runTemplateById, POST /templates/{id}/run) | +3 | 1411 |
+| 214 | #158 | A2A Task Status (a2a-task-status-card, loadA2ATaskStatus, GET /a2a/tasks/{id}, status+agent+created) | +3 | 1414 |
+| 215 | #158 | Documents Compact (documents-compact-card, loadDocumentsCompact, GET /documents, ID/source/chunks table) | +3 | 1417 |
+| 216 | #158 | Session Task Summary (session-task-summary-card, loadSessionTaskSummary, GET /sessions/{id}/tasks, per-status counts) | +3 | 1420 |
+| 217 | #158 | Export Download (export-download-card, downloadTaskExport, GET /tasks/export?format=csv|json, Blob download) | +3 | 1423 |
 
-**Current state:** 1411/1411 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1423/1423 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

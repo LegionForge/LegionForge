@@ -16008,3 +16008,119 @@ def test_p217_ui_export_download_uses_export_endpoint():
     idx = html.index("async function downloadTaskExport()")
     fn_body = html[idx : idx + 700]
     assert "tasks/export" in fn_body and "download" in fn_body
+
+
+# ── Phase 218: Rate Limit History ─────────────────────────────────────────────
+
+
+def test_p218_ui_rate_limit_history_card_present():
+    """rate-limit-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rate-limit-history-card" in html
+
+
+def test_p218_ui_load_rate_limit_history_function_defined():
+    """loadRateLimitHistory function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRateLimitHistory()" in html
+
+
+def test_p218_ui_rate_limit_history_shows_30d_table():
+    """loadRateLimitHistory fetches 30-day usage history."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadRateLimitHistory()")
+    fn_body = html[idx : idx + 800]
+    assert "days=30" in fn_body and "<table" in fn_body
+
+
+# ── Phase 219: Admin User Detail ──────────────────────────────────────────────
+
+
+def test_p219_ui_admin_user_detail_card_present():
+    """admin-user-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-user-detail-card" in html
+
+
+def test_p219_ui_load_admin_user_detail_function_defined():
+    """loadAdminUserDetail function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminUserDetail()" in html
+
+
+def test_p219_ui_admin_user_detail_hits_admin_users():
+    """loadAdminUserDetail fetches /admin/users/{name}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAdminUserDetail()")
+    fn_body = html[idx : idx + 700]
+    assert "/admin/users/" in fn_body
+
+
+# ── Phase 220: Task Dependents ────────────────────────────────────────────────
+
+
+def test_p220_ui_task_dependents_card_present():
+    """task-dependents-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-dependents-card" in html
+
+
+def test_p220_ui_load_task_dependents_function_defined():
+    """loadTaskDependents function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskDependents()" in html
+
+
+def test_p220_ui_task_dependents_filters_by_depends_on():
+    """loadTaskDependents filters by depends_on field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskDependents()")
+    fn_body = html[idx : idx + 700]
+    assert "depends_on" in fn_body
+
+
+# ── Phase 221: Memory Store Stats ─────────────────────────────────────────────
+
+
+def test_p221_ui_memory_store_stats_card_present():
+    """memory-store-stats-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-store-stats-card" in html
+
+
+def test_p221_ui_load_memory_store_stats_function_defined():
+    """loadMemoryStoreStats function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemoryStoreStats()" in html
+
+
+def test_p221_ui_memory_store_stats_hits_memory_endpoint():
+    """loadMemoryStoreStats fetches /memory/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMemoryStoreStats()")
+    fn_body = html[idx : idx + 600]
+    assert "/memory/stats" in fn_body

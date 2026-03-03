@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 192
+UPDATE: 193
 BRANCH: main
-COMMIT: c6aef31
-TIMESTAMP: 2026-03-04T16:00Z
-LAST_OP: PR #157 — Phase 210-213 — Admin Metrics, Webhook List, Pipeline Edit, Template Runner
-SMOKE_TESTS: 1411/1411
+COMMIT: bdeb1d5
+TIMESTAMP: 2026-03-04T17:00Z
+LAST_OP: PR #158 — Phase 214-217 — A2A Status, Documents Compact, Session Summary, Export Download
+SMOKE_TESTS: 1423/1423
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
