@@ -1080,6 +1080,55 @@
     </details>
   </div>
 
+  <!-- ── Admin System Stats card (Phase 138) ─────────────── -->
+  <div class="card" id="admin-stats-card">
+    <details id="admin-stats-section">
+      <summary style="cursor:pointer">Admin System Stats <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminStats(event)" title="Refresh">↻</button></summary>
+      <div id="admin-stats-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load stats.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Share Revoke card (Phase 139) ────────────────── -->
+  <div class="card" id="share-revoke-card">
+    <details id="share-revoke-section">
+      <summary style="cursor:pointer">Revoke Task Share</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="revoke-task-id" placeholder="Task ID (UUID)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="revoke-share-token" placeholder="Share token" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn danger" style="font-size:11px" onclick="revokeShare()">Revoke Share</button>
+        <div id="revoke-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Runs List card (Phase 140) ───────────────── -->
+  <div class="card" id="pipeline-runs-card">
+    <details id="pipeline-runs-section">
+      <summary style="cursor:pointer">Pipeline Run History</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="pipeline-runs-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)"><option value="">— select pipeline —</option></select>
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadPipelineRuns()">↻ Load</button>
+        </div>
+        <div id="pipeline-runs-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Annotation Viewer card (Phase 141) ───────────── -->
+  <div class="card" id="task-annotation-card">
+    <details id="task-annotation-section">
+      <summary style="cursor:pointer">Task Annotation Viewer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="annotation-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:140px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadTaskAnnotation()">↻ Load</button>
+        </div>
+        <div id="annotation-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Attachment Content Viewer card (Phase 134) ──────── -->
   <div class="card" id="attachment-viewer-card">
     <details id="attachment-viewer-section">
@@ -3308,6 +3357,89 @@ async function exportTasksJson(evt) {
   } catch(e) { alert('Export error: ' + e.message); }
 }
 
+// ── Phase 138: Admin System Stats ─────────────────────────────────────────────
+async function loadAdminStats(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('admin-stats-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/admin/stats', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 403) { if (bodyEl) bodyEl.textContent = 'Admin access required.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    if (!bodyEl) return;
+    const fields = Object.entries(d).map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k.replace(/_/g, ' ')}</span><span class="td-value">${typeof v === 'number' ? v.toLocaleString() : String(v)}</span></div>`
+    ).join('');
+    bodyEl.innerHTML = fields || '(no stats)';
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 139: Share Revoke ────────────────────────────────────────────────────
+async function revokeShare() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('revoke-task-id') || {}).value.trim();
+  const shareToken = (document.getElementById('revoke-share-token') || {}).value.trim();
+  if (!taskId || !shareToken) { alert('Enter Task ID and share token.'); return; }
+  if (!confirm('Revoke this share link? It will immediately stop working.')) return;
+  const resultEl = document.getElementById('revoke-result');
+  if (resultEl) resultEl.textContent = 'Revoking…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}/shares/${encodeURIComponent(shareToken)}`, {
+      method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (resultEl) resultEl.textContent = r.ok ? 'Share revoked.' : 'Error ' + r.status;
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 140: Pipeline Runs List ─────────────────────────────────────────────
+async function loadPipelineRuns() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('pipeline-runs-sel');
+  const pipelineId = sel ? sel.value : '';
+  if (!pipelineId) { alert('Select a pipeline first.'); return; }
+  const bodyEl = document.getElementById('pipeline-runs-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/pipelines/${encodeURIComponent(pipelineId)}/runs`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const runs = Array.isArray(data) ? data : (data.runs || []);
+    if (!bodyEl) return;
+    if (!runs.length) { bodyEl.textContent = 'No runs for this pipeline.'; return; }
+    bodyEl.innerHTML = runs.map(run => {
+      const statusColor = run.status === 'complete' ? 'var(--green)' : run.status === 'failed' ? 'var(--red)' : 'var(--text-xdim)';
+      return `<div class="td-field"><span class="td-label" style="color:${statusColor}">${run.status || '?'}</span><span class="td-value">Run #${run.run_id || run.id} · ${run.completed_at ? new Date(run.completed_at).toLocaleString() : 'in progress'}</span></div>`;
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 141: Task Annotation Viewer ─────────────────────────────────────────
+async function loadTaskAnnotation() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('annotation-task-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a Task ID.'); return; }
+  const bodyEl = document.getElementById('annotation-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}/annotation`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'No annotation found for this task.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    if (!bodyEl) return;
+    const rating = d.rating === 1 ? '👍 +1' : d.rating === -1 ? '👎 -1' : 'none';
+    const comment = d.comment || '';
+    bodyEl.innerHTML =
+      `<div class="td-field"><span class="td-label">rating</span><span class="td-value">${rating}</span></div>` +
+      (comment ? `<div class="td-field"><span class="td-label">comment</span><span class="td-value">${escapeHtml(comment)}</span></div>` : '');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
 // ── Phase 134: Attachment Content Viewer ──────────────────────────────────────
 async function viewAttachment() {
   const apiKey = el.apiKey().value.trim();
@@ -4679,8 +4811,8 @@ async function loadPipelines() {
         const opt = document.createElement('option'); opt.value = p.pipeline_id || p.id; opt.textContent = p.name; rhSel.appendChild(opt);
       });
     }
-    // Phase 126+127: pipeline edit and detail selectors
-    ['pipeline-edit-sel', 'pipeline-detail-sel'].forEach(selId => {
+    // Phase 126+127+140: pipeline edit, detail, and runs selectors
+    ['pipeline-edit-sel', 'pipeline-detail-sel', 'pipeline-runs-sel'].forEach(selId => {
       const s = document.getElementById(selId);
       if (!s) return;
       s.innerHTML = '<option value="">— select pipeline —</option>';

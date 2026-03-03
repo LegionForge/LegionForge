@@ -13587,3 +13587,130 @@ def test_p137_ui_add_quick_note_posts_to_notes_endpoint():
     fn_body = html[fn_start : fn_start + 700]
     assert "/notes" in fn_body
     assert "POST" in fn_body
+
+
+# ── Phase 138: Admin System Stats ─────────────────────────────────────────────
+
+
+def test_p138_ui_admin_stats_card_present():
+    """Admin stats card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-stats-card" in html
+
+
+def test_p138_ui_load_admin_stats_function_defined():
+    """loadAdminStats() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAdminStats(" in html
+
+
+def test_p138_ui_load_admin_stats_fetches_admin_stats():
+    """loadAdminStats() fetches /admin/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAdminStats(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/admin/stats" in fn_body
+
+
+# ── Phase 139: Share Revoke ────────────────────────────────────────────────────
+
+
+def test_p139_ui_share_revoke_card_present():
+    """Share revoke card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "share-revoke-card" in html
+
+
+def test_p139_ui_revoke_share_function_defined():
+    """revokeShare() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function revokeShare(" in html
+
+
+def test_p139_ui_revoke_share_sends_delete_to_shares_endpoint():
+    """revokeShare() sends DELETE to /tasks/{id}/shares/{token}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function revokeShare(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "DELETE" in fn_body
+    assert "/shares/" in fn_body
+
+
+# ── Phase 140: Pipeline Runs List ─────────────────────────────────────────────
+
+
+def test_p140_ui_pipeline_runs_card_present():
+    """Pipeline runs card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-runs-card" in html
+
+
+def test_p140_ui_load_pipeline_runs_function_defined():
+    """loadPipelineRuns() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineRuns(" in html
+
+
+def test_p140_ui_load_pipeline_runs_fetches_pipeline_runs():
+    """loadPipelineRuns() fetches /pipelines/{id}/runs."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineRuns(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/runs" in fn_body
+
+
+def test_p140_ui_load_pipelines_populates_runs_selector():
+    """loadPipelines() also populates #pipeline-runs-sel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelines(")
+    fn_body = html[fn_start : fn_start + 1800]
+    assert "pipeline-runs-sel" in fn_body
+
+
+# ── Phase 141: Task Annotation Viewer ─────────────────────────────────────────
+
+
+def test_p141_ui_task_annotation_card_present():
+    """Task annotation viewer card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-annotation-card" in html
+
+
+def test_p141_ui_load_task_annotation_function_defined():
+    """loadTaskAnnotation() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskAnnotation(" in html
+
+
+def test_p141_ui_load_task_annotation_fetches_annotation_endpoint():
+    """loadTaskAnnotation() fetches /tasks/{id}/annotation."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskAnnotation(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/annotation" in fn_body
