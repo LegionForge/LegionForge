@@ -1843,4 +1843,9 @@ Added as compact addendum. See git log for full details.
 | 188 | #151 | My Profile (my-profile-card, loadMyProfile, GET /usage/me, user_id/provider/is_admin fields) | +3 | 1335 |
 | 189 | #151 | Cancel All Running (cancel-running-card, cancelAllRunning, confirm guard + POST /tasks/bulk/cancel) | +4 | 1339 |
 
-**Current state:** 1339/1339 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 190 | #152 | Auto-Refresh Toggle (auto-refresh-card, toggleAutoRefresh, setInterval loadRecentTasks, 10/30/60s) | +3 | 1342 |
+| 191 | #152 | Schedule Enable/Disable (schedule-toggle-card, toggleScheduleEnabled, PUT /schedules/{id} enabled) | +3 | 1345 |
+| 192 | #152 | Task Notes Export (notes-export-card, exportTaskNotes, GET notes, Blob .txt download numbered) | +3 | 1348 |
+| 193 | #152 | Annotation Stats (annotation-stats-card, loadAnnotationStats, 👍/👎/neutral count + pct) | +3 | 1351 |
+
+**Current state:** 1351/1351 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

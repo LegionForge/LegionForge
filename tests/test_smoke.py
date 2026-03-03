@@ -15314,3 +15314,117 @@ def test_p193_ui_annotation_stats_counts_thumbs():
     fn_start = html.find("function loadAnnotationStats(")
     fn_body = html[fn_start : fn_start + 1000]
     assert "thumbsUp" in fn_body and "thumbsDown" in fn_body
+
+
+# ── Phase 194: Result Length Analyzer ─────────────────────────────────────────
+
+
+def test_p194_ui_result_length_card_present():
+    """#result-length-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "result-length-card" in html
+
+
+def test_p194_ui_check_result_length_function_defined():
+    """checkResultLength() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function checkResultLength(" in html
+
+
+def test_p194_ui_result_length_shows_token_estimate():
+    """checkResultLength() includes token estimate."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function checkResultLength(")
+    fn_body = html[fn_start : fn_start + 1400]
+    assert "token" in fn_body.lower() and "words" in fn_body
+
+
+# ── Phase 195: Agent / Ollama Model List ──────────────────────────────────────
+
+
+def test_p195_ui_ollama_models_card_present():
+    """#ollama-models-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ollama-models-card" in html
+
+
+def test_p195_ui_load_ollama_models_function_defined():
+    """loadOllamaModels() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadOllamaModels(" in html
+
+
+def test_p195_ui_load_ollama_models_uses_agents_endpoint():
+    """loadOllamaModels() fetches GET /agents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadOllamaModels(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/agents" in fn_body
+
+
+# ── Phase 196: Task Sources Viewer ────────────────────────────────────────────
+
+
+def test_p196_ui_task_sources_card_present():
+    """#task-sources-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-sources-card" in html
+
+
+def test_p196_ui_load_task_sources_function_defined():
+    """loadTaskSources() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskSources(" in html
+
+
+def test_p196_ui_task_sources_renders_links():
+    """loadTaskSources() renders anchor tags for http URLs."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskSources(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "<a href=" in fn_body or "href=" in fn_body
+
+
+# ── Phase 197: Quick Agent Run ────────────────────────────────────────────────
+
+
+def test_p197_ui_quick_agent_card_present():
+    """#quick-agent-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "quick-agent-card" in html
+
+
+def test_p197_ui_quick_agent_run_function_defined():
+    """quickAgentRun() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function quickAgentRun(" in html
+
+
+def test_p197_ui_quick_agent_has_preset_options():
+    """quick-agent-type select has multiple agent options."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "quick-agent-type" in html and "researcher" in html and "analyst" in html

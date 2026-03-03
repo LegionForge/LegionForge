@@ -1184,6 +1184,56 @@
     </details>
   </div>
 
+  <!-- ── Result Length Analyzer card (Phase 194) ──────────── -->
+  <div class="card" id="result-length-card">
+    <details id="result-length-section">
+      <summary style="cursor:pointer">Result Length Analyzer</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="result-length-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="checkResultLength()">↻ Analyze</button>
+      </div>
+      <div id="result-length-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Analyze.</div>
+    </details>
+  </div>
+
+  <!-- ── Ollama Model List card (Phase 195) ────────────────── -->
+  <div class="card" id="ollama-models-card">
+    <details id="ollama-models-section">
+      <summary style="cursor:pointer">Registered Agent Types <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadOllamaModels()" title="Refresh">↻</button></summary>
+      <div id="ollama-models-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load agent/model registry.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Sources Viewer card (Phase 196) ──────────────── -->
+  <div class="card" id="task-sources-card">
+    <details id="task-sources-section">
+      <summary style="cursor:pointer">Task Sources Viewer</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-sources-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskSources()">↻ Load</button>
+      </div>
+      <div id="task-sources-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Quick Agent Run card (Phase 197) ──────────────────── -->
+  <div class="card" id="quick-agent-card">
+    <details id="quick-agent-section">
+      <summary style="cursor:pointer">Quick Agent Run</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <select id="quick-agent-type" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="researcher">Researcher</option>
+          <option value="analyst">Analyst</option>
+          <option value="coder">Coder</option>
+          <option value="writer">Writer</option>
+          <option value="orchestrator">Orchestrator</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="quickAgentRun()">▶ Run</button>
+      </div>
+      <div id="quick-agent-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Auto-Refresh Toggle card (Phase 190) ─────────────── -->
   <div class="card" id="auto-refresh-card">
     <details id="auto-refresh-section">
@@ -4062,6 +4112,112 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 194: Result Length Analyzer ─────────────────────────────────────────
+async function checkResultLength() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('result-length-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const bodyEl = document.getElementById('result-length-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId), { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const task = await res.json();
+    const result = task.result || task.output || '';
+    if (!bodyEl) return;
+    if (!result) { bodyEl.textContent = 'No result yet.'; return; }
+    const chars = result.length;
+    const words = result.trim().split(/\s+/).filter(Boolean).length;
+    const lines = result.split('\n').length;
+    const estTokens = Math.round(chars / 4);
+    const fields = [
+      ['characters', chars.toLocaleString()],
+      ['words', words.toLocaleString()],
+      ['lines', lines.toLocaleString()],
+      ['est. tokens', estTokens.toLocaleString()],
+      ['status', task.status || '?'],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 195: Ollama / Agent Model List ──────────────────────────────────────
+async function loadOllamaModels() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('ollama-models-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/agents', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const agents = Array.isArray(data) ? data : (data.agents || data.items || []);
+    if (!bodyEl) return;
+    if (!agents.length) { bodyEl.textContent = 'No agents registered.'; return; }
+    bodyEl.innerHTML = agents.map(a => {
+      const type = a.agent_type || a.type || a.name || '?';
+      const model = a.model || a.llm_model || a.primary_model || '—';
+      const desc = (a.description || '').slice(0, 60);
+      return `<div class="td-field"><span class="td-label">${type}</span><span class="td-value">[${model}] ${desc}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 196: Task Sources Viewer ─────────────────────────────────────────────
+async function loadTaskSources() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-sources-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const bodyEl = document.getElementById('task-sources-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId), { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const task = await res.json();
+    const sources = Array.isArray(task.sources) ? task.sources : [];
+    if (!bodyEl) return;
+    if (!sources.length) { bodyEl.textContent = 'No sources recorded for this task.'; return; }
+    bodyEl.innerHTML = sources.map((s, i) => {
+      const url = typeof s === 'string' ? s : (s.url || s.href || s.source || JSON.stringify(s));
+      const isUrl = url.startsWith('http');
+      const display = url.slice(0, 90);
+      return `<div class="td-field"><span class="td-label">[${i + 1}]</span><span class="td-value">${isUrl ? '<a href="' + url + '" target="_blank" rel="noopener" style="color:var(--green)">' + display + '</a>' : display}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 197: Quick Agent Run ─────────────────────────────────────────────────
+async function quickAgentRun() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const agentType = (document.getElementById('quick-agent-type') || {}).value;
+  const taskText = el.taskInput().value.trim();
+  if (!taskText) { alert('Enter a task in the main input first.'); return; }
+  const statusEl = document.getElementById('quick-agent-status');
+  if (statusEl) statusEl.textContent = 'Submitting to ' + agentType + '…';
+  try {
+    const res = await fetch('/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ task: taskText, agent_type: agentType }),
+    });
+    if (!statusEl) return;
+    if (res.ok) {
+      const data = await res.json();
+      const taskId = data.task_id || data.id || '?';
+      statusEl.textContent = 'Submitted! Task ID: ' + taskId.slice(0, 8) + '…';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = 'Error ' + res.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
 }
 
 // ── Phase 190: Auto-Refresh Toggle ────────────────────────────────────────────
