@@ -1711,5 +1711,7 @@ Added as compact addendum. See git log for full details.
 | 75 | #117 | Scheduled Tasks UI (Schedules card, CRUD, loadSchedules/createSchedule/deleteSchedule) | +6 | 937 |
 | 76 | #118 | Task Notes UI (📝 Notes button, toggleNotesPanel/loadNotes/addNote/deleteNote) | +6 | 943 |
 | 77 | #118 | Task Share Link (🔗 Share button, shareTask(), inline copy URL) | +5 | 948 |
+| 78 | #119 | Task Timeline UI (⏱ Timeline button, toggleTimeline(), tl-event/dot/type/ts CSS) | +5 | 953 |
+| 79 | #120 | Pipeline Runner UI (Pipelines card, loadPipelines/runPipeline/deletePipeline) | +6 | 959 |
 
-**Current state:** 948/948 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 959/959 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

@@ -11465,3 +11465,85 @@ def test_p79_ui_run_pipeline_calls_api():
     fn_body = html[fn_start : fn_start + 800]
     assert "/run" in fn_body
     assert "POST" in fn_body
+
+
+# ── Phase 80 — Task Retry Button ──────────────────────────────────────────────
+
+
+def test_p80_ui_retry_task_function_defined():
+    """retryTask() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function retryTask(" in html
+
+
+def test_p80_ui_retry_button_shown_on_error():
+    """Retry button is rendered in the error branch of finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # Find the error branch (after 'status === .error.')
+    err_start = html.find("status === 'error'")
+    err_body = html[err_start : err_start + 800]
+    assert "retryTask" in err_body
+
+
+def test_p80_ui_retry_button_shown_on_cancelled():
+    """Retry button is rendered in the cancelled branch of finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    cancel_start = html.find("status === 'cancelled'", html.find("function finishRun("))
+    cancel_body = html[cancel_start : cancel_start + 900]
+    assert "retryTask" in cancel_body
+
+
+def test_p80_ui_retry_calls_post_retry_endpoint():
+    """retryTask() calls POST /tasks/{id}/retry."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function retryTask(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/retry" in fn_body
+    assert "POST" in fn_body
+
+
+# ── Phase 81 — Cost Estimator UI ──────────────────────────────────────────────
+
+
+def test_p81_ui_estimate_button_present():
+    """Estimate button is present in the action bar."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "estimate-btn" in html
+    assert "≈ Estimate" in html
+
+
+def test_p81_ui_estimate_cost_function_defined():
+    """estimateCost() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function estimateCost(" in html
+
+
+def test_p81_ui_estimate_calls_dry_run():
+    """estimateCost() calls the tasks endpoint with dry_run: true."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function estimateCost(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "dry_run" in fn_body
+    assert "true" in fn_body
+
+
+def test_p81_ui_cost_estimate_span_present():
+    """cost-estimate span exists for displaying the result."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cost-estimate" in html
