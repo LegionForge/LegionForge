@@ -1233,6 +1233,52 @@
     </details>
   </div>
 
+  <!-- ── Audit Log Page card (Phase 298) ───────────────────── -->
+  <div class="card" id="audit-log-page-card">
+    <details id="audit-log-page-section">
+      <summary style="cursor:pointer">Audit Log Page <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLogPage()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Page <input id="audit-log-page-num" class="input" style="width:60px;margin-left:6px" placeholder="1" value="1"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadAuditLogPage()">Load</button>
+        <div id="audit-log-page-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Memory Search Results card (Phase 299) ───────────────────── -->
+  <div class="card" id="memory-search-results-card">
+    <details id="memory-search-results-section">
+      <summary style="cursor:pointer">Memory Search Results <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMemorySearchResults()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Query <input id="memory-search-query" class="input" style="width:220px;margin-left:6px" placeholder="search memory…"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadMemorySearchResults()">Search</button>
+        <div id="memory-search-results-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Cost Breakdown card (Phase 300) ───────────────────── -->
+  <div class="card" id="task-cost-breakdown-card">
+    <details id="task-cost-breakdown-section">
+      <summary style="cursor:pointer">Task Cost Breakdown <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskCostBreakdown()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-cost-breakdown-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskCostBreakdown()">Load</button>
+        <div id="task-cost-breakdown-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Event Types card (Phase 301) ───────────────────── -->
+  <div class="card" id="webhook-event-types-card">
+    <details id="webhook-event-types-section">
+      <summary style="cursor:pointer">Webhook Event Types <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhookEventTypes()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="webhook-event-types-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Cluster Health card (Phase 294) ───────────────────── -->
   <div class="card" id="cluster-health-card">
     <details id="cluster-health-section">
@@ -5218,6 +5264,100 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 298: Audit Log Page ──────────────────────────────────────────────
+async function loadAuditLogPage() {
+  const el = document.getElementById('audit-log-page-body');
+  const page = parseInt(document.getElementById('audit-log-page-num').value.trim() || '1', 10);
+  const offset = (page - 1) * 20;
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/audit?limit=20&offset=' + offset);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const entries = Array.isArray(data) ? data : (data.entries || data.items || []);
+    if (!entries.length) { el.textContent = 'No audit entries found.'; return; }
+    const cols = ['Event', 'Agent', 'Timestamp'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const e of entries.slice(0, 20)) {
+      tbl += `<tr><td style="padding:2px 6px">${e.event_type || e.action || '—'}</td><td style="padding:2px 6px">${e.agent_id || e.user_id || '—'}</td><td style="padding:2px 6px">${e.created_at ? e.created_at.slice(0, 16).replace('T', ' ') : '—'}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 299: Memory Search Results ──────────────────────────────────────────────
+async function loadMemorySearchResults() {
+  const el = document.getElementById('memory-search-results-body');
+  const query = document.getElementById('memory-search-query').value.trim();
+  if (!query) { el.textContent = 'Enter a search query.'; return; }
+  el.textContent = 'Searching…';
+  try {
+    const r = await apiFetch('/memory/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, top_k: 5 }),
+    });
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const results = Array.isArray(data) ? data : (data.results || data.items || []);
+    if (!results.length) { el.textContent = 'No results found.'; return; }
+    el.innerHTML = results.map((r, i) => {
+      const score = r.score != null ? r.score.toFixed(3) : '—';
+      const text = (r.content || r.text || r.chunk || '').slice(0, 120);
+      return `<div style="margin-bottom:8px;padding:4px 6px;border-left:2px solid var(--border)"><div style="font-size:10px;color:var(--text-dim)">Score: ${score}</div><div>${text}…</div></div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 300: Task Cost Breakdown ──────────────────────────────────────────────
+async function loadTaskCostBreakdown() {
+  const el = document.getElementById('task-cost-breakdown-body');
+  const taskId = document.getElementById('task-cost-breakdown-id').value.trim();
+  if (!taskId) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const tok = t.tokens_used || t.usage || {};
+    const rows = [
+      ['Task ID', t.task_id || taskId],
+      ['Status', t.status || '—'],
+      ['Total Tokens', typeof tok === 'object' ? (tok.total_tokens ?? tok.total ?? '—') : tok],
+      ['Prompt Tokens', typeof tok === 'object' ? (tok.prompt_tokens ?? tok.input ?? '—') : '—'],
+      ['Completion Tokens', typeof tok === 'object' ? (tok.completion_tokens ?? tok.output ?? '—') : '—'],
+      ['Model', t.model || t.agent_type || '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 301: Webhook Event Types ──────────────────────────────────────────────
+async function loadWebhookEventTypes() {
+  const el = document.getElementById('webhook-event-types-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/webhooks');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const webhooks = Array.isArray(data) ? data : (data.webhooks || data.items || []);
+    if (!webhooks.length) { el.textContent = 'No webhooks configured.'; return; }
+    const typeMap = {};
+    for (const w of webhooks) {
+      const types = w.event_types || w.events || [];
+      for (const t of types) typeMap[t] = (typeMap[t] || 0) + 1;
+    }
+    const entries = Object.entries(typeMap).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { el.textContent = 'No event types found.'; return; }
+    el.innerHTML = entries.map(([t, c]) =>
+      `<div class="td-field"><span class="td-label">${t}</span><span class="td-value">${c} webhook${c !== 1 ? 's' : ''}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 294: Cluster Health ──────────────────────────────────────────────

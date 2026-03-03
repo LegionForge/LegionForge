@@ -1947,5 +1947,9 @@ Added as compact addendum. See git log for full details.
 | 291 | #177 | Task Event Log (task-event-log-card, loadTaskEventLog, GET /tasks/{id}/timeline, event/timestamp/detail table) | +3 | 1645 |
 | 292 | #177 | Search Provider Status (search-provider-status-card, loadSearchProviderStatus, GET /health, search section) | +3 | 1648 |
 | 293 | #177 | Pipeline Run List (pipeline-run-list-card, loadPipelineRunList, GET /pipelines/{id}/runs, run history table) | +3 | 1651 |
+| 294 | #178 | Cluster Health (cluster-health-card, loadClusterHealth, GET /cluster/nodes, node/url/status/load table) | +3 | 1654 |
+| 295 | #178 | Admin Quota List (admin-quota-list-card, loadAdminQuotaList, GET /admin/users, username/quota/used/remaining table) | +3 | 1657 |
+| 296 | #178 | Task Output Raw (task-output-raw-card, loadTaskOutputRaw, GET /tasks/{id}, result/output in raw pre block) | +3 | 1660 |
+| 297 | #178 | Schedule Next Run Info (schedule-next-run-info-card, loadScheduleNextRunInfo, GET /schedules/{id}; renamed) | +3 | 1663 |
 
-**Current state:** 1651/1651 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1663/1663 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

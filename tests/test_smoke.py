@@ -18228,3 +18228,99 @@ def test_p297_ui_schedule_next_run_info_calls_schedules():
     idx = html.index("async function loadScheduleNextRunInfo()")
     fn_body = html[idx : idx + 800]
     assert "/schedules/" in fn_body
+
+
+# ── Phase 298: Audit Log Page ──────────────────────────────────────────────────
+def test_p298_ui_audit_log_page_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="audit-log-page-card"' in html
+
+
+def test_p298_ui_audit_log_page_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAuditLogPage()" in html
+
+
+def test_p298_ui_audit_log_page_calls_admin_audit():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAuditLogPage()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/audit" in fn_body
+
+
+# ── Phase 299: Memory Search Results ──────────────────────────────────────────────
+def test_p299_ui_memory_search_results_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="memory-search-results-card"' in html
+
+
+def test_p299_ui_memory_search_results_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemorySearchResults()" in html
+
+
+def test_p299_ui_memory_search_results_posts_to_memory_search():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMemorySearchResults()")
+    fn_body = html[idx : idx + 800]
+    assert "/memory/search" in fn_body
+
+
+# ── Phase 300: Task Cost Breakdown ──────────────────────────────────────────────
+def test_p300_ui_task_cost_breakdown_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="task-cost-breakdown-card"' in html
+
+
+def test_p300_ui_task_cost_breakdown_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskCostBreakdown()" in html
+
+
+def test_p300_ui_task_cost_breakdown_calls_tasks_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskCostBreakdown()")
+    fn_body = html[idx : idx + 800]
+    assert "/tasks/" in fn_body
+
+
+# ── Phase 301: Webhook Event Types ──────────────────────────────────────────────
+def test_p301_ui_webhook_event_types_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="webhook-event-types-card"' in html
+
+
+def test_p301_ui_webhook_event_types_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookEventTypes()" in html
+
+
+def test_p301_ui_webhook_event_types_calls_webhooks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadWebhookEventTypes()")
+    fn_body = html[idx : idx + 800]
+    assert "/webhooks" in fn_body
