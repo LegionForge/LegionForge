@@ -27,7 +27,20 @@
       --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace, 'Noto Sans Mono', system-ui;
     }
 
-    /* ── Light mode override (Phase 72) ─────────────────────────── */
+    /* ── Phase 75: Schedules card ───────────────────────────── */
+    .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .sched-row:last-child { border-bottom:none; }
+    .sched-name { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sched-cron { color:var(--text-dim); font-size:11px; }
+    .sched-next { color:var(--text-xdim); font-size:11px; }
+    .sched-enabled { color:var(--green); text-align:center; }
+    .sched-enabled.off { color:var(--text-xdim); }
+    .sched-del { color:var(--red); cursor:pointer; background:none; border:none; font-size:14px; padding:0; }
+    .sched-form { display:flex; flex-direction:column; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border2); }
+    .sched-form-row { display:flex; gap:8px; }
+    .sched-form-row input, .sched-form-row select, .sched-form-row textarea { flex:1; }
+    #sched-empty { color:var(--text-xdim); font-size:12px; }
+        /* ── Light mode override (Phase 72) ─────────────────────────── */
     body.light-mode {
       --bg:        #f6f8fa;
       --panel:     #ffffff;
@@ -623,6 +636,30 @@
     </details>
   </div>
 
+  <!-- ── Scheduled Tasks card (Phase 75) ──────────────────── -->
+  <div class="card" id="schedules-card">
+    <details id="sched-section">
+      <summary id="sched-summary" style="cursor:pointer">Schedules (0)</summary>
+      <div id="sched-list"><div id="sched-empty">No scheduled tasks.</div></div>
+      <div class="sched-form">
+        <div class="card-title" style="margin-bottom:4px">New Schedule</div>
+        <div class="sched-form-row">
+          <input id="sched-name" placeholder="Name (e.g. Daily Summary)" style="flex:2">
+          <input id="sched-cron" placeholder="Cron (e.g. 0 8 * * *)" style="flex:1">
+        </div>
+        <textarea id="sched-task" rows="2" placeholder="Task input text..."></textarea>
+        <div class="sched-form-row">
+          <select id="sched-agent">
+            <option value="base_agent">Base Agent</option>
+            <option value="researcher">Researcher</option>
+            <option value="orchestrator">Orchestrator</option>
+          </select>
+          <button class="btn primary" onclick="createSchedule()">Add Schedule</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
 </div><!-- #app -->
 
 <div id="version-footer">LegionForge <span id="footer-version">…</span> · <span id="footer-usage" style="display:none">Today: <span id="footer-usage-today">—</span> tok</span></div>
@@ -687,6 +724,7 @@ const el = {
 (function init() {
   initTheme();  // Phase 72: apply saved/system light-dark preference
   initNotifButton();  // Phase 74: init notification bell
+  loadSchedules().catch(() => {});  // Phase 75
 
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
@@ -1899,6 +1937,85 @@ function saveHistory(entry) {
   if (S.history.length > MAX_HISTORY) S.history.length = MAX_HISTORY;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {}
   renderHistory();
+}
+
+// ── Phase 75: Scheduled Tasks ───────────────────────────────────────────────
+async function loadSchedules() {
+  const apiKey = el.apiKey().value.trim();
+  if (\!apiKey) return;
+  try {
+    const resp = await fetch('/schedules?limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (\!resp.ok) return;
+    const data = await resp.json();
+    const scheds = data.schedules || data || [];
+    const summary = document.getElementById('sched-summary');
+    if (summary) summary.textContent = 'Schedules (' + scheds.length + ')';
+    const list = document.getElementById('sched-list');
+    const empty = document.getElementById('sched-empty');
+    list.querySelectorAll('.sched-row').forEach(n => n.remove());
+    if (scheds.length === 0) { if (empty) empty.style.display = 'block'; return; }
+    if (empty) empty.style.display = 'none';
+    scheds.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'sched-row';
+      const nextRun = s.next_run_at ? new Date(s.next_run_at).toLocaleString() : '—';
+      row.innerHTML =
+        '<span class="sched-name" title="' + escapeHtml(s.task_text || '') + '">' + escapeHtml(s.name || s.schedule_id || '') + '</span>' +
+        '<span class="sched-cron">' + escapeHtml(s.cron_expr || '') + '</span>' +
+        '<span class="sched-next">' + escapeHtml(nextRun) + '</span>' +
+        '<span class="sched-enabled ' + (s.enabled ? '' : 'off') + '">' + (s.enabled ? '● on' : '○ off') + '</span>' +
+        '<button class="sched-del" onclick="deleteSchedule(' + JSON.stringify(s.schedule_id || s.id) + ')" title="Delete">✕</button>';
+      list.appendChild(row);
+    });
+  } catch(e) { console.warn('[schedules] load error:', e); }
+}
+async function createSchedule() {
+  const apiKey = el.apiKey().value.trim();
+  if (\!apiKey) { appendSpan('
+[error] Enter your API key first.
+', 'o-error'); return; }
+  const name = (document.getElementById('sched-name').value || '').trim();
+  const cron = (document.getElementById('sched-cron').value || '').trim();
+  const task = (document.getElementById('sched-task').value || '').trim();
+  const agent = document.getElementById('sched-agent').value;
+  if (\!name || \!cron || \!task) { appendSpan('
+[error] Fill in name, cron, and task.
+', 'o-error'); return; }
+  try {
+    const resp = await fetch('/schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ name, cron_expr: cron, task_text: task, agent_type: agent, enabled: true })
+    });
+    if (\!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      appendSpan('
+[error] ' + escapeHtml(err.detail || 'Create failed') + '
+', 'o-error');
+      return;
+    }
+    document.getElementById('sched-name').value = '';
+    document.getElementById('sched-cron').value = '';
+    document.getElementById('sched-task').value = '';
+    appendSpan('
+[schedule created]
+', 'o-status');
+    await loadSchedules();
+  } catch(e) { appendSpan('
+[error] ' + e.message + '
+', 'o-error'); }
+}
+async function deleteSchedule(schedId) {
+  const apiKey = el.apiKey().value.trim();
+  if (\!apiKey) return;
+  if (\!confirm('Delete this schedule?')) return;
+  try {
+    await fetch('/schedules/' + encodeURIComponent(schedId), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    await loadSchedules();
+  } catch(e) { console.warn('[schedules] delete error:', e); }
 }
 
 // Phase 73: export history as Markdown via GET /tasks/export?format=markdown

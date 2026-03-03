@@ -11187,3 +11187,67 @@ def test_p74_init_notif_button_called_in_init():
     init_start = html.find("function init()")
     init_body = html[init_start : init_start + 300]
     assert "initNotifButton()" in init_body
+
+
+# ── Phase 75 — Scheduled Tasks UI ─────────────────────────────────────────────
+
+
+def test_p75_ui_has_schedules_card():
+    """Web UI includes a Schedules collapsible card with sched-section."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "sched-section" in html
+    assert "schedules-card" in html
+
+
+def test_p75_ui_load_schedules_function_defined():
+    """loadSchedules() JS function fetches GET /schedules."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadSchedules(" in html
+    fn_start = html.find("function loadSchedules(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/schedules" in fn_body
+
+
+def test_p75_ui_create_schedule_function_defined():
+    """createSchedule() JS function posts to POST /schedules."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function createSchedule(" in html
+    fn_start = html.find("function createSchedule(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "cron_expr" in fn_body
+
+
+def test_p75_ui_delete_schedule_function_defined():
+    """deleteSchedule() JS function calls DELETE /schedules/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteSchedule(" in html
+    fn_start = html.find("function deleteSchedule(")
+    fn_body = html[fn_start : fn_start + 400]
+    assert "DELETE" in fn_body
+
+
+def test_p75_ui_load_schedules_called_in_init():
+    """loadSchedules() is called in init() so schedules load on page start."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    init_start = html.find("function init()")
+    init_body = html[init_start : init_start + 500]
+    assert "loadSchedules" in init_body
+
+
+def test_p75_ui_schedules_form_has_cron_input():
+    """Schedules form includes a cron expression input field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "sched-cron" in html
+    assert "0 8 * * *" in html  # placeholder hint
