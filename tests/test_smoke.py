@@ -14834,3 +14834,127 @@ def test_p177_ui_pipeline_run_detail_uses_runs_endpoint():
     fn_start = html.find("function loadPipelineRunDetail(")
     fn_body = html[fn_start : fn_start + 800]
     assert "/pipelines/runs/" in fn_body
+
+
+# ── Phase 178: Quick Template Apply ───────────────────────────────────────────
+
+
+def test_p178_ui_template_apply_card_present():
+    """#template-apply-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-apply-card" in html
+
+
+def test_p178_ui_apply_template_function_defined():
+    """applyTemplate() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function applyTemplate(" in html
+
+
+def test_p178_ui_apply_template_fills_textarea():
+    """applyTemplate() sets task input value and calls onTaskInput()."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function applyTemplate(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "onTaskInput" in fn_body and "taskInput" in fn_body
+
+
+def test_p178_ui_template_apply_sel_in_load_templates():
+    """template-apply-sel is populated by loadTemplates() selector sync."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-apply-sel" in html
+
+
+# ── Phase 179: Task Stats Mini Dashboard ──────────────────────────────────────
+
+
+def test_p179_ui_task_stats_mini_card_present():
+    """#task-stats-mini-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-stats-mini-card" in html
+
+
+def test_p179_ui_load_task_stats_mini_function_defined():
+    """loadTaskStatsMini() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskStatsMini(" in html
+
+
+def test_p179_ui_stats_mini_uses_bar_chars():
+    """loadTaskStatsMini() uses block characters for bar chart."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskStatsMini(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "\u2593" in fn_body or "\u2588" in fn_body  # ▓ or █
+
+
+# ── Phase 180: Agent Error Log ────────────────────────────────────────────────
+
+
+def test_p180_ui_agent_errors_card_present():
+    """#agent-errors-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-errors-card" in html
+
+
+def test_p180_ui_load_agent_errors_function_defined():
+    """loadAgentErrors() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAgentErrors(" in html
+
+
+def test_p180_ui_agent_errors_fetches_failed_tasks():
+    """loadAgentErrors() fetches /tasks?status=failed."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAgentErrors(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "status=failed" in fn_body
+
+
+# ── Phase 181: Session Task Count Badge ────────────────────────────────────────
+
+
+def test_p181_ui_session_tasks_count_card_present():
+    """#session-tasks-count-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-tasks-count-card" in html
+
+
+def test_p181_ui_refresh_session_badge_function_defined():
+    """refreshSessionBadge() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function refreshSessionBadge(" in html
+
+
+def test_p181_ui_session_badge_uses_sessions_tasks_endpoint():
+    """refreshSessionBadge() fetches /sessions/{id}/tasks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function refreshSessionBadge(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "/sessions/" in fn_body and "/tasks" in fn_body

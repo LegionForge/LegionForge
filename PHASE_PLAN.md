@@ -1823,4 +1823,9 @@ Added as compact addendum. See git log for full details.
 | 172 | #147 | Task Result Download (result-download-card, downloadTaskResult, Blob + .txt download trigger) | +3 | 1285 |
 | 173 | #147 | Admin Quota Update (quota-update-card, updateUserQuota, PUT /admin/users/{u}/quota daily_token_limit) | +3 | 1288 |
 
-**Current state:** 1288/1288 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 174 | #148 | Task Live Watcher (task-watcher-card, watchTask/stopWatchTask, EventSource stream, live log) | +4 | 1292 |
+| 175 | #148 | All Annotations Viewer (annotations-viewer-card, loadAllAnnotations, GET /admin/annotations, 👍/👎) | +3 | 1295 |
+| 176 | #148 | Task JSON Inspector (task-json-card, inspectTaskJson, JSON.stringify null 2 pretty-print in pre) | +3 | 1298 |
+| 177 | #148 | Pipeline Run Detail (pipeline-run-detail-card, loadPipelineRunDetail, GET /pipelines/runs/{id}) | +3 | 1301 |
+
+**Current state:** 1301/1301 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

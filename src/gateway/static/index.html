@@ -1184,6 +1184,44 @@
     </details>
   </div>
 
+  <!-- ── Quick Template Apply card (Phase 178) ────────────── -->
+  <div class="card" id="template-apply-card">
+    <details id="template-apply-section">
+      <summary style="cursor:pointer">Quick Template Apply</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <select id="template-apply-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— select template —</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="applyTemplate()">▶ Apply</button>
+      </div>
+      <div id="template-apply-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Task Stats Mini Dashboard card (Phase 179) ────────── -->
+  <div class="card" id="task-stats-mini-card">
+    <details id="task-stats-mini-section">
+      <summary style="cursor:pointer">Task Stats Dashboard <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskStatsMini()" title="Refresh">↻</button></summary>
+      <div id="task-stats-mini-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load stats.</div>
+    </details>
+  </div>
+
+  <!-- ── Agent Error Log card (Phase 180) ──────────────────── -->
+  <div class="card" id="agent-errors-card">
+    <details id="agent-errors-section">
+      <summary style="cursor:pointer">Agent Error Log <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAgentErrors()" title="Refresh">↻</button></summary>
+      <div id="agent-errors-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load failed tasks.</div>
+    </details>
+  </div>
+
+  <!-- ── Session Task Count card (Phase 181) ───────────────── -->
+  <div class="card" id="session-tasks-count-card">
+    <details id="session-tasks-count-section">
+      <summary style="cursor:pointer">Session Task Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="refreshSessionBadge()" title="Refresh">↻</button></summary>
+      <div id="session-tasks-count-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load current session's task count.</div>
+    </details>
+  </div>
+
   <!-- ── Task Live Watcher card (Phase 174) ───────────────── -->
   <div class="card" id="task-watcher-card">
     <details id="task-watcher-section">
@@ -2235,7 +2273,7 @@ async function loadTemplates() {
     S.templates = data.templates || [];
     renderTemplates();
     // Phase 118+143: keep run and detail selectors in sync
-    ['template-run-sel', 'template-detail-sel'].forEach(selId => {
+    ['template-run-sel', 'template-detail-sel', 'template-apply-sel'].forEach(selId => {
       const s = document.getElementById(selId);
       if (!s) return;
       s.innerHTML = '<option value="">— select template —</option>';
@@ -3885,6 +3923,103 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 178: Quick Template Apply ───────────────────────────────────────────
+async function applyTemplate() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const templateId = (document.getElementById('template-apply-sel') || {}).value;
+  if (!templateId) { alert('Select a template.'); return; }
+  const statusEl = document.getElementById('template-apply-status');
+  if (statusEl) statusEl.textContent = 'Loading template…';
+  try {
+    const res = await fetch('/templates/' + encodeURIComponent(templateId), {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (statusEl) statusEl.textContent = 'Error ' + res.status; return; }
+    const tmpl = await res.json();
+    const text = tmpl.input_template || tmpl.template || tmpl.content || '';
+    if (!text) { if (statusEl) statusEl.textContent = 'Template has no content.'; return; }
+    const ta = el.taskInput();
+    ta.value = text;
+    onTaskInput(ta);
+    ta.focus();
+    if (statusEl) { statusEl.textContent = 'Template applied ✓'; statusEl.style.color = 'var(--green)'; }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
+}
+
+// ── Phase 179: Task Stats Mini Dashboard ──────────────────────────────────────
+async function loadTaskStatsMini() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('task-stats-mini-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/stats', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const stats = await res.json();
+    if (!bodyEl) return;
+    const total = (stats.total || stats.total_tasks || 0);
+    const keys = ['pending', 'queued', 'running', 'complete', 'failed', 'cancelled'];
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', pending: 'var(--text-dim)', queued: 'var(--text-dim)', cancelled: 'var(--text-xdim)' };
+    const rows = keys.map(k => {
+      const count = stats[k] || stats[k + '_tasks'] || stats['total_' + k] || 0;
+      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+      const bar = '▓'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
+      return `<div class="td-field"><span class="td-label" style="color:${statusColor[k]||'var(--text)'}">${k}</span><span class="td-value" style="font-family:monospace">${bar} ${count} (${pct}%)</span></div>`;
+    });
+    rows.unshift(`<div class="td-field"><span class="td-label">total</span><span class="td-value">${total.toLocaleString()}</span></div>`);
+    bodyEl.innerHTML = rows.join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 180: Agent Error Log ─────────────────────────────────────────────────
+async function loadAgentErrors() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('agent-errors-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks?status=failed&limit=20', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No failed tasks.'; return; }
+    bodyEl.innerHTML = tasks.map(t => {
+      const id = (t.task_id || t.id || '?').toString().slice(0, 8);
+      const err = (t.error || t.error_message || t.result || '').slice(0, 90);
+      const ts = (t.updated_at || t.created_at || '').slice(0, 16).replace('T', ' ');
+      return `<div class="td-field"><span class="td-label" style="color:var(--red)">${id}</span><span class="td-value">${ts} ${err || '(no error details)'}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 181: Session Task Count Badge ────────────────────────────────────────
+async function refreshSessionBadge() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sessionId = S.sessionId;
+  const bodyEl = document.getElementById('session-tasks-count-body');
+  if (!sessionId) { if (bodyEl) bodyEl.textContent = 'No active session.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/sessions/' + encodeURIComponent(sessionId) + '/tasks', {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const count = tasks.length;
+    if (!bodyEl) return;
+    const statusCounts = {};
+    tasks.forEach(t => { const s = t.status || 'unknown'; statusCounts[s] = (statusCounts[s] || 0) + 1; });
+    const breakdown = Object.entries(statusCounts).map(([s, n]) => `${n} ${s}`).join(', ');
+    bodyEl.innerHTML = `<div class="td-field"><span class="td-label">session</span><span class="td-value" style="font-family:monospace">${sessionId.slice(0, 8)}</span></div>` +
+      `<div class="td-field"><span class="td-label">total tasks</span><span class="td-value">${count}</span></div>` +
+      (breakdown ? `<div class="td-field"><span class="td-label">by status</span><span class="td-value">${breakdown}</span></div>` : '');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 174: Task Live Watcher ──────────────────────────────────────────────
