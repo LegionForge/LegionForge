@@ -10514,3 +10514,81 @@ def test_p63_ui_load_usage_called_on_init():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     # loadUsage() should appear at least 3 times: definition + init + blur + finishRun
     assert html.count("loadUsage") >= 3
+
+
+# ── Phase 64 — Markdown Rendering in Output ───────────────────────
+
+
+def test_p64_ui_has_render_markdown_function():
+    """Web UI defines renderMarkdown(raw) function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function renderMarkdown(" in html
+
+
+def test_p64_ui_has_inline_markdown_function():
+    """Web UI defines inlineMarkdown(s) helper function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function inlineMarkdown(" in html
+
+
+def test_p64_ui_render_markdown_escapes_html_first():
+    """renderMarkdown calls escapeHtml before applying transforms (XSS safety)."""
+    import pathlib, re
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # Find the renderMarkdown function body
+    m = re.search(
+        r"function renderMarkdown\(raw\)\s*\{(.+?)^}", html, re.DOTALL | re.MULTILINE
+    )
+    assert m is not None, "renderMarkdown function not found"
+    body = m.group(1)
+    # escapeHtml must appear before any regex replace
+    esc_pos = body.find("escapeHtml")
+    replace_pos = body.find(".replace(")
+    assert esc_pos != -1, "escapeHtml not called in renderMarkdown"
+    assert esc_pos < replace_pos, "escapeHtml must be called before markdown transforms"
+
+
+def test_p64_ui_result_uses_render_markdown():
+    """All o-result appendHTML calls use renderMarkdown not escapeHtml."""
+    import pathlib, re
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # No o-result span should use raw escapeHtml for result content
+    assert not re.search(r'o-result">\'\s*\+\s*escapeHtml\(resultText', html)
+    assert not re.search(r'o-result">\'\s*\+\s*escapeHtml\(\(task\.result', html)
+    # All 4 result display sites must use renderMarkdown
+    assert len(re.findall(r'o-result">\'\s*\+\s*renderMarkdown\(', html)) == 4
+
+
+def test_p64_ui_markdown_css_for_headers():
+    """CSS includes .o-result h1/h2/h3 styles for rendered markdown."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".o-result h1" in html
+    assert ".o-result h2" in html
+
+
+def test_p64_ui_markdown_css_for_code():
+    """CSS includes .o-result pre and .o-result code styles."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".o-result pre" in html
+    assert ".o-result code" in html
+
+
+def test_p64_render_markdown_handles_fenced_code_blocks():
+    """renderMarkdown source references fenced code block pattern (``` ... ```)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    m_start = html.find("function renderMarkdown(")
+    m_end = html.find("function inlineMarkdown(")
+    body = html[m_start:m_end]
+    assert "```" in body or "\\`\\`\\`" in body or "pre><code" in body

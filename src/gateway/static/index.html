@@ -248,6 +248,18 @@
     .o-error   { color: var(--red); }
     .o-cancelled{ color: var(--text-dim); }
     .o-result  { color: var(--text); border-top: 1px solid var(--border2); margin-top: 8px; padding-top: 8px; }
+    /* ── Markdown output rendering (Phase 64) ───────── */
+    .o-result h1,.o-result h2,.o-result h3 { color:var(--blue); margin:10px 0 4px; font-weight:700; }
+    .o-result h1 { font-size:1.1em; } .o-result h2 { font-size:1.0em; } .o-result h3 { font-size:0.95em; }
+    .o-result strong { color: var(--text); font-weight: 700; }
+    .o-result em { font-style: italic; color: var(--text-dim); }
+    .o-result code { background: var(--panel2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; font-family: monospace; font-size: 11px; }
+    .o-result pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; overflow-x: auto; margin: 6px 0; }
+    .o-result pre code { background: none; border: none; padding: 0; }
+    .o-result ul,.o-result ol { margin: 4px 0 4px 18px; }
+    .o-result li { margin: 2px 0; }
+    .o-result hr { border: none; border-top: 1px solid var(--border2); margin: 8px 0; }
+    .o-result p { margin: 4px 0; }
 
     /* Tool block */
     .tool-block {
@@ -759,7 +771,7 @@ function loadSearchResult(task) {
   if (task.agent_type) el.agentType().value = task.agent_type;
   clearOutput();
   if (task.result) {
-    appendHTML('<span class="o-result">' + escapeHtml((task.result || '').trim()) + '</span>');
+    appendHTML('<span class="o-result">' + renderMarkdown((task.result || '').trim()) + '</span>');
     appendSpan('\n[restored from search: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
   } else {
     appendSpan('[task: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
@@ -1102,6 +1114,92 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ── Markdown renderer (Phase 64, pure JS, XSS-safe) ──────────────
+// Security: we escape HTML first, then apply markdown transforms.
+// This means user content cannot inject arbitrary HTML.
+function renderMarkdown(raw) {
+  // Step 1: escape all HTML
+  let s = escapeHtml(raw);
+
+  // Step 2: extract + protect fenced code blocks (``` ... ```)
+  const codeBlocks = [];
+  s = s.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push('<pre><code>' + code + '</code></pre>');
+    return '\x00CB' + idx + '\x00';
+  });
+
+  // Step 3: line-level transforms
+  const lines = s.split('\n');
+  const out = [];
+  let inUl = false, inOl = false;
+
+  const closeList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  for (let line of lines) {
+    // Code-block placeholder pass-through
+    if (/^\x00CB\d+\x00$/.test(line.trim())) {
+      closeList();
+      out.push(line.trim());
+      continue;
+    }
+    // Horizontal rule
+    if (/^(---|\*\*\*|___)$/.test(line.trim())) {
+      closeList(); out.push('<hr>'); continue;
+    }
+    // Headers
+    const hm = line.match(/^(#{1,3})\s+(.*)/);
+    if (hm) {
+      closeList();
+      const lvl = hm[1].length;
+      out.push('<h' + lvl + '>' + inlineMarkdown(hm[2]) + '</h' + lvl + '>');
+      continue;
+    }
+    // Unordered list
+    const ulm = line.match(/^(\s*)([-*])\s+(.*)/);
+    if (ulm) {
+      if (!inUl) { if (inOl) { out.push('</ol>'); inOl = false; } out.push('<ul>'); inUl = true; }
+      out.push('<li>' + inlineMarkdown(ulm[3]) + '</li>'); continue;
+    }
+    // Ordered list
+    const olm = line.match(/^\s*\d+\.\s+(.*)/);
+    if (olm) {
+      if (!inOl) { if (inUl) { out.push('</ul>'); inUl = false; } out.push('<ol>'); inOl = true; }
+      out.push('<li>' + inlineMarkdown(olm[1]) + '</li>'); continue;
+    }
+    closeList();
+    if (line.trim() === '') { out.push('<p></p>'); }
+    else { out.push('<p>' + inlineMarkdown(line) + '</p>'); }
+  }
+  closeList();
+
+  let html = out.join('\n');
+
+  // Step 4: restore code blocks
+  codeBlocks.forEach((cb, i) => {
+    html = html.replace('\x00CB' + i + '\x00', cb);
+  });
+
+  return html;
+}
+
+function inlineMarkdown(s) {
+  // inline code (must come before bold/italic)
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // bold+italic ***
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  // bold **
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // italic *
+  s = s.replace(/\*([^*\s][^*]*)\*/g, '<em>$1</em>');
+  // italic _
+  s = s.replace(/_([^_\s][^_]*)_/g, '<em>$1</em>');
+  return s;
+}
+
 // ── Copy output ───────────────────────────────────────────────────
 function copyOutput() {
   const text = S.outputBuffer || el.output().textContent;
@@ -1247,7 +1345,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
                        : (d.result && d.result.output) ? d.result.output : '';
       if (resultText && resultText.trim()) {
         appendSpan('\n', '');
-        appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+        appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
         const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
         finishRun('complete', '', taskId, agent, taskInput, tokens);
         return;
@@ -1369,7 +1467,7 @@ async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
                      : (result && result.output) ? result.output : '';
     if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
       appendSpan('\n', '');
-      appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+      appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
     }
     if (data.status === 'failed') {
       finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
@@ -1414,7 +1512,7 @@ function pollTaskUntilComplete(taskId, apiKey, agent, taskInputText) {
                        : (result && result.output) ? result.output : '';
       if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
         appendSpan('\n', '');
-        appendHTML('<span class="o-result">' + escapeHtml(resultText.trim()) + '</span>');
+        appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
       }
       if (data.status === 'failed') {
         finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
