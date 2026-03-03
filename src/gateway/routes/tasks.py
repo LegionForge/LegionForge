@@ -161,6 +161,21 @@ class TaskRequest(BaseModel):
             "Phase 58 — Model Selection per Task."
         ),
     )
+    attachment_text: str | None = Field(
+        default=None,
+        max_length=16384,
+        description=(
+            "Optional plain-text file content to attach to this task.  When provided, "
+            "the content is prepended to the agent's input so the agent can read and "
+            "analyse the file inline.  Max 16 KB.  "
+            "Phase 70 — File Attachment on Tasks."
+        ),
+    )
+    attachment_filename: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Original filename for the attached content (display only).",
+    )
 
     @field_validator("model_preference")
     @classmethod
@@ -250,6 +265,17 @@ async def submit_task(
         estimate["agent_type"] = body.agent_type
         estimate["dry_run"] = True
         return JSONResponse(status_code=200, content=estimate)
+
+    # Phase 70: prepend inline file attachment to task input so the agent reads it naturally
+    if body.attachment_text:
+        fname = (body.attachment_filename or "attachment.txt").replace("\n", " ")[:100]
+        sanitized = (
+            f"[ATTACHED FILE: {fname}]\n"
+            f"---\n"
+            f"{body.attachment_text.strip()}\n"
+            f"---\n\n"
+            f"{sanitized}"
+        )
 
     # Phase 29: always compute content_hash (stored on the task for future lookups)
     from src.task_cache import compute_task_hash

@@ -524,6 +524,12 @@
       <button class="btn primary" id="submit-btn" onclick="submitTask()">▶ Submit <kbd style="font-size:10px;opacity:0.7">⌘↵</kbd></button>
       <button class="btn danger"  id="cancel-btn" onclick="cancelTask()" style="display:none">✕ Cancel</button>
       <button class="btn ghost"   onclick="clearOutput()">Clear</button>
+      <!-- Phase 70: file attachment -->
+      <label class="btn ghost" id="attach-label" title="Attach a text file (TXT, MD, CSV, JSON — max 16 KB)" style="cursor:pointer">
+        📎 Attach
+        <input type="file" id="attach-input" accept=".txt,.md,.csv,.json,.py,.js,.ts,.yaml,.yml,.log" style="display:none" onchange="onFileAttach(this)">
+      </label>
+      <span id="attach-name" style="font-size:11px;color:var(--text-dim);"></span>
       <span id="char-count"></span>
     </div>
   </div>
@@ -608,6 +614,8 @@ const S = {
   modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
   templates:      [],     // cached template list (Phase 61)
   streamEl:       null,   // single accumulator element for live token streaming (Phase 69)
+  attachText:     null,   // plain-text content of attached file (Phase 70)
+  attachName:     null,   // original filename of attached file (Phase 70)
 };
 
 const MAX_HISTORY = 20;
@@ -691,6 +699,42 @@ function toggleKeyVisibility() {
 function clearApiKey() {
   el.apiKey().value = '';
   localStorage.removeItem(APIKEY_KEY);
+}
+
+// ── File attachment (Phase 70) ────────────────────────────────────
+function onFileAttach(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const MAX = 16384;  // 16 KB
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result || '';
+    if (text.length > MAX) {
+      appendSpan('\n[warn] File too large — truncated to 16 KB.\n', 'o-status');
+    }
+    S.attachText = text.slice(0, MAX);
+    S.attachName = file.name;
+    const nameEl = $('attach-name');
+    if (nameEl) {
+      nameEl.textContent = '📄 ' + file.name + ' (' + Math.round(text.length / 1024 * 10) / 10 + ' KB) ';
+      const x = document.createElement('span');
+      x.textContent = '✕';
+      x.title = 'Remove attachment';
+      x.style.cursor = 'pointer';
+      x.onclick = clearAttachment;
+      nameEl.appendChild(x);
+    }
+  };
+  reader.readAsText(file);
+  // Reset input so the same file can be re-selected after clearing
+  input.value = '';
+}
+
+function clearAttachment() {
+  S.attachText = null;
+  S.attachName = null;
+  const nameEl = $('attach-name');
+  if (nameEl) nameEl.textContent = '';
 }
 
 // ── Model preference selector (Phase 58) ─────────────────────────
@@ -1365,7 +1409,12 @@ async function submitTask() {
         'Content-Type':  'application/json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify({ task, agent_type: agent, model_preference: S.modelPref, ...(S.sessionId ? { session_id: S.sessionId } : {}) }),
+      body: JSON.stringify({
+        task, agent_type: agent, model_preference: S.modelPref,
+        ...(S.sessionId   ? { session_id: S.sessionId }           : {}),
+        ...(S.attachText  ? { attachment_text: S.attachText,
+                              attachment_filename: S.attachName }  : {}),
+      }),
     });
 
     if (!res.ok) {

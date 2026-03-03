@@ -10856,3 +10856,82 @@ def test_p69_pytest_timeout_in_requirements():
 
     req = pathlib.Path("requirements.txt").read_text()
     assert "pytest-timeout" in req
+
+
+# ── Phase 70 — File Attachment on Tasks ───────────────────────────
+
+
+def test_p70_task_request_has_attachment_text_field():
+    """TaskRequest has attachment_text and attachment_filename fields."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    # Fields should exist with correct defaults
+    tr = TaskRequest(task="hello")
+    assert tr.attachment_text is None
+    assert tr.attachment_filename is None
+
+
+def test_p70_task_request_attachment_text_max_length():
+    """attachment_text is capped at 16384 characters."""
+    import inspect
+    from src.gateway.routes.tasks import TaskRequest
+
+    fields = TaskRequest.model_fields
+    assert "attachment_text" in fields
+    # max_length should be 16384
+    metadata = fields["attachment_text"].metadata
+    assert any(getattr(m, "max_length", None) == 16384 for m in metadata)
+
+
+def test_p70_tasks_route_prepends_attachment_to_input():
+    """tasks.py prepends [ATTACHED FILE: ...] block to sanitized input."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "ATTACHED FILE" in src
+    assert "attachment_text" in src
+
+
+def test_p70_ui_has_file_picker():
+    """Web UI has a file input element for attachments."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'type="file"' in html
+    assert "attach-input" in html
+
+
+def test_p70_ui_has_on_file_attach_function():
+    """Web UI defines onFileAttach(input) handler."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function onFileAttach(" in html
+
+
+def test_p70_ui_has_clear_attachment_function():
+    """Web UI defines clearAttachment() to remove attached file."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function clearAttachment(" in html
+
+
+def test_p70_ui_submit_includes_attachment_text():
+    """submitTask() includes attachment_text in POST body when present."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    sub_start = html.find("async function submitTask(")
+    sub_end = html.find("// Subscribe to SSE", sub_start)
+    body = html[sub_start:sub_end]
+    assert "attachment_text" in body and "S.attachText" in body
+
+
+def test_p70_ui_state_has_attach_fields():
+    """State object S includes attachText and attachName fields."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "attachText" in html
+    assert "attachName" in html
