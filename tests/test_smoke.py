@@ -12771,3 +12771,153 @@ def test_p113_ui_upload_attachment_reads_file_text():
     fn_start = html.find("function uploadAttachment(")
     fn_body = html[fn_start : fn_start + 800]
     assert "file.text()" in fn_body
+
+
+# ── Phase 114 — MCP Tools Viewer ─────────────────────────────────────────────
+
+
+def test_p114_ui_mcp_tools_card_present():
+    """#mcp-tools-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "mcp-tools-card" in html
+
+
+def test_p114_ui_load_mcp_tools_function_defined():
+    """loadMcpTools() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadMcpTools(" in html
+
+
+def test_p114_ui_load_mcp_tools_fetches_mcp_endpoint():
+    """loadMcpTools() fetches /mcp/tools."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadMcpTools(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/mcp/tools" in fn_body
+
+
+def test_p114_ui_mcp_tools_renders_mcp_row():
+    """loadMcpTools() renders .mcp-row elements."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadMcpTools(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "mcp-row" in fn_body
+
+
+# ── Phase 115 — Agent Details Viewer ─────────────────────────────────────────
+
+
+def test_p115_ui_agent_detail_card_present():
+    """#agent-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-detail-card" in html
+
+
+def test_p115_ui_load_agent_detail_function_defined():
+    """loadAgentDetail() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAgentDetail(" in html
+
+
+def test_p115_ui_load_agent_detail_fetches_agents_type():
+    """loadAgentDetail() fetches /agents/{type}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAgentDetail(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/agents/" in fn_body
+
+
+def test_p115_ui_agent_detail_sel_has_all_types():
+    """Agent type selector has orchestrator, researcher, base_agent options."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    card_start = html.find("agent-detail-card")
+    card_body = html[card_start : card_start + 800]
+    assert "orchestrator" in card_body
+    assert "researcher" in card_body
+    assert "base_agent" in card_body
+
+
+# ── Phase 116 — Memory Manual Ingest ─────────────────────────────────────────
+
+
+def test_p116_ui_memory_ingest_card_present():
+    """#memory-ingest-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-ingest-card" in html
+
+
+def test_p116_ui_ingest_memory_function_defined():
+    """ingestMemory() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function ingestMemory(" in html
+
+
+def test_p116_ui_ingest_memory_posts_to_memory_ingest():
+    """ingestMemory() POSTs to /memory/ingest."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function ingestMemory(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "POST" in fn_body
+    assert "/memory/ingest" in fn_body
+
+
+# ── Phase 117 — Pipeline Create ──────────────────────────────────────────────
+
+
+def test_p117_ui_pipeline_create_card_present():
+    """#pipeline-create-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-create-card" in html
+
+
+def test_p117_ui_create_pipeline_function_defined():
+    """createPipeline() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function createPipeline(" in html
+
+
+def test_p117_ui_create_pipeline_posts_to_pipelines():
+    """createPipeline() POSTs to /pipelines."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function createPipeline(")
+    fn_body = html[fn_start : fn_start + 1400]
+    assert "POST" in fn_body
+    assert "/pipelines" in fn_body
+
+
+def test_p117_ui_create_pipeline_parses_steps_json():
+    """createPipeline() parses a steps JSON textarea."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function createPipeline(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "JSON.parse" in fn_body

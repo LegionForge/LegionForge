@@ -149,6 +149,9 @@
     .td-value { color:var(--text); font-family:var(--mono); white-space:pre-wrap; word-break:break-word; }
     /* ── Phase 112: Task Labels ──────────────────────────────── */
     .label-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:var(--blue); color:#fff; font-size:10px; cursor:pointer; }
+    /* ── Phase 114: MCP Tools ────────────────────────────────── */
+    .mcp-row { display:grid; grid-template-columns:1fr 70px; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .mcp-row:last-child { border-bottom:none; }
     /* ── Phase 105: Document List ────────────────────────────── */
     .doc-row { display:grid; grid-template-columns:1fr 80px 40px; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .doc-row:last-child { border-bottom:none; }
@@ -1074,6 +1077,54 @@
       </div>
       <button class="btn secondary" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="uploadAttachment()">↑ Upload</button>
       <div id="upload-attach-result" style="margin-top:6px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── MCP Tools Viewer card (Phase 114) ───────────────── -->
+  <div class="card" id="mcp-tools-card">
+    <details id="mcp-tools-section">
+      <summary style="cursor:pointer">MCP Tools <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMcpTools(event)" title="Refresh">↻</button></summary>
+      <div id="mcp-tools-body" style="color:var(--text-xdim);font-size:12px">Click ↻ to load registered MCP tools.</div>
+    </details>
+  </div>
+
+  <!-- ── Agent Details Viewer card (Phase 115) ─────────────── -->
+  <div class="card" id="agent-detail-card">
+    <details id="agent-detail-section">
+      <summary style="cursor:pointer">Agent Details</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <select id="agent-detail-sel" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="orchestrator">orchestrator</option>
+          <option value="researcher">researcher</option>
+          <option value="base_agent">base_agent</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadAgentDetail()">↻ Load</button>
+      </div>
+      <div id="agent-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Select an agent type and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Memory Manual Ingest card (Phase 116) ─────────────── -->
+  <div class="card" id="memory-ingest-card">
+    <details id="memory-ingest-section">
+      <summary style="cursor:pointer">Memory Ingest</summary>
+      <textarea id="memory-ingest-text" placeholder="Text to embed and store in your memory namespace…" style="width:100%;height:70px;margin-top:6px;font-size:11px;padding:4px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
+      <button class="btn secondary" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="ingestMemory()">↑ Ingest</button>
+      <div id="memory-ingest-result" style="margin-top:6px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Create card (Phase 117) ──────────────────── -->
+  <div class="card" id="pipeline-create-card">
+    <details id="pipeline-create-section">
+      <summary style="cursor:pointer">Create Pipeline</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="new-pipeline-name" placeholder="Pipeline name" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="new-pipeline-desc" placeholder="Description (optional)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <textarea id="new-pipeline-steps" placeholder='Steps JSON, e.g. [{"name":"Step 1","task_text":"Research: {{input}}","agent_type":"researcher"}]' style="width:100%;height:80px;font-size:11px;padding:4px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical;box-sizing:border-box;font-family:var(--mono)"></textarea>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="createPipeline()">+ Create</button>
+        <div id="pipeline-create-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
     </details>
   </div>
 
@@ -2972,6 +3023,101 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 114: MCP Tools Viewer ───────────────────────────────────────────────
+async function loadMcpTools(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('mcp-tools-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/mcp/tools', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    const tools = d.tools || [];
+    if (!bodyEl) return;
+    if (!tools.length) { bodyEl.textContent = 'No tools registered.'; return; }
+    bodyEl.innerHTML = tools.map(t =>
+      '<div class="mcp-row"><span>' + (t.name || t.tool_name || '—').replace(/</g, '&lt;') +
+      '</span><span style="color:' + (t.status === 'active' ? 'var(--green)' : 'var(--red)') + '">' +
+      (t.status || '—') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 115: Agent Details Viewer ───────────────────────────────────────────
+async function loadAgentDetail() {
+  const apiKey = el.apiKey().value.trim();
+  const agentType = (document.getElementById('agent-detail-sel') || {}).value || 'orchestrator';
+  const bodyEl = document.getElementById('agent-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const headers = apiKey ? { Authorization: 'Bearer ' + apiKey } : {};
+    const res = await fetch('/agents/' + encodeURIComponent(agentType), { headers });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const rows = [
+      ['Name', d.name || agentType],
+      ['Description', d.description || '—'],
+      ['Max Steps', d.max_steps ?? '—'],
+      ['Use Cases', Array.isArray(d.use_cases) ? d.use_cases.join('; ') : (d.use_cases || '—')],
+      ['Limitations', Array.isArray(d.limitations) ? d.limitations.join('; ') : (d.limitations || '—')],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 116: Memory Manual Ingest ───────────────────────────────────────────
+async function ingestMemory() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const text = (document.getElementById('memory-ingest-text') || {}).value?.trim();
+  const resultEl = document.getElementById('memory-ingest-result');
+  if (!text) { if (resultEl) resultEl.textContent = 'Enter text to ingest first.'; return; }
+  if (resultEl) resultEl.textContent = 'Ingesting…';
+  try {
+    const res = await fetch('/memory/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ content: text }),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Stored: ' + (d.id || '—') + ' in ' + (d.namespace || 'your namespace');
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 117: Pipeline Create ────────────────────────────────────────────────
+async function createPipeline() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const name = (document.getElementById('new-pipeline-name') || {}).value?.trim();
+  const desc = (document.getElementById('new-pipeline-desc') || {}).value?.trim() || '';
+  const stepsRaw = (document.getElementById('new-pipeline-steps') || {}).value?.trim();
+  const resultEl = document.getElementById('pipeline-create-result');
+  if (!name) { if (resultEl) resultEl.textContent = 'Pipeline name is required.'; return; }
+  let steps;
+  try {
+    steps = JSON.parse(stepsRaw || '[{"name":"Step 1","task_text":"{{input}}","agent_type":"orchestrator"}]');
+  } catch(e) { if (resultEl) resultEl.textContent = 'Steps JSON is invalid: ' + e.message; return; }
+  if (resultEl) resultEl.textContent = 'Creating…';
+  try {
+    const res = await fetch('/pipelines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ name, description: desc, steps }),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Created pipeline ID ' + (d.pipeline_id || d.id || '—') + ': ' + (d.name || name);
+    loadPipelines().catch(() => {});
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 110: Task Detail Viewer ─────────────────────────────────────────────

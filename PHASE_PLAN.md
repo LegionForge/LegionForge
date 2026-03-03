@@ -1743,4 +1743,9 @@ Added as compact addendum. See git log for full details.
 | 108 | #131 | Memory Stats & Clear (loadMemoryStats, clearMemory, GET /memory/stats, DELETE /memory) | +4 | 1070 |
 | 109 | #131 | Export CSV/JSON (exportTasksCsv/Json, ↓ csv/json buttons, /tasks/export?format=) | +4 | 1074 |
 
-**Current state:** 1074/1074 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 110 | #132 | Task Detail Viewer (task-detail-card, loadTaskDetail, GET /tasks/{id}, td-field/td-label/td-value rendering) | +4 | 1078 |
+| 111 | #132 | A2A / MCP Info Card (a2a-info-card, loadAgentCard, GET /.well-known/agent.json, capabilities display) | +3 | 1081 |
+| 112 | #132 | Task Labels Editor (task-labels-card, loadTaskLabels/applyLabel, PUT /tasks/{id}/labels, label-pill CSS) | +4 | 1085 |
+| 113 | #132 | File Attachment Upload (upload-attach-card, uploadAttachment, file.text(), POST /tasks/{id}/attachments) | +4 | 1089 |
+
+**Current state:** 1089/1089 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
