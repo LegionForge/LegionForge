@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 196
+UPDATE: 197
 BRANCH: main
-COMMIT: 1ee682f
-TIMESTAMP: 2026-03-04T20:00Z
-LAST_OP: PR #161 — Phase 226-229 — Task Annotation, Memory Ingest, Admin Schedules, Batch Tag Results
-SMOKE_TESTS: 1459/1459
+COMMIT: 7f98608
+TIMESTAMP: 2026-03-04T21:00Z
+LAST_OP: PR #162 — Phase 230-233 — API Key Rotate, Task Siblings, Pipeline Step Result, Template Preview
+SMOKE_TESTS: 1471/1471
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

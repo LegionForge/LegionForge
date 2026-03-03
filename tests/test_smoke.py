@@ -16472,3 +16472,119 @@ def test_p233_ui_preview_template_shows_prompt():
     idx = html.index("async function previewTemplate()")
     fn_body = html[idx : idx + 1000]
     assert "/templates/" in fn_body and "prompt" in fn_body
+
+
+# ── Phase 234: My Usage Today ─────────────────────────────────────────────────
+
+
+def test_p234_ui_my_usage_today_card_present():
+    """my-usage-today-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "my-usage-today-card" in html
+
+
+def test_p234_ui_load_my_usage_today_function_defined():
+    """loadMyUsageToday function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMyUsageToday()" in html
+
+
+def test_p234_ui_my_usage_today_shows_quota():
+    """loadMyUsageToday shows daily quota."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMyUsageToday()")
+    fn_body = html[idx : idx + 1200]
+    assert "daily_token_quota" in fn_body or "quota" in fn_body
+
+
+# ── Phase 235: Admin Stats Summary ────────────────────────────────────────────
+
+
+def test_p235_ui_admin_stats_summary_card_present():
+    """admin-stats-summary-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-stats-summary-card" in html
+
+
+def test_p235_ui_load_admin_stats_summary_function_defined():
+    """loadAdminStatsSummary function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminStatsSummary()" in html
+
+
+def test_p235_ui_admin_stats_summary_hits_admin_stats():
+    """loadAdminStatsSummary fetches /admin/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAdminStatsSummary()")
+    fn_body = html[idx : idx + 600]
+    assert "/admin/stats" in fn_body
+
+
+# ── Phase 236: All Webhooks ────────────────────────────────────────────────────
+
+
+def test_p236_ui_webhook_history_card_present():
+    """webhook-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-history-card" in html
+
+
+def test_p236_ui_load_webhook_history_function_defined():
+    """loadWebhookHistory function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookHistory()" in html
+
+
+def test_p236_ui_webhook_history_renders_table():
+    """loadWebhookHistory renders a table with webhooks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadWebhookHistory()")
+    fn_body = html[idx : idx + 700]
+    assert "/webhooks" in fn_body and "<table" in fn_body
+
+
+# ── Phase 237: Set Task Priority ──────────────────────────────────────────────
+
+
+def test_p237_ui_set_priority_card_present():
+    """set-priority-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "set-priority-card" in html
+
+
+def test_p237_ui_set_task_priority_by_id_function_defined():
+    """setTaskPriorityById function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function setTaskPriorityById()" in html
+
+
+def test_p237_ui_set_priority_sends_priority_field():
+    """setTaskPriorityById sends priority in PATCH body."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function setTaskPriorityById()")
+    fn_body = html[idx : idx + 700]
+    assert "priority" in fn_body and "PATCH" in fn_body

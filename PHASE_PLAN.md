@@ -1883,5 +1883,9 @@ Added as compact addendum. See git log for full details.
 | 227 | #161 | Memory Ingest (memory-ingest-card, ingestToMemory, POST /memory/ingest, text textarea, chunk count) | +3 | 1453 |
 | 228 | #161 | All Schedules Admin (schedule-history-card, loadScheduleHistory, GET /admin/schedules, table) | +3 | 1456 |
 | 229 | #161 | Batch Tag Results (batch-results-card, loadBatchResults, GET /tasks?label=, label-filtered task list) | +3 | 1459 |
+| 230 | #162 | API Key Rotation (api-key-rotation-card, loadApiKeyRotation, POST /rotate-key, shows new key once) | +3 | 1462 |
+| 231 | #162 | Task Siblings (task-siblings-card, loadTaskSiblings, GET /tasks/{id}→session→GET /sessions/{id}/tasks) | +3 | 1465 |
+| 232 | #162 | Pipeline Step Result (pipeline-step-result-card, loadPipelineStepResult, GET /pipelines/runs/{id}, step index) | +3 | 1468 |
+| 233 | #162 | Template Preview (template-preview-card, previewTemplate, GET /templates/{id}, name/agent/prompt block) | +3 | 1471 |
 
-**Current state:** 1459/1459 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1471/1471 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

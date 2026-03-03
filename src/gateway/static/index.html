@@ -1184,6 +1184,43 @@
     </details>
   </div>
 
+  <!-- ── My Usage Today card (Phase 234) ──────────────────── -->
+  <div class="card" id="my-usage-today-card">
+    <details id="my-usage-today-section">
+      <summary style="cursor:pointer">My Usage Today <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMyUsageToday()" title="Refresh">↻</button></summary>
+      <div id="my-usage-today-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Admin Stats Summary card (Phase 235) ──────────────── -->
+  <div class="card" id="admin-stats-summary-card">
+    <details id="admin-stats-summary-section">
+      <summary style="cursor:pointer">Admin Stats Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminStatsSummary()" title="Refresh">↻</button></summary>
+      <div id="admin-stats-summary-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Webhooks History card (Phase 236) ─────────────────── -->
+  <div class="card" id="webhook-history-card">
+    <details id="webhook-history-section">
+      <summary style="cursor:pointer">All Webhooks <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhookHistory()" title="Refresh">↻</button></summary>
+      <div id="webhook-history-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load all registered webhooks.</div>
+    </details>
+  </div>
+
+  <!-- ── Set Task Priority card (Phase 237) ────────────────── -->
+  <div class="card" id="set-priority-card">
+    <details id="set-priority-section">
+      <summary style="cursor:pointer">Set Task Priority</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="set-priority-task-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="set-priority-value" placeholder="Priority (0-10)" type="number" min="0" max="10" style="width:100px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="setTaskPriorityById()">✓ Set</button>
+        <span id="set-priority-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+    </details>
+  </div>
+
   <!-- ── API Key Rotation card (Phase 230) ────────────────── -->
   <div class="card" id="api-key-rotation-card">
     <details id="api-key-rotation-section">
@@ -4511,6 +4548,80 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 234: My Usage Today ─────────────────────────────────────────────────
+async function loadMyUsageToday() {
+  const el = document.getElementById('my-usage-today-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/history?days=1');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const rows = Array.isArray(data) ? data : (data.history || data.usage || []);
+    const today = rows[rows.length - 1] || {};
+    const meR = await apiFetch('/usage/me');
+    const me = meR.ok ? await meR.json() : {};
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Today's Tokens</span><span class="td-value">${(today.total_tokens ?? 0).toLocaleString()}</span></div>`,
+      `<div class="td-field"><span class="td-label">Daily Quota</span><span class="td-value">${me.daily_token_quota ?? 'unlimited'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Today's Requests</span><span class="td-value">${today.requests ?? '-'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 235: Admin Stats Summary ────────────────────────────────────────────
+async function loadAdminStatsSummary() {
+  const el = document.getElementById('admin-stats-summary-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/stats');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const entries = typeof d === 'object' && d !== null ? Object.entries(d) : [];
+    el.innerHTML = entries.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k.replace(/_/g, ' ')}</span><span class="td-value">${v}</span></div>`
+    ).join('') || 'No stats available.';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 236: All Webhooks ────────────────────────────────────────────────────
+async function loadWebhookHistory() {
+  const el = document.getElementById('webhook-history-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/webhooks');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.webhooks || []);
+    if (!items.length) { el.textContent = 'No webhooks registered.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">ID</th><th style="text-align:left;padding:2px 6px">URL</th><th style="text-align:left;padding:2px 6px">Active</th></tr>'
+      + items.map(w => `<tr><td style="padding:2px 6px">${w.id ?? '-'}</td><td style="padding:2px 6px">${(w.url ?? w.callback_url ?? '-').slice(0, 40)}</td><td style="padding:2px 6px">${w.active !== false ? '✓' : '✗'}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 237: Set Task Priority ──────────────────────────────────────────────
+async function setTaskPriorityById() {
+  const id = document.getElementById('set-priority-task-id').value.trim();
+  const priority = parseInt(document.getElementById('set-priority-value').value, 10);
+  const statusEl = document.getElementById('set-priority-status');
+  if (!id) { statusEl.textContent = 'Enter a task ID.'; return; }
+  if (isNaN(priority)) { statusEl.textContent = 'Enter a valid priority.'; return; }
+  statusEl.textContent = 'Saving…';
+  try {
+    const r = await apiFetch('/tasks/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority }),
+    });
+    if (r.ok) {
+      statusEl.textContent = `✓ Priority set to ${priority}`;
+    } else {
+      statusEl.textContent = 'HTTP ' + r.status;
+    }
+  } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 230: API Key Rotation ───────────────────────────────────────────────
