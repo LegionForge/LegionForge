@@ -38,6 +38,13 @@
     /* ── Phase 77: Share Link ────────────────────────────────── */
     .share-row { display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap; }
     .share-url { font-size:11px; color:var(--blue); word-break:break-all; flex:1; }
+    /* ── Phase 78: Task Timeline ─────────────────────────────── */
+    .timeline-panel { margin-top:6px; padding:6px 8px; background:var(--panel2); border-radius:var(--radius); border:1px solid var(--border2); font-size:12px; }
+    .tl-event { display:flex; gap:8px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); }
+    .tl-event:last-child { border-bottom:none; }
+    .tl-dot { width:8px; height:8px; border-radius:50%; background:var(--blue); flex-shrink:0; margin-top:3px; }
+    .tl-type { color:var(--text); font-weight:500; min-width:80px; }
+    .tl-ts { color:var(--text-xdim); font-size:10px; margin-left:auto; }
     /* ── Phase 75: Schedules card ───────────────────────────── */
     .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .sched-row:last-child { border-bottom:none; }
@@ -1883,7 +1890,8 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
         '<button class="btn ghost" id="rb-up-' + taskId + '" onclick="rateTask(\'' + taskId + '\',1)" title="Thumbs up">👍</button>' +
         '<button class="btn ghost" id="rb-down-' + taskId + '" onclick="rateTask(\'' + taskId + '\',-1)" title="Thumbs down">👎</button>' +
         '<button class="btn ghost" onclick="toggleNotesPanel(\'' + taskId + '\')" title="Task notes" style="margin-left:8px">📝 Notes</button>' +
-        '<button class="btn ghost" onclick="shareTask(\'' + taskId + '\')" title="Share result" id="share-btn-' + taskId + '">🔗 Share</button>';
+        '<button class="btn ghost" onclick="shareTask(\'' + taskId + '\')" title="Share result" id="share-btn-' + taskId + '">🔗 Share</button>' +
+        '<button class="btn ghost" onclick="toggleTimeline(\'' + taskId + '\')" title="Task timeline">⏱ Timeline</button>';
       el.output().appendChild(bar);
       // Phase 76: notes panel (hidden initially)
       const notesDiv = document.createElement('div');
@@ -1903,6 +1911,12 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
       shareDiv.id = 'share-row-' + taskId;
       shareDiv.style.display = 'none';
       el.output().appendChild(shareDiv);
+      // Phase 78: timeline panel (hidden initially)
+      const tlDiv = document.createElement('div');
+      tlDiv.className = 'timeline-panel';
+      tlDiv.id = 'timeline-panel-' + taskId;
+      tlDiv.style.display = 'none';
+      el.output().appendChild(tlDiv);
     }
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
     notifyTaskComplete(taskInputText, elapsed);  // Phase 74
@@ -2144,6 +2158,35 @@ async function shareTask(taskId) {
     if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
     console.warn('[share] error:', e);
   }
+}
+
+// ── Phase 78: Task Timeline ──────────────────────────────────────────────────
+async function toggleTimeline(taskId) {
+  const panel = document.getElementById('timeline-panel-' + taskId);
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  if (visible) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  panel.innerHTML = '<span style="color:var(--text-xdim);font-size:11px">Loading…</span>';
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { panel.innerHTML = '(No API key)'; return; }
+  try {
+    const res = await fetch('/tasks/' + taskId + '/timeline', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { panel.innerHTML = '(Could not load timeline)'; return; }
+    const data = await res.json();
+    const events = data.events || [];
+    if (!events.length) { panel.innerHTML = '<span style="color:var(--text-xdim);font-size:11px">No timeline events.</span>'; return; }
+    panel.innerHTML = events.map(ev => {
+      const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString() : '';
+      return '<div class="tl-event">' +
+        '<span class="tl-dot"></span>' +
+        '<span class="tl-type">' + escapeHtml(ev.event_type || '') + '</span>' +
+        '<span class="tl-ts">' + escapeHtml(ts) + '</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) { panel.innerHTML = '(Error loading timeline)'; console.warn('[timeline] error:', e); }
 }
 
 // Phase 73: export history as Markdown via GET /tasks/export?format=markdown
