@@ -260,6 +260,12 @@
     .o-result li { margin: 2px 0; }
     .o-result hr { border: none; border-top: 1px solid var(--border2); margin: 8px 0; }
     .o-result p { margin: 4px 0; }
+    /* ── Live token stream accumulator (Phase 69) ───── */
+    .o-stream { color: var(--text); border-top: 1px solid var(--border2); margin-top: 8px;
+      padding-top: 8px; white-space: pre-wrap; font-size: 13px; }
+    .o-stream::after { content: '▋'; animation: blink 0.9s step-end infinite;
+      color: var(--blue); margin-left: 1px; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     /* ── Copy-result button (Phase 65) ──────────────── */
     .result-wrap { position: relative; }
     .result-copy-btn { position: absolute; top: 10px; right: 0; font-size: 11px; padding: 2px 6px;
@@ -601,6 +607,7 @@ const S = {
   sessionId:      null,   // string | null — active conversation session_id (Phase 57)
   modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
   templates:      [],     // cached template list (Phase 61)
+  streamEl:       null,   // single accumulator element for live token streaming (Phase 69)
 };
 
 const MAX_HISTORY = 20;
@@ -1340,6 +1347,7 @@ async function submitTask() {
   S.toolsAttempted = 0;
   S.toolsCompleted = 0;
   S.toolsBlocked = 0;
+  S.streamEl = null;
   _toolBlockEl = null;
   el.submitBtn().disabled = true;
   el.cancelBtn().style.display = 'inline-flex';
@@ -1431,10 +1439,20 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     } catch(_) { markToolBlocked(S.activeToolName || 'tool', ''); }
   });
 
+  // Phase 69: accumulate tokens into a single DOM element (no span-per-token)
   es.addEventListener('token', e => {
     try {
       const d = JSON.parse(e.data);
-      if (d.delta) appendSpan(d.delta, 'o-token');
+      if (!d.delta) return;
+      if (!S.streamEl) {
+        appendSpan('\n', '');
+        S.streamEl = document.createElement('div');
+        S.streamEl.className = 'o-stream';
+        el.output().appendChild(S.streamEl);
+      }
+      S.streamEl.textContent += d.delta;
+      S.outputBuffer += d.delta;
+      el.output().scrollTop = el.output().scrollHeight;
     } catch(_) {}
   });
 
@@ -1443,23 +1461,26 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     es.close(); S.activeES = null;
     try {
       const d = JSON.parse(e.data);
-      // stream.py fast-path (task already done at connect time) sends result inline.
-      // Live build_task_complete_event() has no result field — fall through to REST fetch.
+      // Phase 69: live task_complete now carries result inline — no REST round-trip needed.
+      // fast-path (task already done at connect time) also sends inline result.
       const resultText = typeof d.result === 'string' ? d.result
                        : (d.result && d.result.output) ? d.result.output : '';
       if (resultText && resultText.trim()) {
-        appendSpan('\n', '');
+        // Remove the streaming accumulator — replace with markdown-rendered final answer
+        if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
         appendResult(resultText.trim());
         const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
         finishRun('complete', '', taskId, agent, taskInput, tokens);
         return;
       }
     } catch(_) {}
-    // No inline result (live streaming path) — fetch the final answer from REST API
+    // Fallback: fetch from REST (shouldn't normally hit this path after Phase 69)
+    if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
     fetchTaskResult(taskId, apiKey, agent, taskInput);
   });
 
   es.addEventListener('task_error', e => {
+    if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
     try {
       const d = JSON.parse(e.data);
       finishRun('error', d.error || 'Unknown error', taskId, agent, taskInput, 0);
@@ -1469,6 +1490,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   });
 
   es.addEventListener('task_cancelled', () => {
+    if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
     finishRun('cancelled', 'Task cancelled', taskId, agent, taskInput, 0);
     es.close();
     S.activeES = null;

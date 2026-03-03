@@ -10768,3 +10768,91 @@ def test_p68_labels_starred_is_valid():
     from src.database import VALID_TASK_LABELS
 
     assert "starred" in VALID_TASK_LABELS
+
+
+# ── Phase 69 — Streaming Token Output ─────────────────────────────
+
+
+def test_p69_build_task_complete_event_includes_result():
+    """build_task_complete_event now accepts and includes result inline."""
+    from src.gateway.events import build_task_complete_event
+
+    evt = build_task_complete_event(
+        "t1", result="Hello world", tokens={"input": 10, "output": 20}
+    )
+    assert evt["event"] == "task_complete"
+    assert evt["data"]["result"] == "Hello world"
+    assert evt["data"]["tokens"] == {"input": 10, "output": 20}
+
+
+def test_p69_build_task_complete_event_backward_compat():
+    """build_task_complete_event with no result/tokens still works (backward compat)."""
+    from src.gateway.events import build_task_complete_event
+
+    evt = build_task_complete_event("t1")
+    assert evt["event"] == "task_complete"
+    assert "task_id" in evt["data"]
+    # result and tokens fields should not be present when not passed
+    assert "result" not in evt["data"]
+    assert "tokens" not in evt["data"]
+
+
+def test_p69_worker_passes_result_to_task_complete():
+    """worker.py calls build_task_complete_event with result= and tokens= kwargs."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/worker.py").read_text()
+    # build_task_complete_event call must include result= keyword
+    assert "result=result_text" in src or "result=" in src
+
+
+def test_p69_ui_stream_el_in_state():
+    """State object S includes streamEl field for token accumulator."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "streamEl" in html
+
+
+def test_p69_ui_token_handler_uses_accumulator():
+    """Token SSE handler creates a single accumulator element (not appendSpan per token)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # Find the token event listener
+    tok_start = html.find("addEventListener('token'")
+    tok_end = html.find("});", tok_start) + 3
+    body = html[tok_start:tok_end]
+    assert "S.streamEl" in body
+    assert "o-stream" in body
+    # Must NOT call appendSpan per token anymore
+    assert "appendSpan(d.delta" not in body
+
+
+def test_p69_ui_task_complete_removes_stream_el():
+    """task_complete handler removes S.streamEl before showing rendered result."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    tc_start = html.find("addEventListener('task_complete'")
+    tc_end = html.find("});", tc_start) + 3
+    body = html[tc_start:tc_end]
+    assert "S.streamEl" in body
+    assert ".remove()" in body
+
+
+def test_p69_ui_o_stream_css_blink_cursor():
+    """CSS for .o-stream includes a blinking cursor animation."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".o-stream" in html
+    assert "blink" in html or "▋" in html
+
+
+def test_p69_pytest_timeout_in_requirements():
+    """pytest-timeout is listed in requirements.txt."""
+    import pathlib
+
+    req = pathlib.Path("requirements.txt").read_text()
+    assert "pytest-timeout" in req

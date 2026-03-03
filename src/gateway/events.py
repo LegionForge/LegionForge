@@ -102,16 +102,31 @@ def build_task_start_event(task_id: str, agent_type: str) -> dict:
     }
 
 
-def build_task_complete_event(task_id: str) -> dict:
-    return {
-        "event": "task_complete",
-        "data": {
-            "task_id": task_id,
-            "status": "complete",
-            "result_url": f"/tasks/{task_id}",
-            "timestamp": _now(),
-        },
+def build_task_complete_event(
+    task_id: str,
+    result: str = "",
+    tokens: dict | None = None,
+) -> dict:
+    """
+    Build a task_complete SSE event.
+
+    Phase 69: ``result`` and ``tokens`` are included inline so the browser
+    can render the final answer immediately without an extra REST round-trip.
+    Both fields remain optional for backward-compat with callers that don't
+    have the result yet (e.g. the fast-path DB read in stream.py already
+    populates them directly from task_row).
+    """
+    data: dict = {
+        "task_id": task_id,
+        "status": "complete",
+        "result_url": f"/tasks/{task_id}",
+        "timestamp": _now(),
     }
+    if result:
+        data["result"] = result
+    if tokens:
+        data["tokens"] = tokens
+    return {"event": "task_complete", "data": data}
 
 
 def build_task_error_event(task_id: str, error: str) -> dict:
