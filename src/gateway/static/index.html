@@ -1233,6 +1233,50 @@
     </details>
   </div>
 
+  <!-- ── Cluster Health card (Phase 294) ───────────────────── -->
+  <div class="card" id="cluster-health-card">
+    <details id="cluster-health-section">
+      <summary style="cursor:pointer">Cluster Health <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadClusterHealth()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="cluster-health-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Admin Quota List card (Phase 295) ───────────────────── -->
+  <div class="card" id="admin-quota-list-card">
+    <details id="admin-quota-list-section">
+      <summary style="cursor:pointer">Admin Quota List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminQuotaList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="admin-quota-list-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Output Raw card (Phase 296) ───────────────────── -->
+  <div class="card" id="task-output-raw-card">
+    <details id="task-output-raw-section">
+      <summary style="cursor:pointer">Task Output Raw <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskOutputRaw()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-output-raw-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskOutputRaw()">Load</button>
+        <pre id="task-output-raw-body" style="font-size:11px;color:var(--text-dim);margin-top:6px;white-space:pre-wrap;max-height:300px;overflow-y:auto"></pre>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Next Run Info card (Phase 297) ───────────────────── -->
+  <div class="card" id="schedule-next-run-info-card">
+    <details id="schedule-next-run-info-section">
+      <summary style="cursor:pointer">Schedule Next Run Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduleNextRunInfo()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Schedule ID <input id="schedule-next-run-info-id" class="input" style="width:80px;margin-left:6px" placeholder="1"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadScheduleNextRunInfo()">Load</button>
+        <div id="schedule-next-run-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Rate Limit Info card (Phase 290) ───────────────────── -->
   <div class="card" id="rate-limit-info-card">
     <details id="rate-limit-info-section">
@@ -5174,6 +5218,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 294: Cluster Health ──────────────────────────────────────────────
+async function loadClusterHealth() {
+  const el = document.getElementById('cluster-health-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/cluster/nodes');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const nodes = Array.isArray(data) ? data : (data.nodes || data.items || []);
+    if (!nodes.length) { el.textContent = 'No cluster nodes found.'; return; }
+    const cols = ['Node', 'URL', 'Status', 'Load'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const n of nodes) {
+      const status = n.status || n.healthy ? 'healthy' : 'unreachable';
+      const colour = status === 'healthy' ? 'var(--green)' : 'var(--text-dim)';
+      tbl += `<tr><td style="padding:2px 6px">${n.node_id ?? n.id ?? '—'}</td><td style="padding:2px 6px">${n.url || '—'}</td><td style="padding:2px 6px;color:${colour}">${status}</td><td style="padding:2px 6px">${n.load ?? '—'}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 295: Admin Quota List ──────────────────────────────────────────────
+async function loadAdminQuotaList() {
+  const el = document.getElementById('admin-quota-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const users = Array.isArray(data) ? data : (data.users || data.items || []);
+    if (!users.length) { el.textContent = 'No users found.'; return; }
+    const cols = ['Username', 'Daily Quota', 'Used', 'Remaining'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const u of users.slice(0, 20)) {
+      const quota = u.daily_token_quota ?? u.quota_tokens ?? '—';
+      const used = u.tokens_used ?? '—';
+      const rem = (typeof quota === 'number' && typeof used === 'number') ? quota - used : '—';
+      tbl += `<tr><td style="padding:2px 6px">${u.username || '—'}</td><td style="padding:2px 6px">${quota}</td><td style="padding:2px 6px">${used}</td><td style="padding:2px 6px">${rem}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 296: Task Output Raw ──────────────────────────────────────────────
+async function loadTaskOutputRaw() {
+  const el = document.getElementById('task-output-raw-body');
+  const taskId = document.getElementById('task-output-raw-id').value.trim();
+  if (!taskId) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    el.textContent = t.result || t.output || JSON.stringify(t, null, 2);
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 297: Schedule Next Run Info ──────────────────────────────────────────────
+async function loadScheduleNextRunInfo() {
+  const el = document.getElementById('schedule-next-run-info-body');
+  const schedId = document.getElementById('schedule-next-run-info-id').value.trim();
+  if (!schedId) { el.textContent = 'Enter a schedule ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/schedules/' + encodeURIComponent(schedId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const s = await r.json();
+    const rows = [
+      ['Name', s.name || '—'],
+      ['Cron', s.cron_expression || s.schedule || '—'],
+      ['Enabled', s.enabled !== undefined ? (s.enabled ? 'Yes' : 'No') : '—'],
+      ['Next Run', s.next_run_at ? s.next_run_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Last Run', s.last_run_at ? s.last_run_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 290: Rate Limit Info ──────────────────────────────────────────────

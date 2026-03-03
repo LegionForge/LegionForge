@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 211
+UPDATE: 212
 BRANCH: main
-COMMIT: 0f1bdd7
-TIMESTAMP: 2026-03-05T13:00Z
-LAST_OP: PR #176 — Phase 286-289 — Model List, Threat Event Detail, User Activity, Connector Status
-SMOKE_TESTS: 1639/1639
+COMMIT: b0a2e8a
+TIMESTAMP: 2026-03-05T14:00Z
+LAST_OP: PR #177 — Phase 290-293 — Rate Limit Info, Task Event Log, Search Provider Status, Pipeline Run List
+SMOKE_TESTS: 1651/1651
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

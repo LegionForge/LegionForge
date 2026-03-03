@@ -18132,3 +18132,99 @@ def test_p293_ui_pipeline_run_list_calls_pipeline_runs():
     idx = html.index("async function loadPipelineRunList()")
     fn_body = html[idx : idx + 800]
     assert "/runs" in fn_body
+
+
+# ── Phase 294: Cluster Health ──────────────────────────────────────────────────
+def test_p294_ui_cluster_health_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="cluster-health-card"' in html
+
+
+def test_p294_ui_cluster_health_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadClusterHealth()" in html
+
+
+def test_p294_ui_cluster_health_calls_cluster_nodes():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadClusterHealth()")
+    fn_body = html[idx : idx + 800]
+    assert "/cluster/nodes" in fn_body
+
+
+# ── Phase 295: Admin Quota List ──────────────────────────────────────────────────
+def test_p295_ui_admin_quota_list_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="admin-quota-list-card"' in html
+
+
+def test_p295_ui_admin_quota_list_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminQuotaList()" in html
+
+
+def test_p295_ui_admin_quota_list_calls_admin_users():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAdminQuotaList()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/users" in fn_body
+
+
+# ── Phase 296: Task Output Raw ──────────────────────────────────────────────────
+def test_p296_ui_task_output_raw_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="task-output-raw-card"' in html
+
+
+def test_p296_ui_task_output_raw_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskOutputRaw()" in html
+
+
+def test_p296_ui_task_output_raw_calls_tasks_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskOutputRaw()")
+    fn_body = html[idx : idx + 600]
+    assert "/tasks/" in fn_body
+
+
+# ── Phase 297: Schedule Next Run Info ──────────────────────────────────────────────
+def test_p297_ui_schedule_next_run_info_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="schedule-next-run-info-card"' in html
+
+
+def test_p297_ui_schedule_next_run_info_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleNextRunInfo()" in html
+
+
+def test_p297_ui_schedule_next_run_info_calls_schedules():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadScheduleNextRunInfo()")
+    fn_body = html[idx : idx + 800]
+    assert "/schedules/" in fn_body

@@ -1943,5 +1943,9 @@ Added as compact addendum. See git log for full details.
 | 287 | #176 | Threat Event Detail (threat-event-detail-card, loadThreatEventDetail, GET /admin/threats, find by event ID) | +3 | 1633 |
 | 288 | #176 | User Activity (user-activity-card, loadUserActivity, GET /admin/users/{name}, tokens/quota/admin detail) | +3 | 1636 |
 | 289 | #176 | Connector Status (connector-status-card, loadConnectorStatus, GET /health, connector key/status colour coding) | +3 | 1639 |
+| 290 | #177 | Rate Limit Info (rate-limit-info-card, loadRateLimitInfo, GET /usage/me, used/quota/remaining/% colour; renamed) | +3 | 1642 |
+| 291 | #177 | Task Event Log (task-event-log-card, loadTaskEventLog, GET /tasks/{id}/timeline, event/timestamp/detail table) | +3 | 1645 |
+| 292 | #177 | Search Provider Status (search-provider-status-card, loadSearchProviderStatus, GET /health, search section) | +3 | 1648 |
+| 293 | #177 | Pipeline Run List (pipeline-run-list-card, loadPipelineRunList, GET /pipelines/{id}/runs, run history table) | +3 | 1651 |
 
-**Current state:** 1639/1639 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1651/1651 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
