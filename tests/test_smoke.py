@@ -15544,3 +15544,119 @@ def test_p201_ui_bulk_tag_uses_bulk_tag_endpoint():
     idx = html.index("async function bulkTagTasks()")
     fn_body = html[idx : idx + 700]
     assert "bulk/tag" in fn_body
+
+
+# ── Phase 202: Pipelines Compact View ─────────────────────────────────────────
+
+
+def test_p202_ui_pipelines_compact_card_present():
+    """pipelines-compact-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipelines-compact-card" in html
+
+
+def test_p202_ui_load_pipelines_compact_function_defined():
+    """loadPipelinesCompact function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelinesCompact()" in html
+
+
+def test_p202_ui_pipelines_compact_renders_table():
+    """loadPipelinesCompact renders a table."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelinesCompact()")
+    fn_body = html[idx : idx + 700]
+    assert "<table" in fn_body and "/pipelines" in fn_body
+
+
+# ── Phase 203: Schedule Next-Run ──────────────────────────────────────────────
+
+
+def test_p203_ui_schedule_next_run_card_present():
+    """schedule-next-run-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-next-run-card" in html
+
+
+def test_p203_ui_load_schedule_next_run_function_defined():
+    """loadScheduleNextRun function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleNextRun()" in html
+
+
+def test_p203_ui_schedule_next_run_shows_cron():
+    """loadScheduleNextRun shows cron_expr and next_run."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadScheduleNextRun()")
+    fn_body = html[idx : idx + 800]
+    assert "cron" in fn_body and "next_run" in fn_body
+
+
+# ── Phase 204: Task Retry History ─────────────────────────────────────────────
+
+
+def test_p204_ui_retry_history_card_present():
+    """retry-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "retry-history-card" in html
+
+
+def test_p204_ui_load_retry_history_function_defined():
+    """loadRetryHistory function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRetryHistory()" in html
+
+
+def test_p204_ui_retry_history_filters_retry_events():
+    """loadRetryHistory filters timeline events for retry type."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadRetryHistory()")
+    fn_body = html[idx : idx + 800]
+    assert "retry" in fn_body and "timeline" in fn_body
+
+
+# ── Phase 205: User Preferences Viewer ────────────────────────────────────────
+
+
+def test_p205_ui_user_prefs_card_present():
+    """user-prefs-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-prefs-card" in html
+
+
+def test_p205_ui_load_user_preferences_function_defined():
+    """loadUserPreferences function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserPreferences()" in html
+
+
+def test_p205_ui_user_prefs_hits_preferences_endpoint():
+    """loadUserPreferences fetches /preferences endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadUserPreferences()")
+    fn_body = html[idx : idx + 600]
+    assert "/preferences" in fn_body

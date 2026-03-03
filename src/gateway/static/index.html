@@ -1184,6 +1184,46 @@
     </details>
   </div>
 
+  <!-- ── Pipelines Compact List card (Phase 202) ──────────── -->
+  <div class="card" id="pipelines-compact-card">
+    <details id="pipelines-compact-section">
+      <summary style="cursor:pointer">Pipelines Compact View <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelinesCompact()" title="Refresh">↻</button></summary>
+      <div id="pipelines-compact-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Next-Run card (Phase 203) ────────────────── -->
+  <div class="card" id="schedule-next-run-card">
+    <details id="schedule-next-run-section">
+      <summary style="cursor:pointer">Schedule Next Run</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="schedule-next-run-id" placeholder="Schedule ID" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadScheduleNextRun()">↻ Load</button>
+      </div>
+      <div id="schedule-next-run-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter schedule ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Retry History card (Phase 204) ───────────────── -->
+  <div class="card" id="retry-history-card">
+    <details id="retry-history-section">
+      <summary style="cursor:pointer">Task Retry History</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="retry-history-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadRetryHistory()">↻ Load</button>
+      </div>
+      <div id="retry-history-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── User Preferences card (Phase 205) ─────────────────── -->
+  <div class="card" id="user-prefs-card">
+    <details id="user-prefs-section">
+      <summary style="cursor:pointer">User Preferences <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserPreferences()" title="Refresh">↻</button></summary>
+      <div id="user-prefs-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
   <!-- ── Bulk Delete Tasks card (Phase 198) ───────────────── -->
   <div class="card" id="bulk-delete-card">
     <details id="bulk-delete-section">
@@ -4165,6 +4205,80 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 202: Pipelines Compact View ─────────────────────────────────────────
+async function loadPipelinesCompact() {
+  const el = document.getElementById('pipelines-compact-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.pipelines || []);
+    if (!items.length) { el.textContent = 'No pipelines found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">ID</th><th style="text-align:left;padding:2px 6px">Name</th><th style="text-align:left;padding:2px 6px">Steps</th></tr>'
+      + items.map(p => `<tr><td style="padding:2px 6px">${p.id ?? '-'}</td><td style="padding:2px 6px">${p.name ?? '-'}</td><td style="padding:2px 6px">${(p.steps ?? []).length}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 203: Schedule Next-Run ──────────────────────────────────────────────
+async function loadScheduleNextRun() {
+  const id = document.getElementById('schedule-next-run-id').value.trim();
+  const el = document.getElementById('schedule-next-run-body');
+  if (!id) { el.textContent = 'Enter a schedule ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/schedules/' + id);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const s = await r.json();
+    const next = s.next_run ? new Date(s.next_run).toLocaleString() : 'N/A';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Name</span><span class="td-value">${s.name ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Cron</span><span class="td-value">${s.cron_expr ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Enabled</span><span class="td-value">${s.enabled ? '✓' : '✗'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Next Run</span><span class="td-value">${next}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 204: Task Retry History ─────────────────────────────────────────────
+async function loadRetryHistory() {
+  const id = document.getElementById('retry-history-id').value.trim();
+  const el = document.getElementById('retry-history-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + id + '/timeline');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const events = Array.isArray(data) ? data : (data.events || []);
+    const retries = events.filter(e => (e.event_type || e.type || '').toLowerCase().includes('retry'));
+    if (!retries.length) { el.textContent = 'No retry events found in timeline.'; return; }
+    el.innerHTML = retries.map(e => {
+      const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '-';
+      return `<div style="margin-bottom:4px;font-size:12px">🔁 <strong>${e.event_type ?? e.type ?? 'retry'}</strong> — ${ts}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 205: User Preferences Viewer ────────────────────────────────────────
+async function loadUserPreferences() {
+  const el = document.getElementById('user-prefs-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/preferences');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const prefs = data.preferences ?? data;
+    const entries = typeof prefs === 'object' && prefs !== null ? Object.entries(prefs) : [];
+    if (!entries.length) { el.textContent = 'No preferences set.'; return; }
+    el.innerHTML = entries.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${JSON.stringify(v)}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 198: Bulk Delete Tasks ──────────────────────────────────────────────

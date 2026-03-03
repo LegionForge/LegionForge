@@ -1851,5 +1851,9 @@ Added as compact addendum. See git log for full details.
 | 195 | #153 | Agent/Model List (ollama-models-card, loadOllamaModels, GET /agents, type+model+desc) | +3 | 1357 |
 | 196 | #153 | Task Sources Viewer (task-sources-card, loadTaskSources, sources[] as anchor links) | +3 | 1360 |
 | 197 | #153 | Quick Agent Run (quick-agent-card, quickAgentRun, POST /tasks, preset agent dropdown) | +3 | 1363 |
+| 198 | #154 | Bulk Delete Tasks (bulk-delete-card, bulkDeleteTasks, Promise.all DELETE /tasks/{id}, confirm) | +3 | 1366 |
+| 199 | #154 | Task Share Links (task-shares-card, loadTaskShares, GET /tasks/{id}/shares, anchor links) | +3 | 1369 |
+| 200 | #154 | Task Attachments (task-attachments-card, loadTaskAttachments, GET /tasks/{id}/attachments, KB sizes) | +3 | 1372 |
+| 201 | #154 | Bulk Tag Tasks (bulk-tag-card, bulkTagTasks, POST /tasks/bulk/tag, tag name + IDs textarea) | +3 | 1375 |
 
-**Current state:** 1363/1363 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1375/1375 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
