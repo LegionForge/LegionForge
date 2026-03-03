@@ -16240,3 +16240,119 @@ def test_p225_ui_delete_preference_key_uses_delete_method():
     idx = html.index("async function deletePreferenceKey()")
     fn_body = html[idx : idx + 600]
     assert "DELETE" in fn_body and "/preferences/" in fn_body
+
+
+# ── Phase 226: Task Annotation by ID ──────────────────────────────────────────
+
+
+def test_p226_ui_task_annotation_by_id_card_present():
+    """task-annotation-by-id-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-annotation-by-id-card" in html
+
+
+def test_p226_ui_load_task_annotation_by_id_function_defined():
+    """loadTaskAnnotationById function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskAnnotationById()" in html
+
+
+def test_p226_ui_task_annotation_by_id_shows_rating():
+    """loadTaskAnnotationById shows thumbs rating."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskAnnotationById()")
+    fn_body = html[idx : idx + 700]
+    assert "/annotation" in fn_body and "rating" in fn_body
+
+
+# ── Phase 227: Memory Ingest ──────────────────────────────────────────────────
+
+
+def test_p227_ui_memory_ingest_card_present():
+    """memory-ingest-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-ingest-card" in html
+
+
+def test_p227_ui_ingest_to_memory_function_defined():
+    """ingestToMemory function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function ingestToMemory()" in html
+
+
+def test_p227_ui_ingest_to_memory_posts_to_memory():
+    """ingestToMemory posts to /memory/ingest."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function ingestToMemory()")
+    fn_body = html[idx : idx + 600]
+    assert "/memory/ingest" in fn_body
+
+
+# ── Phase 228: All Schedules (Admin) ──────────────────────────────────────────
+
+
+def test_p228_ui_schedule_history_card_present():
+    """schedule-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-history-card" in html
+
+
+def test_p228_ui_load_schedule_history_function_defined():
+    """loadScheduleHistory function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleHistory()" in html
+
+
+def test_p228_ui_schedule_history_hits_admin_schedules():
+    """loadScheduleHistory fetches /admin/schedules."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadScheduleHistory()")
+    fn_body = html[idx : idx + 600]
+    assert "/admin/schedules" in fn_body
+
+
+# ── Phase 229: Batch Tag Results ──────────────────────────────────────────────
+
+
+def test_p229_ui_batch_results_card_present():
+    """batch-results-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-results-card" in html
+
+
+def test_p229_ui_load_batch_results_function_defined():
+    """loadBatchResults function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBatchResults()" in html
+
+
+def test_p229_ui_batch_results_filters_by_label():
+    """loadBatchResults filters tasks by label tag."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadBatchResults()")
+    fn_body = html[idx : idx + 600]
+    assert "label=" in fn_body

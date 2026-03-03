@@ -1184,6 +1184,50 @@
     </details>
   </div>
 
+  <!-- ── Task Annotation by ID card (Phase 226) ───────────── -->
+  <div class="card" id="task-annotation-by-id-card">
+    <details id="task-annotation-by-id-section">
+      <summary style="cursor:pointer">Task Annotation by ID</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-annotation-by-id-val" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskAnnotationById()">↻ Load</button>
+      </div>
+      <div id="task-annotation-by-id-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Memory Ingest card (Phase 227) ────────────────────── -->
+  <div class="card" id="memory-ingest-card">
+    <details id="memory-ingest-section">
+      <summary style="cursor:pointer">Memory Ingest</summary>
+      <textarea id="memory-ingest-text" rows="3" placeholder="Text to ingest into memory store…" style="width:100%;margin-top:6px;font-size:11px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="ingestToMemory()">📥 Ingest</button>
+        <span id="memory-ingest-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule History card (Phase 228) ─────────────────── -->
+  <div class="card" id="schedule-history-card">
+    <details id="schedule-history-section">
+      <summary style="cursor:pointer">All Schedules (Admin) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduleHistory()" title="Refresh">↻</button></summary>
+      <div id="schedule-history-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Batch Results card (Phase 229) ────────────────────── -->
+  <div class="card" id="batch-results-card">
+    <details id="batch-results-section">
+      <summary style="cursor:pointer">Batch Tag Results</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="batch-results-tag" placeholder="Tag name" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadBatchResults()">↻ Load</button>
+      </div>
+      <div id="batch-results-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter a tag to find all tasks with that tag.</div>
+    </details>
+  </div>
+
   <!-- ── Pipeline Runs Table card (Phase 222) ─────────────── -->
   <div class="card" id="pipeline-runs-table-card">
     <details id="pipeline-runs-table-section">
@@ -4417,6 +4461,84 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 226: Task Annotation by ID ──────────────────────────────────────────
+async function loadTaskAnnotationById() {
+  const id = document.getElementById('task-annotation-by-id-val').value.trim();
+  const el = document.getElementById('task-annotation-by-id-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + id + '/annotation');
+    if (r.status === 404) { el.textContent = 'No annotation for this task.'; return; }
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const a = await r.json();
+    const rating = a.rating === 1 ? '👍 Positive' : a.rating === -1 ? '👎 Negative' : '—';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Rating</span><span class="td-value">${rating}</span></div>`,
+      a.note ? `<div class="td-field"><span class="td-label">Note</span><span class="td-value">${a.note}</span></div>` : '',
+      `<div class="td-field"><span class="td-label">By</span><span class="td-value">${a.user_id ?? '-'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 227: Memory Ingest ───────────────────────────────────────────────────
+async function ingestToMemory() {
+  const text = document.getElementById('memory-ingest-text').value.trim();
+  const statusEl = document.getElementById('memory-ingest-status');
+  if (!text) { statusEl.textContent = 'Enter text to ingest.'; return; }
+  statusEl.textContent = 'Ingesting…';
+  try {
+    const r = await apiFetch('/memory/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      statusEl.textContent = `✓ Ingested ${d.chunks ?? '?'} chunk(s)`;
+    } else {
+      statusEl.textContent = 'HTTP ' + r.status;
+    }
+  } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 228: All Schedules (Admin) ──────────────────────────────────────────
+async function loadScheduleHistory() {
+  const el = document.getElementById('schedule-history-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/schedules');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const schedules = Array.isArray(data) ? data : (data.schedules || []);
+    if (!schedules.length) { el.textContent = 'No schedules found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">Name</th><th style="text-align:left;padding:2px 6px">Cron</th><th style="text-align:left;padding:2px 6px">Owner</th><th style="text-align:left;padding:2px 6px">En</th></tr>'
+      + schedules.map(s => `<tr><td style="padding:2px 6px">${s.name ?? '-'}</td><td style="padding:2px 6px">${s.cron_expr ?? '-'}</td><td style="padding:2px 6px">${s.created_by ?? '-'}</td><td style="padding:2px 6px">${s.enabled ? '✓' : '✗'}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 229: Batch Tag Results ───────────────────────────────────────────────
+async function loadBatchResults() {
+  const tag = document.getElementById('batch-results-tag').value.trim();
+  const el = document.getElementById('batch-results-body');
+  if (!tag) { el.textContent = 'Enter a tag name.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?label=' + encodeURIComponent(tag) + '&limit=20');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!tasks.length) { el.textContent = `No tasks found with tag "${tag}".`; return; }
+    el.innerHTML = `<div style="margin-bottom:6px;font-size:11px;color:var(--text-xdim)">Found ${tasks.length} task(s)</div>`
+      + tasks.map(t => {
+          const id = (t.task_id ?? t.id ?? '-').toString().slice(0, 8);
+          return `<div style="margin-bottom:3px;font-size:12px"><code>${id}</code> — ${t.status ?? '-'}</div>`;
+        }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 222: Pipeline Runs Table ────────────────────────────────────────────

@@ -1875,5 +1875,9 @@ Added as compact addendum. See git log for full details.
 | 219 | #159 | Admin User Detail (admin-user-detail-card, loadAdminUserDetail, GET /admin/users/{name}, 5-field view) | +3 | 1429 |
 | 220 | #159 | Task Dependents (task-dependents-card, loadTaskDependents, GET /tasks, client-side depends_on filter) | +3 | 1432 |
 | 221 | #159 | Memory Store Stats (memory-store-stats-card, loadMemoryStoreStats, GET /memory/stats, chunks/docs/dim) | +3 | 1435 |
+| 222 | #160 | Pipeline Runs Table (pipeline-runs-table-card, loadPipelineRunsTable, GET /pipelines/{id}/runs, run table) | +3 | 1438 |
+| 223 | #160 | Task Prompt Search (task-prompt-search-card, searchTasksByPrompt, GET /tasks?q=, 10 results) | +3 | 1441 |
+| 224 | #160 | Agent Capabilities (agent-caps-card, loadAgentCaps, GET /agents/{type}, type/model/desc/tools) | +3 | 1444 |
+| 225 | #160 | Delete Preference Key (delete-pref-key-card, deletePreferenceKey, DELETE /preferences/{key}) | +3 | 1447 |
 
-**Current state:** 1435/1435 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1447/1447 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
