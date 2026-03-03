@@ -301,6 +301,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         "task_shares",  # Phase 51: read-only share tokens
         "user_preferences",  # Phase 52: per-user task defaults
         "sessions",  # Phase 54: multi-turn conversation sessions
+        "task_annotations",  # Phase 59: task rating & feedback
     ]:
         try:
             await admin_conn.execute(
@@ -1265,6 +1266,34 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     # NULL means the primary model default was used.
     await conn.execute(
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS model_preference TEXT"
+    )
+
+    # ── Phase 59: Task Annotations (rating + feedback) ───────────────────────────
+    # One annotation row per task per user.  rating is -1 (thumbs down), 0
+    # (neutral / unset), or 1 (thumbs up).  feedback is optional freeform text.
+    # UPSERT semantics: submitting again overwrites the existing row.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_annotations (
+            annotation_id  SERIAL PRIMARY KEY,
+            task_id        UUID NOT NULL REFERENCES tasks (task_id) ON DELETE CASCADE,
+            user_id        TEXT NOT NULL,
+            rating         SMALLINT NOT NULL DEFAULT 0
+                               CHECK (rating IN (-1, 0, 1)),
+            feedback       TEXT,
+            created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (task_id, user_id)
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_annotations_task_id "
+        "ON task_annotations (task_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_annotations_user_id "
+        "ON task_annotations (user_id)"
     )
 
     # ── Phase 48: Webhook Registry ───────────────────────────────────────────────
@@ -5341,4 +5370,110 @@ async def get_session_tasks(session_id: str, user_id: str) -> list[dict]:
             """,
             (session_id,),
         )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Phase 59: Task Annotations (rating & feedback) ────────────────────────────
+
+
+async def upsert_task_annotation(
+    task_id: str,
+    user_id: str,
+    rating: int,
+    feedback: str | None = None,
+) -> dict | None:
+    """
+    Create or update a rating (thumbs up=1, neutral=0, thumbs down=-1) and
+    optional feedback text for a completed task.
+
+    Ownership check: the task must be owned by user_id.
+    Returns the annotation row as a dict, or None if task not found / not owned.
+
+    Phase 59.
+    """
+    if rating not in (-1, 0, 1):
+        raise ValueError("rating must be -1, 0, or 1")
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            "SELECT 1 FROM tasks WHERE task_id = %s::uuid AND user_id = %s",
+            (task_id, user_id),
+        )
+        if await cur.fetchone() is None:
+            return None
+        cur = await conn.execute(
+            """
+            INSERT INTO task_annotations (task_id, user_id, rating, feedback)
+            VALUES (%s::uuid, %s, %s, %s)
+            ON CONFLICT (task_id, user_id) DO UPDATE
+                SET rating     = EXCLUDED.rating,
+                    feedback   = EXCLUDED.feedback,
+                    updated_at = now()
+            RETURNING annotation_id, task_id::text, user_id, rating, feedback,
+                      created_at, updated_at
+            """,
+            (task_id, user_id, rating, feedback),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_task_annotation(task_id: str, user_id: str) -> dict | None:
+    """
+    Fetch the annotation for task_id owned by user_id.
+    Returns None if no annotation exists or task is not owned by user.
+
+    Phase 59.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT a.annotation_id, a.task_id::text, a.user_id,
+                   a.rating, a.feedback, a.created_at, a.updated_at
+            FROM task_annotations a
+            JOIN tasks t ON t.task_id = a.task_id
+            WHERE a.task_id = %s::uuid AND t.user_id = %s
+            """,
+            (task_id, user_id),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def list_annotations_admin(
+    rating: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """
+    Admin: list all annotations across all users, optionally filtered by rating.
+
+    Returns rows ordered newest-first.  Phase 59.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        if rating is not None:
+            sql = (
+                "SELECT a.annotation_id, a.task_id::text, a.user_id,"
+                " a.rating, a.feedback, a.created_at, a.updated_at"
+                " FROM task_annotations a"
+                " WHERE a.rating = %s"
+                " ORDER BY a.created_at DESC"
+                " LIMIT %s OFFSET %s"
+            )
+            cur = await conn.execute(sql, (rating, limit, offset))
+        else:
+            sql = (
+                "SELECT a.annotation_id, a.task_id::text, a.user_id,"
+                " a.rating, a.feedback, a.created_at, a.updated_at"
+                " FROM task_annotations a"
+                " ORDER BY a.created_at DESC"
+                " LIMIT %s OFFSET %s"
+            )
+            cur = await conn.execute(sql, (limit, offset))
         return [dict(r) for r in await cur.fetchall()]
