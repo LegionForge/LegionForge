@@ -1783,4 +1783,9 @@ Added as compact addendum. See git log for full details.
 | 140 | #139 | Pipeline Runs List (pipeline-runs-card, loadPipelineRuns, GET /pipelines/{id}/runs, runs-sel populated in loadPipelines) | +4 | 1182 |
 | 141 | #139 | Task Annotation Viewer (task-annotation-card, loadTaskAnnotation, GET /tasks/{id}/annotation, rating + comment) | +3 | 1185 |
 
-**Current state:** 1185/1185 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 142 | #140 | Schedule Detail Viewer (schedule-detail-card, loadScheduleDetail, GET /schedules/{id}, cron/next_run fields) | +3 | 1188 |
+| 143 | #140 | Template Detail Viewer (template-detail-card, loadTemplateDetail, GET /templates/{id}, template-detail-sel in loadTemplates) | +4 | 1192 |
+| 144 | #140 | Task Label Filter (label-filter-card, loadTasksByLabel, GET /tasks?label=X, 4 preset labels) | +3 | 1195 |
+| 145 | #140 | Task Notes Browser (notes-browser-card, browseTaskNotes, GET /tasks/{id}/notes, standalone viewer) | +3 | 1198 |
+
+**Current state:** 1198/1198 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
