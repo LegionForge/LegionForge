@@ -1080,6 +1080,61 @@
     </details>
   </div>
 
+  <!-- ── Template Run card (Phase 118) ───────────────────── -->
+  <div class="card" id="template-run-card">
+    <details id="template-run-section">
+      <summary style="cursor:pointer">Run Template</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <select id="template-run-sel" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— select template —</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="runTemplate()">▶ Run</button>
+      </div>
+      <div id="template-run-result" style="margin-top:6px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── Admin Threat Events card (Phase 119) ──────────────── -->
+  <div class="card" id="threat-events-card">
+    <details id="threat-events-section">
+      <summary style="cursor:pointer">Threat Events (Admin) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatEvents(event)" title="Refresh">↻</button></summary>
+      <div id="threat-events-body" style="color:var(--text-xdim);font-size:12px">Click ↻ to load recent threat events.</div>
+    </details>
+  </div>
+
+  <!-- ── Admin User Actions card (Phase 120) ───────────────── -->
+  <div class="card" id="admin-user-actions-card">
+    <details id="admin-user-actions-section">
+      <summary style="cursor:pointer">Admin User Actions</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="admin-action-user" placeholder="Username" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="adminDeactivateUser()">⛔ Deactivate</button>
+          <input id="admin-action-quota" placeholder="New quota (tokens)" type="number" style="width:130px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="adminSetQuota()">💾 Set Quota</button>
+        </div>
+        <div id="admin-user-action-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Edit card (Phase 121) ───────────────────── -->
+  <div class="card" id="schedule-edit-card">
+    <details id="schedule-edit-section">
+      <summary style="cursor:pointer">Edit Schedule</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="sched-edit-id" placeholder="Schedule ID (number)" type="number" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="sched-edit-cron" placeholder="Cron expr (e.g. */30 * * * *)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="sched-edit-name" placeholder="New name (optional)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <div style="display:flex;gap:6px;align-items:center">
+          <label style="font-size:11px;color:var(--text-dim);cursor:pointer"><input id="sched-edit-enabled" type="checkbox" checked style="margin-right:4px">Enabled</label>
+          <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="editSchedule()">💾 Update</button>
+        </div>
+        <div id="sched-edit-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── MCP Tools Viewer card (Phase 114) ───────────────── -->
   <div class="card" id="mcp-tools-card">
     <details id="mcp-tools-section">
@@ -1493,6 +1548,16 @@ async function loadTemplates() {
     const data = await res.json();
     S.templates = data.templates || [];
     renderTemplates();
+    // Phase 118: keep run-template selector in sync
+    const runSel = document.getElementById('template-run-sel');
+    if (runSel) {
+      runSel.innerHTML = '<option value="">— select template —</option>';
+      S.templates.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.template_id; opt.textContent = t.name;
+        runSel.appendChild(opt);
+      });
+    }
   } catch (_) {}
 }
 
@@ -3023,6 +3088,123 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 118: Template Run ────────────────────────────────────────────────────
+async function runTemplate() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('template-run-sel');
+  const templateId = sel ? sel.value : '';
+  const resultEl = document.getElementById('template-run-result');
+  if (!templateId) { if (resultEl) resultEl.textContent = 'Select a template first.'; return; }
+  if (resultEl) resultEl.textContent = 'Submitting…';
+  try {
+    const res = await fetch('/templates/' + encodeURIComponent(templateId) + '/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ variables: {} }),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    const taskId = d.task_id || '—';
+    if (resultEl) resultEl.textContent = 'Task queued: ' + taskId;
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 119: Admin Threat Events ────────────────────────────────────────────
+async function loadThreatEvents(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('threat-events-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/threats?limit=20&since_hours=48', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status + ' (admin only)'; return; }
+    const d = await res.json();
+    const events = d.events || [];
+    if (!bodyEl) return;
+    if (!events.length) { bodyEl.textContent = 'No threat events in the last 48h.'; return; }
+    bodyEl.innerHTML = events.map(ev =>
+      '<div class="td-field"><span class="td-label" style="color:var(--red)">' +
+      (ev.threat_type || '—').replace(/</g, '&lt;') +
+      '</span><span class="td-value" style="font-size:10px">' +
+      (ev.ts ? new Date(ev.ts).toLocaleString() : '—') +
+      (ev.agent_id ? ' · ' + String(ev.agent_id).slice(0, 8) : '') +
+      '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 120: Admin User Actions ─────────────────────────────────────────────
+async function adminDeactivateUser() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const username = (document.getElementById('admin-action-user') || {}).value?.trim();
+  const resultEl = document.getElementById('admin-user-action-result');
+  if (!username) { if (resultEl) resultEl.textContent = 'Enter username first.'; return; }
+  if (!confirm('Deactivate user "' + username + '"? They will lose API access.')) return;
+  if (resultEl) resultEl.textContent = 'Processing…';
+  try {
+    const res = await fetch('/admin/users/' + encodeURIComponent(username), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'User "' + (d.username || username) + '" deactivated.';
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+async function adminSetQuota() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const username = (document.getElementById('admin-action-user') || {}).value?.trim();
+  const quota = parseInt((document.getElementById('admin-action-quota') || {}).value || '0', 10);
+  const resultEl = document.getElementById('admin-user-action-result');
+  if (!username) { if (resultEl) resultEl.textContent = 'Enter username first.'; return; }
+  if (!quota || quota < 1) { if (resultEl) resultEl.textContent = 'Enter a valid token quota.'; return; }
+  if (resultEl) resultEl.textContent = 'Saving…';
+  try {
+    const res = await fetch('/admin/users/' + encodeURIComponent(username) + '/quota', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ daily_token_limit: quota }),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Quota for "' + (d.username || username) + '" set to ' + (d.daily_token_limit || quota).toLocaleString() + ' tokens.';
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 121: Schedule Edit ───────────────────────────────────────────────────
+async function editSchedule() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const schedId = (document.getElementById('sched-edit-id') || {}).value?.trim();
+  const resultEl = document.getElementById('sched-edit-result');
+  if (!schedId) { if (resultEl) resultEl.textContent = 'Enter schedule ID first.'; return; }
+  const body = {};
+  const cron = (document.getElementById('sched-edit-cron') || {}).value?.trim();
+  const name = (document.getElementById('sched-edit-name') || {}).value?.trim();
+  const enabled = (document.getElementById('sched-edit-enabled') || {}).checked;
+  if (cron) body.cron_expr = cron;
+  if (name) body.name = name;
+  body.enabled = enabled;
+  if (resultEl) resultEl.textContent = 'Saving…';
+  try {
+    const res = await fetch('/schedules/' + encodeURIComponent(schedId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Updated schedule ' + (d.sched_id || schedId) + ': ' + (d.name || '—') + ' [' + (d.cron_expr || cron || '—') + '] enabled=' + (d.enabled ?? enabled);
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 114: MCP Tools Viewer ───────────────────────────────────────────────
