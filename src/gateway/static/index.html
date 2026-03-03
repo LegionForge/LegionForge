@@ -1184,6 +1184,58 @@
     </details>
   </div>
 
+  <!-- ── Task Pin/Unpin card (Phase 170) ──────────────────── -->
+  <div class="card" id="task-pin-card">
+    <details id="task-pin-section">
+      <summary style="cursor:pointer">Pin / Unpin Task</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <input id="task-pin-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="pinTask()">📌 Pin</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="unpinTask()">Unpin</button>
+      </div>
+      <div id="task-pin-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Step Detail card (Phase 171) ─────────────── -->
+  <div class="card" id="pipeline-step-detail-card">
+    <details id="pipeline-step-detail-section">
+      <summary style="cursor:pointer">Pipeline Step Details</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <select id="pipeline-step-detail-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— select pipeline —</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadPipelineStepDetails()">↻ Load</button>
+      </div>
+      <div id="pipeline-step-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Select a pipeline and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Result Download card (Phase 172) ─────────────── -->
+  <div class="card" id="result-download-card">
+    <details id="result-download-section">
+      <summary style="cursor:pointer">Download Task Result</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="result-download-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="downloadTaskResult()">↓ Download</button>
+      </div>
+      <div id="result-download-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Admin Quota Update card (Phase 173) ───────────────── -->
+  <div class="card" id="quota-update-card">
+    <details id="quota-update-section">
+      <summary style="cursor:pointer">Update User Quota (Admin)</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <input id="quota-update-user" placeholder="Username" style="width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="quota-update-limit" type="number" placeholder="Daily limit (tokens)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="updateUserQuota()">✓ Set</button>
+      </div>
+      <div id="quota-update-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Task Keyword Search card (Phase 166) ─────────────── -->
   <div class="card" id="keyword-search-card">
     <details id="keyword-search-section">
@@ -3790,6 +3842,128 @@ function analyzeInput() {
   ).join('');
 }
 
+// ── Phase 170: Task Pin / Unpin ───────────────────────────────────────────────
+async function _setPinLabel(taskId, add) {
+  const apiKey = el.apiKey().value.trim();
+  const statusEl = document.getElementById('task-pin-status');
+  if (statusEl) statusEl.textContent = add ? 'Pinning…' : 'Unpinning…';
+  // Fetch current labels first
+  const getRes = await fetch('/tasks/' + encodeURIComponent(taskId), { headers: { Authorization: 'Bearer ' + apiKey } });
+  if (!getRes.ok) { if (statusEl) statusEl.textContent = 'Error ' + getRes.status; return; }
+  const task = await getRes.json();
+  let labels = Array.isArray(task.labels) ? [...task.labels] : [];
+  if (add && !labels.includes('pinned')) labels.push('pinned');
+  if (!add) labels = labels.filter(l => l !== 'pinned');
+  const putRes = await fetch('/tasks/' + encodeURIComponent(taskId) + '/labels', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+    body: JSON.stringify({ labels }),
+  });
+  if (!statusEl) return;
+  if (putRes.ok) {
+    statusEl.textContent = add ? '📌 Task pinned.' : 'Task unpinned.';
+    statusEl.style.color = add ? 'var(--green)' : 'var(--text-dim)';
+  } else {
+    statusEl.textContent = 'Error ' + putRes.status;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+async function pinTask() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-pin-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  await _setPinLabel(taskId, true);
+}
+async function unpinTask() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-pin-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  await _setPinLabel(taskId, false);
+}
+
+// ── Phase 171: Pipeline Step Details ──────────────────────────────────────────
+async function loadPipelineStepDetails() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const pipelineId = (document.getElementById('pipeline-step-detail-sel') || {}).value;
+  if (!pipelineId) { alert('Select a pipeline.'); return; }
+  const bodyEl = document.getElementById('pipeline-step-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/pipelines/' + encodeURIComponent(pipelineId), {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const pipeline = await res.json();
+    const steps = Array.isArray(pipeline.steps) ? pipeline.steps : [];
+    if (!bodyEl) return;
+    if (!steps.length) { bodyEl.textContent = 'No steps defined.'; return; }
+    bodyEl.innerHTML = steps.map((s, i) => {
+      const name = s.name || s.step_name || ('Step ' + (i + 1));
+      const agent = s.agent_type || s.agent || '?';
+      const task = (s.task || s.prompt || '').slice(0, 60);
+      return `<div class="td-field"><span class="td-label">Step ${i + 1}: ${name}</span><span class="td-value">[${agent}] ${task}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 172: Task Result Download ───────────────────────────────────────────
+async function downloadTaskResult() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('result-download-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const statusEl = document.getElementById('result-download-status');
+  if (statusEl) statusEl.textContent = 'Fetching…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId), {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (statusEl) statusEl.textContent = 'Error ' + res.status; return; }
+    const task = await res.json();
+    const result = task.result || task.output || '(no result)';
+    const blob = new Blob([result], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'task-' + taskId.slice(0, 8) + '-result.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (statusEl) { statusEl.textContent = 'Downloaded.'; statusEl.style.color = 'var(--green)'; }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
+}
+
+// ── Phase 173: Admin User Quota Update ────────────────────────────────────────
+async function updateUserQuota() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const username = (document.getElementById('quota-update-user') || {}).value.trim();
+  const limitVal = parseInt((document.getElementById('quota-update-limit') || {}).value || '0', 10);
+  if (!username) { alert('Enter a username.'); return; }
+  if (!limitVal || limitVal <= 0) { alert('Enter a positive token limit.'); return; }
+  const statusEl = document.getElementById('quota-update-status');
+  if (statusEl) statusEl.textContent = 'Updating…';
+  try {
+    const res = await fetch('/admin/users/' + encodeURIComponent(username) + '/quota', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ daily_token_limit: limitVal }),
+    });
+    if (!statusEl) return;
+    if (res.ok) {
+      statusEl.textContent = 'Quota updated to ' + limitVal.toLocaleString() + ' tokens/day.';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = 'Error ' + res.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
+}
+
 // ── Phase 166: Task Keyword Search ────────────────────────────────────────────
 async function searchTasksByKeyword() {
   const apiKey = el.apiKey().value.trim();
@@ -5848,7 +6022,7 @@ async function loadPipelines() {
       });
     }
     // Phase 126+127+140: pipeline edit, detail, and runs selectors
-    ['pipeline-edit-sel', 'pipeline-detail-sel', 'pipeline-runs-sel'].forEach(selId => {
+    ['pipeline-edit-sel', 'pipeline-detail-sel', 'pipeline-runs-sel', 'pipeline-step-detail-sel'].forEach(selId => {
       const s = document.getElementById(selId);
       if (!s) return;
       s.innerHTML = '<option value="">— select pipeline —</option>';

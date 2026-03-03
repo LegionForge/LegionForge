@@ -1813,4 +1813,9 @@ Added as compact addendum. See git log for full details.
 | 164 | #145 | Date-Filter Tasks (date-filter-card, filterTasksByDate, date input, client-side filter by created_at) | +3 | 1259 |
 | 165 | #145 | Priority Task Queue (priority-tasks-card, loadHighPriorityTasks, priority > 0 filter, sort descending) | +3 | 1262 |
 
-**Current state:** 1262/1262 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 166 | #146 | Task Keyword Search (keyword-search-card, searchTasksByKeyword, GET /tasks?q=X, status-colored rows) | +3 | 1265 |
+| 167 | #146 | Rate Limit Status (rate-limit-card, loadRateLimitStatus, GET /usage/me, usage% with color thresholds) | +3 | 1268 |
+| 168 | #146 | Notes Keyword Search (notes-search-card, searchTaskNotes, GET notes, client-side filter by keyword) | +3 | 1271 |
+| 169 | #146 | Session Delete (session-delete-card, deleteSessionWithConfirm, DELETE /sessions/{id}, confirm guard) | +4 | 1275 |
+
+**Current state:** 1275/1275 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

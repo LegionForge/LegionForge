@@ -14588,3 +14588,125 @@ def test_p169_ui_delete_session_has_confirm_guard():
     fn_start = html.find("function deleteSessionWithConfirm(")
     fn_body = html[fn_start : fn_start + 600]
     assert "confirm(" in fn_body
+
+
+# ── Phase 170: Task Pin / Unpin ────────────────────────────────────────────────
+
+
+def test_p170_ui_task_pin_card_present():
+    """#task-pin-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-pin-card" in html
+
+
+def test_p170_ui_pin_task_function_defined():
+    """pinTask() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function pinTask(" in html
+
+
+def test_p170_ui_unpin_task_function_defined():
+    """unpinTask() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function unpinTask(" in html
+
+
+def test_p170_ui_pin_uses_labels_endpoint():
+    """pinTask() / _setPinLabel() uses PUT /tasks/{id}/labels."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function _setPinLabel(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "/labels" in fn_body and "pinned" in fn_body
+
+
+# ── Phase 171: Pipeline Step Details ──────────────────────────────────────────
+
+
+def test_p171_ui_pipeline_step_detail_card_present():
+    """#pipeline-step-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-detail-card" in html
+
+
+def test_p171_ui_load_pipeline_step_details_function_defined():
+    """loadPipelineStepDetails() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineStepDetails(" in html
+
+
+def test_p171_ui_pipeline_step_detail_sel_in_load_pipelines():
+    """pipeline-step-detail-sel is populated by loadPipelines()."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-detail-sel" in html
+
+
+# ── Phase 172: Task Result Download ───────────────────────────────────────────
+
+
+def test_p172_ui_result_download_card_present():
+    """#result-download-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "result-download-card" in html
+
+
+def test_p172_ui_download_task_result_function_defined():
+    """downloadTaskResult() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function downloadTaskResult(" in html
+
+
+def test_p172_ui_download_creates_blob():
+    """downloadTaskResult() uses Blob for file download."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function downloadTaskResult(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "Blob" in fn_body and "download" in fn_body
+
+
+# ── Phase 173: Admin User Quota Update ────────────────────────────────────────
+
+
+def test_p173_ui_quota_update_card_present():
+    """#quota-update-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "quota-update-card" in html
+
+
+def test_p173_ui_update_user_quota_function_defined():
+    """updateUserQuota() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function updateUserQuota(" in html
+
+
+def test_p173_ui_quota_update_uses_admin_endpoint():
+    """updateUserQuota() calls PUT /admin/users/{username}/quota."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function updateUserQuota(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/quota" in fn_body and "PUT" in fn_body
