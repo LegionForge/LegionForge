@@ -1184,6 +1184,56 @@
     </details>
   </div>
 
+  <!-- ── API Key Rotation card (Phase 230) ────────────────── -->
+  <div class="card" id="api-key-rotation-card">
+    <details id="api-key-rotation-section">
+      <summary style="cursor:pointer">Rotate My API Key</summary>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-xdim)">Generates a new API key and invalidates the current one.</div>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <button class="btn danger" style="font-size:11px;padding:3px 8px" onclick="loadApiKeyRotation()">🔑 Rotate Key</button>
+        <span id="api-key-rotation-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+      <div id="api-key-rotation-body" style="margin-top:8px;font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Task Siblings card (Phase 231) ────────────────────── -->
+  <div class="card" id="task-siblings-card">
+    <details id="task-siblings-section">
+      <summary style="cursor:pointer">Task Siblings (Same Session)</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-siblings-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTaskSiblings()">↻ Load</button>
+      </div>
+      <div id="task-siblings-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID to find all tasks in the same session.</div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Step Result card (Phase 232) ─────────────── -->
+  <div class="card" id="pipeline-step-result-card">
+    <details id="pipeline-step-result-section">
+      <summary style="cursor:pointer">Pipeline Step Result</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="pipeline-step-result-run" placeholder="Run ID" style="width:80px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="pipeline-step-result-step" placeholder="Step #" style="width:60px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadPipelineStepResult()">↻ Load</button>
+      </div>
+      <div id="pipeline-step-result-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter run ID + step index to view result.</div>
+    </details>
+  </div>
+
+  <!-- ── Template Preview card (Phase 233) ─────────────────── -->
+  <div class="card" id="template-preview-card">
+    <details id="template-preview-section">
+      <summary style="cursor:pointer">Template Preview</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="template-preview-id" placeholder="Template ID" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="previewTemplate()">👁 Preview</button>
+      </div>
+      <div id="template-preview-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter template ID and click 👁 Preview.</div>
+    </details>
+  </div>
+
   <!-- ── Task Annotation by ID card (Phase 226) ───────────── -->
   <div class="card" id="task-annotation-by-id-card">
     <details id="task-annotation-by-id-section">
@@ -4461,6 +4511,90 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 230: API Key Rotation ───────────────────────────────────────────────
+async function loadApiKeyRotation() {
+  const statusEl = document.getElementById('api-key-rotation-status');
+  const el = document.getElementById('api-key-rotation-body');
+  statusEl.textContent = 'Rotating…';
+  try {
+    const r = await apiFetch('/rotate-key', { method: 'POST' });
+    if (!r.ok) { statusEl.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    statusEl.textContent = '✓ Key rotated';
+    const key = d.api_key || d.new_key || d.key || '';
+    el.innerHTML = key
+      ? `<div style="font-size:11px;margin-top:4px">New key: <code style="background:var(--input-bg);padding:2px 4px;border-radius:3px">${key}</code> <span style="color:var(--text-xdim)">(copy now — shown once)</span></div>`
+      : '<div style="font-size:11px;color:var(--text-xdim)">Key rotated. Retrieve your new key from the auth settings.</div>';
+  } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 231: Task Siblings ───────────────────────────────────────────────────
+async function loadTaskSiblings() {
+  const id = document.getElementById('task-siblings-id').value.trim();
+  const el = document.getElementById('task-siblings-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const taskR = await apiFetch('/tasks/' + id);
+    if (!taskR.ok) { el.textContent = 'HTTP ' + taskR.status; return; }
+    const task = await taskR.json();
+    const sessionId = task.session_id;
+    if (!sessionId) { el.textContent = 'This task has no session.'; return; }
+    const r = await apiFetch('/sessions/' + sessionId + '/tasks');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const siblings = (Array.isArray(data) ? data : (data.tasks || [])).filter(t => (t.task_id ?? t.id) !== id);
+    if (!siblings.length) { el.textContent = 'No sibling tasks in this session.'; return; }
+    el.innerHTML = siblings.map(t => {
+      const tid = (t.task_id ?? t.id ?? '-').toString().slice(0, 8);
+      return `<div style="margin-bottom:3px;font-size:12px"><code>${tid}</code> — ${t.status ?? '-'}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 232: Pipeline Step Result ───────────────────────────────────────────
+async function loadPipelineStepResult() {
+  const runId = document.getElementById('pipeline-step-result-run').value.trim();
+  const step = document.getElementById('pipeline-step-result-step').value.trim();
+  const el = document.getElementById('pipeline-step-result-body');
+  if (!runId) { el.textContent = 'Enter a run ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines/runs/' + runId);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const steps = d.steps ?? d.step_results ?? [];
+    const stepIdx = parseInt(step, 10);
+    const stepData = isNaN(stepIdx) ? steps[0] : steps[stepIdx];
+    if (!stepData) { el.textContent = step ? `Step ${step} not found.` : 'No steps in this run.'; return; }
+    const result = stepData.result ?? stepData.output ?? stepData.task_result ?? '-';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Step</span><span class="td-value">${stepData.step ?? stepData.index ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Name</span><span class="td-value">${stepData.name ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Status</span><span class="td-value">${stepData.status ?? '-'}</span></div>`,
+      `<div style="margin-top:6px;font-size:11px;color:var(--text-xdim)">${String(result).slice(0, 200)}</div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 233: Template Preview ────────────────────────────────────────────────
+async function previewTemplate() {
+  const id = document.getElementById('template-preview-id').value.trim();
+  const el = document.getElementById('template-preview-body');
+  if (!id) { el.textContent = 'Enter a template ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/templates/' + id);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Name</span><span class="td-value">${t.name ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Agent</span><span class="td-value">${t.agent_type ?? '-'}</span></div>`,
+      `<div style="margin-top:8px;font-size:11px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;white-space:pre-wrap;color:var(--text)">${t.prompt ?? '-'}</div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 226: Task Annotation by ID ──────────────────────────────────────────

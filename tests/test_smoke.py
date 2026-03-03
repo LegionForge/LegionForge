@@ -16356,3 +16356,119 @@ def test_p229_ui_batch_results_filters_by_label():
     idx = html.index("async function loadBatchResults()")
     fn_body = html[idx : idx + 600]
     assert "label=" in fn_body
+
+
+# ── Phase 230: API Key Rotation ───────────────────────────────────────────────
+
+
+def test_p230_ui_api_key_rotation_card_present():
+    """api-key-rotation-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "api-key-rotation-card" in html
+
+
+def test_p230_ui_load_api_key_rotation_function_defined():
+    """loadApiKeyRotation function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadApiKeyRotation()" in html
+
+
+def test_p230_ui_api_key_rotation_posts_to_rotate_key():
+    """loadApiKeyRotation posts to /rotate-key."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadApiKeyRotation()")
+    fn_body = html[idx : idx + 600]
+    assert "/rotate-key" in fn_body
+
+
+# ── Phase 231: Task Siblings ───────────────────────────────────────────────────
+
+
+def test_p231_ui_task_siblings_card_present():
+    """task-siblings-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-siblings-card" in html
+
+
+def test_p231_ui_load_task_siblings_function_defined():
+    """loadTaskSiblings function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskSiblings()" in html
+
+
+def test_p231_ui_task_siblings_uses_session_id():
+    """loadTaskSiblings looks up tasks by session_id."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskSiblings()")
+    fn_body = html[idx : idx + 900]
+    assert "session_id" in fn_body and "/sessions/" in fn_body
+
+
+# ── Phase 232: Pipeline Step Result ───────────────────────────────────────────
+
+
+def test_p232_ui_pipeline_step_result_card_present():
+    """pipeline-step-result-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-result-card" in html
+
+
+def test_p232_ui_load_pipeline_step_result_function_defined():
+    """loadPipelineStepResult function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineStepResult()" in html
+
+
+def test_p232_ui_pipeline_step_result_fetches_run():
+    """loadPipelineStepResult fetches /pipelines/runs/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineStepResult()")
+    fn_body = html[idx : idx + 800]
+    assert "pipelines/runs/" in fn_body
+
+
+# ── Phase 233: Template Preview ───────────────────────────────────────────────
+
+
+def test_p233_ui_template_preview_card_present():
+    """template-preview-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-preview-card" in html
+
+
+def test_p233_ui_preview_template_function_defined():
+    """previewTemplate function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function previewTemplate()" in html
+
+
+def test_p233_ui_preview_template_shows_prompt():
+    """previewTemplate fetches /templates/{id} and shows prompt."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function previewTemplate()")
+    fn_body = html[idx : idx + 1000]
+    assert "/templates/" in fn_body and "prompt" in fn_body

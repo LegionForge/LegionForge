@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 195
+UPDATE: 196
 BRANCH: main
-COMMIT: 3b8413b
-TIMESTAMP: 2026-03-04T19:00Z
-LAST_OP: PR #160 — Phase 222-225 — Pipeline Runs Table, Prompt Search, Agent Caps, Delete Pref Key
-SMOKE_TESTS: 1447/1447
+COMMIT: 1ee682f
+TIMESTAMP: 2026-03-04T20:00Z
+LAST_OP: PR #161 — Phase 226-229 — Task Annotation, Memory Ingest, Admin Schedules, Batch Tag Results
+SMOKE_TESTS: 1459/1459
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

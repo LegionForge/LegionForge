@@ -1879,5 +1879,9 @@ Added as compact addendum. See git log for full details.
 | 223 | #160 | Task Prompt Search (task-prompt-search-card, searchTasksByPrompt, GET /tasks?q=, 10 results) | +3 | 1441 |
 | 224 | #160 | Agent Capabilities (agent-caps-card, loadAgentCaps, GET /agents/{type}, type/model/desc/tools) | +3 | 1444 |
 | 225 | #160 | Delete Preference Key (delete-pref-key-card, deletePreferenceKey, DELETE /preferences/{key}) | +3 | 1447 |
+| 226 | #161 | Task Annotation by ID (task-annotation-by-id-card, loadTaskAnnotationById, GET /tasks/{id}/annotation, rating/note) | +3 | 1450 |
+| 227 | #161 | Memory Ingest (memory-ingest-card, ingestToMemory, POST /memory/ingest, text textarea, chunk count) | +3 | 1453 |
+| 228 | #161 | All Schedules Admin (schedule-history-card, loadScheduleHistory, GET /admin/schedules, table) | +3 | 1456 |
+| 229 | #161 | Batch Tag Results (batch-results-card, loadBatchResults, GET /tasks?label=, label-filtered task list) | +3 | 1459 |
 
-**Current state:** 1447/1447 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1459/1459 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
