@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 210
+UPDATE: 211
 BRANCH: main
-COMMIT: b4bc02c
-TIMESTAMP: 2026-03-05T12:00Z
-LAST_OP: PR #175 — Phase 282-285 — Annotation Summary, Document List, Batch Status, API Usage Stats
-SMOKE_TESTS: 1627/1627
+COMMIT: 0f1bdd7
+TIMESTAMP: 2026-03-05T13:00Z
+LAST_OP: PR #176 — Phase 286-289 — Model List, Threat Event Detail, User Activity, Connector Status
+SMOKE_TESTS: 1639/1639
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

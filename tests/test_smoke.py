@@ -18036,3 +18036,99 @@ def test_p289_ui_connector_status_calls_health():
     idx = html.index("async function loadConnectorStatus()")
     fn_body = html[idx : idx + 800]
     assert "/health" in fn_body
+
+
+# ── Phase 290: Rate Limit Info ──────────────────────────────────────────────────
+def test_p290_ui_rate_limit_info_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="rate-limit-info-card"' in html
+
+
+def test_p290_ui_rate_limit_info_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRateLimitInfo()" in html
+
+
+def test_p290_ui_rate_limit_info_calls_usage_me():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadRateLimitInfo()")
+    fn_body = html[idx : idx + 800]
+    assert "/usage/me" in fn_body
+
+
+# ── Phase 291: Task Event Log ──────────────────────────────────────────────────
+def test_p291_ui_task_event_log_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="task-event-log-card"' in html
+
+
+def test_p291_ui_task_event_log_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskEventLog()" in html
+
+
+def test_p291_ui_task_event_log_calls_timeline():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskEventLog()")
+    fn_body = html[idx : idx + 800]
+    assert "/timeline" in fn_body
+
+
+# ── Phase 292: Search Provider Status ──────────────────────────────────────────────
+def test_p292_ui_search_provider_status_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="search-provider-status-card"' in html
+
+
+def test_p292_ui_search_provider_status_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSearchProviderStatus()" in html
+
+
+def test_p292_ui_search_provider_status_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadSearchProviderStatus()")
+    fn_body = html[idx : idx + 800]
+    assert "/health" in fn_body
+
+
+# ── Phase 293: Pipeline Run List ──────────────────────────────────────────────
+def test_p293_ui_pipeline_run_list_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="pipeline-run-list-card"' in html
+
+
+def test_p293_ui_pipeline_run_list_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineRunList()" in html
+
+
+def test_p293_ui_pipeline_run_list_calls_pipeline_runs():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineRunList()")
+    fn_body = html[idx : idx + 800]
+    assert "/runs" in fn_body

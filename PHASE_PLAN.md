@@ -1939,5 +1939,9 @@ Added as compact addendum. See git log for full details.
 | 283 | #175 | Document List (document-list-card, loadDocumentList, GET /documents, id/source/chunks/ingested table) | +3 | 1621 |
 | 284 | #175 | Batch Status (batch-status-card, loadBatchStatus, GET /tasks?label=X, per-status count breakdown) | +3 | 1624 |
 | 285 | #175 | API Usage Stats (api-usage-stats-card, loadApiUsageStats, Promise.all /usage/me+/usage/history?days=7) | +3 | 1627 |
+| 286 | #176 | Model List (model-list-card, loadModelList, GET /agents, deduplicated model/agent-type table) | +3 | 1630 |
+| 287 | #176 | Threat Event Detail (threat-event-detail-card, loadThreatEventDetail, GET /admin/threats, find by event ID) | +3 | 1633 |
+| 288 | #176 | User Activity (user-activity-card, loadUserActivity, GET /admin/users/{name}, tokens/quota/admin detail) | +3 | 1636 |
+| 289 | #176 | Connector Status (connector-status-card, loadConnectorStatus, GET /health, connector key/status colour coding) | +3 | 1639 |
 
-**Current state:** 1627/1627 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1639/1639 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
