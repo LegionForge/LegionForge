@@ -1184,6 +1184,54 @@
     </details>
   </div>
 
+  <!-- ── Pipeline Runs Table card (Phase 222) ─────────────── -->
+  <div class="card" id="pipeline-runs-table-card">
+    <details id="pipeline-runs-table-section">
+      <summary style="cursor:pointer">Pipeline Runs Table</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="pipeline-runs-table-id" placeholder="Pipeline ID" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadPipelineRunsTable()">↻ Load</button>
+      </div>
+      <div id="pipeline-runs-table-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter pipeline ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Prompt Search card (Phase 223) ───────────────── -->
+  <div class="card" id="task-prompt-search-card">
+    <details id="task-prompt-search-section">
+      <summary style="cursor:pointer">Task Prompt Search</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-prompt-search-q" placeholder="Search prompt text…" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="searchTasksByPrompt()">🔍 Search</button>
+      </div>
+      <div id="task-prompt-search-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter keywords and click 🔍 Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Agent Capabilities card (Phase 224) ───────────────── -->
+  <div class="card" id="agent-caps-card">
+    <details id="agent-caps-section">
+      <summary style="cursor:pointer">Agent Capabilities</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="agent-caps-type" placeholder="Agent type (e.g. researcher)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadAgentCaps()">↻ Load</button>
+      </div>
+      <div id="agent-caps-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter agent type and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Delete Preference Key card (Phase 225) ────────────── -->
+  <div class="card" id="delete-pref-key-card">
+    <details id="delete-pref-key-section">
+      <summary style="cursor:pointer">Delete Preference Key</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="delete-pref-key-name" placeholder="Preference key" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn danger" style="font-size:11px;padding:3px 8px" onclick="deletePreferenceKey()">🗑 Delete</button>
+        <span id="delete-pref-key-status" style="font-size:11px;color:var(--text-xdim)"></span>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Rate Limit History card (Phase 218) ──────────────── -->
   <div class="card" id="rate-limit-history-card">
     <details id="rate-limit-history-section">
@@ -4369,6 +4417,81 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 222: Pipeline Runs Table ────────────────────────────────────────────
+async function loadPipelineRunsTable() {
+  const id = document.getElementById('pipeline-runs-table-id').value.trim();
+  const el = document.getElementById('pipeline-runs-table-body');
+  if (!id) { el.textContent = 'Enter a pipeline ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines/' + id + '/runs');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const runs = Array.isArray(data) ? data : (data.runs || []);
+    if (!runs.length) { el.textContent = 'No runs found for this pipeline.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">Run ID</th><th style="text-align:left;padding:2px 6px">Status</th><th style="text-align:left;padding:2px 6px">Started</th></tr>'
+      + runs.map(r => `<tr><td style="padding:2px 6px">${r.run_id ?? r.id ?? '-'}</td><td style="padding:2px 6px">${r.status ?? '-'}</td><td style="padding:2px 6px">${r.started_at ? new Date(r.started_at).toLocaleString() : '-'}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 223: Task Prompt Search ─────────────────────────────────────────────
+async function searchTasksByPrompt() {
+  const q = document.getElementById('task-prompt-search-q').value.trim();
+  const el = document.getElementById('task-prompt-search-body');
+  if (!q) { el.textContent = 'Enter search keywords.'; return; }
+  el.textContent = 'Searching…';
+  try {
+    const r = await apiFetch('/tasks?q=' + encodeURIComponent(q) + '&limit=10');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!tasks.length) { el.textContent = 'No matching tasks found.'; return; }
+    el.innerHTML = tasks.map(t => {
+      const id = (t.task_id ?? t.id ?? '-').toString().slice(0, 8);
+      const prompt = (t.prompt ?? '').slice(0, 60);
+      return `<div style="margin-bottom:4px;font-size:12px"><code>${id}</code> — ${t.status ?? '-'} — ${prompt}…</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 224: Agent Capabilities ─────────────────────────────────────────────
+async function loadAgentCaps() {
+  const type = document.getElementById('agent-caps-type').value.trim();
+  const el = document.getElementById('agent-caps-body');
+  if (!type) { el.textContent = 'Enter an agent type.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/agents/' + encodeURIComponent(type));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const caps = d.capabilities ?? d.tools ?? [];
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Type</span><span class="td-value">${d.agent_type ?? type}</span></div>`,
+      `<div class="td-field"><span class="td-label">Model</span><span class="td-value">${d.model ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Description</span><span class="td-value">${d.description ?? '-'}</span></div>`,
+      caps.length ? `<div class="td-field"><span class="td-label">Tools</span><span class="td-value">${caps.join(', ')}</span></div>` : '',
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 225: Delete Preference Key ──────────────────────────────────────────
+async function deletePreferenceKey() {
+  const key = document.getElementById('delete-pref-key-name').value.trim();
+  const statusEl = document.getElementById('delete-pref-key-status');
+  if (!key) { statusEl.textContent = 'Enter a key name.'; return; }
+  statusEl.textContent = 'Deleting…';
+  try {
+    const r = await apiFetch('/preferences/' + encodeURIComponent(key), { method: 'DELETE' });
+    if (r.ok || r.status === 204) {
+      statusEl.textContent = `✓ Deleted preference "${key}"`;
+    } else {
+      statusEl.textContent = 'HTTP ' + r.status;
+    }
+  } catch (e) { statusEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 218: Rate Limit History ─────────────────────────────────────────────

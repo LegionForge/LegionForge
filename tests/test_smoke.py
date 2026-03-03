@@ -16124,3 +16124,119 @@ def test_p221_ui_memory_store_stats_hits_memory_endpoint():
     idx = html.index("async function loadMemoryStoreStats()")
     fn_body = html[idx : idx + 600]
     assert "/memory/stats" in fn_body
+
+
+# ── Phase 222: Pipeline Runs Table ────────────────────────────────────────────
+
+
+def test_p222_ui_pipeline_runs_table_card_present():
+    """pipeline-runs-table-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-runs-table-card" in html
+
+
+def test_p222_ui_load_pipeline_runs_table_function_defined():
+    """loadPipelineRunsTable function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineRunsTable()" in html
+
+
+def test_p222_ui_pipeline_runs_table_renders_table():
+    """loadPipelineRunsTable fetches pipeline runs and renders a table."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineRunsTable()")
+    fn_body = html[idx : idx + 800]
+    assert "/runs" in fn_body and "<table" in fn_body
+
+
+# ── Phase 223: Task Prompt Search ─────────────────────────────────────────────
+
+
+def test_p223_ui_task_prompt_search_card_present():
+    """task-prompt-search-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-prompt-search-card" in html
+
+
+def test_p223_ui_search_tasks_by_prompt_function_defined():
+    """searchTasksByPrompt function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function searchTasksByPrompt()" in html
+
+
+def test_p223_ui_search_tasks_by_prompt_uses_q_param():
+    """searchTasksByPrompt queries /tasks?q=."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function searchTasksByPrompt()")
+    fn_body = html[idx : idx + 600]
+    assert "?q=" in fn_body
+
+
+# ── Phase 224: Agent Capabilities ─────────────────────────────────────────────
+
+
+def test_p224_ui_agent_caps_card_present():
+    """agent-caps-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-caps-card" in html
+
+
+def test_p224_ui_load_agent_caps_function_defined():
+    """loadAgentCaps function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAgentCaps()" in html
+
+
+def test_p224_ui_agent_caps_hits_agents_type_endpoint():
+    """loadAgentCaps fetches /agents/{type}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAgentCaps()")
+    fn_body = html[idx : idx + 600]
+    assert "/agents/" in fn_body
+
+
+# ── Phase 225: Delete Preference Key ──────────────────────────────────────────
+
+
+def test_p225_ui_delete_pref_key_card_present():
+    """delete-pref-key-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "delete-pref-key-card" in html
+
+
+def test_p225_ui_delete_preference_key_function_defined():
+    """deletePreferenceKey function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function deletePreferenceKey()" in html
+
+
+def test_p225_ui_delete_preference_key_uses_delete_method():
+    """deletePreferenceKey sends DELETE to /preferences/{key}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function deletePreferenceKey()")
+    fn_body = html[idx : idx + 600]
+    assert "DELETE" in fn_body and "/preferences/" in fn_body

@@ -1871,5 +1871,9 @@ Added as compact addendum. See git log for full details.
 | 215 | #158 | Documents Compact (documents-compact-card, loadDocumentsCompact, GET /documents, ID/source/chunks table) | +3 | 1417 |
 | 216 | #158 | Session Task Summary (session-task-summary-card, loadSessionTaskSummary, GET /sessions/{id}/tasks, per-status counts) | +3 | 1420 |
 | 217 | #158 | Export Download (export-download-card, downloadTaskExport, GET /tasks/export?format=csv|json, Blob download) | +3 | 1423 |
+| 218 | #159 | Rate Limit History (rate-limit-history-card, loadRateLimitHistory, GET /usage/history?days=30, 10-row table) | +3 | 1426 |
+| 219 | #159 | Admin User Detail (admin-user-detail-card, loadAdminUserDetail, GET /admin/users/{name}, 5-field view) | +3 | 1429 |
+| 220 | #159 | Task Dependents (task-dependents-card, loadTaskDependents, GET /tasks, client-side depends_on filter) | +3 | 1432 |
+| 221 | #159 | Memory Store Stats (memory-store-stats-card, loadMemoryStoreStats, GET /memory/stats, chunks/docs/dim) | +3 | 1435 |
 
-**Current state:** 1423/1423 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1435/1435 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

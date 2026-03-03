@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 193
+UPDATE: 194
 BRANCH: main
-COMMIT: bdeb1d5
-TIMESTAMP: 2026-03-04T17:00Z
-LAST_OP: PR #158 — Phase 214-217 — A2A Status, Documents Compact, Session Summary, Export Download
-SMOKE_TESTS: 1423/1423
+COMMIT: b26203b
+TIMESTAMP: 2026-03-04T18:00Z
+LAST_OP: PR #159 — Phase 218-221 — Rate Limit History, Admin User Detail, Task Dependents, Memory Stats
+SMOKE_TESTS: 1435/1435
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
