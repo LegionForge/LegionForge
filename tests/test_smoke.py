@@ -12258,3 +12258,123 @@ def test_p98_ui_load_attachments_calls_endpoint():
     fn_start = html.find("function loadAttachments(")
     fn_body = html[fn_start : fn_start + 600]
     assert "/attachments" in fn_body
+
+
+# ── Phase 99 — API Key Rotation UI ───────────────────────────────────────────
+
+
+def test_p99_ui_rotate_key_card_present():
+    """Phase 99 API key rotation card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rotate-key-card" in html
+    assert "rotate-key-result" in html
+
+
+def test_p99_ui_rotate_api_key_function_defined():
+    """rotateApiKey() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function rotateApiKey(" in html
+
+
+def test_p99_ui_rotate_calls_auth_rotate_key():
+    """rotateApiKey() calls POST /auth/rotate-key."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function rotateApiKey(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/auth/rotate-key" in fn_body
+
+
+def test_p99_ui_rotate_updates_api_key_input():
+    """rotateApiKey() updates the API key input with the new key."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function rotateApiKey(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "el.apiKey().value" in fn_body
+
+
+# ── Phase 100 — Batch Task Submission UI ─────────────────────────────────────
+
+
+def test_p100_ui_batch_card_present():
+    """Phase 100 batch submit card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-card" in html
+    assert "batch-input" in html
+
+
+def test_p100_ui_submit_batch_function_defined():
+    """submitBatch() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function submitBatch(" in html
+
+
+def test_p100_ui_submit_batch_calls_tasks_batch():
+    """submitBatch() calls POST /tasks/batch."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function submitBatch(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "/tasks/batch" in fn_body
+
+
+def test_p100_ui_submit_batch_validates_line_count():
+    """submitBatch() rejects batches over 20 tasks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function submitBatch(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "20" in fn_body
+
+
+# ── Phase 101 — Session Tasks Browser ────────────────────────────────────────
+
+
+def test_p101_ui_session_tasks_card_present():
+    """Phase 101 session tasks card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-tasks-card" in html
+    assert "sess-tasks-list" in html
+
+
+def test_p101_ui_load_session_tasks_function_defined():
+    """loadSessionTasks() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadSessionTasks(" in html
+
+
+def test_p101_ui_load_session_tasks_calls_endpoint():
+    """loadSessionTasks() calls GET /sessions/{id}/tasks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadSessionTasks(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/sessions/" in fn_body
+    assert "/tasks" in fn_body
+
+
+def test_p101_ui_populate_sess_tasks_sel_defined():
+    """populateSessTasksSel() populates the session selector."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function populateSessTasksSel(" in html
+    assert "populateSessTasksSel" in html
