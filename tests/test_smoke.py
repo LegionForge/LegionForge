@@ -11251,3 +11251,109 @@ def test_p75_ui_schedules_form_has_cron_input():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "sched-cron" in html
     assert "0 8 * * *" in html  # placeholder hint
+
+
+# ── Phase 76 — Task Notes UI ───────────────────────────────────────────────────
+
+
+def test_p76_ui_notes_panel_css_present():
+    """Phase 76 notes panel CSS class exists."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notes-panel" in html
+
+
+def test_p76_ui_toggle_notes_panel_function_defined():
+    """toggleNotesPanel() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleNotesPanel(" in html
+
+
+def test_p76_ui_add_note_function_defined():
+    """addNote() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function addNote(" in html
+
+
+def test_p76_ui_load_notes_function_defined():
+    """loadNotes() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadNotes(" in html
+
+
+def test_p76_ui_delete_note_function_defined():
+    """deleteNote() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteNote(" in html
+
+
+def test_p76_ui_notes_button_added_in_rating_bar():
+    """Notes button is added in the rating bar block of finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function finishRun(")
+    fn_body = html[fn_start : fn_start + 2500]
+    assert "toggleNotesPanel" in fn_body
+    assert "📝 Notes" in fn_body
+
+
+# ── Phase 77 — Task Share Link ────────────────────────────────────────────────
+
+
+def test_p77_ui_share_row_css_present():
+    """Phase 77 share-row CSS class exists."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "share-row" in html
+
+
+def test_p77_ui_share_task_function_defined():
+    """shareTask() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function shareTask(" in html
+
+
+def test_p77_ui_share_button_added_in_rating_bar():
+    """Share button is added in the rating bar block of finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function finishRun(")
+    fn_body = html[fn_start : fn_start + 2500]
+    assert "shareTask" in fn_body
+    assert "🔗 Share" in fn_body
+
+
+def test_p77_ui_share_calls_post_share_endpoint():
+    """shareTask() calls POST /tasks/{id}/share."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function shareTask(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/share" in fn_body
+    assert "POST" in fn_body
+
+
+def test_p77_ui_share_shows_copy_button():
+    """shareTask() renders a Copy button for the share URL."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function shareTask(")
+    fn_body = html[fn_start : fn_start + 1500]
+    assert "Copy" in fn_body
+    assert "clipboard" in fn_body
