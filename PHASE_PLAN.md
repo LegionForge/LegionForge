@@ -1768,4 +1768,9 @@ Added as compact addendum. See git log for full details.
 | 128 | #136 | Session Detail Viewer (session-detail-card, loadSessionDetail, GET /sessions/{id}, detail sel) | +4 | 1143 |
 | 129 | #136 | A2A Task Status Check (a2a-status-card, checkA2ATask, GET /a2a/tasks/{id}, artifact result) | +3 | 1146 |
 
-**Current state:** 1146/1146 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 130 | #137 | Usage History Detail (usage-history-card, loadUsageHistory, /usage/history?days=N, per-day table) | +3 | 1149 |
+| 131 | #137 | Task Tag Filter (task-tag-filter-card, loadTasksByTag, GET /tasks?tags[]=tag, matching list) | +3 | 1152 |
+| 132 | #137 | Admin Metrics History (metrics-history-card, loadMetricsHistory, /admin/metrics/history, CPU/RAM/Disk) | +3 | 1155 |
+| 133 | #137 | Shared Task Viewer (shared-task-viewer-card, viewSharedTask, GET /shared/{token}, no auth) | +3 | 1158 |
+
+**Current state:** 1158/1158 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
