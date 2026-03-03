@@ -1233,6 +1233,46 @@
     </details>
   </div>
 
+  <!-- ── Session List card (Phase 254) ───────────────────────── -->
+  <div class="card" id="session-list-card">
+    <details id="session-list-section">
+      <summary style="cursor:pointer">All Sessions <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSessionList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="session-list-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Quota card (Phase 255) ──────────────────────────── -->
+  <div class="card" id="user-quota-card">
+    <details id="user-quota-section">
+      <summary style="cursor:pointer">My Quota &amp; Limits <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserQuota()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="user-quota-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Model Preferences card (Phase 256) ───────────────────── -->
+  <div class="card" id="model-prefs-card">
+    <details id="model-prefs-section">
+      <summary style="cursor:pointer">Model Preferences <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadModelPrefs()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="model-prefs-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Prompt History card (Phase 257) ─────────────────── -->
+  <div class="card" id="task-prompt-history-card">
+    <details id="task-prompt-history-section">
+      <summary style="cursor:pointer">Task Prompt History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskPromptHistory()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="task-prompt-history-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Result JSON card (Phase 250) ────────────────────── -->
   <div class="card" id="task-result-json-card">
     <details id="task-result-json-section">
@@ -4737,6 +4777,93 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 254: Session List ───────────────────────────────────────────────────
+async function loadSessionList() {
+  const el = document.getElementById('session-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/sessions');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const sessions = Array.isArray(data) ? data : (data.sessions || data.items || []);
+    if (!sessions.length) { el.textContent = 'No sessions found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Title</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Tasks</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Created</th></tr>' +
+      sessions.map(s => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(s.session_id||s.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.title||s.name||'—'}</td>
+        <td style="padding:2px 4px">${s.task_count ?? '—'}</td>
+        <td style="padding:2px 4px">${(s.created_at||'').slice(0,10)}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 255: User Quota & Limits ────────────────────────────────────────────
+async function loadUserQuota() {
+  const el = document.getElementById('user-quota-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/me');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const fields = [
+      ['username', data.username],
+      ['daily_token_quota', (data.daily_token_quota ?? 0).toLocaleString()],
+      ['tokens_used_today', (data.tokens_used ?? 0).toLocaleString()],
+      ['quota_remaining', ((data.daily_token_quota ?? 0) - (data.tokens_used ?? 0)).toLocaleString()],
+      ['is_admin', String(data.is_admin ?? false)],
+    ];
+    el.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 256: Model Preferences ─────────────────────────────────────────────
+async function loadModelPrefs() {
+  const el = document.getElementById('model-prefs-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/preferences');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const prefs = typeof data === 'object' && !Array.isArray(data) ? data : {};
+    const modelKeys = Object.entries(prefs).filter(([k]) =>
+      k.toLowerCase().includes('model') || k.toLowerCase().includes('agent') || k.toLowerCase().includes('preference')
+    );
+    if (!modelKeys.length) {
+      el.innerHTML = '<div style="color:var(--text-xdim)">No model preferences stored.</div>';
+      return;
+    }
+    el.innerHTML = modelKeys.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 257: Task Prompt History ────────────────────────────────────────────
+async function loadTaskPromptHistory() {
+  const el = document.getElementById('task-prompt-history-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=20&sort=created_at');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = 'No task history.'; return; }
+    el.innerHTML = '<ol style="margin:0;padding-left:18px">' +
+      tasks.map(t =>
+        `<li style="margin-bottom:4px;font-size:11px">
+          <span style="color:var(--text-xdim)">${(t.created_at||'').slice(0,10)}</span>
+          <span style="margin-left:6px">${(t.prompt||'').slice(0,120)}${(t.prompt||'').length > 120 ? '…' : ''}</span>
+        </li>`
+      ).join('') + '</ol>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 250: Task Result JSON ───────────────────────────────────────────────

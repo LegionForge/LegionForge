@@ -1903,5 +1903,9 @@ Added as compact addendum. See git log for full details.
 | 247 | #166 | Pipeline Step List (pipeline-step-list-card, loadPipelineStepList, GET /pipelines/{id}, step index/name/agent table) | +3 | 1513 |
 | 248 | #166 | Memory Recall (memory-recall-card, loadMemoryRecall, POST /memory/search, top-5 chunks with score display) | +3 | 1516 |
 | 249 | #166 | Document Chunks (document-chunks-card, loadDocumentChunks, GET /documents/{id}, source meta + first 5 chunk previews) | +3 | 1519 |
+| 250 | #167 | Task Result JSON (task-result-json-card, loadTaskResultJson, GET /tasks/{id}, pretty-printed JSON in pre block) | +3 | 1522 |
+| 251 | #167 | Admin User Tokens (admin-user-tokens-card, loadAdminUserTokens, GET /admin/users/{name}, token usage fields) | +3 | 1525 |
+| 252 | #167 | Pipeline Run Info (pipeline-run-info-card, loadPipelineRunInfo, GET /pipelines/runs/{id}, status/timing/steps; renamed to avoid collision) | +3 | 1528 |
+| 253 | #167 | Webhook Detail (webhook-by-id-card, loadWebhookById, GET /webhooks/{id}, URL/active/event_types/created_at) | +3 | 1531 |
 
-**Current state:** 1519/1519 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1531/1531 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

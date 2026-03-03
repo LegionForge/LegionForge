@@ -17052,3 +17052,119 @@ def test_p253_ui_webhook_by_id_calls_webhooks_endpoint():
     idx = html.index("async function loadWebhookById()")
     fn_body = html[idx : idx + 700]
     assert "/webhooks/" in fn_body
+
+
+# ── Phase 254: Session List ────────────────────────────────────────────────────
+
+
+def test_p254_ui_session_list_card_present():
+    """session-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-list-card" in html
+
+
+def test_p254_ui_load_session_list_function_defined():
+    """loadSessionList() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSessionList()" in html
+
+
+def test_p254_ui_session_list_calls_sessions():
+    """loadSessionList calls /sessions."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadSessionList()")
+    fn_body = html[idx : idx + 800]
+    assert "/sessions" in fn_body
+
+
+# ── Phase 255: User Quota & Limits ────────────────────────────────────────────
+
+
+def test_p255_ui_user_quota_card_present():
+    """user-quota-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-quota-card" in html
+
+
+def test_p255_ui_load_user_quota_function_defined():
+    """loadUserQuota() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserQuota()" in html
+
+
+def test_p255_ui_user_quota_calls_usage_me():
+    """loadUserQuota calls /usage/me."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadUserQuota()")
+    fn_body = html[idx : idx + 700]
+    assert "/usage/me" in fn_body and "quota" in fn_body.lower()
+
+
+# ── Phase 256: Model Preferences ──────────────────────────────────────────────
+
+
+def test_p256_ui_model_prefs_card_present():
+    """model-prefs-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "model-prefs-card" in html
+
+
+def test_p256_ui_load_model_prefs_function_defined():
+    """loadModelPrefs() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadModelPrefs()" in html
+
+
+def test_p256_ui_model_prefs_calls_preferences():
+    """loadModelPrefs calls /preferences."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadModelPrefs()")
+    fn_body = html[idx : idx + 700]
+    assert "/preferences" in fn_body
+
+
+# ── Phase 257: Task Prompt History ────────────────────────────────────────────
+
+
+def test_p257_ui_task_prompt_history_card_present():
+    """task-prompt-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-prompt-history-card" in html
+
+
+def test_p257_ui_load_task_prompt_history_function_defined():
+    """loadTaskPromptHistory() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskPromptHistory()" in html
+
+
+def test_p257_ui_task_prompt_history_renders_prompts():
+    """loadTaskPromptHistory renders an ordered list of prompts."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskPromptHistory()")
+    fn_body = html[idx : idx + 900]
+    assert "prompt" in fn_body and "/tasks" in fn_body
