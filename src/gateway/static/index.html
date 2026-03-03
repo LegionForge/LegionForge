@@ -321,6 +321,27 @@
     .history-item .hi-tokens { color: var(--text-xdim); text-align: right; font-size: 10px; }
     #history-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
 
+    /* ── Templates (Phase 61) ───────────────────────────────────── */
+    #tmpl-section summary {
+      cursor: pointer; user-select: none;
+      color: var(--text); font-size: 13px; font-weight: 600;
+      list-style: none; padding: 4px 0;
+    }
+    #tmpl-section summary::before { content: '▶ '; font-size: 9px; }
+    #tmpl-section[open] summary::before { content: '▼ '; }
+    #tmpl-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .tmpl-item {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 6px;
+      align-items: center; padding: 6px 8px; background: var(--panel2);
+      border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+    }
+    .tmpl-item:hover { border-color: var(--blue); }
+    .tmpl-item .ti-name { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tmpl-item .ti-agent { font-size: 10px; color: var(--purple); }
+    .tmpl-item .ti-del { font-size: 11px; color: var(--text-dim); padding: 2px 6px; }
+    .tmpl-item .ti-del:hover { color: var(--red); }
+    #tmpl-empty { color: var(--text-xdim); font-style: italic; font-size: 12px; padding: 8px 0; }
+
     /* ── Tool block (blocked = security registry rejected the call) ── */
     .tool-block.blocked {
       background: rgba(248, 81, 73, 0.08);
@@ -463,6 +484,19 @@
     <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
   </div>
 
+  <!-- ── Templates (Phase 61) ───────────────────────────── -->
+  <div class="card">
+    <details id="tmpl-section">
+      <summary id="tmpl-summary">Templates (0)</summary>
+      <div style="margin-top:8px;display:flex;gap:6px;">
+        <button class="btn ghost" style="font-size:11px;" onclick="saveTemplate()" title="Save current prompt as a template">＋ Save prompt</button>
+      </div>
+      <div id="tmpl-list">
+        <div id="tmpl-empty">No templates yet.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── History ────────────────────────────────────────── -->
   <div class="card">
     <details id="history-section">
@@ -479,7 +513,7 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  LegionForge Web UI — Phase 57
+//  LegionForge Web UI — Phase 61
 //  Vanilla JS, no framework, single file.
 // ════════════════════════════════════════════════════════════════
 
@@ -500,6 +534,7 @@ const S = {
   toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
   sessionId:      null,   // string | null — active conversation session_id (Phase 57)
   modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
+  templates:      [],     // cached template list (Phase 61)
 };
 
 const MAX_HISTORY = 20;
@@ -524,6 +559,9 @@ const el = {
   histSummary:   () => $('history-summary'),
   charCount:     () => $('char-count'),
   sessionPicker: () => $('session-picker'),
+  tmplList:      () => $('tmpl-list'),
+  tmplEmpty:     () => $('tmpl-empty'),
+  tmplSummary:   () => $('tmpl-summary'),
 };
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -538,10 +576,12 @@ const el = {
     if (v) localStorage.setItem(APIKEY_KEY, v);
     else   localStorage.removeItem(APIKEY_KEY);
   });
-  el.apiKey().addEventListener('blur', () => { if (el.apiKey().value.trim()) loadSessions(); });
+  el.apiKey().addEventListener('blur', () => {
+    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); }
+  });
 
-  // Load sessions on startup if key is already saved
-  if (saved) loadSessions();
+  // Load sessions + templates on startup if key is already saved
+  if (saved) { loadSessions(); loadTemplates(); }
 
   // Restore history
   try {
@@ -591,6 +631,87 @@ async function rateTask(taskId, rating) {
     if (upBtn)   upBtn.classList.toggle('rated',   rating === 1);
     if (downBtn) downBtn.classList.toggle('rated', rating === -1);
   } catch (_) { /* silent */ }
+}
+
+// ── Prompt templates (Phase 61) ───────────────────────────────────
+async function loadTemplates() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    const res = await fetch('/templates', {
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    S.templates = data.templates || [];
+    renderTemplates();
+  } catch (_) {}
+}
+
+function renderTemplates() {
+  const list  = el.tmplList();
+  const empty = el.tmplEmpty();
+  el.tmplSummary().textContent = 'Templates (' + S.templates.length + ')';
+  list.querySelectorAll('.tmpl-item').forEach(n => n.remove());
+  if (S.templates.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  S.templates.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'tmpl-item';
+    div.title = t.input_template || '';
+    div.innerHTML =
+      '<span class="ti-name" onclick="loadTemplate(\'' + t.template_id + '\')">' + escapeHtml(t.name) + '</span>' +
+      '<span class="ti-agent">' + escapeHtml(t.agent_type || '') + '</span>' +
+      '<button class="btn ghost ti-del" onclick="deleteTemplate(\'' + t.template_id + '\')" title="Delete template">✕</button>';
+    list.appendChild(div);
+  });
+}
+
+function loadTemplate(templateId) {
+  const t = S.templates.find(x => x.template_id === templateId);
+  if (!t) return;
+  el.taskInput().value = t.input_template;
+  onTaskInput(el.taskInput());
+  if (t.agent_type) el.agentType().value = t.agent_type;
+  el.taskInput().focus();
+}
+
+async function saveTemplate() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key first.\n', 'o-error'); return; }
+  const input = el.taskInput().value.trim();
+  if (!input) { appendSpan('\n[error] Enter a prompt to save as a template.\n', 'o-error'); return; }
+  const name = window.prompt('Template name:', input.slice(0, 50));
+  if (!name || !name.trim()) return;
+  try {
+    const res = await fetch('/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ name: name.trim(), input_template: input, agent_type: el.agentType().value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendSpan('\n[error] ' + escapeHtml(err.detail || 'Could not save template') + '\n', 'o-error');
+      return;
+    }
+    await loadTemplates();
+    $('tmpl-section').setAttribute('open', '');
+  } catch (e) {
+    appendSpan('\n[error] ' + escapeHtml(e.message) + '\n', 'o-error');
+  }
+}
+
+async function deleteTemplate(templateId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  if (!window.confirm('Delete this template?')) return;
+  try {
+    await fetch('/templates/' + templateId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    await loadTemplates();
+  } catch (_) {}
 }
 
 // ── Session management (Phase 57) ─────────────────────────────────
