@@ -762,7 +762,7 @@
   <!-- ── History ────────────────────────────────────────── -->
   <div class="card">
     <details id="history-section">
-      <summary id="history-summary">History (0) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="exportTasksMd(event)" title="Export task history as Markdown">↓ md</button></summary>
+      <summary id="history-summary">History (0) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="exportTasksMd(event)" title="Export task history as Markdown">↓ md</button> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="exportTasksCsv(event)" title="Export as CSV (Phase 109)">↓ csv</button> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="exportTasksJson(event)" title="Export as JSON (Phase 109)">↓ json</button></summary>
       <div id="history-list">
         <div id="history-empty">No tasks yet this session.</div>
       </div>
@@ -817,6 +817,12 @@
         <button class="btn primary" onclick="searchMemory()">Search</button>
       </div>
       <div id="memsearch-results" style="margin-top:8px;font-size:12px;color:var(--text-xdim)">Enter a query and click Search.</div>
+      <!-- Phase 108: Memory Stats -->
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border2);display:flex;gap:8px;align-items:center">
+        <div id="mem-stats-result" style="flex:1;font-size:11px;color:var(--text-xdim)">—</div>
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadMemoryStats()" title="Refresh memory stats">↻ Stats</button>
+        <button class="btn ghost" style="font-size:11px;padding:2px 6px;color:var(--red)" onclick="clearMemory()" title="Clear all memory">🗑 Clear All</button>
+      </div>
     </details>
   </div>
 
@@ -2263,7 +2269,8 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
         '<button class="btn ghost" id="rb-down-' + taskId + '" onclick="rateTask(\'' + taskId + '\',-1)" title="Thumbs down">👎</button>' +
         '<button class="btn ghost" onclick="toggleNotesPanel(\'' + taskId + '\')" title="Task notes" style="margin-left:8px">📝 Notes</button>' +
         '<button class="btn ghost" onclick="shareTask(\'' + taskId + '\')" title="Share result" id="share-btn-' + taskId + '">🔗 Share</button>' +
-        '<button class="btn ghost" onclick="toggleTimeline(\'' + taskId + '\')" title="Task timeline">⏱ Timeline</button>';
+        '<button class="btn ghost" onclick="toggleTimeline(\'' + taskId + '\')" title="Task timeline">⏱ Timeline</button>' +
+        '<button class="btn ghost" onclick="deleteTask(\'' + taskId + '\')" title="Delete task" style="margin-left:auto;color:var(--red)">🗑</button>';
       el.output().appendChild(bar);
       // Phase 76: notes panel (hidden initially)
       const notesDiv = document.createElement('div');
@@ -2802,6 +2809,110 @@ async function loadAnnotations(evt) {
     }).join('') +
     '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing ' + items.length + ' annotation(s)</div>';
   } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 106: Single Task Delete ────────────────────────────────────────────
+async function deleteTask(taskId) {
+  if (!confirm('Delete task ' + taskId.slice(0, 8) + '…? This cannot be undone.')) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 409) { alert('Cannot delete a running task. Cancel it first.'); return; }
+    if (res.status === 404) { alert('Task not found.'); return; }
+    if (!res.ok) { alert('Delete failed (status ' + res.status + ').'); return; }
+    // Remove task from history
+    S.history = S.history.filter(h => h.task_id !== taskId);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {}
+    renderHistory();
+    clearOutput();
+    appendSpan('[task deleted]\n', 'o-status');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 107: Task Tags Editor ───────────────────────────────────────────────
+async function setTaskTags(taskId, tagsStr) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId) + '/tags', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    });
+    if (!res.ok) { alert('Tag update failed (status ' + res.status + ').'); return; }
+    // Update local history
+    const h = S.history.find(x => x.task_id === taskId);
+    if (h) { h.tags = tags; try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {} renderHistory(); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 108: Memory Stats & Clear ──────────────────────────────────────────
+async function loadMemoryStats() {
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('mem-stats-result');
+  if (!resultEl) return;
+  if (!apiKey) { resultEl.textContent = 'Enter API key.'; return; }
+  try {
+    const res = await fetch('/memory/stats', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { resultEl.textContent = 'Could not load stats.'; return; }
+    const d = await res.json();
+    const count = d.document_count || d.count || 0;
+    const ns = d.namespace || '';
+    resultEl.textContent = count + ' doc(s)' + (ns ? ' in ' + ns : '');
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+async function clearMemory() {
+  if (!confirm('Delete ALL documents from memory? This is irreversible.')) return;
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('mem-stats-result');
+  if (!apiKey) return;
+  try {
+    const res = await fetch('/memory', { method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { alert('Clear failed (status ' + res.status + ').'); return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Cleared ' + (d.deleted || 0) + ' doc(s).';
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 109: Export CSV / JSON ──────────────────────────────────────────────
+async function exportTasksCsv(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  try {
+    const res = await fetch('/tasks/export?format=csv&limit=500', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { alert('Export failed (status ' + res.status + ').'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'legionforge-tasks.csv'; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('Export error: ' + e.message); }
+}
+
+async function exportTasksJson(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  try {
+    const res = await fetch('/tasks/export?format=json&limit=500', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { alert('Export failed (status ' + res.status + ').'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'legionforge-tasks.json'; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('Export error: ' + e.message); }
 }
 
 // ── Phase 102: Bulk Task Operations ───────────────────────────────────────────

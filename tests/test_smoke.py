@@ -12492,3 +12492,135 @@ def test_p105_ui_delete_document_function_defined():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "function deleteDocument(" in html
+
+
+# ── Phase 106 — Single Task Delete UI ────────────────────────────────────────
+
+
+def test_p106_ui_delete_task_function_defined():
+    """deleteTask() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteTask(" in html
+
+
+def test_p106_ui_delete_task_calls_delete_endpoint():
+    """deleteTask() calls DELETE /tasks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function deleteTask(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "DELETE" in fn_body
+    assert "/tasks/" in fn_body
+
+
+def test_p106_ui_delete_button_in_rating_bar():
+    """🗑 delete button is added to the rating bar in finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function finishRun(")
+    fn_body = html[fn_start : fn_start + 3000]
+    assert "deleteTask" in fn_body
+
+
+# ── Phase 107 — Task Tags Editor ─────────────────────────────────────────────
+
+
+def test_p107_ui_set_task_tags_function_defined():
+    """setTaskTags() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function setTaskTags(" in html
+
+
+def test_p107_ui_set_task_tags_calls_put_endpoint():
+    """setTaskTags() calls PUT /tasks/{id}/tags."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function setTaskTags(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/tags" in fn_body
+    assert "PUT" in fn_body
+
+
+# ── Phase 108 — Memory Stats & Clear ─────────────────────────────────────────
+
+
+def test_p108_ui_load_memory_stats_function_defined():
+    """loadMemoryStats() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadMemoryStats(" in html
+
+
+def test_p108_ui_clear_memory_function_defined():
+    """clearMemory() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function clearMemory(" in html
+
+
+def test_p108_ui_memory_stats_calls_endpoint():
+    """loadMemoryStats() calls GET /memory/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadMemoryStats(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/memory/stats" in fn_body
+
+
+def test_p108_ui_clear_memory_calls_delete_endpoint():
+    """clearMemory() calls DELETE /memory."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function clearMemory(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "DELETE" in fn_body
+    assert "/memory" in fn_body
+
+
+# ── Phase 109 — Export CSV / JSON ────────────────────────────────────────────
+
+
+def test_p109_ui_export_csv_function_defined():
+    """exportTasksCsv() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function exportTasksCsv(" in html
+
+
+def test_p109_ui_export_json_function_defined():
+    """exportTasksJson() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function exportTasksJson(" in html
+
+
+def test_p109_ui_export_csv_button_in_history():
+    """↓ csv and ↓ json export buttons appear in the history summary bar."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "exportTasksCsv" in html
+    assert "exportTasksJson" in html
+
+
+def test_p109_ui_export_csv_calls_csv_format():
+    """exportTasksCsv() requests format=csv from /tasks/export."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function exportTasksCsv(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "format=csv" in fn_body
