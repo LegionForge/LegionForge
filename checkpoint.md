@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 172
+UPDATE: 173
 BRANCH: main
-COMMIT: 470c4f5
-TIMESTAMP: 2026-03-03T22:25Z
-LAST_OP: PR #137 — Phase 130-133 — Usage History, Tag Filter, Metrics History, Shared Task Viewer
-SMOKE_TESTS: 1158/1158
+COMMIT: ddc90d5
+TIMESTAMP: 2026-03-03T23:00Z
+LAST_OP: PR #138 — Phase 134-137 — Attachment Viewer, Status Filter, Admin User Profile, Task Note Quick-Add
+SMOKE_TESTS: 1172/1172
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

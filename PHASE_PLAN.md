@@ -1773,4 +1773,9 @@ Added as compact addendum. See git log for full details.
 | 132 | #137 | Admin Metrics History (metrics-history-card, loadMetricsHistory, /admin/metrics/history, CPU/RAM/Disk) | +3 | 1155 |
 | 133 | #137 | Shared Task Viewer (shared-task-viewer-card, viewSharedTask, GET /shared/{token}, no auth) | +3 | 1158 |
 
-**Current state:** 1158/1158 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 134 | #138 | Attachment Content Viewer (attachment-viewer-card, viewAttachment/deleteAttachment, GET/DELETE /tasks/{id}/attachments/{id}) | +5 | 1163 |
+| 135 | #138 | Task Status Filter (status-filter-card, loadTasksByStatus, GET /tasks?status=X, result list) | +3 | 1166 |
+| 136 | #138 | Admin User Profile (admin-user-profile-card, loadAdminUserProfile, GET /admin/users/{u}, td-field layout) | +3 | 1169 |
+| 137 | #138 | Task Note Quick-Add (note-quick-add-card, addQuickNote, POST /tasks/{id}/notes, note_text payload) | +3 | 1172 |
+
+**Current state:** 1172/1172 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
