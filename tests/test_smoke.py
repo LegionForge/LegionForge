@@ -14337,3 +14337,128 @@ def test_p161_ui_analyze_input_estimates_tokens():
     fn_start = html.find("function analyzeInput(")
     fn_body = html[fn_start : fn_start + 700]
     assert "token" in fn_body.lower()
+
+
+# ── Phase 162: Usage Week Chart ───────────────────────────────────────────────
+
+
+def test_p162_ui_usage_chart_card_present():
+    """#usage-chart-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "usage-chart-card" in html
+
+
+def test_p162_ui_draw_usage_chart_function_defined():
+    """drawUsageChart() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function drawUsageChart(" in html
+
+
+def test_p162_ui_draw_usage_chart_uses_history_endpoint():
+    """drawUsageChart() fetches /usage/history."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function drawUsageChart(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/usage/history" in fn_body
+
+
+def test_p162_ui_draw_usage_chart_renders_bar():
+    """drawUsageChart() uses Unicode block chars for the bar."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function drawUsageChart(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "\u2588" in fn_body  # █
+
+
+# ── Phase 163: Task Dependency Chain ──────────────────────────────────────────
+
+
+def test_p163_ui_dependency_chain_card_present():
+    """#dependency-chain-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "dependency-chain-card" in html
+
+
+def test_p163_ui_load_dependency_chain_function_defined():
+    """loadDependencyChain() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadDependencyChain(" in html
+
+
+def test_p163_ui_dependency_chain_walks_depends_on():
+    """loadDependencyChain() follows the depends_on field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadDependencyChain(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "depends_on" in fn_body
+
+
+# ── Phase 164: Date-Filter Tasks ──────────────────────────────────────────────
+
+
+def test_p164_ui_date_filter_card_present():
+    """#date-filter-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "date-filter-card" in html
+
+
+def test_p164_ui_filter_tasks_by_date_function_defined():
+    """filterTasksByDate() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function filterTasksByDate(" in html
+
+
+def test_p164_ui_date_filter_has_date_input():
+    """date-filter-card has an <input type="date">."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "date-filter-input" in html
+    assert 'type="date"' in html
+
+
+# ── Phase 165: Priority Task Queue ────────────────────────────────────────────
+
+
+def test_p165_ui_priority_tasks_card_present():
+    """#priority-tasks-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "priority-tasks-card" in html
+
+
+def test_p165_ui_load_high_priority_tasks_function_defined():
+    """loadHighPriorityTasks() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadHighPriorityTasks(" in html
+
+
+def test_p165_ui_priority_tasks_sorts_by_priority():
+    """loadHighPriorityTasks() sorts by priority field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadHighPriorityTasks(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "priority" in fn_body

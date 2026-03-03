@@ -1803,4 +1803,9 @@ Added as compact addendum. See git log for full details.
 | 156 | #143 | Pipeline Health Overview (pipeline-health-card, loadPipelineHealth, GET /pipelines step-count rows) | +3 | 1231 |
 | 157 | #143 | Token Budget Progress Bar (token-budget-card, loadTokenBudget, GET /usage/me, CSS bar green/warn/danger) | +4 | 1235 |
 
-**Current state:** 1235/1235 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 158 | #144 | Draft Save (draft-save-card, saveDraft/restoreDraft/clearDraft, localStorage, onTaskInput auto-save) | +5 | 1240 |
+| 159 | #144 | Live Task Counter (live-counter-card, pollTaskCounter, parallel fetch running/queued/complete/failed) | +3 | 1243 |
+| 160 | #144 | Load More Cursor Pagination (load-more-card, loadMoreTasksFirst/Next/_fetchMoreTasks, cursor keyset) | +3 | 1246 |
+| 161 | #144 | Input Analyzer (char-counter-card, analyzeInput, chars/words/lines/token estimate client-side) | +3 | 1249 |
+
+**Current state:** 1249/1249 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

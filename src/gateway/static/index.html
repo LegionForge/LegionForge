@@ -1184,6 +1184,46 @@
     </details>
   </div>
 
+  <!-- ── Usage Week Chart card (Phase 162) ────────────────── -->
+  <div class="card" id="usage-chart-card">
+    <details id="usage-chart-section">
+      <summary style="cursor:pointer">Usage Week Chart <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="drawUsageChart()" title="Refresh">↻</button></summary>
+      <div id="usage-chart-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load 7-day token chart.</div>
+    </details>
+  </div>
+
+  <!-- ── Dependency Chain card (Phase 163) ─────────────────── -->
+  <div class="card" id="dependency-chain-card">
+    <details id="dependency-chain-section">
+      <summary style="cursor:pointer">Task Dependency Chain</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="dep-chain-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadDependencyChain()">↻ Load</button>
+      </div>
+      <div id="dependency-chain-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Date-Filter Tasks card (Phase 164) ────────────────── -->
+  <div class="card" id="date-filter-card">
+    <details id="date-filter-section">
+      <summary style="cursor:pointer">Filter Tasks by Date</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <input id="date-filter-input" type="date" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="filterTasksByDate()">↻ Filter</button>
+      </div>
+      <div id="date-filter-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Pick a date and click ↻ Filter.</div>
+    </details>
+  </div>
+
+  <!-- ── Priority Tasks card (Phase 165) ───────────────────── -->
+  <div class="card" id="priority-tasks-card">
+    <details id="priority-tasks-section">
+      <summary style="cursor:pointer">Priority Task Queue <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadHighPriorityTasks()" title="Refresh">↻</button></summary>
+      <div id="priority-tasks-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load tasks ordered by priority.</div>
+    </details>
+  </div>
+
   <!-- ── Multi-Tag Search card (Phase 154) ────────────────── -->
   <div class="card" id="multi-tag-search-card">
     <details id="multi-tag-search-section">
@@ -3703,6 +3743,122 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 162: Usage Week Chart ───────────────────────────────────────────────
+async function drawUsageChart() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('usage-chart-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/usage/history?days=7', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const days = Array.isArray(data) ? data : (data.days || data.history || []);
+    if (!days.length) { if (bodyEl) bodyEl.textContent = 'No usage data.'; return; }
+    const maxTokens = Math.max(...days.map(d => d.total_tokens || d.tokens || 0), 1);
+    const BAR_WIDTH = 20;
+    const rows = days.map(d => {
+      const tokens = d.total_tokens || d.tokens || 0;
+      const filled = Math.round((tokens / maxTokens) * BAR_WIDTH);
+      const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
+      const label = (d.date || d.day || '').slice(5); // MM-DD
+      return `<div class="td-field"><span class="td-label" style="font-family:monospace">${label}</span><span class="td-value" style="font-family:monospace">${bar} ${tokens.toLocaleString()}</span></div>`;
+    });
+    if (bodyEl) bodyEl.innerHTML = rows.join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 163: Task Dependency Chain ──────────────────────────────────────────
+async function loadDependencyChain() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('dep-chain-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const bodyEl = document.getElementById('dependency-chain-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    // Walk the depends_on chain: fetch task, then fetch its depends_on, and so on (max 10 hops)
+    const chain = [];
+    let currentId = taskId;
+    for (let hop = 0; hop < 10 && currentId; hop++) {
+      const res = await fetch('/tasks/' + encodeURIComponent(currentId), { headers: { Authorization: 'Bearer ' + apiKey } });
+      if (!res.ok) { chain.push({ id: currentId, error: 'HTTP ' + res.status }); break; }
+      const task = await res.json();
+      chain.push(task);
+      currentId = task.depends_on || null;
+    }
+    if (!bodyEl) return;
+    if (!chain.length) { bodyEl.textContent = 'No chain found.'; return; }
+    bodyEl.innerHTML = chain.map((t, i) => {
+      const prefix = i === 0 ? '▶' : '↳';
+      const label = i === 0 ? 'Root' : 'Depends on';
+      const id = (t.task_id || t.id || t.error || '?').toString().slice(0, 8);
+      const status = t.status || t.error || '';
+      const text = (t.task || '').slice(0, 60) || (t.error ? 'fetch error' : '—');
+      return `<div class="td-field"><span class="td-label">${prefix} ${label}</span><span class="td-value" style="font-family:monospace">${id} [${status}] ${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 164: Date-Filter Tasks ──────────────────────────────────────────────
+async function filterTasksByDate() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const dateVal = (document.getElementById('date-filter-input') || {}).value;
+  if (!dateVal) { alert('Pick a date.'); return; }
+  const bodyEl = document.getElementById('date-filter-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks?limit=100', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const filtered = tasks.filter(t => {
+      const created = (t.created_at || t.timestamp || '').slice(0, 10);
+      return created === dateVal;
+    });
+    if (!bodyEl) return;
+    if (!filtered.length) { bodyEl.textContent = 'No tasks found for ' + dateVal + '.'; return; }
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', queued: 'var(--text-dim)', cancelled: 'var(--text-xdim)' };
+    bodyEl.innerHTML = filtered.map(t => {
+      const id = (t.task_id || t.id || '?').toString().slice(0, 8);
+      const status = t.status || '?';
+      const text = (t.task || '').slice(0, 60);
+      const color = statusColor[status] || 'var(--text)';
+      return `<div class="td-field"><span class="td-label" style="color:${color}">${status}</span><span class="td-value" style="font-family:monospace">${id} ${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 165: Priority Task Queue ────────────────────────────────────────────
+async function loadHighPriorityTasks() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('priority-tasks-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks?limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    // Sort by priority descending (higher number = higher priority), then by created_at
+    const sorted = tasks
+      .filter(t => (t.priority || 0) > 0)
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    if (!bodyEl) return;
+    if (!sorted.length) { bodyEl.textContent = 'No priority tasks found.'; return; }
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', queued: 'var(--text-dim)' };
+    bodyEl.innerHTML = sorted.map(t => {
+      const id = (t.task_id || t.id || '?').toString().slice(0, 8);
+      const priority = t.priority || 0;
+      const status = t.status || '?';
+      const text = (t.task || '').slice(0, 50);
+      const color = statusColor[status] || 'var(--text)';
+      return `<div class="td-field"><span class="td-label" style="color:${color}">P${priority} ${status}</span><span class="td-value" style="font-family:monospace">${id} ${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 154: Multi-Tag Search ───────────────────────────────────────────────
