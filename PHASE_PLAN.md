@@ -1838,4 +1838,9 @@ Added as compact addendum. See git log for full details.
 | 184 | #150 | Batch Task Status (batch-task-status-card, loadBatchTaskStatus, Promise.all parallel fetch) | +3 | 1323 |
 | 185 | #150 | Webhook Delivery Test (webhook-test-card, testWebhookDelivery, POST /webhooks, register with secret) | +3 | 1326 |
 
-**Current state:** 1326/1326 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 186 | #151 | Document Semantic Search (doc-search-card, searchDocuments, POST /memory/search, score + chunk) | +3 | 1329 |
+| 187 | #151 | 30-Day Cost History (cost-history-card, loadCostHistory, GET /usage/history?days=30, ▪ mini bar) | +3 | 1332 |
+| 188 | #151 | My Profile (my-profile-card, loadMyProfile, GET /usage/me, user_id/provider/is_admin fields) | +3 | 1335 |
+| 189 | #151 | Cancel All Running (cancel-running-card, cancelAllRunning, confirm guard + POST /tasks/bulk/cancel) | +4 | 1339 |
+
+**Current state:** 1339/1339 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

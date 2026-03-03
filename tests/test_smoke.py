@@ -15198,3 +15198,119 @@ def test_p189_ui_cancel_all_running_uses_bulk_cancel():
     fn_start = html.find("function cancelAllRunning(")
     fn_body = html[fn_start : fn_start + 1400]
     assert "/tasks/bulk/cancel" in fn_body
+
+
+# ── Phase 190: Auto-Refresh Toggle ────────────────────────────────────────────
+
+
+def test_p190_ui_auto_refresh_card_present():
+    """#auto-refresh-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "auto-refresh-card" in html
+
+
+def test_p190_ui_toggle_auto_refresh_function_defined():
+    """toggleAutoRefresh() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleAutoRefresh(" in html
+
+
+def test_p190_ui_auto_refresh_uses_set_interval():
+    """toggleAutoRefresh() uses setInterval for periodic refresh."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleAutoRefresh(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "setInterval" in fn_body
+
+
+# ── Phase 191: Schedule Enable / Disable ──────────────────────────────────────
+
+
+def test_p191_ui_schedule_toggle_card_present():
+    """#schedule-toggle-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-toggle-card" in html
+
+
+def test_p191_ui_toggle_schedule_enabled_function_defined():
+    """toggleScheduleEnabled() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleScheduleEnabled(" in html
+
+
+def test_p191_ui_schedule_toggle_uses_put():
+    """toggleScheduleEnabled() calls PUT /schedules/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleScheduleEnabled(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "PUT" in fn_body and "/schedules/" in fn_body
+
+
+# ── Phase 192: Task Notes Export ──────────────────────────────────────────────
+
+
+def test_p192_ui_notes_export_card_present():
+    """#notes-export-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notes-export-card" in html
+
+
+def test_p192_ui_export_task_notes_function_defined():
+    """exportTaskNotes() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function exportTaskNotes(" in html
+
+
+def test_p192_ui_notes_export_creates_blob_download():
+    """exportTaskNotes() creates a Blob and triggers download."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function exportTaskNotes(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "Blob" in fn_body and "download" in fn_body
+
+
+# ── Phase 193: Annotation Stats Summary ────────────────────────────────────────
+
+
+def test_p193_ui_annotation_stats_card_present():
+    """#annotation-stats-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "annotation-stats-card" in html
+
+
+def test_p193_ui_load_annotation_stats_function_defined():
+    """loadAnnotationStats() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAnnotationStats(" in html
+
+
+def test_p193_ui_annotation_stats_counts_thumbs():
+    """loadAnnotationStats() counts thumbs-up and thumbs-down ratings."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAnnotationStats(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "thumbsUp" in fn_body and "thumbsDown" in fn_body

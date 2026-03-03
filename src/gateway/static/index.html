@@ -1184,6 +1184,55 @@
     </details>
   </div>
 
+  <!-- ── Auto-Refresh Toggle card (Phase 190) ─────────────── -->
+  <div class="card" id="auto-refresh-card">
+    <details id="auto-refresh-section">
+      <summary style="cursor:pointer">Auto-Refresh Tasks</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <select id="auto-refresh-interval" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="10">Every 10s</option>
+          <option value="30" selected>Every 30s</option>
+          <option value="60">Every 60s</option>
+        </select>
+        <button class="btn secondary" id="auto-refresh-btn" style="font-size:11px;padding:3px 8px" onclick="toggleAutoRefresh()">▶ Start</button>
+      </div>
+      <div id="auto-refresh-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px">Auto-refresh stopped.</div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Enable Toggle card (Phase 191) ───────────── -->
+  <div class="card" id="schedule-toggle-card">
+    <details id="schedule-toggle-section">
+      <summary style="cursor:pointer">Enable / Disable Schedule</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <input id="schedule-toggle-id" type="number" placeholder="Schedule ID" style="width:110px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="toggleScheduleEnabled(true)">✓ Enable</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="toggleScheduleEnabled(false)">✗ Disable</button>
+      </div>
+      <div id="schedule-toggle-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Task Notes Export card (Phase 192) ────────────────── -->
+  <div class="card" id="notes-export-card">
+    <details id="notes-export-section">
+      <summary style="cursor:pointer">Export Task Notes</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="notes-export-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="exportTaskNotes()">↓ Export</button>
+      </div>
+      <div id="notes-export-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Annotation Stats card (Phase 193) ─────────────────── -->
+  <div class="card" id="annotation-stats-card">
+    <details id="annotation-stats-section">
+      <summary style="cursor:pointer">Annotation Stats (Admin) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAnnotationStats()" title="Refresh">↻</button></summary>
+      <div id="annotation-stats-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load annotation summary.</div>
+    </details>
+  </div>
+
   <!-- ── Document Search card (Phase 186) ─────────────────── -->
   <div class="card" id="doc-search-card">
     <details id="doc-search-section">
@@ -4013,6 +4062,112 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 190: Auto-Refresh Toggle ────────────────────────────────────────────
+let _autoRefreshTimer = null;
+function toggleAutoRefresh() {
+  const btn = document.getElementById('auto-refresh-btn');
+  const statusEl = document.getElementById('auto-refresh-status');
+  if (_autoRefreshTimer) {
+    clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = null;
+    if (btn) btn.textContent = '▶ Start';
+    if (statusEl) { statusEl.textContent = 'Auto-refresh stopped.'; statusEl.style.color = 'var(--text-dim)'; }
+    return;
+  }
+  const interval = parseInt((document.getElementById('auto-refresh-interval') || {}).value || '30', 10) * 1000;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  if (btn) btn.textContent = '■ Stop';
+  if (statusEl) { statusEl.textContent = 'Auto-refreshing every ' + (interval / 1000) + 's…'; statusEl.style.color = 'var(--green)'; }
+  _autoRefreshTimer = setInterval(() => {
+    if (typeof loadRecentTasks === 'function') loadRecentTasks();
+    if (statusEl) statusEl.textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
+  }, interval);
+}
+
+// ── Phase 191: Schedule Enable / Disable ──────────────────────────────────────
+async function toggleScheduleEnabled(enable) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const schedId = parseInt((document.getElementById('schedule-toggle-id') || {}).value || '0', 10);
+  if (!schedId) { alert('Enter a schedule ID.'); return; }
+  const statusEl = document.getElementById('schedule-toggle-status');
+  if (statusEl) statusEl.textContent = (enable ? 'Enabling' : 'Disabling') + '…';
+  try {
+    const res = await fetch('/schedules/' + schedId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ enabled: enable }),
+    });
+    if (!statusEl) return;
+    if (res.ok) {
+      statusEl.textContent = 'Schedule ' + (enable ? 'enabled ✓' : 'disabled');
+      statusEl.style.color = enable ? 'var(--green)' : 'var(--text-dim)';
+    } else {
+      statusEl.textContent = 'Error ' + res.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
+}
+
+// ── Phase 192: Task Notes Export ──────────────────────────────────────────────
+async function exportTaskNotes() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('notes-export-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const statusEl = document.getElementById('notes-export-status');
+  if (statusEl) statusEl.textContent = 'Fetching notes…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId) + '/notes', {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (statusEl) statusEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const notes = Array.isArray(data) ? data : (data.notes || data.items || []);
+    const text = notes.map((n, i) => {
+      const ts = (n.created_at || n.timestamp || '').slice(0, 16).replace('T', ' ');
+      const body = n.note_text || n.text || n.content || '';
+      return `[${i + 1}] ${ts}\n${body}\n`;
+    }).join('\n---\n\n');
+    const blob = new Blob([text || '(no notes)'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'notes-' + taskId.slice(0, 8) + '.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (statusEl) { statusEl.textContent = 'Downloaded ' + notes.length + ' note(s).'; statusEl.style.color = 'var(--green)'; }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
+}
+
+// ── Phase 193: Annotation Stats Summary ────────────────────────────────────────
+async function loadAnnotationStats() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('annotation-stats-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/annotations', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : (data.annotations || data.items || []);
+    if (!bodyEl) return;
+    const thumbsUp = items.filter(a => a.rating === 1).length;
+    const thumbsDown = items.filter(a => a.rating === -1).length;
+    const neutral = items.length - thumbsUp - thumbsDown;
+    const pctUp = items.length ? Math.round((thumbsUp / items.length) * 100) : 0;
+    const fields = [
+      ['total', items.length.toString()],
+      ['👍 positive', thumbsUp + ' (' + pctUp + '%)'],
+      ['👎 negative', thumbsDown.toString()],
+      ['— unrated', neutral.toString()],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 186: Document Semantic Search ───────────────────────────────────────
