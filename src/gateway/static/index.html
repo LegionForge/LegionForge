@@ -316,7 +316,7 @@
     }
     .history-item {
       display: grid;
-      grid-template-columns: 16px 80px 90px 1fr 60px;
+      grid-template-columns: 16px 16px 80px 90px 1fr 60px;
       align-items: center;
       gap: 8px;
       padding: 5px 8px;
@@ -328,6 +328,7 @@
       transition: border-color 0.15s;
     }
     .history-item:hover { border-color: var(--blue); }
+    .history-item.starred { border-color: rgba(255, 200, 50, 0.4); }
     .history-item .hi-badge {
       width: 10px; height: 10px;
       border-radius: 50%;
@@ -338,6 +339,9 @@
     .hi-badge.cancelled { background: var(--text-xdim); }
     .hi-badge.running   { background: var(--yellow); }
     .hi-badge.queued    { background: var(--blue); }
+    .history-item .hi-star { font-size: 11px; opacity: 0.35; cursor: pointer; user-select: none; transition: opacity 0.15s; }
+    .history-item .hi-star:hover { opacity: 1; }
+    .history-item.starred .hi-star { opacity: 1; color: #ffc832; }
     .history-item .hi-id     { color: var(--text-dim); font-size: 10px; }
     .history-item .hi-agent  { color: var(--purple);   font-size: 10px; }
     .history-item .hi-input  { color: var(--text);     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1755,11 +1759,15 @@ function renderHistory() {
   }
   empty.style.display = 'none';
 
-  // Rebuild list
+  // Rebuild list — starred items float to top
   list.querySelectorAll('.history-item').forEach(n => n.remove());
-  S.history.forEach((h, i) => {
+  const sorted = S.history
+    .map((h, i) => ({ h, i }))
+    .sort((a, b) => (b.h.starred ? 1 : 0) - (a.h.starred ? 1 : 0));
+
+  sorted.forEach(({ h, i }) => {
     const div = document.createElement('div');
-    div.className = 'history-item';
+    div.className = 'history-item' + (h.starred ? ' starred' : '');
     div.onclick = () => restoreHistory(i);
     div.title = h.input_preview;
 
@@ -1770,9 +1778,11 @@ function renderHistory() {
 
     const tokenStr = h.tokens ? h.tokens.toLocaleString() + ' tok' : '';
     const shortId = (h.task_id || '').slice(0, 8);
+    const starChar = h.starred ? '★' : '☆';
 
     div.innerHTML =
       '<span class="hi-badge ' + badgeCls + '"></span>' +
+      '<span class="hi-star" title="' + (h.starred ? 'Unstar' : 'Star') + '" onclick="toggleStar(' + i + ',event)">' + starChar + '</span>' +
       '<span class="hi-id">' + escapeHtml(shortId) + '</span>' +
       '<span class="hi-agent">' + escapeHtml(h.agent_type || '') + '</span>' +
       '<span class="hi-input">' + escapeHtml(h.input_preview || '') + '</span>' +
@@ -1793,6 +1803,28 @@ function restoreHistory(idx) {
   appendSpan('[restored task from history: ' + (h.task_id || '').slice(0,8) + '…]\n', 'o-status');
   appendSpan(h.input_preview + '\n', 'o-token');
   el.taskInput().focus();
+}
+
+// ── Task pinning / starring (Phase 68) ────────────────────────────
+async function toggleStar(idx, event) {
+  event.stopPropagation();  // Don't restore the task when starring
+  const h = S.history[idx];
+  if (!h) return;
+  h.starred = !h.starred;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {}
+  renderHistory();
+
+  // Sync to server via labels API (best-effort — no error shown to user)
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey || !h.task_id) return;
+  const labels = h.starred ? ['starred'] : [];
+  try {
+    await fetch('/tasks/' + h.task_id + '/labels', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ labels }),
+    });
+  } catch(_) {}
 }
 </script>
 </body>
