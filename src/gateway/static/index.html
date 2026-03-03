@@ -27,6 +27,42 @@
       --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace, 'Noto Sans Mono', system-ui;
     }
 
+    /* ── Light mode override (Phase 72) ─────────────────────────── */
+    body.light-mode {
+      --bg:        #f6f8fa;
+      --panel:     #ffffff;
+      --panel2:    #f0f2f5;
+      --border:    #d0d7de;
+      --border2:   #e1e4e8;
+      --text:      #24292f;
+      --text-dim:  #656d76;
+      --text-xdim: #9ca3af;
+      --blue:      #0969da;
+      --green:     #1a7f37;
+      --orange:    #bc4c00;
+      --red:       #d1242f;
+      --purple:    #8250df;
+      --yellow:    #9a6700;
+    }
+    body.light-mode .syn-kw  { color: #8250df; }
+    body.light-mode .syn-str { color: #0a3069; }
+    body.light-mode .syn-cmt { color: #656d76; }
+    body.light-mode .syn-num { color: #bc4c00; }
+    body.light-mode .syn-bi  { color: #0969da; }
+    /* theme toggle button */
+    #theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 3px 7px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #theme-toggle:hover { border-color: var(--blue); color: var(--blue); }
+
     html, body {
       height: 100%;
       background: var(--bg);
@@ -470,6 +506,7 @@
   <div id="header">
     <h1>LegionForge</h1>
     <span class="subtitle">agent gateway</span>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <div id="conn-dot" title="Stream connection status"></div>
   </div>
 
@@ -591,7 +628,7 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  LegionForge Web UI — Phase 63
+//  LegionForge Web UI — Phase 72
 //  Vanilla JS, no framework, single file.
 // ════════════════════════════════════════════════════════════════
 
@@ -647,6 +684,8 @@ const el = {
 
 // ── Init ─────────────────────────────────────────────────────────
 (function init() {
+  initTheme();  // Phase 72: apply saved/system light-dark preference
+
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
   if (saved) el.apiKey().value = saved;
@@ -692,6 +731,23 @@ const el = {
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
+// ── Phase 72: Light/Dark Mode ──────────────────────────────────────────────
+function toggleTheme() {
+  const light = document.body.classList.toggle('light-mode');
+  localStorage.setItem('lf-theme', light ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = light ? '☀️' : '🌙';
+}
+function initTheme() {
+  const saved = localStorage.getItem('lf-theme');
+  // If no preference saved, use system preference
+  const preferLight = saved ? saved === 'light'
+    : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  if (preferLight) {
+    document.body.classList.add('light-mode');
+    document.getElementById('theme-toggle').textContent = '☀️';
+  }
+}
+
 function toggleKeyVisibility() {
   const inp = el.apiKey();
   inp.type = inp.type === 'password' ? 'text' : 'password';

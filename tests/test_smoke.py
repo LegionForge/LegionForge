@@ -11019,3 +11019,68 @@ def test_pipeline_terminal_event_cache_is_bounded():
     src = pathlib.Path("src/gateway/events.py").read_text()
     # Must appear twice (once for task, once for pipeline)
     assert src.count("popitem(last=False)") >= 2
+
+
+# ── Phase 72 — Light/Dark Mode Toggle ─────────────────────────────────────────
+
+
+def test_p72_ui_has_theme_toggle_button():
+    """Web UI includes a #theme-toggle button in the header."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "theme-toggle" in html
+    assert "toggleTheme()" in html
+
+
+def test_p72_ui_has_light_mode_css_class():
+    """Web UI defines body.light-mode CSS override block."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "body.light-mode" in html
+    assert "--bg:" in html.split("body.light-mode")[1][:200]
+
+
+def test_p72_ui_toggle_theme_function_defined():
+    """toggleTheme() JS function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleTheme(" in html
+    assert (
+        "light-mode"
+        in html[
+            html.find("function toggleTheme(") : html.find("function toggleTheme(")
+            + 300
+        ]
+    )
+
+
+def test_p72_ui_init_theme_called_in_init():
+    """initTheme() is called at the start of init() for auto-apply."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    init_start = html.find("function init()")
+    init_body = html[init_start : init_start + 200]
+    assert "initTheme()" in init_body
+
+
+def test_p72_ui_theme_persisted_in_localstorage():
+    """toggleTheme() stores preference in localStorage."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleTheme(")
+    fn_body = html[fn_start : fn_start + 300]
+    assert "localStorage.setItem" in fn_body
+    assert "lf-theme" in fn_body
+
+
+def test_p72_ui_respects_system_preference():
+    """initTheme() checks prefers-color-scheme when no saved preference."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "prefers-color-scheme" in html
