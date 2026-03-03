@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -51,6 +51,10 @@ from src.rate_limiter import preflight_budget_check, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
+# Maximum self-verification passes per run (Phase 71).
+# After this many verify rounds the answer is accepted as-is to prevent loops.
+MAX_VERIFY_ROUNDS: int = 1
+
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
@@ -59,6 +63,7 @@ class OrchestratorState(AgentState):
     """Extends AgentState with accumulated sub-agent results."""
 
     sub_agent_results: list[dict]
+    verify_rounds: int  # number of self-verification passes taken (Phase 71)
 
 
 # ── Token management ───────────────────────────────────────────────────────────
@@ -366,19 +371,120 @@ async def finalizer_node(state: OrchestratorState) -> dict:
     return {"result": result}
 
 
+# ── Self-verification node (Phase 71) ─────────────────────────────────────────
+
+
+def _build_verify_node(llm_plain: Any):
+    """
+    Build the self-verification node with a pre-bound plain LLM (no tools).
+
+    The verifier asks the LLM to judge whether the current answer fully addresses
+    the original task.  If not, it adds a refinement HumanMessage and increments
+    verify_rounds so route_after_verify returns "agent" for one more pass.
+
+    MAX_VERIFY_ROUNDS caps the loop — after that the answer is accepted as-is.
+    """
+
+    async def verify_node(state: OrchestratorState) -> dict:
+        rounds = state.get("verify_rounds", 0)
+        if rounds >= MAX_VERIFY_ROUNDS:
+            # Already did max passes — accept the answer.
+            return {}
+
+        messages = state.get("messages", [])
+        last = messages[-1] if messages else None
+        current_answer = last.content if last and isinstance(last.content, str) else ""
+        task = state.get("task", "")
+
+        if not current_answer or not task:
+            return {}
+
+        verify_prompt = (
+            f"Task: {task}\n\n"
+            f"Proposed answer:\n{current_answer[:1200]}\n\n"
+            "Does this answer fully address the task above? "
+            "Reply with exactly 'VERIFIED' if yes, or briefly state what is "
+            "missing or incomplete if no."
+        )
+        try:
+            response = await llm_plain.ainvoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are a strict answer reviewer. "
+                            "Your only job is to verify whether the proposed answer "
+                            "fully addresses the task. Be concise."
+                        )
+                    ),
+                    HumanMessage(content=verify_prompt),
+                ]
+            )
+            feedback = (
+                response.content
+                if isinstance(response.content, str)
+                else str(response.content)
+            )
+        except Exception as exc:
+            logger.warning("[orchestrator] verify_node LLM error: %s", exc)
+            return {}
+
+        if "VERIFIED" in feedback.upper():
+            log_agent_event(
+                "verify_pass",
+                "orchestrator",
+                {"rounds": rounds, "verdict": "verified"},
+                run_id=state.get("run_id"),
+            )
+            return {}
+
+        # Ask the agent to improve its answer.
+        log_agent_event(
+            "verify_fail",
+            "orchestrator",
+            {"rounds": rounds, "feedback": feedback[:200]},
+            run_id=state.get("run_id"),
+        )
+        refinement_msg = HumanMessage(
+            content=(
+                f"Your answer was incomplete. Reviewer feedback: {feedback}\n\n"
+                "Please revise your answer to fully address the original task."
+            )
+        )
+        return {
+            "messages": [refinement_msg],
+            "verify_rounds": rounds + 1,
+        }
+
+    return verify_node
+
+
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 
 def route_after_orchestrator(state: OrchestratorState) -> str:
-    """Route after agent node — tools if LLM requested them, otherwise finalize."""
+    """Route after agent node — tools if LLM requested them, otherwise verify."""
     safeguard_result = check_safeguards(state)
     if safeguard_result == "end":
-        return "finalize"
+        return "finalize"  # Skip verify on safety halt.
 
     last_msg = state["messages"][-1] if state["messages"] else None
     if isinstance(last_msg, AIMessage) and getattr(last_msg, "tool_calls", None):
         return "tools"
 
+    return "verify"  # Phase 71: pass through self-verification before finalizing.
+
+
+def route_after_verify(state: OrchestratorState) -> str:
+    """
+    Route after verify_node.
+
+    If the verifier added a HumanMessage (refinement request), go back to the
+    agent for another pass.  Otherwise finalize.
+    """
+    messages = state.get("messages", [])
+    last = messages[-1] if messages else None
+    if isinstance(last, HumanMessage) and state.get("verify_rounds", 0) > 0:
+        return "agent"
     return "finalize"
 
 
@@ -388,13 +494,16 @@ def route_after_orchestrator(state: OrchestratorState) -> str:
 def build_orchestrator_graph() -> StateGraph:
     """Build the orchestrator graph (uncompiled). Bind tools to LLM here."""
     llm = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
+    llm_plain = get_primary_llm(temperature=0.0)  # verifier — no tools needed
     tool_node = SecureToolNode(ORCHESTRATOR_TOOLS)
     agent_node = _build_orchestrator_agent_node(llm)
+    verify_node = _build_verify_node(llm_plain)  # Phase 71
 
     graph = StateGraph(OrchestratorState)
 
     graph.add_node("agent", agent_node)
     graph.add_node("tools", tool_node)
+    graph.add_node("verify", verify_node)  # Phase 71
     graph.add_node("finalize", finalizer_node)
 
     graph.set_entry_point("agent")
@@ -404,10 +513,16 @@ def build_orchestrator_graph() -> StateGraph:
         route_after_orchestrator,
         {
             "tools": "tools",
+            "verify": "verify",  # Phase 71
             "finalize": "finalize",
         },
     )
     graph.add_edge("tools", "agent")
+    graph.add_conditional_edges(  # Phase 71
+        "verify",
+        route_after_verify,
+        {"agent": "agent", "finalize": "finalize"},
+    )
     graph.add_edge("finalize", END)
 
     return graph
@@ -514,6 +629,7 @@ async def run_orchestrator(
         "sequence_so_far": [],
         "task_token": master_token,
         "messages": [HumanMessage(content=task)],
+        "verify_rounds": 0,  # Phase 71 — self-verification pass counter
     }
 
     config = create_run_config(

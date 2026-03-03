@@ -10935,3 +10935,65 @@ def test_p70_ui_state_has_attach_fields():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "attachText" in html
     assert "attachName" in html
+
+
+# ── Phase 71 — Agent Self-Verification Loop ────────────────────────────────────
+
+
+def test_p71_orchestrator_state_has_verify_rounds():
+    """OrchestratorState includes verify_rounds field for Phase 71."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "verify_rounds" in src
+    # Must appear in the class body
+    cls_start = src.find("class OrchestratorState(")
+    cls_body = src[cls_start : cls_start + 300]
+    assert "verify_rounds" in cls_body
+
+
+def test_p71_max_verify_rounds_constant_defined():
+    """MAX_VERIFY_ROUNDS constant is defined in orchestrator.py with value 1."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "MAX_VERIFY_ROUNDS" in src
+    assert "MAX_VERIFY_ROUNDS: int = 1" in src
+
+
+def test_p71_orchestrator_graph_has_verify_node():
+    """build_orchestrator_graph() adds a 'verify' node to the graph."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'graph.add_node("verify"' in src
+
+
+def test_p71_route_after_verify_function_defined():
+    """route_after_verify() routing function exists in orchestrator.py."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "def route_after_verify(" in src
+
+
+def test_p71_route_after_orchestrator_routes_to_verify():
+    """route_after_orchestrator() routes to 'verify' (not direct 'finalize') for normal answers."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.find("def route_after_orchestrator(")
+    fn_end = src.find("\ndef ", fn_start + 1)
+    fn_body = src[fn_start:fn_end]
+    assert '"verify"' in fn_body
+
+
+def test_p71_verify_node_uses_verified_keyword():
+    """verify_node checks for 'VERIFIED' in LLM feedback."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.find("def _build_verify_node(")
+    fn_end = src.find("\ndef ", fn_start + 1)
+    fn_body = src[fn_start:fn_end]
+    assert "VERIFIED" in fn_body
