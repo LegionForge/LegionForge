@@ -15072,3 +15072,129 @@ def test_p185_ui_webhook_test_registers_webhook():
     fn_start = html.find("function testWebhookDelivery(")
     fn_body = html[fn_start : fn_start + 1000]
     assert "/webhooks" in fn_body and "POST" in fn_body
+
+
+# ── Phase 186: Document Semantic Search ───────────────────────────────────────
+
+
+def test_p186_ui_doc_search_card_present():
+    """#doc-search-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "doc-search-card" in html
+
+
+def test_p186_ui_search_documents_function_defined():
+    """searchDocuments() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function searchDocuments(" in html
+
+
+def test_p186_ui_search_documents_posts_to_memory_search():
+    """searchDocuments() calls POST /memory/search."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchDocuments(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/memory/search" in fn_body and "POST" in fn_body
+
+
+# ── Phase 187: 30-Day Cost History ────────────────────────────────────────────
+
+
+def test_p187_ui_cost_history_card_present():
+    """#cost-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cost-history-card" in html
+
+
+def test_p187_ui_load_cost_history_function_defined():
+    """loadCostHistory() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadCostHistory(" in html
+
+
+def test_p187_ui_cost_history_fetches_30_days():
+    """loadCostHistory() fetches /usage/history?days=30."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadCostHistory(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "days=30" in fn_body
+
+
+# ── Phase 188: My Profile ─────────────────────────────────────────────────────
+
+
+def test_p188_ui_my_profile_card_present():
+    """#my-profile-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "my-profile-card" in html
+
+
+def test_p188_ui_load_my_profile_function_defined():
+    """loadMyProfile() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadMyProfile(" in html
+
+
+def test_p188_ui_my_profile_shows_admin_status():
+    """loadMyProfile() includes is_admin field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadMyProfile(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "is_admin" in fn_body
+
+
+# ── Phase 189: Cancel All Running Tasks ────────────────────────────────────────
+
+
+def test_p189_ui_cancel_running_card_present():
+    """#cancel-running-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cancel-running-card" in html
+
+
+def test_p189_ui_cancel_all_running_function_defined():
+    """cancelAllRunning() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function cancelAllRunning(" in html
+
+
+def test_p189_ui_cancel_all_running_confirm_guard():
+    """cancelAllRunning() calls confirm() before bulk cancel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function cancelAllRunning(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "confirm(" in fn_body
+
+
+def test_p189_ui_cancel_all_running_uses_bulk_cancel():
+    """cancelAllRunning() calls POST /tasks/bulk/cancel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function cancelAllRunning(")
+    fn_body = html[fn_start : fn_start + 1400]
+    assert "/tasks/bulk/cancel" in fn_body

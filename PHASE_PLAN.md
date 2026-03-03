@@ -1833,4 +1833,9 @@ Added as compact addendum. See git log for full details.
 | 180 | #149 | Agent Error Log (agent-errors-card, loadAgentErrors, GET /tasks?status=failed, error + timestamp) | +3 | 1311 |
 | 181 | #149 | Session Task Count (session-tasks-count-card, refreshSessionBadge, GET /sessions/{id}/tasks, breakdown) | +3 | 1314 |
 
-**Current state:** 1314/1314 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 182 | #150 | Pinned Tasks View (pinned-tasks-card, loadPinnedTasks, GET /tasks?label=pinned, 📌 prefix) | +3 | 1317 |
+| 183 | #150 | Threat Event Detail (threat-detail-card, loadThreatDetail, GET /admin/threats?type=X, type dropdown) | +3 | 1320 |
+| 184 | #150 | Batch Task Status (batch-task-status-card, loadBatchTaskStatus, Promise.all parallel fetch) | +3 | 1323 |
+| 185 | #150 | Webhook Delivery Test (webhook-test-card, testWebhookDelivery, POST /webhooks, register with secret) | +3 | 1326 |
+
+**Current state:** 1326/1326 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

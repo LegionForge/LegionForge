@@ -1184,6 +1184,44 @@
     </details>
   </div>
 
+  <!-- ── Document Search card (Phase 186) ─────────────────── -->
+  <div class="card" id="doc-search-card">
+    <details id="doc-search-section">
+      <summary style="cursor:pointer">Document Semantic Search</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="doc-search-query" placeholder="Search documents by meaning…" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="searchDocuments()">↻ Search</button>
+      </div>
+      <div id="doc-search-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter query and click ↻ Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Cost History card (Phase 187) ─────────────────────── -->
+  <div class="card" id="cost-history-card">
+    <details id="cost-history-section">
+      <summary style="cursor:pointer">30-Day Cost History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadCostHistory()" title="Refresh">↻</button></summary>
+      <div id="cost-history-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load 30-day token history.</div>
+    </details>
+  </div>
+
+  <!-- ── My Profile card (Phase 188) ───────────────────────── -->
+  <div class="card" id="my-profile-card">
+    <details id="my-profile-section">
+      <summary style="cursor:pointer">My Profile <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMyProfile()" title="Refresh">↻</button></summary>
+      <div id="my-profile-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load profile.</div>
+    </details>
+  </div>
+
+  <!-- ── Cancel All Running card (Phase 189) ───────────────── -->
+  <div class="card" id="cancel-running-card">
+    <details id="cancel-running-section">
+      <summary style="cursor:pointer">Cancel All Running Tasks</summary>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-dim)">Cancels all currently running tasks. Use with care.</div>
+      <button class="btn danger" style="font-size:11px;padding:3px 8px;margin-top:6px" onclick="cancelAllRunning()">✕ Cancel All Running</button>
+      <div id="cancel-running-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Pinned Tasks View card (Phase 182) ───────────────── -->
   <div class="card" id="pinned-tasks-card">
     <details id="pinned-tasks-section">
@@ -3975,6 +4013,119 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 186: Document Semantic Search ───────────────────────────────────────
+async function searchDocuments() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const query = (document.getElementById('doc-search-query') || {}).value.trim();
+  if (!query) { alert('Enter a search query.'); return; }
+  const bodyEl = document.getElementById('doc-search-body');
+  if (bodyEl) bodyEl.textContent = 'Searching…';
+  try {
+    const res = await fetch('/memory/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ query, top_k: 5 }),
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const results = Array.isArray(data) ? data : (data.results || data.documents || data.items || []);
+    if (!bodyEl) return;
+    if (!results.length) { bodyEl.textContent = 'No results found.'; return; }
+    bodyEl.innerHTML = results.map((r, i) => {
+      const score = r.score != null ? ' (score: ' + r.score.toFixed(3) + ')' : '';
+      const text = (r.content || r.text || r.chunk || '').slice(0, 120);
+      const source = (r.source || r.filename || r.document_id || '').toString().slice(0, 40);
+      return `<div class="td-field"><span class="td-label">#${i + 1}${score}</span><span class="td-value">${source ? '[' + source + '] ' : ''}${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 187: 30-Day Cost History ────────────────────────────────────────────
+async function loadCostHistory() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('cost-history-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/usage/history?days=30', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const days = Array.isArray(data) ? data : (data.days || data.history || []);
+    if (!bodyEl) return;
+    if (!days.length) { bodyEl.textContent = 'No usage data.'; return; }
+    const total = days.reduce((s, d) => s + (d.total_tokens || d.tokens || 0), 0);
+    const maxT = Math.max(...days.map(d => d.total_tokens || d.tokens || 0), 1);
+    const BAR = 16;
+    const rows = days.slice(-14).map(d => {
+      const tokens = d.total_tokens || d.tokens || 0;
+      const filled = Math.round((tokens / maxT) * BAR);
+      const bar = '▪'.repeat(filled) + '·'.repeat(BAR - filled);
+      const label = (d.date || d.day || '').slice(5);
+      return `<div class="td-field"><span class="td-label" style="font-family:monospace">${label}</span><span class="td-value" style="font-family:monospace">${bar} ${tokens.toLocaleString()}</span></div>`;
+    });
+    rows.unshift(`<div class="td-field"><span class="td-label">30-day total</span><span class="td-value">${total.toLocaleString()} tokens</span></div>`);
+    bodyEl.innerHTML = rows.join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 188: My Profile ─────────────────────────────────────────────────────
+async function loadMyProfile() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('my-profile-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/usage/me', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    if (!bodyEl) return;
+    const fields = [
+      ['user_id', (data.user_id || '—').toString().slice(0, 36)],
+      ['username', data.username || data.user || '—'],
+      ['provider', data.provider || data.llm_provider || '—'],
+      ['model pref', data.model_preference || '—'],
+      ['daily limit', data.daily_limit != null ? data.daily_limit.toLocaleString() + ' tok' : 'unlimited'],
+      ['today tokens', (data.today_tokens || data.tokens_today || 0).toLocaleString()],
+      ['is_admin', data.is_admin ? '✓ yes' : 'no'],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 189: Cancel All Running Tasks ────────────────────────────────────────
+async function cancelAllRunning() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  if (!confirm('Cancel ALL currently running tasks? This cannot be undone.')) return;
+  const statusEl = document.getElementById('cancel-running-status');
+  if (statusEl) statusEl.textContent = 'Fetching running tasks…';
+  try {
+    // Fetch running task IDs first, then bulk cancel
+    const listRes = await fetch('/tasks?status=running&limit=100', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!listRes.ok) { if (statusEl) statusEl.textContent = 'Error ' + listRes.status; return; }
+    const data = await listRes.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const ids = tasks.map(t => t.task_id || t.id).filter(Boolean);
+    if (!ids.length) { if (statusEl) { statusEl.textContent = 'No running tasks found.'; } return; }
+    const cancelRes = await fetch('/tasks/bulk/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ task_ids: ids }),
+    });
+    if (!statusEl) return;
+    if (cancelRes.ok) {
+      statusEl.textContent = 'Cancelled ' + ids.length + ' tasks.';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = 'Error ' + cancelRes.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
 }
 
 // ── Phase 182: Pinned Tasks View ──────────────────────────────────────────────
