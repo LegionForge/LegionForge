@@ -45,6 +45,16 @@
     .tl-dot { width:8px; height:8px; border-radius:50%; background:var(--blue); flex-shrink:0; margin-top:3px; }
     .tl-type { color:var(--text); font-weight:500; min-width:80px; }
     .tl-ts { color:var(--text-xdim); font-size:10px; margin-left:auto; }
+    /* ── Phase 82: Task Stats card ──────────────────────────── */
+    .stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+    .stat-box { background:var(--panel2); border-radius:var(--radius); padding:8px; text-align:center; border:1px solid var(--border2); }
+    .stat-num { font-size:22px; font-weight:700; color:var(--text); }
+    .stat-lbl { font-size:10px; color:var(--text-xdim); text-transform:uppercase; letter-spacing:.5px; }
+    /* ── Phase 83: Agents Directory card ────────────────────── */
+    .agent-row { padding:6px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .agent-row:last-child { border-bottom:none; }
+    .agent-type-badge { display:inline-block; background:var(--panel2); color:var(--blue); border:1px solid var(--border2); border-radius:4px; padding:2px 6px; font-size:11px; font-family:var(--mono); margin-bottom:3px; }
+    .agent-desc { color:var(--text-dim); font-size:11px; }
     /* ── Phase 79: Pipelines card ───────────────────────────── */
     .pipe-row { display:grid; grid-template-columns:1fr 60px 60px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .pipe-row:last-child { border-bottom:none; }
@@ -686,6 +696,22 @@
     </details>
   </div>
 
+  <!-- ── Task Stats card (Phase 82) ────────────────────────── -->
+  <div class="card" id="stats-card">
+    <details id="stats-section">
+      <summary style="cursor:pointer">Task Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadStats(event)" title="Refresh stats">↻</button></summary>
+      <div id="stats-body" style="color:var(--text-xdim);font-size:12px">Click ↻ or open this panel to load stats.</div>
+    </details>
+  </div>
+
+  <!-- ── Agents Directory card (Phase 83) ────────────────────── -->
+  <div class="card" id="agents-card">
+    <details id="agents-section">
+      <summary style="cursor:pointer">Agents Directory</summary>
+      <div id="agents-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Loading…</div>
+    </details>
+  </div>
+
   <!-- ── Pipelines card (Phase 79) ──────────────────────────── -->
   <div class="card" id="pipelines-card">
     <details id="pipe-section">
@@ -770,6 +796,7 @@ const el = {
   initNotifButton();  // Phase 74: init notification bell
   loadSchedules().catch(() => {});  // Phase 75
   loadPipelines().catch(() => {});  // Phase 79
+  loadAgents().catch(() => {});     // Phase 83
 
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
@@ -2228,6 +2255,55 @@ async function toggleTimeline(taskId) {
       '</div>';
     }).join('');
   } catch(e) { panel.innerHTML = '(Error loading timeline)'; console.warn('[timeline] error:', e); }
+}
+
+// ── Phase 82: Task Stats ─────────────────────────────────────────────────────
+async function loadStats(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const body = document.getElementById('stats-body');
+  if (!body) return;
+  if (!apiKey) { body.textContent = 'Enter your API key to load stats.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/stats', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { body.textContent = 'Could not load stats.'; return; }
+    const d = await res.json();
+    const byStatus = d.by_status || {};
+    const statuses = ['complete', 'running', 'queued', 'failed', 'cancelled'];
+    let statsHtml = '<div class="stats-grid">';
+    statsHtml += '<div class="stat-box"><div class="stat-num">' + (d.total || 0) + '</div><div class="stat-lbl">Total</div></div>';
+    statuses.forEach(s => {
+      const n = byStatus[s] || 0;
+      if (n > 0 || s === 'complete' || s === 'failed') {
+        statsHtml += '<div class="stat-box"><div class="stat-num">' + n + '</div><div class="stat-lbl">' + s + '</div></div>';
+      }
+    });
+    statsHtml += '</div>';
+    const tokens = d.total_tokens_used;
+    if (tokens != null) statsHtml += '<div style="margin-top:6px;font-size:11px;color:var(--text-dim)">Cumulative tokens: ' + tokens.toLocaleString() + '</div>';
+    body.innerHTML = statsHtml;
+  } catch(e) { body.textContent = 'Error loading stats.'; console.warn('[stats]', e); }
+}
+
+// ── Phase 83: Agents Directory ───────────────────────────────────────────────
+async function loadAgents() {
+  const listEl = document.getElementById('agents-list');
+  if (!listEl) return;
+  try {
+    const res = await fetch('/agents');
+    if (!res.ok) { listEl.textContent = 'Could not load agents.'; return; }
+    const agents = await res.json();  // array of agent capability dicts
+    if (!agents.length) { listEl.textContent = 'No agents registered.'; return; }
+    listEl.innerHTML = agents.map(a =>
+      '<div class="agent-row">' +
+        '<span class="agent-type-badge">' + escapeHtml(a.agent_type || '') + '</span>' +
+        '<div class="agent-desc">' + escapeHtml((a.description || '').slice(0, 160)) + '</div>' +
+      '</div>'
+    ).join('');
+  } catch(e) { listEl.textContent = 'Error loading agents.'; console.warn('[agents]', e); }
 }
 
 // ── Phase 79: Pipeline Runner ────────────────────────────────────────────────
