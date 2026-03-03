@@ -10042,3 +10042,92 @@ def test_researcher_web_search_uses_search_module(monkeypatch):
     result = web_search.invoke({"query": "unit test query"})
     assert len(calls) == 1
     assert isinstance(result, list)
+
+
+# ── Phase 57: Conversation Session UI Integration ──────────────────────────────
+
+
+def test_p57_ui_html_has_session_picker():
+    """Web UI index.html contains the session picker element."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-picker" in html
+
+
+def test_p57_ui_html_has_load_sessions_function():
+    """Web UI has loadSessions() function for fetching sessions from API."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSessions" in html
+
+
+def test_p57_ui_html_has_new_session_function():
+    """Web UI has newSession() function for creating sessions."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "newSession" in html
+
+
+def test_p57_ui_html_has_session_id_in_submit():
+    """Web UI submitTask() includes session_id in POST body when session is active."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session_id" in html
+    assert "S.sessionId" in html
+
+
+def test_p57_ui_html_session_id_in_state():
+    """Web UI state object includes sessionId field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "sessionId:" in html
+
+
+def test_p57_sessions_get_route_registered():
+    """GET /sessions route is registered in the gateway app."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any(p == "/sessions" for p in paths), f"No /sessions route in {paths}"
+
+
+def test_p57_sessions_post_route_registered():
+    """POST /sessions route method includes POST."""
+    from src.gateway.app import app
+    from fastapi.routing import APIRoute
+
+    session_routes = [
+        r for r in app.routes if isinstance(r, APIRoute) and r.path == "/sessions"
+    ]
+    assert session_routes, "No /sessions route found"
+    methods = {m for r in session_routes for m in r.methods}
+    assert "POST" in methods, f"/sessions methods: {methods}"
+
+
+def test_p57_sessions_delete_route_registered():
+    """DELETE /sessions/{session_id} route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any("{session_id}" in p and "sessions" in p for p in paths)
+
+
+def test_p57_ui_has_on_session_change():
+    """Web UI defines onSessionChange() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "onSessionChange" in html
+
+
+def test_p57_ui_has_delete_current_session():
+    """Web UI defines deleteCurrentSession() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "deleteCurrentSession" in html

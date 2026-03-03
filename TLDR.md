@@ -1,8 +1,8 @@
 # TLDR.md
 # LegionForge — What Is This and What Are We Building?
 
-**Version:** 1.0.1
-**Last updated:** 2026-03-01
+**Version:** 0.7.0-alpha
+**Last updated:** 2026-03-02
 
 ---
 
@@ -16,25 +16,31 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–16 are complete. v1.0.0 is shipped.**
+✅ **Phases 0–56 complete. v0.7.0-alpha — active development toward v1.0.0.**
 
-The full security stack is operational: Guardian sidecar (7 checks), immutable audit log with halt-on-tamper, crystallization pipeline, air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, gateway service (:8080), five production tools with belt-and-suspenders security, parallel agent fan-out via `asyncio.gather()`, hardening sprint (rate-limiter TOCTOU race, `/status` resource storm, PII patterns), multi-user auth with Redis/DB-backed stream tokens, per-user daily token budgets, user management CLI, integration test suite (38 tests), modular `AuthBackend` protocol, containerized gateway, multi-provider auth registry (OIDC, GitHub, LDAP, Kerberos), Redis-backed state layer, multi-instance docker-compose, Redis global budget counters, Prometheus metrics endpoint, request trace IDs, polished web UI, and Telegram + Slack + Webhook channel connectors.
+The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
 
-**492/492 smoke tests passing** (~3.0s, no external services required).
+**818/818 smoke tests passing** (~16s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
+**40/40 UI tests** (`make test-ui`).
+**29/29 tool accuracy tests** (`make test-tool-accuracy`).
 
-✅ **Phase 9 complete:** langchain 1.x migration, tool library (http_get, http_post, file_read, file_write, code_execute), parallel fan-out engine, Phase 9.5 hardening sprint.
-✅ **Phase 10 complete:** DB-backed stream tokens, per-user daily token budgets, `/usage/me` endpoint, user management CLI (`src/cli/manage_users.py`).
-✅ **Phase 11 complete:** SecureToolNode copy-failure fix (critical security), integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md`.
-✅ **Phase 12 complete:** Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` (scaffold); multi-scheme `require_user` (Bearer/Basic/Negotiate); `load_backend_from_settings()` factory; `OIDCConfig`/`LDAPConfig` in settings.
-✅ **Phase 13 complete:** Kerberos real GSSAPI implementation (graceful None fallback when gssapi absent); optional Redis-backed stream tokens (`src/gateway/state.py`); `KerberosConfig` + `redis_url` in settings; `docker-compose.multi-instance.yml`; Nginx LB config; SCALING.md Redis + Kerberos setup guide.
-✅ **Phase 14 complete:** Redis global budget counters (`redis_budget_check_and_reserve`/`redis_budget_release` in `state.py`; `per_user_budget_check()` auto-delegates to Redis when active); Prometheus-format `/metrics` endpoint on gateway (`src/gateway/metrics.py` — no new deps); `X-Request-ID` middleware (`src/gateway/middleware.py`); Redis health in operator `/status`; Kerberos integration test skeleton (`tests/test_kerberos_integration.py`, skip unless `KERBEROS_TEST_KDC=1`).
-✅ **Phase 15 complete:** Full web UI rewrite (`src/gateway/static/index.html`) — localStorage API key persistence, agent type selector, cancel button (`DELETE /tasks/{id}`), styled tool call blocks, live elapsed timer, token count on complete, 20-entry localStorage history with click-to-restore, copy output to clipboard, `Cmd/Ctrl+Enter` submit shortcut, auto-resize textarea, SSE retry-on-disconnect, connection status dot.
-✅ **Phase 16 complete:** Channel connectors — Telegram bot (`python-telegram-bot`, polling), Slack bot (`slack-bolt`, Socket Mode, no public URL needed), generic inbound/outbound Webhook connector (FastAPI :8081, HMAC-SHA256 verification, async callback POST); shared `src/connectors/base.py` with `_load_secret`/`_consume_sse`/`_run_task`; `ConnectorsConfig` in settings; `make telegram-start` / `make slack-start` / `make webhook-start`.
+> **Pre-1.0 blocker:** PostgreSQL uses `trust` auth for local connections (industry-standard for local dev, but must switch to `scram-sha-256` before public release). See `SECURITY.md § Known Security Gaps`.
+
+### Core Security Stack (Phases 0–16)
+✅ Guardian sidecar (7 deterministic checks, hot-reload every 10s), immutable SHA-256 audit log (halt-on-tamper), crystallization pipeline (Observer→Crystallizer→Pre-HITL→Ed25519 signature), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, multi-user gateway (:8080), five production tools, `AuthBackend` protocol with 5 backends (ApiKey, OIDC, GitHub, LDAP, Kerberos), Redis-backed stream tokens, Prometheus /metrics, web UI, Discord/Telegram/Slack/Webhook connectors, multi-instance docker-compose + Nginx.
+
+### Task Platform (Phases 17–51)
+✅ Admin API + observability endpoints, scheduled tasks (cron), document ingestion (PDF/HTML/text), persistent agent memory (pgvector), multi-machine Ollama cluster, task pipelines, priority queue, batch submission, result cache, SSE pipeline streaming, tags, notes, retry, dependencies, worker concurrency, cost estimation, agent registry, task export (JSON/CSV), timeline events, task labels, API key rotation, rate limit headers, bulk operations, analytics, full-text search (tsvector), task watchdog, keyset pagination, webhook registry, file attachments, task templates, read-only sharing.
+
+### Conversation & Personalization (Phases 52–56)
+✅ User preferences (JSONB per-user defaults), per-day token usage history, conversation sessions (LangGraph thread persistence — multi-turn memory), anti-hallucination hardening (system prompt, HTML stripping, DDG error wording), configurable search providers (DDG/Tavily/Brave/Exa/Perplexity/SearXNG with primary+fallback routing).
 
 ---
 
-## The Big Picture — Phases 0–16 Complete
+## The Big Picture — Phases 0–56 Complete
+
+### Security Foundation (Phases 0–16)
 
 | Phase | What Gets Built | Status |
 |---|---|---|
@@ -53,9 +59,57 @@ The full security stack is operational: Guardian sidecar (7 checks), immutable a
 | **11** | SecureToolNode fix, integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `SCALING.md` | ✅ Done |
 | **12** | Multi-provider auth registry: OIDC, GitHub OAuth, LDAP/AD, Kerberos scaffold; multi-scheme `require_user` | ✅ Done |
 | **13** | Kerberos GSSAPI real implementation, Redis-backed stream tokens, multi-instance docker-compose | ✅ Done |
-| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware, Redis `/status` health, Kerberos integration skeleton | ✅ Done |
+| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware | ✅ Done |
 | **15** | Polished web UI — localStorage key+history, cancel, tool blocks, timer, copy, keyboard shortcut | ✅ Done |
 | **16** | Channel connectors — Telegram, Slack (Socket Mode), Webhook (HMAC, async callback) | ✅ Done |
+
+### Task Platform & Observability (Phases 17–51)
+
+| Phase | What Gets Built | Status |
+|---|---|---|
+| **17–19** | TestLab admin platform + 104-test attack suite + Dockerized Ollama | ✅ Done |
+| **20** | Multi-machine Ollama cluster (round-robin, primary-first, least-busy routing) | ✅ Done |
+| **21** | Persistent agent memory (pgvector recall + store) | ✅ Done |
+| **22** | Document ingestion pipeline (PDF/HTML/text, chunking, provenance) | ✅ Done |
+| **23** | Scheduled tasks (cron + @shortcuts + @every intervals) | ✅ Done |
+| **24** | Admin API (user CRUD, quota management, admin promotion) | ✅ Done |
+| **25** | Audit log & observability API (paged audit, threat summary, tool management) | ✅ Done |
+| **26** | Task result webhooks (HMAC-SHA256 callbacks on completion) | ✅ Done |
+| **27** | Task pipelines (multi-step task chains with 8 endpoints) | ✅ Done |
+| **28** | Task priority queue + batch submission | ✅ Done |
+| **29** | Task result cache (content-hash deduplication, TTL) | ✅ Done |
+| **30** | Pipeline SSE progress streaming | ✅ Done |
+| **31** | Task tags + full-text search (`q=` filter) | ✅ Done |
+| **32** | Task notes (attach text notes to tasks) | ✅ Done |
+| **33** | Task retry API | ✅ Done |
+| **34** | Task dependencies (`depends_on`, failure propagation) | ✅ Done |
+| **35** | Worker concurrency (3 parallel tasks via `asyncio.create_task`) | ✅ Done |
+| **36** | Task cost estimation (`dry_run` mode) | ✅ Done |
+| **37** | Agent capabilities registry (`GET /agents`, `GET /agents/{type}`) | ✅ Done |
+| **38** | Task export API (JSON + CSV download) | ✅ Done |
+| **39** | Task timeline (per-task event log) | ✅ Done |
+| **40** | Task labels (bookmarked/starred/important/archived) | ✅ Done |
+| **41** | API key rotation (self-service `POST /auth/rotate-key`) | ✅ Done |
+| **42** | Rate limit response headers (`X-RateLimit-*`) | ✅ Done |
+| **43** | Task bulk operations (cancel/delete/tag multiple tasks) | ✅ Done |
+| **44** | Task stats & analytics (aggregate metrics by agent type, date range) | ✅ Done |
+| **45** | Task full-text search (PostgreSQL tsvector index on input + result) | ✅ Done |
+| **46** | Task watchdog (reap stuck `running` tasks after timeout) | ✅ Done |
+| **47** | Keyset cursor pagination for task list | ✅ Done |
+| **48** | Webhook registry (persistent per-user webhook subscriptions) | ✅ Done |
+| **49** | Task attachments (text blobs attached to tasks) | ✅ Done |
+| **50** | Task templates (reusable task configurations) | ✅ Done |
+| **51** | Task sharing (read-only share tokens, `GET /share/{token}`) | ✅ Done |
+
+### Conversation & Intelligence (Phases 52–56)
+
+| Phase | What Gets Built | Status |
+|---|---|---|
+| **52** | User preferences (JSONB per-user task defaults) | ✅ Done |
+| **53** | Usage history (per-day token breakdown) | ✅ Done |
+| **54** | Conversation sessions (LangGraph thread persistence for multi-turn memory) | ✅ Done |
+| **55** | Anti-hallucination hardening (system prompt, HTML stripping, DDG error safety) | ✅ Done |
+| **56** | Configurable search providers (DDG/Tavily/Brave/Exa/Perplexity/SearXNG; primary+fallback) | ✅ Done |
 
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
@@ -123,11 +177,15 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of v1.0.1)
+## Known Gaps (as of v0.7.0-alpha)
+
+**PostgreSQL trust auth** — Local connections use `trust` (no password). Industry standard for local dev, but must switch to `scram-sha-256` before public release. Full remediation in `SECURITY.md § Known Security Gaps`.
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
 **OAuth / LDAP not wired by default.** `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` are all implemented (Phase 12–13). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
+
+**Conversation sessions not yet integrated in web UI.** Phase 54 added the backend API. The web UI still submits tasks as standalone runs (no thread persistence). Planned for Phase 57.
 
 ---
 
@@ -149,9 +207,9 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Open Technical Debt
 
-All phases (0–16) are complete, v1.0.1 is shipped, and all known technical debt is resolved.
+**Finding 4 — DESTRUCTIVE_PATTERN not logged to DB:** Guardian Check 3 (destructive pattern detection) halts tool execution but the threat event is not written to `threat_events`. Low priority; logged to stderr only. Tracked for a future hardening sprint.
 
-**Kerberos live KDC** is fully operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified end-to-end, `make test-kerberos` passes **5/5** (including DB user provisioning — `gateway_users.user_id` is now `TEXT` to support OAuth natural IDs). Full setup guide in `docs/SCALING.md`.
+**Kerberos live KDC** is fully operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified end-to-end, `make test-kerberos` passes **5/5**. Full setup guide in `docs/SCALING.md`.
 
 **→ Target architecture:** [`docs/VISION.md`](./docs/VISION.md)
 **→ Current build state:** [`PROJECT_STATUS.md`](./PROJECT_STATUS.md)
