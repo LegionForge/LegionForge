@@ -13841,3 +13841,120 @@ def test_p145_ui_browse_task_notes_fetches_notes_endpoint():
     fn_start = html.find("function browseTaskNotes(")
     fn_body = html[fn_start : fn_start + 700]
     assert "/notes" in fn_body
+
+
+# ── Phase 146: Provider Usage Breakdown ───────────────────────────────────────
+
+
+def test_p146_ui_provider_usage_card_present():
+    """Provider usage card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "provider-usage-card" in html
+
+
+def test_p146_ui_load_provider_usage_function_defined():
+    """loadProviderUsage() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadProviderUsage(" in html
+
+
+def test_p146_ui_load_provider_usage_fetches_usage_me():
+    """loadProviderUsage() fetches /usage/me."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadProviderUsage(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/usage/me" in fn_body
+
+
+# ── Phase 147: Task Timeline Standalone ───────────────────────────────────────
+
+
+def test_p147_ui_task_timeline_card_present():
+    """Task timeline card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-timeline-card" in html
+
+
+def test_p147_ui_load_task_timeline_function_defined():
+    """loadTaskTimeline() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskTimeline(" in html
+
+
+def test_p147_ui_load_task_timeline_fetches_timeline_endpoint():
+    """loadTaskTimeline() fetches /tasks/{id}/timeline."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskTimeline(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/timeline" in fn_body
+
+
+# ── Phase 148: Task Attachments List ──────────────────────────────────────────
+
+
+def test_p148_ui_attachments_list_card_present():
+    """Attachments list card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "attachments-list-card" in html
+
+
+def test_p148_ui_load_task_attachments_list_function_defined():
+    """loadTaskAttachmentsList() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskAttachmentsList(" in html
+
+
+def test_p148_ui_load_task_attachments_list_fetches_attachments_endpoint():
+    """loadTaskAttachmentsList() fetches /tasks/{id}/attachments."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskAttachmentsList(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/attachments" in fn_body
+
+
+# ── Phase 149: Audit Log Event Filter ─────────────────────────────────────────
+
+
+def test_p149_ui_audit_filter_card_present():
+    """Audit log filter card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-filter-card" in html
+
+
+def test_p149_ui_load_audit_filtered_function_defined():
+    """loadAuditFiltered() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAuditFiltered(" in html
+
+
+def test_p149_ui_load_audit_filtered_fetches_admin_audit():
+    """loadAuditFiltered() fetches /admin/audit with event_type filter."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAuditFiltered(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/admin/audit" in fn_body
+    assert "event_type" in fn_body

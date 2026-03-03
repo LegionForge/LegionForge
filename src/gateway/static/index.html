@@ -1129,6 +1129,56 @@
     </details>
   </div>
 
+  <!-- ── Provider Usage Breakdown card (Phase 146) ───────── -->
+  <div class="card" id="provider-usage-card">
+    <details id="provider-usage-section">
+      <summary style="cursor:pointer">Provider Usage Today <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadProviderUsage(event)" title="Refresh">↻</button></summary>
+      <div id="provider-usage-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load usage.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Timeline Standalone card (Phase 147) ─────────── -->
+  <div class="card" id="task-timeline-card">
+    <details id="task-timeline-section">
+      <summary style="cursor:pointer">Task Timeline Viewer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="timeline-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:140px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadTaskTimeline()">↻ Load</button>
+        </div>
+        <div id="task-timeline-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Attachments List card (Phase 148) ────────────── -->
+  <div class="card" id="attachments-list-card">
+    <details id="attachments-list-section">
+      <summary style="cursor:pointer">Task Attachments List</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="attachments-list-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:140px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadTaskAttachmentsList()">↻ Load</button>
+        </div>
+        <div id="attachments-list-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Audit Log Event Filter card (Phase 149) ───────────── -->
+  <div class="card" id="audit-filter-card">
+    <details id="audit-filter-section">
+      <summary style="cursor:pointer">Audit Log Filter <span style="font-size:10px;color:var(--text-xdim)">(admin)</span></summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="audit-event-type" placeholder="event_type (e.g. TOOL_BLOCKED)" style="flex:1;min-width:160px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadAuditFiltered()">Search</button>
+        </div>
+        <div id="audit-filter-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Schedule Detail Viewer card (Phase 142) ─────────── -->
   <div class="card" id="schedule-detail-card">
     <details id="schedule-detail-section">
@@ -3418,6 +3468,103 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 146: Provider Usage Breakdown ───────────────────────────────────────
+async function loadProviderUsage(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('provider-usage-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/usage/me', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    if (!bodyEl) return;
+    const today = d.today || {};
+    const providers = d.providers || {};
+    const summary = [
+      ['tokens_used', (today.tokens_used || 0).toLocaleString()],
+      ['tokens_in_flight', (today.tokens_in_flight || 0).toLocaleString()],
+      ['tokens_remaining', (today.tokens_remaining || 0).toLocaleString()],
+      ['daily_limit', (d.daily_limit || 0).toLocaleString()],
+    ];
+    let html = summary.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k.replace(/_/g, ' ')}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+    Object.entries(providers).forEach(([prov, stats]) => {
+      html += `<div class="td-field"><span class="td-label">${escapeHtml(prov)}</span><span class="td-value">${(stats.tokens_used || stats || 0).toLocaleString()} tok</span></div>`;
+    });
+    bodyEl.innerHTML = html;
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 147: Task Timeline Standalone ───────────────────────────────────────
+async function loadTaskTimeline() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('timeline-task-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a Task ID.'); return; }
+  const bodyEl = document.getElementById('task-timeline-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}/timeline`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'Task not found.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const events = data.events || data || [];
+    if (!bodyEl) return;
+    if (!events.length) { bodyEl.textContent = 'No timeline events for this task.'; return; }
+    bodyEl.innerHTML = events.map(ev =>
+      `<div class="td-field"><span class="td-label" style="font-family:var(--mono);font-size:10px">${escapeHtml(ev.event_type || '')}</span><span class="td-value" style="color:var(--text-xdim)">${ev.ts ? new Date(ev.ts).toLocaleString() : ''}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 148: Task Attachments List ──────────────────────────────────────────
+async function loadTaskAttachmentsList() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('attachments-list-task-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a Task ID.'); return; }
+  const bodyEl = document.getElementById('attachments-list-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}/attachments`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'Task not found.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const attachments = data.attachments || data || [];
+    if (!bodyEl) return;
+    if (!attachments.length) { bodyEl.textContent = 'No attachments for this task.'; return; }
+    bodyEl.innerHTML = attachments.map(a =>
+      `<div class="td-field"><span class="td-label">${escapeHtml(a.attachment_id ? a.attachment_id.slice(0,8) : '—')}</span><span class="td-value">${escapeHtml(a.filename || '')} · ${escapeHtml(a.content_type || '')}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 149: Audit Log Event Filter ─────────────────────────────────────────
+async function loadAuditFiltered() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const eventType = (document.getElementById('audit-event-type') || {}).value.trim();
+  const bodyEl = document.getElementById('audit-filter-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const qs = eventType ? `?event_type=${encodeURIComponent(eventType)}&limit=20` : '?limit=20';
+    const r = await fetch(`/admin/audit${qs}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 403) { if (bodyEl) bodyEl.textContent = 'Admin access required.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    const entries = d.entries || [];
+    if (!bodyEl) return;
+    if (!entries.length) { bodyEl.textContent = 'No matching audit events.'; return; }
+    bodyEl.innerHTML = entries.map(e => {
+      const ts = e.ts ? new Date(e.ts).toLocaleString() : '';
+      return `<div class="td-field"><span class="td-label" style="font-size:10px;font-family:var(--mono)">${escapeHtml(e.event_type || '')}</span><span class="td-value" style="color:var(--text-xdim)">${escapeHtml(ts)}</span></div>`;
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 142: Schedule Detail Viewer ─────────────────────────────────────────
