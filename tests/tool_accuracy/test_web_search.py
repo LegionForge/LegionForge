@@ -109,7 +109,7 @@ def test_web_search_pii_redacted_before_ddg():
 
     captured_query: list[str] = []
 
-    def _capture_text(query, max_results=5):
+    def _capture_text(query, max_results=5, **kwargs):
         captured_query.append(query)
         return _FAKE_RESULTS
 
@@ -132,7 +132,7 @@ def test_web_search_max_results_passed_to_ddg():
 
     captured_kwargs: list[dict] = []
 
-    def _capture_text(query, max_results=5):
+    def _capture_text(query, max_results=5, **kwargs):
         captured_kwargs.append({"query": query, "max_results": max_results})
         return _FAKE_RESULTS
 
