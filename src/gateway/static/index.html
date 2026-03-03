@@ -153,6 +153,13 @@
     .btn.ghost:hover { border-color: var(--border); color: var(--text); }
     .btn.icon    { padding: 5px 8px; font-size: 14px; }
 
+    /* ── Model preference toggle buttons (Phase 58) ─────────────── */
+    .model-pref.active-pref {
+      background: #1a3a5c;
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
     /* ── Task input ──────────────────────────────────────────────── */
     #task-input {
       width: 100%;
@@ -404,6 +411,15 @@
     </div>
 
     <div class="field-row">
+      <label>Model</label>
+      <div id="model-pref-btns" style="display:flex;gap:6px;flex:1;">
+        <button class="btn ghost model-pref" id="mp-fast" onclick="setModelPref('fast')" title="qwen2.5:3b — fast, lower quality">Fast</button>
+        <button class="btn ghost model-pref active-pref" id="mp-balanced" onclick="setModelPref('balanced')" title="llama3.1:8b — default balance">Balanced</button>
+        <button class="btn ghost model-pref" id="mp-powerful" onclick="setModelPref('powerful')" title="Best available model">Powerful</button>
+      </div>
+    </div>
+
+    <div class="field-row">
       <label for="session-picker">Session</label>
       <select id="session-picker" onchange="onSessionChange(this.value)" title="Run within a persistent conversation session so the agent remembers prior turns">
         <option value="">— Standalone (no session) —</option>
@@ -479,6 +495,7 @@ const S = {
   toolsCompleted: 0,      // tool_end events received this run
   toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
   sessionId:      null,   // string | null — active conversation session_id (Phase 57)
+  modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
 };
 
 const MAX_HISTORY = 20;
@@ -544,6 +561,14 @@ function toggleKeyVisibility() {
 function clearApiKey() {
   el.apiKey().value = '';
   localStorage.removeItem(APIKEY_KEY);
+}
+
+// ── Model preference selector (Phase 58) ─────────────────────────
+function setModelPref(pref) {
+  S.modelPref = pref;
+  document.querySelectorAll('.model-pref').forEach(b => b.classList.remove('active-pref'));
+  const btn = $('mp-' + pref);
+  if (btn) btn.classList.add('active-pref');
 }
 
 // ── Session management (Phase 57) ─────────────────────────────────
@@ -853,7 +878,7 @@ async function submitTask() {
         'Content-Type':  'application/json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify({ task, agent_type: agent, ...(S.sessionId ? { session_id: S.sessionId } : {}) }),
+      body: JSON.stringify({ task, agent_type: agent, model_preference: S.modelPref, ...(S.sessionId ? { session_id: S.sessionId } : {}) }),
     });
 
     if (!res.ok) {

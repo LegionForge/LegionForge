@@ -605,6 +605,24 @@ class SearchSettings(BaseModel):
     searxng: SearXNGSearchConfig = SearXNGSearchConfig()
 
 
+class ModelPreferencesConfig(BaseModel):
+    """
+    Phase 58 — Named model speed presets for per-task model selection.
+
+    Maps preference names (fast / balanced / powerful) to specific model IDs.
+    Referenced by ``set_task_model_preference()`` in ``src/llm_factory.py``.
+    Override in your hardware YAML profile under ``model_preferences:``.
+    """
+
+    fast: str = "qwen2.5:3b"
+    balanced: str = "llama3.1:8b"
+    powerful: str = "llama3.1:8b"
+
+    def get(self, pref: str) -> str | None:
+        """Return the model_id for a named preference, or None if unknown."""
+        return getattr(self, pref, None)
+
+
 class HardwareSettings(BaseModel):
     profile: ProfileMeta
     memory: MemoryConfig
@@ -621,6 +639,7 @@ class HardwareSettings(BaseModel):
     connectors: ConnectorsConfig = ConnectorsConfig()
     agent_memory: AgentMemoryConfig = AgentMemoryConfig()
     search: SearchSettings = SearchSettings()
+    model_preferences: ModelPreferencesConfig = ModelPreferencesConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

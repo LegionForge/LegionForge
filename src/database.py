@@ -1260,6 +1260,13 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(session_id) ON DELETE SET NULL"
     )
 
+    # ── Phase 58: model preference column on tasks ────────────────────────────
+    # Records which model preset (fast/balanced/powerful) was used for the run.
+    # NULL means the primary model default was used.
+    await conn.execute(
+        "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS model_preference TEXT"
+    )
+
     # ── Phase 48: Webhook Registry ───────────────────────────────────────────────
     # Persistent webhook subscriptions per user.  The worker fires these alongside
     # the per-task callback_url (Phase 26) on task complete / failed events.
@@ -2985,6 +2992,7 @@ async def create_task(
     tags: list[str] | None = None,
     depends_on: str | None = None,
     session_id: str | None = None,
+    model_preference: str | None = None,
 ) -> dict:
     """Insert a new task row and return it with task_id and status='queued'.
 
@@ -2993,6 +3001,7 @@ async def create_task(
     tags: freeform string labels (Phase 31).
     depends_on: UUID of a task that must complete before this one runs (Phase 34).
     session_id: UUID of a conversation session (Phase 54).
+    model_preference: named speed preset — "fast", "balanced", "powerful" (Phase 58).
     """
     pool = get_pool()
     async with pool.connection() as conn:
@@ -3001,11 +3010,13 @@ async def create_task(
             """
             INSERT INTO tasks
                 (user_id, input, agent_type, config, estimated_tokens,
-                 callback_url, priority, content_hash, tags, depends_on, session_id)
+                 callback_url, priority, content_hash, tags, depends_on, session_id,
+                 model_preference)
             VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s,
-                    %s::uuid, %s::uuid)
+                    %s::uuid, %s::uuid, %s)
             RETURNING task_id::text, status, created_at, agent_type,
-                      priority, tags, depends_on::text, session_id::text
+                      priority, tags, depends_on::text, session_id::text,
+                      model_preference
             """,
             (
                 user_id,
@@ -3019,6 +3030,7 @@ async def create_task(
                 list(tags) if tags else [],
                 depends_on,
                 session_id,
+                model_preference,
             ),
         )
         row = await cur.fetchone()
