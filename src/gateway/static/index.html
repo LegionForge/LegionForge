@@ -1233,6 +1233,58 @@
     </details>
   </div>
 
+  <!-- ── Task Result JSON card (Phase 250) ────────────────────── -->
+  <div class="card" id="task-result-json-card">
+    <details id="task-result-json-section">
+      <summary style="cursor:pointer">Task Result (Raw JSON)
+        <input id="task-result-json-id" placeholder="task ID" style="width:200px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTaskResultJson()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <pre id="task-result-json-body" style="font-size:11px;color:var(--text-dim);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto">Enter a task ID and click ↻.</pre>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Admin User Tokens card (Phase 251) ────────────────────── -->
+  <div class="card" id="admin-user-tokens-card">
+    <details id="admin-user-tokens-section">
+      <summary style="cursor:pointer">Admin User Token Usage
+        <input id="admin-user-tokens-name" placeholder="username" style="width:140px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadAdminUserTokens()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="admin-user-tokens-body" style="font-size:12px;color:var(--text-dim)">Enter a username and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Run Info card (Phase 252) ────────────────────── -->
+  <div class="card" id="pipeline-run-info-card">
+    <details id="pipeline-run-info-section">
+      <summary style="cursor:pointer">Pipeline Run Info
+        <input id="pipeline-run-info-id" placeholder="run ID" style="width:100px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadPipelineRunInfo()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="pipeline-run-info-body" style="font-size:12px;color:var(--text-dim)">Enter a run ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Webhook by ID card (Phase 253) ────────────────────────── -->
+  <div class="card" id="webhook-by-id-card">
+    <details id="webhook-by-id-section">
+      <summary style="cursor:pointer">Webhook Detail
+        <input id="webhook-by-id-input" placeholder="webhook ID" style="width:140px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadWebhookById()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="webhook-by-id-body" style="font-size:12px;color:var(--text-dim)">Enter a webhook ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Top Token Users card (Phase 246) ─────────────────────── -->
   <div class="card" id="top-token-users-card">
     <details id="top-token-users-section">
@@ -4685,6 +4737,78 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 250: Task Result JSON ───────────────────────────────────────────────
+async function loadTaskResultJson() {
+  const el = document.getElementById('task-result-json-body');
+  const id = (document.getElementById('task-result-json-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a task ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 251: Admin User Token Usage ─────────────────────────────────────────
+async function loadAdminUserTokens() {
+  const el = document.getElementById('admin-user-tokens-body');
+  const name = (document.getElementById('admin-user-tokens-name') || {value: ''}).value.trim();
+  if (!name) { el.textContent = 'Enter a username above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/admin/users/${encodeURIComponent(name)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const fields = ['username', 'tokens_used', 'total_tokens', 'daily_token_quota', 'request_count', 'is_admin'];
+    el.innerHTML = fields
+      .filter(f => data[f] != null)
+      .map(f => `<div class="td-field"><span class="td-label">${f}</span><span class="td-value">${
+        typeof data[f] === 'number' ? data[f].toLocaleString() : String(data[f])
+      }</span></div>`)
+      .join('') || '<div style="color:var(--text-xdim)">No data.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 252: Pipeline Run Info ──────────────────────────────────────────────
+async function loadPipelineRunInfo() {
+  const el = document.getElementById('pipeline-run-info-body');
+  const id = (document.getElementById('pipeline-run-info-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a run ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/pipelines/runs/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const fields = ['run_id', 'pipeline_id', 'status', 'started_at', 'finished_at', 'total_steps', 'steps_complete'];
+    el.innerHTML = fields
+      .filter(f => data[f] != null)
+      .map(f => `<div class="td-field"><span class="td-label">${f}</span><span class="td-value">${data[f]}</span></div>`)
+      .join('') || '<div style="color:var(--text-xdim)">No run data.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 253: Webhook Detail ─────────────────────────────────────────────────
+async function loadWebhookById() {
+  const el = document.getElementById('webhook-by-id-body');
+  const id = (document.getElementById('webhook-by-id-input') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a webhook ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/webhooks/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const fields = ['id', 'url', 'active', 'event_types', 'created_at'];
+    el.innerHTML = fields
+      .filter(f => data[f] != null)
+      .map(f => `<div class="td-field"><span class="td-label">${f}</span><span class="td-value">${
+        Array.isArray(data[f]) ? data[f].join(', ') : String(data[f])
+      }</span></div>`)
+      .join('') || '<div style="color:var(--text-xdim)">No webhook data.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 246: Top Token Users ────────────────────────────────────────────────

@@ -1899,5 +1899,9 @@ Added as compact addendum. See git log for full details.
 | 243 | #165 | Ollama Model Status (ollama-status-card, loadOllamaStatus, GET /agents + GET /health, reachability + type/model) | +3 | 1501 |
 | 244 | #165 | Gateway Stats (gateway-stats-card, loadGatewayStats, GET /admin/stats, all stat entries as td-field rows) | +3 | 1504 |
 | 245 | #165 | Clear Completed Tasks (clear-completed-card, clearCompletedTasks, GET /tasks?status=complete → DELETE each older than N days) | +3 | 1507 |
+| 246 | #166 | Top Token Users (top-token-users-card, loadTopTokenUsers, GET /admin/users, sort by tokens_used, top-10 table) | +3 | 1510 |
+| 247 | #166 | Pipeline Step List (pipeline-step-list-card, loadPipelineStepList, GET /pipelines/{id}, step index/name/agent table) | +3 | 1513 |
+| 248 | #166 | Memory Recall (memory-recall-card, loadMemoryRecall, POST /memory/search, top-5 chunks with score display) | +3 | 1516 |
+| 249 | #166 | Document Chunks (document-chunks-card, loadDocumentChunks, GET /documents/{id}, source meta + first 5 chunk previews) | +3 | 1519 |
 
-**Current state:** 1507/1507 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1519/1519 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

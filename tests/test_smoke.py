@@ -16936,3 +16936,119 @@ def test_p249_ui_document_chunks_calls_documents_endpoint():
     idx = html.index("async function loadDocumentChunks()")
     fn_body = html[idx : idx + 800]
     assert "/documents/" in fn_body
+
+
+# ── Phase 250: Task Result JSON ────────────────────────────────────────────────
+
+
+def test_p250_ui_task_result_json_card_present():
+    """task-result-json-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-result-json-card" in html
+
+
+def test_p250_ui_load_task_result_json_function_defined():
+    """loadTaskResultJson() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskResultJson()" in html
+
+
+def test_p250_ui_task_result_json_pretty_prints():
+    """loadTaskResultJson formats JSON output."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskResultJson()")
+    fn_body = html[idx : idx + 700]
+    assert "JSON.stringify" in fn_body and "/tasks/" in fn_body
+
+
+# ── Phase 251: Admin User Token Usage ─────────────────────────────────────────
+
+
+def test_p251_ui_admin_user_tokens_card_present():
+    """admin-user-tokens-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-user-tokens-card" in html
+
+
+def test_p251_ui_load_admin_user_tokens_function_defined():
+    """loadAdminUserTokens() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminUserTokens()" in html
+
+
+def test_p251_ui_admin_user_tokens_calls_admin_users():
+    """loadAdminUserTokens calls /admin/users/{name}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAdminUserTokens()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/users/" in fn_body and "tokens" in fn_body
+
+
+# ── Phase 252: Pipeline Run Info ──────────────────────────────────────────────
+
+
+def test_p252_ui_pipeline_run_info_card_present():
+    """pipeline-run-info-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-run-info-card" in html
+
+
+def test_p252_ui_load_pipeline_run_info_function_defined():
+    """loadPipelineRunInfo() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineRunInfo()" in html
+
+
+def test_p252_ui_pipeline_run_info_calls_runs_endpoint():
+    """loadPipelineRunInfo calls /pipelines/runs/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineRunInfo()")
+    fn_body = html[idx : idx + 700]
+    assert "/pipelines/runs/" in fn_body
+
+
+# ── Phase 253: Webhook Detail ─────────────────────────────────────────────────
+
+
+def test_p253_ui_webhook_by_id_card_present():
+    """webhook-by-id-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-by-id-card" in html
+
+
+def test_p253_ui_load_webhook_by_id_function_defined():
+    """loadWebhookById() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookById()" in html
+
+
+def test_p253_ui_webhook_by_id_calls_webhooks_endpoint():
+    """loadWebhookById calls /webhooks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadWebhookById()")
+    fn_body = html[idx : idx + 700]
+    assert "/webhooks/" in fn_body
