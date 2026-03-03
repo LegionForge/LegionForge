@@ -1184,6 +1184,51 @@
     </details>
   </div>
 
+  <!-- ── Task Live Watcher card (Phase 174) ───────────────── -->
+  <div class="card" id="task-watcher-card">
+    <details id="task-watcher-section">
+      <summary style="cursor:pointer">Task Live Watcher</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-watcher-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="watchTask()">▶ Watch</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="stopWatchTask()">■ Stop</button>
+      </div>
+      <div id="task-watcher-log" style="margin-top:8px;color:var(--text-xdim);font-size:11px;font-family:monospace;max-height:160px;overflow-y:auto;background:var(--bg2);border-radius:var(--radius);padding:6px">Enter task ID and click ▶ Watch.</div>
+    </details>
+  </div>
+
+  <!-- ── Annotations Viewer card (Phase 175) ───────────────── -->
+  <div class="card" id="annotations-viewer-card">
+    <details id="annotations-viewer-section">
+      <summary style="cursor:pointer">All Task Annotations (Admin) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAllAnnotations()" title="Refresh">↻</button></summary>
+      <div id="annotations-viewer-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load annotations.</div>
+    </details>
+  </div>
+
+  <!-- ── Task JSON Inspector card (Phase 176) ──────────────── -->
+  <div class="card" id="task-json-card">
+    <details id="task-json-section">
+      <summary style="cursor:pointer">Task JSON Inspector</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="task-json-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="inspectTaskJson()">↻ Inspect</button>
+      </div>
+      <pre id="task-json-body" style="margin-top:8px;color:var(--text-xdim);font-size:11px;background:var(--bg2);border-radius:var(--radius);padding:8px;overflow:auto;max-height:200px">Enter task ID and click ↻ Inspect.</pre>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Run Detail card (Phase 177) ──────────────── -->
+  <div class="card" id="pipeline-run-detail-card">
+    <details id="pipeline-run-detail-section">
+      <summary style="cursor:pointer">Pipeline Run Detail</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="pipeline-run-id" type="number" placeholder="Run ID" style="width:100px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadPipelineRunDetail()">↻ Load</button>
+      </div>
+      <div id="pipeline-run-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter run ID and click ↻ Load.</div>
+    </details>
+  </div>
+
   <!-- ── Task Pin/Unpin card (Phase 170) ──────────────────── -->
   <div class="card" id="task-pin-card">
     <details id="task-pin-section">
@@ -3840,6 +3885,104 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 174: Task Live Watcher ──────────────────────────────────────────────
+let _taskWatcherES = null;
+function watchTask() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-watcher-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  if (_taskWatcherES) { _taskWatcherES.close(); _taskWatcherES = null; }
+  const logEl = document.getElementById('task-watcher-log');
+  if (logEl) logEl.textContent = '';
+  const _appendLog = (msg) => {
+    if (!logEl) return;
+    const line = document.createElement('div');
+    line.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+  _appendLog('Connecting to stream for ' + taskId.slice(0, 8) + '…');
+  const url = '/tasks/' + encodeURIComponent(taskId) + '/stream?token=' + encodeURIComponent(apiKey);
+  _taskWatcherES = new EventSource(url);
+  _taskWatcherES.onmessage = (e) => { try { const d = JSON.parse(e.data); _appendLog('[' + (d.event || 'msg') + '] ' + JSON.stringify(d.data || d)); } catch { _appendLog(e.data); } };
+  _taskWatcherES.addEventListener('task_complete', () => { _appendLog('✓ Task complete.'); stopWatchTask(); });
+  _taskWatcherES.addEventListener('task_error', (e) => { try { _appendLog('✗ Error: ' + JSON.parse(e.data).error); } catch { _appendLog('✗ Error.'); } stopWatchTask(); });
+  _taskWatcherES.onerror = () => { _appendLog('Stream disconnected.'); stopWatchTask(); };
+}
+function stopWatchTask() {
+  if (_taskWatcherES) { _taskWatcherES.close(); _taskWatcherES = null; }
+  const logEl = document.getElementById('task-watcher-log');
+  if (logEl) { const line = document.createElement('div'); line.textContent = '■ Stopped.'; logEl.appendChild(line); }
+}
+
+// ── Phase 175: All Task Annotations ───────────────────────────────────────────
+async function loadAllAnnotations() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('annotations-viewer-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/annotations', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : (data.annotations || data.items || []);
+    if (!bodyEl) return;
+    if (!items.length) { bodyEl.textContent = 'No annotations.'; return; }
+    bodyEl.innerHTML = items.map(a => {
+      const taskId = (a.task_id || a.id || '?').toString().slice(0, 8);
+      const rating = a.rating === 1 ? '👍' : a.rating === -1 ? '👎' : '—';
+      const comment = (a.comment || a.notes || '').slice(0, 80);
+      return `<div class="td-field"><span class="td-label">${rating} ${taskId}</span><span class="td-value">${comment || '(no comment)'}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 176: Task JSON Inspector ────────────────────────────────────────────
+async function inspectTaskJson() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-json-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const preEl = document.getElementById('task-json-body');
+  if (preEl) preEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId), { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (preEl) preEl.textContent = 'Error ' + res.status; return; }
+    const task = await res.json();
+    if (preEl) preEl.textContent = JSON.stringify(task, null, 2);
+  } catch (e) { if (preEl) preEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 177: Pipeline Run Detail ────────────────────────────────────────────
+async function loadPipelineRunDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const runId = parseInt((document.getElementById('pipeline-run-id') || {}).value || '0', 10);
+  if (!runId) { alert('Enter a run ID.'); return; }
+  const bodyEl = document.getElementById('pipeline-run-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/pipelines/runs/' + runId, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const run = await res.json();
+    if (!bodyEl) return;
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', pending: 'var(--text-dim)' };
+    const status = run.status || '?';
+    const fields = [
+      ['run_id', run.run_id || run.id || runId],
+      ['pipeline_id', run.pipeline_id || '?'],
+      ['status', `<span style="color:${statusColor[status] || 'var(--text)'}">${status}</span>`],
+      ['started_at', (run.started_at || run.created_at || '').slice(0, 19).replace('T', ' ')],
+      ['completed_at', (run.completed_at || '').slice(0, 19).replace('T', ' ') || '—'],
+      ['total_steps', run.total_steps || '?'],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 170: Task Pin / Unpin ───────────────────────────────────────────────

@@ -1818,4 +1818,9 @@ Added as compact addendum. See git log for full details.
 | 168 | #146 | Notes Keyword Search (notes-search-card, searchTaskNotes, GET notes, client-side filter by keyword) | +3 | 1271 |
 | 169 | #146 | Session Delete (session-delete-card, deleteSessionWithConfirm, DELETE /sessions/{id}, confirm guard) | +4 | 1275 |
 
-**Current state:** 1275/1275 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 170 | #147 | Task Pin/Unpin (task-pin-card, pinTask/unpinTask/_setPinLabel, PUT /tasks/{id}/labels 'pinned') | +4 | 1279 |
+| 171 | #147 | Pipeline Step Details (pipeline-step-detail-card, loadPipelineStepDetails, GET /pipelines/{id} steps) | +3 | 1282 |
+| 172 | #147 | Task Result Download (result-download-card, downloadTaskResult, Blob + .txt download trigger) | +3 | 1285 |
+| 173 | #147 | Admin Quota Update (quota-update-card, updateUserQuota, PUT /admin/users/{u}/quota daily_token_limit) | +3 | 1288 |
+
+**Current state:** 1288/1288 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

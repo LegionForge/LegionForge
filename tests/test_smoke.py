@@ -14710,3 +14710,127 @@ def test_p173_ui_quota_update_uses_admin_endpoint():
     fn_start = html.find("function updateUserQuota(")
     fn_body = html[fn_start : fn_start + 800]
     assert "/quota" in fn_body and "PUT" in fn_body
+
+
+# ── Phase 174: Task Live Watcher ──────────────────────────────────────────────
+
+
+def test_p174_ui_task_watcher_card_present():
+    """#task-watcher-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-watcher-card" in html
+
+
+def test_p174_ui_watch_task_function_defined():
+    """watchTask() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function watchTask(" in html
+
+
+def test_p174_ui_stop_watch_task_function_defined():
+    """stopWatchTask() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function stopWatchTask(" in html
+
+
+def test_p174_ui_watch_task_uses_event_source():
+    """watchTask() creates an EventSource for the task stream."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function watchTask(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "EventSource" in fn_body
+
+
+# ── Phase 175: All Task Annotations ───────────────────────────────────────────
+
+
+def test_p175_ui_annotations_viewer_card_present():
+    """#annotations-viewer-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "annotations-viewer-card" in html
+
+
+def test_p175_ui_load_all_annotations_function_defined():
+    """loadAllAnnotations() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAllAnnotations(" in html
+
+
+def test_p175_ui_load_all_annotations_uses_admin_endpoint():
+    """loadAllAnnotations() calls GET /admin/annotations."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAllAnnotations(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/admin/annotations" in fn_body
+
+
+# ── Phase 176: Task JSON Inspector ────────────────────────────────────────────
+
+
+def test_p176_ui_task_json_card_present():
+    """#task-json-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-json-card" in html
+
+
+def test_p176_ui_inspect_task_json_function_defined():
+    """inspectTaskJson() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function inspectTaskJson(" in html
+
+
+def test_p176_ui_task_json_pretty_prints():
+    """inspectTaskJson() uses JSON.stringify with indentation."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function inspectTaskJson(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "JSON.stringify" in fn_body and "null, 2" in fn_body
+
+
+# ── Phase 177: Pipeline Run Detail ────────────────────────────────────────────
+
+
+def test_p177_ui_pipeline_run_detail_card_present():
+    """#pipeline-run-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-run-detail-card" in html
+
+
+def test_p177_ui_load_pipeline_run_detail_function_defined():
+    """loadPipelineRunDetail() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineRunDetail(" in html
+
+
+def test_p177_ui_pipeline_run_detail_uses_runs_endpoint():
+    """loadPipelineRunDetail() fetches GET /pipelines/runs/{run_id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineRunDetail(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/pipelines/runs/" in fn_body
