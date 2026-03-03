@@ -1923,5 +1923,9 @@ Added as compact addendum. See git log for full details.
 | 267 | #171 | Tasks by Agent Type (tasks-by-agent-card, loadTasksByAgent, GET /tasks?agent_type=X&limit=20, filtered table) | +3 | 1573 |
 | 268 | #171 | Audit Hash Verify (audit-hash-verify-card, loadAuditHashVerify, GET /admin/audit/verify, integrity status + count) | +3 | 1576 |
 | 269 | #171 | Usage Trend (usage-trend-card, loadUsageTrend, GET /usage/history?days=30, 14-day ASCII bar chart) | +3 | 1579 |
+| 270 | #172 | Task Status Breakdown (task-status-breakdown-card, loadTaskStatusBreakdown, Promise.all 5 statuses, count table; renamed) | +3 | 1582 |
+| 271 | #172 | Schedule List (schedule-list-card, loadScheduleList, GET /schedules?limit=20, name/cron/enabled/next_run table) | +3 | 1585 |
+| 272 | #172 | Task Notes by ID (notes-by-id-card, loadNotesById, GET /tasks/{id}/notes, card-per-note with timestamp) | +3 | 1588 |
+| 273 | #172 | Batch Status by Label (batch-by-id-card, loadBatchById, GET /tasks?label=X&limit=50, grouped by-status count) | +3 | 1591 |
 
-**Current state:** 1579/1579 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1591/1591 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

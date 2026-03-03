@@ -1233,6 +1233,52 @@
     </details>
   </div>
 
+  <!-- ── Memory Store Info card (Phase 274) ───────────────────── -->
+  <div class="card" id="memory-store-info-card">
+    <details id="memory-store-info-section">
+      <summary style="cursor:pointer">Memory Store Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMemoryStoreInfo()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="memory-store-info-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Deliveries card (Phase 275) ───────────────────── -->
+  <div class="card" id="webhook-deliveries-card">
+    <details id="webhook-deliveries-section">
+      <summary style="cursor:pointer">Webhook Deliveries
+        <input id="webhook-deliveries-id" placeholder="webhook ID" style="width:140px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadWebhookDeliveries()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="webhook-deliveries-body" style="font-size:12px;color:var(--text-dim)">Enter webhook ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── System Health card (Phase 276) ────────────────────────── -->
+  <div class="card" id="system-health-card">
+    <details id="system-health-section">
+      <summary style="cursor:pointer">System Health <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSystemHealth()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="system-health-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Labels List card (Phase 277) ─────────────────────── -->
+  <div class="card" id="task-labels-list-card">
+    <details id="task-labels-list-section">
+      <summary style="cursor:pointer">Task Labels
+        <input id="task-labels-list-id" placeholder="task ID" style="width:200px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTaskLabelsList()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="task-labels-list-body" style="font-size:12px;color:var(--text-dim)">Enter a task ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Status Breakdown card (Phase 270) ───────────────── -->
   <div class="card" id="task-status-breakdown-card">
     <details id="task-status-breakdown-section">
@@ -4952,6 +4998,86 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 274: Memory Store Info ──────────────────────────────────────────────
+async function loadMemoryStoreInfo() {
+  const el = document.getElementById('memory-store-info-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/memory/stats');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const fields = ['total_chunks', 'total_documents', 'dimensions', 'index_type', 'embedding_model'];
+    el.innerHTML = fields
+      .filter(f => data[f] != null)
+      .map(f => `<div class="td-field"><span class="td-label">${f}</span><span class="td-value">${
+        typeof data[f] === 'number' ? data[f].toLocaleString() : data[f]
+      }</span></div>`)
+      .join('') || '<div style="color:var(--text-xdim)">Memory store not enabled or empty.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 275: Webhook Deliveries ─────────────────────────────────────────────
+async function loadWebhookDeliveries() {
+  const el = document.getElementById('webhook-deliveries-body');
+  const id = (document.getElementById('webhook-deliveries-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a webhook ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/webhooks/${encodeURIComponent(id)}/deliveries`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const deliveries = Array.isArray(data) ? data : (data.deliveries || []);
+    if (!deliveries.length) { el.textContent = 'No deliveries found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Status</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Event</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Delivered</th></tr>' +
+      deliveries.slice(0, 20).map(d => `<tr>
+        <td style="padding:2px 4px">${d.status_code||d.status||'?'}</td>
+        <td style="padding:2px 4px">${d.event_type||d.event||'—'}</td>
+        <td style="padding:2px 4px">${(d.created_at||d.delivered_at||'').slice(0,16)}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 276: System Health ──────────────────────────────────────────────────
+async function loadSystemHealth() {
+  const el = document.getElementById('system-health-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const ignore = new Set(['timestamp', 'uptime_seconds', 'version']);
+    const entries = Object.entries(data).filter(([k]) => !ignore.has(k));
+    el.innerHTML = entries.map(([k, v]) => {
+      const ok = v === 'ok' || v === true || v === 'healthy';
+      const color = ok ? '#2ecc71' : (v === false || v === 'error' ? '#e74c3c' : 'var(--text)');
+      return `<div class="td-field"><span class="td-label">${k}</span><span class="td-value" style="color:${color}">${
+        typeof v === 'object' ? JSON.stringify(v) : String(v)
+      }</span></div>`;
+    }).join('') || '<div style="color:var(--text-xdim)">No health data.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 277: Task Labels List ───────────────────────────────────────────────
+async function loadTaskLabelsList() {
+  const el = document.getElementById('task-labels-list-body');
+  const id = (document.getElementById('task-labels-list-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a task ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const labels = data.labels || data.tags || [];
+    if (!labels.length) { el.textContent = 'No labels on this task.'; return; }
+    el.innerHTML = labels.map(l =>
+      `<span style="display:inline-block;background:var(--border);border-radius:4px;padding:2px 8px;margin:2px;font-size:11px">${l}</span>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 270: Task Status Breakdown ─────────────────────────────────────────

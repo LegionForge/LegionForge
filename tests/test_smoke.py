@@ -17632,3 +17632,119 @@ def test_p273_ui_batch_by_id_uses_label_param():
     idx = html.index("async function loadBatchById()")
     fn_body = html[idx : idx + 800]
     assert "label" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 274: Memory Store Info ──────────────────────────────────────────────
+
+
+def test_p274_ui_memory_store_info_card_present():
+    """memory-store-info-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-store-info-card" in html
+
+
+def test_p274_ui_load_memory_store_info_function_defined():
+    """loadMemoryStoreInfo() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemoryStoreInfo()" in html
+
+
+def test_p274_ui_memory_store_info_calls_memory_stats():
+    """loadMemoryStoreInfo calls /memory/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMemoryStoreInfo()")
+    fn_body = html[idx : idx + 700]
+    assert "/memory/stats" in fn_body
+
+
+# ── Phase 275: Webhook Deliveries ─────────────────────────────────────────────
+
+
+def test_p275_ui_webhook_deliveries_card_present():
+    """webhook-deliveries-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-deliveries-card" in html
+
+
+def test_p275_ui_load_webhook_deliveries_function_defined():
+    """loadWebhookDeliveries() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookDeliveries()" in html
+
+
+def test_p275_ui_webhook_deliveries_calls_deliveries_endpoint():
+    """loadWebhookDeliveries calls /webhooks/{id}/deliveries."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadWebhookDeliveries()")
+    fn_body = html[idx : idx + 700]
+    assert "/deliveries" in fn_body and "/webhooks/" in fn_body
+
+
+# ── Phase 276: System Health ──────────────────────────────────────────────────
+
+
+def test_p276_ui_system_health_card_present():
+    """system-health-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "system-health-card" in html
+
+
+def test_p276_ui_load_system_health_function_defined():
+    """loadSystemHealth() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSystemHealth()" in html
+
+
+def test_p276_ui_system_health_calls_health():
+    """loadSystemHealth calls /health."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadSystemHealth()")
+    fn_body = html[idx : idx + 700]
+    assert "/health" in fn_body
+
+
+# ── Phase 277: Task Labels List ───────────────────────────────────────────────
+
+
+def test_p277_ui_task_labels_list_card_present():
+    """task-labels-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-labels-list-card" in html
+
+
+def test_p277_ui_load_task_labels_list_function_defined():
+    """loadTaskLabelsList() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskLabelsList()" in html
+
+
+def test_p277_ui_task_labels_list_calls_tasks():
+    """loadTaskLabelsList calls /tasks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskLabelsList()")
+    fn_body = html[idx : idx + 700]
+    assert "labels" in fn_body and "/tasks/" in fn_body
