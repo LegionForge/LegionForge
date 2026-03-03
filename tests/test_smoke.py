@@ -14077,3 +14077,128 @@ def test_p153_ui_load_tag_cloud_aggregates_tags_from_tasks():
     fn_body = html[fn_start : fn_start + 800]
     assert "/tasks" in fn_body
     assert "tags" in fn_body
+
+
+# ── Phase 154: Multi-Tag Search ───────────────────────────────────────────────
+
+
+def test_p154_ui_multi_tag_search_card_present():
+    """Multi-tag search card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "multi-tag-search-card" in html
+
+
+def test_p154_ui_search_by_multiple_tags_function_defined():
+    """searchByMultipleTags() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function searchByMultipleTags(" in html
+
+
+def test_p154_ui_search_by_multiple_tags_uses_tags_array_param():
+    """searchByMultipleTags() uses tags[] query parameters."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchByMultipleTags(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "tags[]" in fn_body or "tags%5B%5D" in fn_body or "tags" in fn_body
+
+
+# ── Phase 155: Threats Live Monitor ───────────────────────────────────────────
+
+
+def test_p155_ui_threats_monitor_card_present():
+    """Threats monitor card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threats-monitor-card" in html
+
+
+def test_p155_ui_load_threats_monitor_function_defined():
+    """loadThreatsMonitor() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadThreatsMonitor(" in html
+
+
+def test_p155_ui_load_threats_monitor_fetches_admin_threats():
+    """loadThreatsMonitor() fetches /admin/threats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadThreatsMonitor(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/admin/threats" in fn_body
+
+
+# ── Phase 156: Pipeline Health Overview ───────────────────────────────────────
+
+
+def test_p156_ui_pipeline_health_card_present():
+    """Pipeline health card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-health-card" in html
+
+
+def test_p156_ui_load_pipeline_health_function_defined():
+    """loadPipelineHealth() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineHealth(" in html
+
+
+def test_p156_ui_load_pipeline_health_fetches_pipelines():
+    """loadPipelineHealth() fetches /pipelines."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineHealth(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/pipelines" in fn_body
+
+
+# ── Phase 157: Token Budget Progress Bar ──────────────────────────────────────
+
+
+def test_p157_ui_token_budget_card_present():
+    """Token budget card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "token-budget-card" in html
+
+
+def test_p157_ui_load_token_budget_function_defined():
+    """loadTokenBudget() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTokenBudget(" in html
+
+
+def test_p157_ui_load_token_budget_fetches_usage_me():
+    """loadTokenBudget() fetches /usage/me."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTokenBudget(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/usage/me" in fn_body
+
+
+def test_p157_ui_token_bar_css_defined():
+    """Token bar CSS class is defined in the style block."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "token-bar-fill" in html
+    assert "token-bar-wrap" in html

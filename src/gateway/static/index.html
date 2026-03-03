@@ -152,6 +152,11 @@
     /* ── Phase 114: MCP Tools ────────────────────────────────── */
     .mcp-row { display:grid; grid-template-columns:1fr 70px; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .mcp-row:last-child { border-bottom:none; }
+    /* ── Phase 157: Token Budget Progress Bar ────────────────── */
+    .token-bar-wrap { height:6px; background:var(--border2); border-radius:3px; overflow:hidden; margin-top:3px; }
+    .token-bar-fill { height:100%; border-radius:3px; background:var(--green); transition:width 0.4s; }
+    .token-bar-fill.warn { background:var(--yellow,#f5a623); }
+    .token-bar-fill.danger { background:var(--red); }
     /* ── Phase 105: Document List ────────────────────────────── */
     .doc-row { display:grid; grid-template-columns:1fr 80px 40px; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .doc-row:last-child { border-bottom:none; }
@@ -1175,6 +1180,45 @@
           <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadAuditFiltered()">Search</button>
         </div>
         <div id="audit-filter-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Multi-Tag Search card (Phase 154) ────────────────── -->
+  <div class="card" id="multi-tag-search-card">
+    <details id="multi-tag-search-section">
+      <summary style="cursor:pointer">Multi-Tag Task Search</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="multi-tag-input" placeholder="tag1, tag2, tag3 (comma-separated)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="searchByMultipleTags()">Search</button>
+        <div id="multi-tag-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Threats Live Monitor card (Phase 155) ─────────────── -->
+  <div class="card" id="threats-monitor-card">
+    <details id="threats-monitor-section">
+      <summary style="cursor:pointer">Threats Live Monitor <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatsMonitor(event)" title="Refresh">↻</button></summary>
+      <div id="threats-monitor-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load threat events.</div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Health Overview card (Phase 156) ─────────── -->
+  <div class="card" id="pipeline-health-card">
+    <details id="pipeline-health-section">
+      <summary style="cursor:pointer">Pipeline Health Overview <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineHealth(event)" title="Refresh">↻</button></summary>
+      <div id="pipeline-health-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load pipelines.</div>
+    </details>
+  </div>
+
+  <!-- ── Token Budget Bar card (Phase 157) ─────────────────── -->
+  <div class="card" id="token-budget-card">
+    <details id="token-budget-section">
+      <summary style="cursor:pointer">Token Budget <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTokenBudget(event)" title="Refresh">↻</button></summary>
+      <div id="token-budget-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">
+        <div class="token-bar-wrap"><div class="token-bar-fill" id="token-bar-fill" style="width:0%"></div></div>
+        <div id="token-budget-text" style="margin-top:4px;font-size:11px"></div>
       </div>
     </details>
   </div>
@@ -3506,6 +3550,96 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 154: Multi-Tag Search ───────────────────────────────────────────────
+async function searchByMultipleTags() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const rawInput = (document.getElementById('multi-tag-input') || {}).value.trim();
+  if (!rawInput) { alert('Enter at least one tag.'); return; }
+  const tags = rawInput.split(',').map(t => t.trim()).filter(Boolean);
+  const bodyEl = document.getElementById('multi-tag-body');
+  if (bodyEl) bodyEl.textContent = 'Searching…';
+  try {
+    const qs = tags.map(t => 'tags[]=' + encodeURIComponent(t)).join('&');
+    const r = await fetch(`/tasks?${qs}&limit=20`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No tasks match all specified tags.'; return; }
+    bodyEl.innerHTML = tasks.map(t =>
+      `<div class="td-field"><span class="td-label">${(t.task_id || t.id || '').slice(0,8)}</span><span class="td-value">${t.status || ''} — ${escapeHtml((t.task_text || '').slice(0,60))}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 155: Threats Live Monitor ───────────────────────────────────────────
+async function loadThreatsMonitor(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('threats-monitor-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/admin/threats?limit=10&since_hours=1', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 403) { if (bodyEl) bodyEl.textContent = 'Admin access required.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    const threats = d.events || d.threats || [];
+    if (!bodyEl) return;
+    if (!threats.length) { bodyEl.textContent = 'No threat events in the last hour.'; return; }
+    bodyEl.innerHTML = threats.map(t => {
+      const ts = t.ts || t.timestamp || t.created_at || '';
+      const tsStr = ts ? new Date(ts).toLocaleTimeString() : '';
+      return `<div class="td-field"><span class="td-label" style="color:var(--red);font-size:10px">${escapeHtml(t.threat_type || t.type || '')}</span><span class="td-value" style="color:var(--text-xdim)">${escapeHtml(tsStr)}</span></div>`;
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 156: Pipeline Health Overview ───────────────────────────────────────
+async function loadPipelineHealth(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('pipeline-health-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/pipelines', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const pipelines = Array.isArray(data) ? data : (data.pipelines || []);
+    if (!bodyEl) return;
+    if (!pipelines.length) { bodyEl.textContent = 'No pipelines found.'; return; }
+    bodyEl.innerHTML = pipelines.map(p => {
+      const steps = (p.steps || []).length;
+      return `<div class="td-field"><span class="td-label">${escapeHtml(p.name || '')}</span><span class="td-value" style="color:var(--text-xdim)">${steps} step${steps !== 1 ? 's' : ''}</span></div>`;
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 157: Token Budget Progress Bar ──────────────────────────────────────
+async function loadTokenBudget(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const textEl = document.getElementById('token-budget-text');
+  const fillEl = document.getElementById('token-bar-fill');
+  if (textEl) textEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/usage/me', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (textEl) textEl.textContent = 'Error ' + r.status; return; }
+    const d = await r.json();
+    const used = (d.today || {}).tokens_used || 0;
+    const limit = d.daily_limit || 100000;
+    const pct = Math.min(100, Math.round((used / limit) * 100));
+    if (fillEl) {
+      fillEl.style.width = pct + '%';
+      fillEl.className = 'token-bar-fill' + (pct >= 90 ? ' danger' : pct >= 70 ? ' warn' : '');
+    }
+    if (textEl) textEl.textContent = `${used.toLocaleString()} / ${limit.toLocaleString()} tokens (${pct}%)`;
+  } catch(e) { if (textEl) textEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 150: Task Quick Clone ───────────────────────────────────────────────
