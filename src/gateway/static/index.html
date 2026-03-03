@@ -1080,6 +1080,68 @@
     </details>
   </div>
 
+  <!-- ── Attachment Content Viewer card (Phase 134) ──────── -->
+  <div class="card" id="attachment-viewer-card">
+    <details id="attachment-viewer-section">
+      <summary style="cursor:pointer">Attachment Viewer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="av-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <input id="av-attach-id" placeholder="Attachment ID (UUID)" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="viewAttachment()">↻ View</button>
+          <button class="btn ghost" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="deleteAttachment()">🗑 Delete</button>
+        </div>
+        <div id="av-result" style="font-size:11px;color:var(--text-xdim)"></div>
+        <pre id="av-content" style="display:none;margin:0;padding:6px;background:var(--panel2);border-radius:var(--radius);font-size:10px;white-space:pre-wrap;word-break:break-word;max-height:150px;overflow-y:auto;border:1px solid var(--border2)"></pre>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Status Filter card (Phase 135) ───────────────── -->
+  <div class="card" id="status-filter-card">
+    <details id="status-filter-section">
+      <summary style="cursor:pointer">Tasks by Status</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <select id="status-filter-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="queued">queued</option>
+          <option value="running">running</option>
+          <option value="complete">complete</option>
+          <option value="failed">failed</option>
+          <option value="cancelled">cancelled</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTasksByStatus()">Search</button>
+      </div>
+      <div id="status-filter-body" style="margin-top:6px;color:var(--text-xdim);font-size:12px">Select a status and click Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Admin User Profile card (Phase 136) ───────────────── -->
+  <div class="card" id="admin-user-profile-card">
+    <details id="admin-user-profile-section">
+      <summary style="cursor:pointer">Admin User Profile</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <input id="admin-profile-user" placeholder="Username" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadAdminUserProfile()">↻ Load</button>
+      </div>
+      <div id="admin-profile-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter username and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Note Quick-Add card (Phase 137) ──────────────── -->
+  <div class="card" id="note-quick-add-card">
+    <details id="note-quick-add-section">
+      <summary style="cursor:pointer">Quick Note</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <input id="note-quick-task-id" placeholder="Task ID (UUID)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <textarea id="note-quick-text" placeholder="Note text…" style="width:100%;height:50px;font-size:11px;padding:4px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="addQuickNote()">+ Add Note</button>
+        <div id="note-quick-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Usage History Detail card (Phase 130) ───────────── -->
   <div class="card" id="usage-history-card">
     <details id="usage-history-section">
@@ -3244,6 +3306,101 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 134: Attachment Content Viewer ──────────────────────────────────────
+async function viewAttachment() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('av-task-id') || {}).value.trim();
+  const attachId = (document.getElementById('av-attach-id') || {}).value.trim();
+  if (!taskId || !attachId) { alert('Enter Task ID and Attachment ID.'); return; }
+  const resultEl = document.getElementById('av-result');
+  const contentEl = document.getElementById('av-content');
+  resultEl.textContent = 'Loading…';
+  if (contentEl) contentEl.style.display = 'none';
+  try {
+    const r = await fetch(`/tasks/${taskId}/attachments/${attachId}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { resultEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    resultEl.textContent = `${data.filename || attachId} (${data.content_type || 'unknown'})`;
+    if (contentEl) { contentEl.textContent = data.data || ''; contentEl.style.display = 'block'; }
+  } catch(e) { resultEl.textContent = 'Fetch error: ' + e.message; }
+}
+async function deleteAttachment() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('av-task-id') || {}).value.trim();
+  const attachId = (document.getElementById('av-attach-id') || {}).value.trim();
+  if (!taskId || !attachId) { alert('Enter Task ID and Attachment ID.'); return; }
+  if (!confirm('Delete attachment ' + attachId + '?')) return;
+  const resultEl = document.getElementById('av-result');
+  resultEl.textContent = 'Deleting…';
+  try {
+    const r = await fetch(`/tasks/${taskId}/attachments/${attachId}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey } });
+    resultEl.textContent = r.ok ? 'Deleted.' : 'Error ' + r.status;
+  } catch(e) { resultEl.textContent = 'Delete error: ' + e.message; }
+}
+
+// ── Phase 135: Task Status Filter ─────────────────────────────────────────────
+async function loadTasksByStatus() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const status = (document.getElementById('status-filter-sel') || {}).value;
+  const bodyEl = document.getElementById('status-filter-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const qs = status ? `?status=${encodeURIComponent(status)}&limit=20` : '?limit=20';
+    const r = await fetch(`/tasks${qs}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No tasks found.'; return; }
+    bodyEl.innerHTML = tasks.map(t =>
+      `<div class="td-field"><span class="td-label">${(t.task_id || t.id || '').slice(0,8)}</span><span class="td-value">${t.status || ''} — ${(t.task_text || '').slice(0,60)}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 136: Admin User Profile ─────────────────────────────────────────────
+async function loadAdminUserProfile() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const username = (document.getElementById('admin-profile-user') || {}).value.trim();
+  if (!username) { alert('Enter a username.'); return; }
+  const bodyEl = document.getElementById('admin-profile-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/admin/users/${encodeURIComponent(username)}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const u = await r.json();
+    if (!bodyEl) return;
+    const fields = [['user_id', u.user_id], ['username', u.username], ['is_admin', String(u.is_admin || false)],
+      ['daily_token_limit', String(u.daily_token_limit || '')], ['active', String(u.active !== false)]];
+    bodyEl.innerHTML = fields.map(([k,v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 137: Task Note Quick-Add ────────────────────────────────────────────
+async function addQuickNote() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('note-quick-task-id') || {}).value.trim();
+  const text = (document.getElementById('note-quick-text') || {}).value.trim();
+  if (!taskId || !text) { alert('Enter Task ID and note text.'); return; }
+  const resultEl = document.getElementById('note-quick-result');
+  if (resultEl) resultEl.textContent = 'Saving…';
+  try {
+    const r = await fetch(`/tasks/${taskId}/notes`, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note_text: text })
+    });
+    if (resultEl) resultEl.textContent = r.ok ? 'Note added.' : 'Error ' + r.status;
+    if (r.ok) { const t = document.getElementById('note-quick-text'); if (t) t.value = ''; }
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 130: Usage History Detail ───────────────────────────────────────────

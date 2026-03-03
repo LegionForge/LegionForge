@@ -13451,3 +13451,139 @@ def test_p133_ui_view_shared_task_fetches_shared_endpoint():
     fn_start = html.find("function viewSharedTask(")
     fn_body = html[fn_start : fn_start + 600]
     assert "/shared/" in fn_body
+
+
+# ── Phase 134: Attachment Content Viewer ──────────────────────────────────────
+
+
+def test_p134_ui_attachment_viewer_card_present():
+    """Attachment viewer card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "attachment-viewer-card" in html
+
+
+def test_p134_ui_view_attachment_function_defined():
+    """viewAttachment() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function viewAttachment(" in html
+
+
+def test_p134_ui_view_attachment_fetches_endpoint():
+    """viewAttachment() fetches /tasks/{id}/attachments/{attachId}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function viewAttachment(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/attachments/" in fn_body
+
+
+def test_p134_ui_delete_attachment_function_defined():
+    """deleteAttachment() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteAttachment(" in html
+
+
+def test_p134_ui_delete_attachment_uses_delete_method():
+    """deleteAttachment() sends DELETE request."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function deleteAttachment(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "DELETE" in fn_body
+
+
+# ── Phase 135: Task Status Filter ─────────────────────────────────────────────
+
+
+def test_p135_ui_status_filter_card_present():
+    """Status filter card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "status-filter-card" in html
+
+
+def test_p135_ui_load_tasks_by_status_function_defined():
+    """loadTasksByStatus() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTasksByStatus(" in html
+
+
+def test_p135_ui_load_tasks_by_status_fetches_tasks_endpoint():
+    """loadTasksByStatus() fetches /tasks with status param."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTasksByStatus(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "status" in fn_body
+    assert "/tasks" in fn_body
+
+
+# ── Phase 136: Admin User Profile ─────────────────────────────────────────────
+
+
+def test_p136_ui_admin_user_profile_card_present():
+    """Admin user profile card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-user-profile-card" in html
+
+
+def test_p136_ui_load_admin_user_profile_function_defined():
+    """loadAdminUserProfile() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAdminUserProfile(" in html
+
+
+def test_p136_ui_load_admin_user_profile_fetches_admin_users():
+    """loadAdminUserProfile() fetches /admin/users/{username}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAdminUserProfile(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/admin/users/" in fn_body
+
+
+# ── Phase 137: Task Note Quick-Add ────────────────────────────────────────────
+
+
+def test_p137_ui_note_quick_add_card_present():
+    """Note quick-add card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "note-quick-add-card" in html
+
+
+def test_p137_ui_add_quick_note_function_defined():
+    """addQuickNote() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function addQuickNote(" in html
+
+
+def test_p137_ui_add_quick_note_posts_to_notes_endpoint():
+    """addQuickNote() POSTs to /tasks/{id}/notes."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function addQuickNote(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/notes" in fn_body
+    assert "POST" in fn_body
