@@ -1732,5 +1732,8 @@ Added as compact addendum. See git log for full details.
 | 96 | #128 | Pipeline Run History (run-history-card, loadPipelineRuns, GET /pipelines/{id}/runs) | +3 | 1030 |
 | 97 | #128 | Audit Chain Integrity Verify (audit-verify-card, verifyAuditChain, GET /admin/audit/verify, ✓/✗ display) | +4 | 1034 |
 | 98 | #128 | Task Attachments Viewer (attachments-card, loadAttachments, GET /tasks/{id}/attachments) | +3 | 1037 |
+| 99 | #129 | API Key Rotation UI (rotate-key-card, rotateApiKey, POST /auth/rotate-key, auto-fill input) | +4 | 1041 |
+| 100 | #129 | Batch Task Submission UI (batch-card, submitBatch, POST /tasks/batch, ≤20 task guard) | +4 | 1045 |
+| 101 | #129 | Session Tasks Browser (session-tasks-card, loadSessionTasks, GET /sessions/{id}/tasks) | +4 | 1049 |
 
-**Current state:** 1037/1037 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1049/1049 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

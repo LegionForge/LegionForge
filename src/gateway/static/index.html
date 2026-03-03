@@ -142,6 +142,10 @@
     .sched-form-row { display:flex; gap:8px; }
     .sched-form-row input, .sched-form-row select, .sched-form-row textarea { flex:1; }
     #sched-empty { color:var(--text-xdim); font-size:12px; }
+    /* ── Phase 105: Document List ────────────────────────────── */
+    .doc-row { display:grid; grid-template-columns:1fr 80px 40px; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .doc-row:last-child { border-bottom:none; }
+    .doc-preview { color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         /* ── Light mode override (Phase 72) ─────────────────────────── */
     body.light-mode {
       --bg:        #f6f8fa;
@@ -967,6 +971,44 @@
         <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadSessionTasks()">↻</button>
       </div>
       <div id="sess-tasks-list" style="color:var(--text-xdim);font-size:12px">Select a session above and click ↻.</div>
+    </details>
+  </div>
+
+  <!-- ── Bulk Task Operations card (Phase 102) ────────────── -->
+  <div class="card" id="bulk-ops-card">
+    <details id="bulk-ops-section">
+      <summary style="cursor:pointer">Bulk Task Operations</summary>
+      <p style="font-size:11px;color:var(--text-dim);margin:6px 0">Paste task IDs (one per line) then choose an action.</p>
+      <textarea id="bulk-ids-input" rows="3" placeholder="task-uuid-1&#10;task-uuid-2&#10;task-uuid-3" style="width:100%;box-sizing:border-box;font-size:11px;padding:5px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical"></textarea>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="bulkCancel()">✕ Cancel</button>
+        <button class="btn ghost" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="bulkDelete()">🗑 Delete</button>
+        <div style="display:flex;gap:4px;align-items:center">
+          <input id="bulk-tag-input" placeholder="tag name" style="width:90px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost" style="font-size:11px;padding:3px 8px" onclick="bulkTag()">🏷 Tag</button>
+        </div>
+      </div>
+      <div id="bulk-result" style="margin-top:8px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── Task Shares List card (Phase 104) ─────────────────── -->
+  <div class="card" id="shares-list-card">
+    <details id="shares-list-section">
+      <summary style="cursor:pointer">Task Share Links</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <input id="shares-task-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadShares()">↻</button>
+      </div>
+      <div id="shares-list" style="color:var(--text-xdim);font-size:12px">Enter task ID and click ↻.</div>
+    </details>
+  </div>
+
+  <!-- ── Document List card (Phase 105) ────────────────────── -->
+  <div class="card" id="doc-list-card">
+    <details id="doc-list-section">
+      <summary style="cursor:pointer">Documents <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocuments(event)" title="Refresh">↻</button></summary>
+      <div id="doc-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load documents.</div>
     </details>
   </div>
 
@@ -2760,6 +2802,146 @@ async function loadAnnotations(evt) {
     }).join('') +
     '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing ' + items.length + ' annotation(s)</div>';
   } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 102: Bulk Task Operations ───────────────────────────────────────────
+function _getBulkTaskIds() {
+  const ta = document.getElementById('bulk-ids-input');
+  if (!ta) return [];
+  return ta.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+}
+
+async function bulkCancel() {
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('bulk-result');
+  if (!resultEl) return;
+  const ids = _getBulkTaskIds();
+  if (!apiKey) { resultEl.textContent = 'Enter API key.'; return; }
+  if (!ids.length) { resultEl.textContent = 'Enter task IDs first.'; return; }
+  resultEl.textContent = 'Cancelling…';
+  try {
+    const res = await fetch('/tasks/bulk/cancel', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_ids: ids }),
+    });
+    if (!res.ok) { const e = await res.json(); resultEl.textContent = 'Error: ' + (e.detail || res.status); return; }
+    const d = await res.json();
+    resultEl.innerHTML = '<span style="color:var(--green)">✓ Cancelled ' + d.cancelled + ' of ' + d.requested + ' task(s)</span>';
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+async function bulkDelete() {
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('bulk-result');
+  if (!resultEl) return;
+  const ids = _getBulkTaskIds();
+  if (!apiKey) { resultEl.textContent = 'Enter API key.'; return; }
+  if (!ids.length) { resultEl.textContent = 'Enter task IDs first.'; return; }
+  if (!confirm('Permanently delete ' + ids.length + ' task(s)?')) return;
+  resultEl.textContent = 'Deleting…';
+  try {
+    const res = await fetch('/tasks/bulk/delete', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_ids: ids }),
+    });
+    if (!res.ok) { const e = await res.json(); resultEl.textContent = 'Error: ' + (e.detail || res.status); return; }
+    const d = await res.json();
+    resultEl.innerHTML = '<span style="color:var(--green)">✓ Deleted ' + d.deleted + ' of ' + d.requested + ' task(s)</span>';
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+async function bulkTag() {
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('bulk-result');
+  const tagInput = document.getElementById('bulk-tag-input');
+  if (!resultEl || !tagInput) return;
+  const ids = _getBulkTaskIds();
+  const tag = tagInput.value.trim();
+  if (!apiKey) { resultEl.textContent = 'Enter API key.'; return; }
+  if (!ids.length) { resultEl.textContent = 'Enter task IDs first.'; return; }
+  if (!tag) { resultEl.textContent = 'Enter a tag name.'; return; }
+  resultEl.textContent = 'Tagging…';
+  try {
+    const res = await fetch('/tasks/bulk/tag', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_ids: ids, tags: [tag] }),
+    });
+    if (!res.ok) { const e = await res.json(); resultEl.textContent = 'Error: ' + (e.detail || res.status); return; }
+    const d = await res.json();
+    resultEl.innerHTML = '<span style="color:var(--green)">✓ Tagged ' + d.tagged + ' of ' + d.requested + ' task(s) with "' + escapeHtml(tag) + '"</span>';
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 104: Task Shares List ───────────────────────────────────────────────
+async function loadShares() {
+  const apiKey = el.apiKey().value.trim();
+  const taskIdInput = document.getElementById('shares-task-id');
+  const listEl = document.getElementById('shares-list');
+  if (!listEl || !taskIdInput) return;
+  const taskId = taskIdInput.value.trim();
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  if (!taskId) { listEl.textContent = 'Enter a task ID.'; return; }
+  listEl.textContent = 'Loading shares…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId) + '/shares', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 404) { listEl.textContent = 'Task not found.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load shares (status ' + res.status + ').'; return; }
+    const d = await res.json();
+    const shares = d.shares || [];
+    if (!shares.length) { listEl.textContent = 'No share links for this task.'; return; }
+    listEl.innerHTML = shares.map(s => {
+      const url = s.share_url || ('/share/' + s.share_token);
+      const exp = s.expires_at ? new Date(s.expires_at).toLocaleString() : 'never';
+      return '<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border2);font-size:11px">' +
+        '<a href="' + escapeHtml(url) + '" target="_blank" style="color:var(--blue);font-family:var(--mono);font-size:10px">' + escapeHtml(url) + '</a>' +
+        '<span style="color:var(--text-xdim)">exp: ' + escapeHtml(exp) + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">' + shares.length + ' share link(s)</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 105: Document List ───────────────────────────────────────────────────
+async function loadDocuments(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('doc-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  listEl.textContent = 'Loading documents…';
+  try {
+    const res = await fetch('/documents?limit=20', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (res.status === 503) { listEl.textContent = 'Memory/documents not enabled on this instance.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load documents.'; return; }
+    const d = await res.json();
+    const docs = d.documents || [];
+    if (!docs.length) { listEl.textContent = 'No documents ingested yet.'; return; }
+    listEl.innerHTML = docs.map(doc => {
+      const preview = (doc.content_preview || '').slice(0, 60);
+      const src = doc.source ? escapeHtml(doc.source.slice(0, 20)) : '—';
+      return '<div class="doc-row">' +
+        '<span class="doc-preview">' + escapeHtml(preview) + '</span>' +
+        '<span style="color:var(--text-xdim)">' + src + '</span>' +
+        '<button class="btn ghost icon" style="font-size:11px;color:var(--red)" onclick="deleteDocument(' + JSON.stringify(doc.id || doc.document_id) + ')">✕</button>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing ' + docs.length + ' of ' + (d.count || docs.length) + ' document(s)</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+async function deleteDocument(docId) {
+  if (!confirm('Delete this document?')) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    await fetch('/documents/' + encodeURIComponent(docId), { method: 'DELETE', headers: { Authorization: 'Bearer ' + apiKey } });
+    await loadDocuments(null);
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── Phase 99: API Key Rotation ─────────────────────────────────────────────────
