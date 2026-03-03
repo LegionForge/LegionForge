@@ -14462,3 +14462,129 @@ def test_p165_ui_priority_tasks_sorts_by_priority():
     fn_start = html.find("function loadHighPriorityTasks(")
     fn_body = html[fn_start : fn_start + 900]
     assert "priority" in fn_body
+
+
+# ── Phase 166: Task Keyword Search ────────────────────────────────────────────
+
+
+def test_p166_ui_keyword_search_card_present():
+    """#keyword-search-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "keyword-search-card" in html
+
+
+def test_p166_ui_search_tasks_by_keyword_function_defined():
+    """searchTasksByKeyword() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function searchTasksByKeyword(" in html
+
+
+def test_p166_ui_keyword_search_uses_q_param():
+    """searchTasksByKeyword() passes ?q= to the tasks endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchTasksByKeyword(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "?q=" in fn_body or "/tasks?q" in fn_body
+
+
+# ── Phase 167: Rate Limit Status ──────────────────────────────────────────────
+
+
+def test_p167_ui_rate_limit_card_present():
+    """#rate-limit-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rate-limit-card" in html
+
+
+def test_p167_ui_load_rate_limit_status_function_defined():
+    """loadRateLimitStatus() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadRateLimitStatus(" in html
+
+
+def test_p167_ui_rate_limit_shows_usage_percentage():
+    """loadRateLimitStatus() computes and shows a usage percentage."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadRateLimitStatus(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "%" in fn_body and "daily_limit" in fn_body
+
+
+# ── Phase 168: Notes Keyword Search ───────────────────────────────────────────
+
+
+def test_p168_ui_notes_search_card_present():
+    """#notes-search-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notes-search-card" in html
+
+
+def test_p168_ui_search_task_notes_function_defined():
+    """searchTaskNotes() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function searchTaskNotes(" in html
+
+
+def test_p168_ui_notes_search_filters_by_keyword():
+    """searchTaskNotes() filters notes by keyword client-side."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function searchTaskNotes(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "includes(" in fn_body or ".filter(" in fn_body
+
+
+# ── Phase 169: Session Delete with Confirmation ───────────────────────────────
+
+
+def test_p169_ui_session_delete_card_present():
+    """#session-delete-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-delete-card" in html
+
+
+def test_p169_ui_delete_session_with_confirm_function_defined():
+    """deleteSessionWithConfirm() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteSessionWithConfirm(" in html
+
+
+def test_p169_ui_delete_session_uses_delete_method():
+    """deleteSessionWithConfirm() uses DELETE HTTP method."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function deleteSessionWithConfirm(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "DELETE" in fn_body
+
+
+def test_p169_ui_delete_session_has_confirm_guard():
+    """deleteSessionWithConfirm() calls confirm() before deletion."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function deleteSessionWithConfirm(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "confirm(" in fn_body

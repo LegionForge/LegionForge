@@ -1808,4 +1808,9 @@ Added as compact addendum. See git log for full details.
 | 160 | #144 | Load More Cursor Pagination (load-more-card, loadMoreTasksFirst/Next/_fetchMoreTasks, cursor keyset) | +3 | 1246 |
 | 161 | #144 | Input Analyzer (char-counter-card, analyzeInput, chars/words/lines/token estimate client-side) | +3 | 1249 |
 
-**Current state:** 1249/1249 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 162 | #145 | Usage Week Chart (usage-chart-card, drawUsageChart, /usage/history?days=7, Unicode █ bar per day) | +4 | 1253 |
+| 163 | #145 | Task Dependency Chain (dependency-chain-card, loadDependencyChain, walks depends_on up to 10 hops) | +3 | 1256 |
+| 164 | #145 | Date-Filter Tasks (date-filter-card, filterTasksByDate, date input, client-side filter by created_at) | +3 | 1259 |
+| 165 | #145 | Priority Task Queue (priority-tasks-card, loadHighPriorityTasks, priority > 0 filter, sort descending) | +3 | 1262 |
+
+**Current state:** 1262/1262 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

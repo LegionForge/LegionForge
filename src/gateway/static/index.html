@@ -1184,6 +1184,51 @@
     </details>
   </div>
 
+  <!-- ── Task Keyword Search card (Phase 166) ─────────────── -->
+  <div class="card" id="keyword-search-card">
+    <details id="keyword-search-section">
+      <summary style="cursor:pointer">Task Keyword Search</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="keyword-search-input" placeholder="Search tasks by keyword…" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="searchTasksByKeyword()">↻ Search</button>
+      </div>
+      <div id="keyword-search-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter a keyword and click ↻ Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Rate Limit Status card (Phase 167) ────────────────── -->
+  <div class="card" id="rate-limit-card">
+    <details id="rate-limit-section">
+      <summary style="cursor:pointer">Rate Limit Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRateLimitStatus()" title="Refresh">↻</button></summary>
+      <div id="rate-limit-body" style="color:var(--text-xdim);font-size:12px;margin-top:6px">Click ↻ to load quota status.</div>
+    </details>
+  </div>
+
+  <!-- ── Notes Keyword Search card (Phase 168) ─────────────── -->
+  <div class="card" id="notes-search-card">
+    <details id="notes-search-section">
+      <summary style="cursor:pointer">Notes Keyword Search</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <input id="notes-search-task-id" placeholder="Task ID (UUID)" style="width:160px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="notes-search-keyword" placeholder="Keyword…" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="searchTaskNotes()">↻ Search</button>
+      </div>
+      <div id="notes-search-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID + keyword and click ↻ Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Session Delete card (Phase 169) ───────────────────── -->
+  <div class="card" id="session-delete-card">
+    <details id="session-delete-section">
+      <summary style="cursor:pointer">Delete Session</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="session-delete-id" placeholder="Session ID" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn danger" style="font-size:11px;padding:3px 8px" onclick="deleteSessionWithConfirm()">🗑 Delete</button>
+      </div>
+      <div id="session-delete-status" style="margin-top:6px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Usage Week Chart card (Phase 162) ────────────────── -->
   <div class="card" id="usage-chart-card">
     <details id="usage-chart-section">
@@ -3743,6 +3788,117 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 166: Task Keyword Search ────────────────────────────────────────────
+async function searchTasksByKeyword() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const keyword = (document.getElementById('keyword-search-input') || {}).value.trim();
+  if (!keyword) { alert('Enter a keyword.'); return; }
+  const bodyEl = document.getElementById('keyword-search-body');
+  if (bodyEl) bodyEl.textContent = 'Searching…';
+  try {
+    const res = await fetch('/tasks?q=' + encodeURIComponent(keyword) + '&limit=20', {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No tasks found for "' + keyword + '".'; return; }
+    const statusColor = { complete: 'var(--green)', failed: 'var(--red)', running: 'var(--yellow,#f5a623)', queued: 'var(--text-dim)' };
+    bodyEl.innerHTML = tasks.map(t => {
+      const id = (t.task_id || t.id || '?').toString().slice(0, 8);
+      const status = t.status || '?';
+      const text = (t.task || '').slice(0, 70);
+      const color = statusColor[status] || 'var(--text)';
+      return `<div class="td-field"><span class="td-label" style="color:${color}">${status}</span><span class="td-value" style="font-family:monospace">${id} ${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 167: Rate Limit Status ──────────────────────────────────────────────
+async function loadRateLimitStatus() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('rate-limit-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/usage/me', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    if (!bodyEl) return;
+    const dailyLimit = data.daily_limit || data.quota || 0;
+    const todayTokens = data.today_tokens || data.tokens_today || 0;
+    const pct = dailyLimit > 0 ? Math.round((todayTokens / dailyLimit) * 100) : 0;
+    const warnClass = pct >= 90 ? 'color:var(--red)' : pct >= 70 ? 'color:var(--yellow,#f5a623)' : 'color:var(--green)';
+    const fields = [
+      ['today tokens', todayTokens.toLocaleString()],
+      ['daily limit', dailyLimit > 0 ? dailyLimit.toLocaleString() : 'unlimited'],
+      ['usage %', `<span style="${warnClass}">${pct}%</span>`],
+      ['provider', data.provider || data.llm_provider || '—'],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 168: Notes Keyword Search ───────────────────────────────────────────
+async function searchTaskNotes() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('notes-search-task-id') || {}).value.trim();
+  const keyword = ((document.getElementById('notes-search-keyword') || {}).value || '').trim().toLowerCase();
+  if (!taskId) { alert('Enter a task ID.'); return; }
+  const bodyEl = document.getElementById('notes-search-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + encodeURIComponent(taskId) + '/notes', {
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const data = await res.json();
+    const notes = Array.isArray(data) ? data : (data.notes || data.items || []);
+    const filtered = keyword
+      ? notes.filter(n => (n.note_text || n.text || n.content || '').toLowerCase().includes(keyword))
+      : notes;
+    if (!bodyEl) return;
+    if (!filtered.length) { bodyEl.textContent = keyword ? 'No notes match "' + keyword + '".' : 'No notes found.'; return; }
+    bodyEl.innerHTML = filtered.map(n => {
+      const text = (n.note_text || n.text || n.content || '').slice(0, 120);
+      const ts = (n.created_at || n.timestamp || '').slice(0, 10);
+      return `<div class="td-field"><span class="td-label">${ts}</span><span class="td-value">${text}</span></div>`;
+    }).join('');
+  } catch (e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 169: Session Delete with Confirmation ────────────────────────────────
+async function deleteSessionWithConfirm() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sessionId = (document.getElementById('session-delete-id') || {}).value.trim();
+  if (!sessionId) { alert('Enter a session ID.'); return; }
+  if (!confirm('Delete session ' + sessionId + '? This cannot be undone.')) return;
+  const statusEl = document.getElementById('session-delete-status');
+  if (statusEl) statusEl.textContent = 'Deleting…';
+  try {
+    const res = await fetch('/sessions/' + encodeURIComponent(sessionId), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey },
+    });
+    if (!statusEl) return;
+    if (res.ok || res.status === 204) {
+      statusEl.textContent = 'Session deleted.';
+      statusEl.style.color = 'var(--green)';
+      // Refresh session list if visible
+      if (typeof loadSessions === 'function') loadSessions();
+    } else {
+      statusEl.textContent = 'Error ' + res.status;
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch (e) { if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--red)'; } }
 }
 
 // ── Phase 162: Usage Week Chart ───────────────────────────────────────────────
