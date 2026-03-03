@@ -1911,5 +1911,9 @@ Added as compact addendum. See git log for full details.
 | 255 | #168 | User Quota (user-quota-card, loadUserQuota, GET /usage/me, daily_token_quota/tokens_used/remaining/is_admin) | +3 | 1537 |
 | 256 | #168 | Model Preferences (model-prefs-card, loadModelPrefs, GET /preferences, model/agent/preference key filter) | +3 | 1540 |
 | 257 | #168 | Task Prompt History (task-prompt-history-card, loadTaskPromptHistory, GET /tasks?limit=20, ordered prompt list) | +3 | 1543 |
+| 258 | #169 | Recent Task Errors (recent-errors-card, loadRecentErrors, GET /tasks?status=failed&limit=15, ID/error/date table) | +3 | 1546 |
+| 259 | #169 | Threats by Type (threats-by-type-card, loadThreatsByType, GET /admin/threats/summary, type→count sorted breakdown) | +3 | 1549 |
+| 260 | #169 | Document Ingest Status (ingest-status-card, loadIngestStatus, GET /documents, doc count/total chunks/latest) | +3 | 1552 |
+| 261 | #169 | Available Agents (agent-list-card, loadAgentList, GET /agents, type/model/description table) | +3 | 1555 |
 
-**Current state:** 1543/1543 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1555/1555 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

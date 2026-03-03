@@ -1233,6 +1233,52 @@
     </details>
   </div>
 
+  <!-- ── Running Tasks card (Phase 262) ───────────────────────── -->
+  <div class="card" id="running-tasks-card">
+    <details id="running-tasks-section">
+      <summary style="cursor:pointer">Running Tasks <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRunningTasks()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="running-tasks-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Summary card (Phase 263) ─────────────────────── -->
+  <div class="card" id="pipeline-summary-card">
+    <details id="pipeline-summary-section">
+      <summary style="cursor:pointer">Pipeline Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineSummary()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="pipeline-summary-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Sessions card (Phase 264) ────────────────────────── -->
+  <div class="card" id="user-sessions-card">
+    <details id="user-sessions-section">
+      <summary style="cursor:pointer">User Sessions
+        <input id="user-sessions-username" placeholder="username" style="width:130px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadUserSessions()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="user-sessions-body" style="font-size:12px;color:var(--text-dim)">Enter username and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Dependency Graph card (Phase 265) ────────────────── -->
+  <div class="card" id="task-dependency-graph-card">
+    <details id="task-dependency-graph-section">
+      <summary style="cursor:pointer">Task Dependency Graph
+        <input id="task-dep-graph-id" placeholder="task ID" style="width:200px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTaskDependencyGraph()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="task-dependency-graph-body" style="font-size:12px;color:var(--text-dim)">Enter a task ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Recent Errors card (Phase 258) ───────────────────────── -->
   <div class="card" id="recent-errors-card">
     <details id="recent-errors-section">
@@ -4817,6 +4863,93 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 262: Running Tasks ──────────────────────────────────────────────────
+async function loadRunningTasks() {
+  const el = document.getElementById('running-tasks-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?status=running&limit=20');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = 'No tasks currently running.'; return; }
+    el.innerHTML = `<div style="color:var(--text-xdim);margin-bottom:4px">${tasks.length} running task(s)</div>` +
+      '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Agent</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Prompt</th></tr>' +
+      tasks.map(t => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(t.task_id||t.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px">${t.agent_type||'—'}</td>
+        <td style="padding:2px 4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.prompt||''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 263: Pipeline Summary ───────────────────────────────────────────────
+async function loadPipelineSummary() {
+  const el = document.getElementById('pipeline-summary-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines?limit=100');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const pipelines = Array.isArray(data) ? data : (data.pipelines || data.items || []);
+    const active = pipelines.filter(p => p.enabled !== false).length;
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Total Pipelines</span><span class="td-value">${pipelines.length}</span></div>`,
+      `<div class="td-field"><span class="td-label">Active</span><span class="td-value">${active}</span></div>`,
+      `<div class="td-field"><span class="td-label">Disabled</span><span class="td-value">${pipelines.length - active}</span></div>`,
+    ].concat(pipelines.slice(0, 5).map(p =>
+      `<div class="td-field"><span class="td-label">${p.name||p.pipeline_id||p.id}</span><span class="td-value">${p.steps?.length ?? '?'} step(s)</span></div>`
+    )).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 264: User Sessions ──────────────────────────────────────────────────
+async function loadUserSessions() {
+  const el = document.getElementById('user-sessions-body');
+  const username = (document.getElementById('user-sessions-username') || {value: ''}).value.trim();
+  if (!username) { el.textContent = 'Enter a username above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/sessions?username=${encodeURIComponent(username)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const sessions = Array.isArray(data) ? data : (data.sessions || data.items || []);
+    if (!sessions.length) { el.textContent = `No sessions found for "${username}".`; return; }
+    el.innerHTML = sessions.map(s =>
+      `<div class="td-field"><span class="td-label">${(s.session_id||s.id||'').slice(0,12)}</span>` +
+      `<span class="td-value">${s.title||s.name||'—'} · ${s.task_count ?? 0} tasks</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 265: Task Dependency Graph ─────────────────────────────────────────
+async function loadTaskDependencyGraph() {
+  const el = document.getElementById('task-dependency-graph-body');
+  const id = (document.getElementById('task-dep-graph-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a task ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const root = await r.json();
+    const depId = root.depends_on || root.dependency_id;
+    let depData = null;
+    if (depId) {
+      const dr = await apiFetch(`/tasks/${encodeURIComponent(depId)}`);
+      depData = dr.ok ? await dr.json() : null;
+    }
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Task</span><span class="td-value">${(root.task_id||root.id||'').slice(0,8)} · ${root.status||'?'}</span></div>`,
+      depId
+        ? `<div class="td-field"><span class="td-label">Depends On</span><span class="td-value">${depId.slice(0,8)} · ${depData ? depData.status : '?'}</span></div>`
+        : `<div class="td-field"><span class="td-label">Dependencies</span><span class="td-value">None</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 258: Recent Task Errors ─────────────────────────────────────────────

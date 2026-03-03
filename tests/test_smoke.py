@@ -17284,3 +17284,119 @@ def test_p261_ui_agent_list_calls_agents():
     idx = html.index("async function loadAgentList()")
     fn_body = html[idx : idx + 700]
     assert "/agents" in fn_body
+
+
+# ── Phase 262: Running Tasks ───────────────────────────────────────────────────
+
+
+def test_p262_ui_running_tasks_card_present():
+    """running-tasks-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "running-tasks-card" in html
+
+
+def test_p262_ui_load_running_tasks_function_defined():
+    """loadRunningTasks() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRunningTasks()" in html
+
+
+def test_p262_ui_running_tasks_filters_running_status():
+    """loadRunningTasks queries status=running."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadRunningTasks()")
+    fn_body = html[idx : idx + 700]
+    assert "running" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 263: Pipeline Summary ────────────────────────────────────────────────
+
+
+def test_p263_ui_pipeline_summary_card_present():
+    """pipeline-summary-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-summary-card" in html
+
+
+def test_p263_ui_load_pipeline_summary_function_defined():
+    """loadPipelineSummary() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineSummary()" in html
+
+
+def test_p263_ui_pipeline_summary_calls_pipelines():
+    """loadPipelineSummary calls /pipelines."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineSummary()")
+    fn_body = html[idx : idx + 800]
+    assert "/pipelines" in fn_body
+
+
+# ── Phase 264: User Sessions ──────────────────────────────────────────────────
+
+
+def test_p264_ui_user_sessions_card_present():
+    """user-sessions-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-sessions-card" in html
+
+
+def test_p264_ui_load_user_sessions_function_defined():
+    """loadUserSessions() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserSessions()" in html
+
+
+def test_p264_ui_user_sessions_calls_sessions():
+    """loadUserSessions calls /sessions?username=."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadUserSessions()")
+    fn_body = html[idx : idx + 700]
+    assert "/sessions" in fn_body and "username" in fn_body
+
+
+# ── Phase 265: Task Dependency Graph ──────────────────────────────────────────
+
+
+def test_p265_ui_task_dependency_graph_card_present():
+    """task-dependency-graph-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-dependency-graph-card" in html
+
+
+def test_p265_ui_load_task_dependency_graph_function_defined():
+    """loadTaskDependencyGraph() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskDependencyGraph()" in html
+
+
+def test_p265_ui_task_dependency_graph_reads_depends_on():
+    """loadTaskDependencyGraph reads depends_on field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskDependencyGraph()")
+    fn_body = html[idx : idx + 900]
+    assert "depends_on" in fn_body and "/tasks/" in fn_body
