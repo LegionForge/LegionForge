@@ -10710,3 +10710,61 @@ def test_p67_ui_highlight_supports_python_keywords():
     hc_end = html.find("// ── Copy result")
     body = html[hc_start:hc_end]
     assert "def" in body and "class" in body and "import" in body
+
+
+# ── Phase 68 — Task Pinning / Starring ────────────────────────────
+
+
+def test_p68_ui_has_toggle_star_function():
+    """Web UI defines toggleStar(idx, event) for pinning history items."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleStar(" in html
+
+
+def test_p68_ui_history_item_has_star_element():
+    """History item rendering includes a .hi-star element."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "hi-star" in html
+
+
+def test_p68_ui_toggle_star_calls_labels_api():
+    """toggleStar syncs starred state via PUT /tasks/{id}/labels."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleStar(")
+    fn_end = html.find("</script>")
+    body = html[fn_start:fn_end]
+    assert "/labels" in body
+    assert "PUT" in body
+
+
+def test_p68_ui_starred_items_float_to_top():
+    """renderHistory sorts starred items before unstarred."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    rh_start = html.find("function renderHistory(")
+    rh_end = html.find("function restoreHistory(")
+    body = html[rh_start:rh_end]
+    assert "starred" in body and "sort(" in body
+
+
+def test_p68_ui_starred_css_classes():
+    """CSS defines .history-item.starred and .hi-star styles."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".history-item.starred" in html
+    assert ".hi-star" in html
+
+
+def test_p68_labels_starred_is_valid():
+    """'starred' is in VALID_TASK_LABELS in database.py."""
+    from src.database import VALID_TASK_LABELS
+
+    assert "starred" in VALID_TASK_LABELS
