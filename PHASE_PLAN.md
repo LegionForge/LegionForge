@@ -1859,5 +1859,9 @@ Added as compact addendum. See git log for full details.
 | 203 | #155 | Schedule Next-Run (schedule-next-run-card, loadScheduleNextRun, GET /schedules/{id}, cron+next_run) | +3 | 1381 |
 | 204 | #155 | Task Retry History (retry-history-card, loadRetryHistory, GET /tasks/{id}/timeline, filter retry events) | +3 | 1384 |
 | 205 | #155 | User Preferences (user-prefs-card, loadUserPreferences, GET /preferences, key-value table) | +3 | 1387 |
+| 206 | #156 | MCP Tools List (mcp-tools-card, loadMcpToolsList, GET /mcp/tools, name+desc; renamed to avoid Phase 114 collision) | +3 | 1390 |
+| 207 | #156 | Task Cost Dry-Run (cost-dryrun-card, runCostEstimate, POST /tasks dry_run:true, est tokens+cost+model) | +3 | 1393 |
+| 208 | #156 | Audit Log Viewer (audit-log-card, loadAuditLog, GET /admin/audit?limit=10, ts/type/agent rows) | +3 | 1396 |
+| 209 | #156 | Threats Summary Panel (threats-summary-card, loadThreatsSummary, GET /admin/threats/summary, total+per-type) | +3 | 1399 |
 
-**Current state:** 1387/1387 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1399/1399 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

@@ -1184,11 +1184,52 @@
     </details>
   </div>
 
+  <!-- ── Admin Metrics History card (Phase 210) ───────────── -->
+  <div class="card" id="admin-metrics-card">
+    <details id="admin-metrics-section">
+      <summary style="cursor:pointer">Metrics History (Chart) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminMetrics()" title="Refresh">↻</button></summary>
+      <div id="admin-metrics-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Webhook List card (Phase 211) ─────────────────────── -->
+  <div class="card" id="webhook-list-card">
+    <details id="webhook-list-section">
+      <summary style="cursor:pointer">Webhook List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhookList()" title="Refresh">↻</button></summary>
+      <div id="webhook-list-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Edit card (Phase 212) ────────────────────── -->
+  <div class="card" id="pipeline-edit-by-id-card">
+    <details id="pipeline-edit-by-id-section">
+      <summary style="cursor:pointer">Edit Pipeline by ID</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="pipeline-edit-id" placeholder="Pipeline ID" style="width:80px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="pipeline-edit-name" placeholder="New name" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="editPipelineById()">✏ Save</button>
+      </div>
+      <div id="pipeline-edit-by-id-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
+  <!-- ── Template Runner card (Phase 213) ──────────────────── -->
+  <div class="card" id="template-runner-card">
+    <details id="template-runner-section">
+      <summary style="cursor:pointer">Run Template by ID</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="template-runner-id" placeholder="Template ID" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="runTemplateById()">▶ Run</button>
+      </div>
+      <div id="template-runner-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── MCP Tools Viewer card (Phase 206) ────────────────── -->
-  <div class="card" id="mcp-tools-card">
-    <details id="mcp-tools-section">
-      <summary style="cursor:pointer">MCP Tools <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMcpToolsList()" title="Refresh">↻</button></summary>
-      <div id="mcp-tools-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+  <div class="card" id="mcp-tools-list-card">
+    <details id="mcp-tools-list-section">
+      <summary style="cursor:pointer">MCP Tools List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMcpToolsList()" title="Refresh">↻</button></summary>
+      <div id="mcp-tools-list-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
     </details>
   </div>
 
@@ -1205,10 +1246,10 @@
   </div>
 
   <!-- ── Audit Log Viewer card (Phase 208) ─────────────────── -->
-  <div class="card" id="audit-log-card">
-    <details id="audit-log-section">
-      <summary style="cursor:pointer">Audit Log <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLog()" title="Refresh">↻</button></summary>
-      <div id="audit-log-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load recent audit events.</div>
+  <div class="card" id="audit-log-viewer-card">
+    <details id="audit-log-viewer-section">
+      <summary style="cursor:pointer">Audit Log Viewer <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLogViewer()" title="Refresh">↻</button></summary>
+      <div id="audit-log-viewer-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load recent audit events.</div>
     </details>
   </div>
 
@@ -4243,9 +4284,84 @@ function analyzeInput() {
   ).join('');
 }
 
+// ── Phase 210: Admin Metrics History ──────────────────────────────────────────
+async function loadAdminMetrics() {
+  const el = document.getElementById('admin-metrics-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/metrics/history?limit=7');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const rows = Array.isArray(data) ? data : (data.metrics || data.history || []);
+    if (!rows.length) { el.textContent = 'No metrics data.'; return; }
+    const maxVal = Math.max(...rows.map(m => m.value ?? m.response_time_ms ?? 0), 1);
+    el.innerHTML = rows.map(m => {
+      const ts = m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '-';
+      const val = m.value ?? m.response_time_ms ?? 0;
+      const bar = '█'.repeat(Math.round((val / maxVal) * 12)).padEnd(12, '░');
+      return `<div style="font-size:11px;font-family:monospace">${ts} ${bar} ${val}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 211: Webhook List ────────────────────────────────────────────────────
+async function loadWebhookList() {
+  const el = document.getElementById('webhook-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/webhooks');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.webhooks || []);
+    if (!items.length) { el.textContent = 'No webhooks registered.'; return; }
+    el.innerHTML = items.map(w => {
+      const url = w.url || w.callback_url || '-';
+      const id = w.id ?? '-';
+      return `<div style="margin-bottom:4px;font-size:12px"><strong>#${id}</strong> → <span style="color:var(--text-xdim)">${url}</span></div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 212: Edit Pipeline by ID ────────────────────────────────────────────
+async function editPipelineById() {
+  const id = document.getElementById('pipeline-edit-id').value.trim();
+  const name = document.getElementById('pipeline-edit-name').value.trim();
+  const el = document.getElementById('pipeline-edit-by-id-body');
+  if (!id) { el.textContent = 'Enter a pipeline ID.'; return; }
+  if (!name) { el.textContent = 'Enter a new name.'; return; }
+  el.textContent = 'Saving…';
+  try {
+    const r = await apiFetch('/pipelines/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (r.ok) {
+      el.textContent = `✓ Pipeline #${id} renamed to "${name}"`;
+    } else {
+      el.textContent = 'HTTP ' + r.status;
+    }
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 213: Run Template by ID ─────────────────────────────────────────────
+async function runTemplateById() {
+  const id = document.getElementById('template-runner-id').value.trim();
+  const el = document.getElementById('template-runner-body');
+  if (!id) { el.textContent = 'Enter a template ID.'; return; }
+  el.textContent = 'Running…';
+  try {
+    const r = await apiFetch('/templates/' + id + '/run', { method: 'POST' });
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const taskId = d.task_id || d.id || '-';
+    el.innerHTML = `✓ Task queued: <strong>${taskId}</strong>`;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
 // ── Phase 206: MCP Tools Viewer ───────────────────────────────────────────────
 async function loadMcpToolsList() {
-  const el = document.getElementById('mcp-tools-body');
+  const el = document.getElementById('mcp-tools-list-body');
   el.textContent = 'Loading…';
   try {
     const r = await apiFetch('/mcp/tools');
@@ -4285,8 +4401,8 @@ async function runCostEstimate() {
 }
 
 // ── Phase 208: Audit Log Viewer ───────────────────────────────────────────────
-async function loadAuditLog() {
-  const el = document.getElementById('audit-log-body');
+async function loadAuditLogViewer() {
+  const el = document.getElementById('audit-log-viewer-body');
   el.textContent = 'Loading…';
   try {
     const r = await apiFetch('/admin/audit?limit=10');

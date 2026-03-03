@@ -15666,11 +15666,11 @@ def test_p205_ui_user_prefs_hits_preferences_endpoint():
 
 
 def test_p206_ui_mcp_tools_card_present():
-    """mcp-tools-card is in the HTML."""
+    """mcp-tools-list-card is in the HTML."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    assert "mcp-tools-card" in html
+    assert "mcp-tools-list-card" in html
 
 
 def test_p206_ui_load_mcp_tools_function_defined():
@@ -15724,27 +15724,27 @@ def test_p207_ui_cost_estimate_posts_dry_run():
 
 
 def test_p208_ui_audit_log_card_present():
-    """audit-log-card is in the HTML."""
+    """audit-log-viewer-card is in the HTML."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    assert "audit-log-card" in html
+    assert "audit-log-viewer-card" in html
 
 
 def test_p208_ui_load_audit_log_function_defined():
-    """loadAuditLog function is defined."""
+    """loadAuditLogViewer function is defined."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    assert "async function loadAuditLog()" in html
+    assert "async function loadAuditLogViewer()" in html
 
 
 def test_p208_ui_audit_log_hits_admin_audit():
-    """loadAuditLog fetches /admin/audit endpoint."""
+    """loadAuditLogViewer fetches /admin/audit endpoint."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    idx = html.index("async function loadAuditLog()")
+    idx = html.index("async function loadAuditLogViewer()")
     fn_body = html[idx : idx + 600]
     assert "/admin/audit" in fn_body
 
@@ -15776,3 +15776,119 @@ def test_p209_ui_threats_summary_hits_admin_endpoint():
     idx = html.index("async function loadThreatsSummary()")
     fn_body = html[idx : idx + 600]
     assert "threats/summary" in fn_body
+
+
+# ── Phase 210: Admin Metrics History ──────────────────────────────────────────
+
+
+def test_p210_ui_admin_metrics_card_present():
+    """admin-metrics-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-metrics-card" in html
+
+
+def test_p210_ui_load_admin_metrics_function_defined():
+    """loadAdminMetrics function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminMetrics()" in html
+
+
+def test_p210_ui_admin_metrics_renders_bar_chart():
+    """loadAdminMetrics renders ASCII bar chart."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAdminMetrics()")
+    fn_body = html[idx : idx + 800]
+    assert "metrics/history" in fn_body and "█" in fn_body
+
+
+# ── Phase 211: Webhook List ────────────────────────────────────────────────────
+
+
+def test_p211_ui_webhook_list_card_present():
+    """webhook-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-list-card" in html
+
+
+def test_p211_ui_load_webhook_list_function_defined():
+    """loadWebhookList function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookList()" in html
+
+
+def test_p211_ui_webhook_list_hits_webhooks_endpoint():
+    """loadWebhookList fetches /webhooks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadWebhookList()")
+    fn_body = html[idx : idx + 600]
+    assert "/webhooks" in fn_body
+
+
+# ── Phase 212: Edit Pipeline by ID ────────────────────────────────────────────
+
+
+def test_p212_ui_pipeline_edit_by_id_card_present():
+    """pipeline-edit-by-id-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-edit-by-id-card" in html
+
+
+def test_p212_ui_edit_pipeline_by_id_function_defined():
+    """editPipelineById function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function editPipelineById()" in html
+
+
+def test_p212_ui_edit_pipeline_uses_put_method():
+    """editPipelineById uses PUT method."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function editPipelineById()")
+    fn_body = html[idx : idx + 700]
+    assert "PUT" in fn_body and "/pipelines/" in fn_body
+
+
+# ── Phase 213: Run Template by ID ─────────────────────────────────────────────
+
+
+def test_p213_ui_template_runner_card_present():
+    """template-runner-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-runner-card" in html
+
+
+def test_p213_ui_run_template_by_id_function_defined():
+    """runTemplateById function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function runTemplateById()" in html
+
+
+def test_p213_ui_run_template_by_id_posts_to_run_endpoint():
+    """runTemplateById posts to /templates/{id}/run."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function runTemplateById()")
+    fn_body = html[idx : idx + 600]
+    assert "/run" in fn_body and "templates" in fn_body
