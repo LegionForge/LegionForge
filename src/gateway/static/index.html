@@ -1080,6 +1080,65 @@
     </details>
   </div>
 
+  <!-- ── Pipeline Edit card (Phase 126) ───────────────────── -->
+  <div class="card" id="pipeline-edit-card">
+    <details id="pipeline-edit-section">
+      <summary style="cursor:pointer">Edit Pipeline</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="pipeline-edit-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+            <option value="">— select pipeline —</option>
+          </select>
+          <button class="btn ghost icon" style="font-size:11px;padding:3px 6px" onclick="loadPipelineForEdit()">↻</button>
+        </div>
+        <input id="pipeline-edit-name" placeholder="New name (optional)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="pipeline-edit-desc" placeholder="New description (optional)" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="savePipelineEdit()">💾 Save</button>
+        <div id="pipeline-edit-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Detail Viewer card (Phase 127) ───────────── -->
+  <div class="card" id="pipeline-detail-card">
+    <details id="pipeline-detail-section">
+      <summary style="cursor:pointer">Pipeline Details</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <select id="pipeline-detail-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— select pipeline —</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadPipelineDetail()">↻ Load</button>
+      </div>
+      <div id="pipeline-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Select a pipeline and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Session Detail card (Phase 128) ───────────────────── -->
+  <div class="card" id="session-detail-card">
+    <details id="session-detail-section">
+      <summary style="cursor:pointer">Session Detail</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <select id="session-detail-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="">— select session —</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadSessionDetail()">↻ Load</button>
+      </div>
+      <div id="session-detail-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Select a session and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── A2A Task Status card (Phase 129) ──────────────────── -->
+  <div class="card" id="a2a-status-card">
+    <details id="a2a-status-section">
+      <summary style="cursor:pointer">A2A Task Status</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <input id="a2a-task-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="checkA2ATask()">↻ Check</button>
+      </div>
+      <div id="a2a-status-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Check.</div>
+    </details>
+  </div>
+
   <!-- ── Pipeline Run Detail card (Phase 122) ─────────────── -->
   <div class="card" id="pipeline-run-detail-card">
     <details id="pipeline-run-detail-section">
@@ -1704,6 +1763,12 @@ async function loadSessions() {
     }
     onSessionChange(picker.value);
     populateSessTasksSel().catch(() => {});  // Phase 101
+    // Phase 128: session detail selector
+    const detailSel = document.getElementById('session-detail-sel');
+    if (detailSel) {
+      detailSel.innerHTML = '<option value="">— select session —</option>' +
+        sessions.map(s => '<option value="' + s.session_id + '">' + (s.name || 'Session').replace(/"/g, '&quot;') + '</option>').join('');
+    }
   } catch (_) { /* network error — leave picker unchanged */ }
 }
 
@@ -3137,6 +3202,136 @@ async function exportTasksJson(evt) {
   } catch(e) { alert('Export error: ' + e.message); }
 }
 
+// ── Phase 126: Pipeline Edit ───────────────────────────────────────────────────
+function loadPipelineForEdit() {
+  const sel = document.getElementById('pipeline-edit-sel');
+  const nameIn = document.getElementById('pipeline-edit-name');
+  const resultEl = document.getElementById('pipeline-edit-result');
+  const pipeId = sel ? sel.value : '';
+  if (!pipeId) { if (resultEl) resultEl.textContent = 'Select a pipeline first.'; return; }
+  // Pre-fill name from existing pipeline data in the main pipelines list
+  if (nameIn) nameIn.value = sel.options[sel.selectedIndex]?.textContent || '';
+  if (resultEl) resultEl.textContent = 'Ready to edit pipeline ' + pipeId + '.';
+}
+
+async function savePipelineEdit() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('pipeline-edit-sel');
+  const pipeId = sel ? sel.value : '';
+  const resultEl = document.getElementById('pipeline-edit-result');
+  if (!pipeId) { if (resultEl) resultEl.textContent = 'Select a pipeline first.'; return; }
+  const body = {};
+  const name = (document.getElementById('pipeline-edit-name') || {}).value?.trim();
+  const desc = (document.getElementById('pipeline-edit-desc') || {}).value?.trim();
+  if (name) body.name = name;
+  if (desc) body.description = desc;
+  if (!name && !desc) { if (resultEl) resultEl.textContent = 'Enter at least a name or description to update.'; return; }
+  if (resultEl) resultEl.textContent = 'Saving…';
+  try {
+    const res = await fetch('/pipelines/' + encodeURIComponent(pipeId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Updated: ' + (d.name || name) + ' (ID ' + (d.pipeline_id || pipeId) + ')';
+    loadPipelines().catch(() => {});
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 127: Pipeline Detail Viewer ─────────────────────────────────────────
+async function loadPipelineDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('pipeline-detail-sel');
+  const pipeId = sel ? sel.value : '';
+  const bodyEl = document.getElementById('pipeline-detail-body');
+  if (!pipeId) { if (bodyEl) bodyEl.textContent = 'Select a pipeline first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/pipelines/' + encodeURIComponent(pipeId), {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const steps = d.steps || [];
+    const rows = [
+      ['ID', d.pipeline_id || pipeId],
+      ['Name', d.name || '—'],
+      ['Description', d.description || '—'],
+      ['Steps', steps.length],
+      ['Created', d.created_at ? new Date(d.created_at).toLocaleString() : '—'],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('') + (steps.length ? '<div style="margin-top:6px;font-size:11px;color:var(--text-dim)">Steps: ' +
+      steps.map(s => escapeHtml(s.name || s.task_text || '—')).join(' → ') + '</div>' : '');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 128: Session Detail Viewer ──────────────────────────────────────────
+async function loadSessionDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('session-detail-sel');
+  const sessId = sel ? sel.value : '';
+  const bodyEl = document.getElementById('session-detail-body');
+  if (!sessId) { if (bodyEl) bodyEl.textContent = 'Select a session first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/sessions/' + encodeURIComponent(sessId), {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const rows = [
+      ['ID', d.session_id || sessId],
+      ['Name', d.name || '—'],
+      ['Turns', d.turn_count ?? '—'],
+      ['Created', d.created_at ? new Date(d.created_at).toLocaleString() : '—'],
+      ['Updated', d.updated_at ? new Date(d.updated_at).toLocaleString() : '—'],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 129: A2A Task Status Check ──────────────────────────────────────────
+async function checkA2ATask() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('a2a-task-id') || {}).value?.trim();
+  const bodyEl = document.getElementById('a2a-status-body');
+  if (!taskId) { if (bodyEl) bodyEl.textContent = 'Enter a task ID first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Checking…';
+  try {
+    const res = await fetch('/a2a/tasks/' + encodeURIComponent(taskId), {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const artifacts = d.artifacts || [];
+    const resultText = artifacts.length ? artifacts[0].text || '' : '';
+    const rows = [
+      ['ID', d.id || taskId],
+      ['Status', d.status || '—'],
+      ['Result', resultText ? resultText.slice(0, 200) + (resultText.length > 200 ? '…' : '') : '—'],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
 // ── Phase 122: Pipeline Run Detail ────────────────────────────────────────────
 async function loadPipelineRunDetail() {
   const apiKey = el.apiKey().value.trim();
@@ -4182,6 +4377,13 @@ async function loadPipelines() {
         const opt = document.createElement('option'); opt.value = p.pipeline_id || p.id; opt.textContent = p.name; rhSel.appendChild(opt);
       });
     }
+    // Phase 126+127: pipeline edit and detail selectors
+    ['pipeline-edit-sel', 'pipeline-detail-sel'].forEach(selId => {
+      const s = document.getElementById(selId);
+      if (!s) return;
+      s.innerHTML = '<option value="">— select pipeline —</option>';
+      pipes.forEach(p => { const o = document.createElement('option'); o.value = p.pipeline_id || p.id; o.textContent = p.name; s.appendChild(o); });
+    });
     pipes.forEach(p => {
       const row = document.createElement('div');
       row.className = 'pipe-row';
