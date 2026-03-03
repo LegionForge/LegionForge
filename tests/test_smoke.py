@@ -11142,3 +11142,48 @@ def test_p73_ui_export_tasks_md_function_defined():
     fn_body = html[fn_start : fn_start + 900]
     assert "format=markdown" in fn_body
     assert "tasks_export.md" in fn_body
+
+
+# ── Phase 74 — Browser Notifications ──────────────────────────────────────────
+
+
+def test_p74_ui_has_notification_bell_button():
+    """Header has a notification bell button (#notif-toggle)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notif-toggle" in html
+    assert "requestNotifPermission" in html
+
+
+def test_p74_notify_task_complete_function_defined():
+    """notifyTaskComplete() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function notifyTaskComplete(" in html
+    fn_start = html.find("function notifyTaskComplete(")
+    fn_body = html[fn_start : fn_start + 400]
+    assert "Notification" in fn_body
+
+
+def test_p74_notify_called_on_task_complete():
+    """notifyTaskComplete() is called in finishRun() on task completion."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notifyTaskComplete(" in html
+    # Must appear after saveHistory (in the complete path)
+    hist_idx = html.find("saveHistory({ task_id: taskId")
+    notif_idx = html.find("notifyTaskComplete(", hist_idx)
+    assert notif_idx != -1 and notif_idx < hist_idx + 300
+
+
+def test_p74_init_notif_button_called_in_init():
+    """initNotifButton() is called in init() to set button state on load."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    init_start = html.find("function init()")
+    init_body = html[init_start : init_start + 300]
+    assert "initNotifButton()" in init_body
