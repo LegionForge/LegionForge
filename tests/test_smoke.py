@@ -10322,3 +10322,93 @@ def test_p59_ui_has_rating_bar():
     assert "rating-bar" in html
     assert "rb-up-" in html
     assert "rb-down-" in html
+
+
+# ── Phase 61: Prompt Templates UI ────────────────────────────────────────────
+
+
+def test_p61_ui_has_tmpl_section():
+    """Web UI includes the templates collapsible section."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tmpl-section" in html
+    assert "tmpl-summary" in html
+
+
+def test_p61_ui_has_load_templates():
+    """Web UI defines loadTemplates() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTemplates" in html
+
+
+def test_p61_ui_has_save_template():
+    """Web UI defines saveTemplate() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "saveTemplate" in html
+
+
+def test_p61_ui_has_delete_template():
+    """Web UI defines deleteTemplate() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "deleteTemplate" in html
+
+
+def test_p61_ui_has_load_template():
+    """Web UI defines loadTemplate() function (fills task input from template)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTemplate" in html
+
+
+def test_p61_ui_templates_in_state():
+    """Web UI state object includes templates field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "templates:" in html
+
+
+def test_p61_ui_save_prompt_button():
+    """Web UI has 'Save prompt' button that calls saveTemplate."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "Save prompt" in html
+
+
+def test_p61_templates_get_route_registered():
+    """GET /templates route is registered in gateway app."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any(p == "/templates" for p in paths), f"No /templates route in {paths}"
+
+
+def test_p61_templates_post_route_registered():
+    """POST /templates route method is registered."""
+    from fastapi.routing import APIRoute
+
+    from src.gateway.app import app
+
+    tmpl_routes = [
+        r for r in app.routes if isinstance(r, APIRoute) and r.path == "/templates"
+    ]
+    assert tmpl_routes, "No /templates route found"
+    methods = {m for r in tmpl_routes for m in r.methods}
+    assert "POST" in methods, f"/templates methods: {methods}"
+
+
+def test_p61_templates_delete_route_registered():
+    """DELETE /templates/{template_id} route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any("{template_id}" in p and "templates" in p for p in paths)
