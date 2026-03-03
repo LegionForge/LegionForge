@@ -1891,5 +1891,9 @@ Added as compact addendum. See git log for full details.
 | 235 | #163 | Admin Stats Summary (admin-stats-summary-card, loadAdminStatsSummary, GET /admin/stats, all stat entries as td-field rows) | +3 | 1477 |
 | 236 | #163 | Webhook History (webhook-history-card, loadWebhookHistory, GET /webhooks, ID/URL/active table) | +3 | 1480 |
 | 237 | #163 | Set Task Priority (set-priority-card, setTaskPriorityById, PATCH /tasks/{id} with priority integer) | +3 | 1483 |
+| 238 | #164 | Task Completion Rate (task-completion-rate-card, loadTaskCompletionRate, GET /tasks?limit=200, complete/failed/running counts + rate%) | +3 | 1486 |
+| 239 | #164 | Search History (search-history-card, loadSearchHistory, GET /tasks?q=&limit=10, task table) | +3 | 1489 |
+| 240 | #164 | Agent Run Metrics (agent-run-metrics-card, loadAgentRunMetrics, Promise.all /tasks+/agents, complete/total per agent_type) | +3 | 1492 |
+| 241 | #164 | Active Connectors (active-connectors-card, loadActiveConnectors, GET /health, connectors/services as td-field rows) | +3 | 1495 |
 
-**Current state:** 1483/1483 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1495/1495 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

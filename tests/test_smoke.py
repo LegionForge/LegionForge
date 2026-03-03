@@ -16704,3 +16704,119 @@ def test_p241_ui_active_connectors_calls_health():
     idx = html.index("async function loadActiveConnectors()")
     fn_body = html[idx : idx + 700]
     assert "/health" in fn_body
+
+
+# ── Phase 242: Tasks by Label Filter ──────────────────────────────────────────
+
+
+def test_p242_ui_tasks_by_label_filter_card_present():
+    """tasks-by-label-filter-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tasks-by-label-filter-card" in html
+
+
+def test_p242_ui_load_tasks_by_label_filter_function_defined():
+    """loadTasksByLabelFilter() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTasksByLabelFilter()" in html
+
+
+def test_p242_ui_tasks_by_label_filter_uses_label_param():
+    """loadTasksByLabelFilter uses label query param."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTasksByLabelFilter()")
+    fn_body = html[idx : idx + 900]
+    assert "label" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 243: Ollama Model Status ────────────────────────────────────────────
+
+
+def test_p243_ui_ollama_status_card_present():
+    """ollama-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ollama-status-card" in html
+
+
+def test_p243_ui_load_ollama_status_function_defined():
+    """loadOllamaStatus() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadOllamaStatus()" in html
+
+
+def test_p243_ui_ollama_status_checks_health():
+    """loadOllamaStatus checks /health for Ollama reachability."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadOllamaStatus()")
+    fn_body = html[idx : idx + 900]
+    assert "/health" in fn_body and "ollama" in fn_body.lower()
+
+
+# ── Phase 244: Gateway Stats ───────────────────────────────────────────────────
+
+
+def test_p244_ui_gateway_stats_card_present():
+    """gateway-stats-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "gateway-stats-card" in html
+
+
+def test_p244_ui_load_gateway_stats_function_defined():
+    """loadGatewayStats() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadGatewayStats()" in html
+
+
+def test_p244_ui_gateway_stats_calls_admin_stats():
+    """loadGatewayStats calls /admin/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadGatewayStats()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/stats" in fn_body
+
+
+# ── Phase 245: Clear Completed Tasks ──────────────────────────────────────────
+
+
+def test_p245_ui_clear_completed_card_present():
+    """clear-completed-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "clear-completed-card" in html
+
+
+def test_p245_ui_clear_completed_tasks_function_defined():
+    """clearCompletedTasks() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function clearCompletedTasks()" in html
+
+
+def test_p245_ui_clear_completed_uses_delete():
+    """clearCompletedTasks calls DELETE on tasks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function clearCompletedTasks()")
+    fn_body = html[idx : idx + 1400]
+    assert "DELETE" in fn_body and "/tasks" in fn_body

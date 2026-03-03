@@ -1184,6 +1184,55 @@
     </details>
   </div>
 
+  <!-- ── Tasks by Label Filter card (Phase 242) ──────────────── -->
+  <div class="card" id="tasks-by-label-filter-card">
+    <details id="tasks-by-label-filter-section">
+      <summary style="cursor:pointer">Tasks by Label Filter
+        <input id="label-filter-input" placeholder="label name" style="width:120px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTasksByLabelFilter()" title="Refresh">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="tasks-by-label-filter-body" style="font-size:12px;color:var(--text-dim)">Enter a label and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Ollama Status card (Phase 243) ────────────────────────── -->
+  <div class="card" id="ollama-status-card">
+    <details id="ollama-status-section">
+      <summary style="cursor:pointer">Ollama Model Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadOllamaStatus()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="ollama-status-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Gateway Stats card (Phase 244) ────────────────────────── -->
+  <div class="card" id="gateway-stats-card">
+    <details id="gateway-stats-section">
+      <summary style="cursor:pointer">Gateway Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadGatewayStats()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="gateway-stats-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Clear Completed Tasks card (Phase 245) ────────────────── -->
+  <div class="card" id="clear-completed-card">
+    <details id="clear-completed-section">
+      <summary style="cursor:pointer">Clear Completed Tasks</summary>
+      <div style="margin-top:8px">
+        <p style="font-size:12px;color:var(--text-dim)">Cancel/delete all tasks with status <code>complete</code> older than N days.</p>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="clear-completed-days" type="number" value="7" min="1" style="width:60px;font-size:12px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <span style="font-size:12px;color:var(--text-dim)">days old</span>
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="clearCompletedTasks()">Clear</button>
+        </div>
+        <div id="clear-completed-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Completion Rate card (Phase 238) ───────────────── -->
   <div class="card" id="task-completion-rate-card">
     <details id="task-completion-rate-section">
@@ -4588,6 +4637,96 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 242: Tasks by Label Filter ─────────────────────────────────────────
+async function loadTasksByLabelFilter() {
+  const el = document.getElementById('tasks-by-label-filter-body');
+  const label = (document.getElementById('label-filter-input') || {value: ''}).value.trim();
+  if (!label) { el.textContent = 'Enter a label name above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks?label=${encodeURIComponent(label)}&limit=20`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = `No tasks with label "${label}".`; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Status</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Prompt</th></tr>' +
+      tasks.map(t => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(t.task_id||t.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px">${t.status||''}</td>
+        <td style="padding:2px 4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.prompt||''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 243: Ollama Model Status ────────────────────────────────────────────
+async function loadOllamaStatus() {
+  const el = document.getElementById('ollama-status-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/agents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const agents = Array.isArray(data) ? data : (data.agents || []);
+    const healthR = await apiFetch('/health');
+    const health = healthR.ok ? await healthR.json() : {};
+    const ollamaOk = health.ollama === 'ok' || health.ollama === true || health.services?.ollama === 'ok';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Ollama</span><span class="td-value">${ollamaOk ? '✓ reachable' : '✗ unreachable'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Agent types</span><span class="td-value">${agents.length}</span></div>`,
+    ].concat(agents.map(a =>
+      `<div class="td-field"><span class="td-label">${a.type||a.name||'?'}</span><span class="td-value">${a.model||''}</span></div>`
+    )).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 244: Gateway Stats ──────────────────────────────────────────────────
+async function loadGatewayStats() {
+  const el = document.getElementById('gateway-stats-body');
+  el.textContent = 'Loading…';
+  try {
+    const [tasksR, usersR] = await Promise.all([
+      apiFetch('/tasks?limit=1'),
+      apiFetch('/admin/stats'),
+    ]);
+    const statsData = usersR.ok ? await usersR.json() : {};
+    const stats = typeof statsData === 'object' && !Array.isArray(statsData) ? statsData : {};
+    const rows = Object.entries(stats).map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    );
+    el.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--text-xdim)">No stats available.</div>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 245: Clear Completed Tasks ─────────────────────────────────────────
+async function clearCompletedTasks() {
+  const el = document.getElementById('clear-completed-body');
+  const days = parseInt((document.getElementById('clear-completed-days') || {value: '7'}).value, 10) || 7;
+  if (!confirm(`Delete all completed tasks older than ${days} day(s)?`)) return;
+  el.textContent = 'Loading task list…';
+  try {
+    const r = await apiFetch('/tasks?status=complete&limit=500');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const cutoff = Date.now() - days * 86400_000;
+    const old = tasks.filter(t => {
+      const ts = t.created_at || t.completed_at || '';
+      return ts && new Date(ts).getTime() < cutoff;
+    });
+    if (!old.length) { el.textContent = `No completed tasks older than ${days} day(s).`; return; }
+    let deleted = 0;
+    for (const t of old) {
+      const id = t.task_id || t.id;
+      const dr = await apiFetch(`/tasks/${id}`, { method: 'DELETE' });
+      if (dr.ok || dr.status === 404) deleted++;
+    }
+    el.textContent = `Cleared ${deleted}/${old.length} tasks.`;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 238: Task Completion Rate ───────────────────────────────────────────
