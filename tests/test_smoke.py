@@ -11408,3 +11408,60 @@ def test_p78_ui_timeline_renders_event_type():
     fn_start = html.find("function toggleTimeline(")
     fn_body = html[fn_start : fn_start + 1500]
     assert "event_type" in fn_body
+
+
+# ── Phase 79 — Pipeline Runner UI ─────────────────────────────────────────────
+
+
+def test_p79_ui_pipelines_card_present():
+    """Phase 79 pipelines card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipelines-card" in html
+    assert "pipe-section" in html
+
+
+def test_p79_ui_load_pipelines_function_defined():
+    """loadPipelines() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelines(" in html
+
+
+def test_p79_ui_run_pipeline_function_defined():
+    """runPipeline() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function runPipeline(" in html
+
+
+def test_p79_ui_delete_pipeline_function_defined():
+    """deletePipeline() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deletePipeline(" in html
+
+
+def test_p79_ui_load_pipelines_called_in_init():
+    """loadPipelines() is called in init() so pipelines load on page start."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    init_start = html.find("function init()")
+    init_body = html[init_start : init_start + 600]
+    assert "loadPipelines" in init_body
+
+
+def test_p79_ui_run_pipeline_calls_api():
+    """runPipeline() calls POST /pipelines/{id}/run."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function runPipeline(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/run" in fn_body
+    assert "POST" in fn_body
