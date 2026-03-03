@@ -12921,3 +12921,151 @@ def test_p117_ui_create_pipeline_parses_steps_json():
     fn_start = html.find("function createPipeline(")
     fn_body = html[fn_start : fn_start + 800]
     assert "JSON.parse" in fn_body
+
+
+# ── Phase 118 — Template Run ──────────────────────────────────────────────────
+
+
+def test_p118_ui_template_run_card_present():
+    """#template-run-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-run-card" in html
+
+
+def test_p118_ui_run_template_function_defined():
+    """runTemplate() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function runTemplate(" in html
+
+
+def test_p118_ui_run_template_posts_to_templates_run():
+    """runTemplate() POSTs to /templates/{id}/run."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function runTemplate(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "POST" in fn_body
+    assert "/run" in fn_body
+
+
+def test_p118_ui_load_templates_populates_run_selector():
+    """loadTemplates() populates #template-run-sel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("async function loadTemplates(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "template-run-sel" in fn_body
+
+
+# ── Phase 119 — Admin Threat Events ──────────────────────────────────────────
+
+
+def test_p119_ui_threat_events_card_present():
+    """#threat-events-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threat-events-card" in html
+
+
+def test_p119_ui_load_threat_events_function_defined():
+    """loadThreatEvents() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadThreatEvents(" in html
+
+
+def test_p119_ui_load_threat_events_fetches_admin_threats():
+    """loadThreatEvents() fetches /admin/threats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadThreatEvents(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/admin/threats" in fn_body
+
+
+# ── Phase 120 — Admin User Actions ───────────────────────────────────────────
+
+
+def test_p120_ui_admin_user_actions_card_present():
+    """#admin-user-actions-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-user-actions-card" in html
+
+
+def test_p120_ui_admin_deactivate_user_function_defined():
+    """adminDeactivateUser() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function adminDeactivateUser(" in html
+
+
+def test_p120_ui_admin_deactivate_calls_delete_endpoint():
+    """adminDeactivateUser() calls DELETE /admin/users/{username}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function adminDeactivateUser(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "DELETE" in fn_body
+    assert "/admin/users/" in fn_body
+
+
+def test_p120_ui_admin_set_quota_function_defined():
+    """adminSetQuota() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function adminSetQuota(" in html
+
+
+def test_p120_ui_admin_set_quota_calls_quota_endpoint():
+    """adminSetQuota() calls PUT /admin/users/{username}/quota."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function adminSetQuota(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "PUT" in fn_body
+    assert "/quota" in fn_body
+
+
+# ── Phase 121 — Schedule Edit ─────────────────────────────────────────────────
+
+
+def test_p121_ui_schedule_edit_card_present():
+    """#schedule-edit-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-edit-card" in html
+
+
+def test_p121_ui_edit_schedule_function_defined():
+    """editSchedule() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function editSchedule(" in html
+
+
+def test_p121_ui_edit_schedule_puts_schedules_endpoint():
+    """editSchedule() calls PUT /schedules/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function editSchedule(")
+    fn_body = html[fn_start : fn_start + 1100]
+    assert "PUT" in fn_body
+    assert "/schedules/" in fn_body
