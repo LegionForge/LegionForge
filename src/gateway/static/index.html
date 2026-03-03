@@ -45,6 +45,12 @@
     .tl-dot { width:8px; height:8px; border-radius:50%; background:var(--blue); flex-shrink:0; margin-top:3px; }
     .tl-type { color:var(--text); font-weight:500; min-width:80px; }
     .tl-ts { color:var(--text-xdim); font-size:10px; margin-left:auto; }
+    /* ── Phase 79: Pipelines card ───────────────────────────── */
+    .pipe-row { display:grid; grid-template-columns:1fr 60px 60px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .pipe-row:last-child { border-bottom:none; }
+    .pipe-name { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pipe-run-out { margin-top:8px; padding:6px; background:var(--panel2); border-radius:var(--radius); font-size:11px; color:var(--text-dim); white-space:pre-wrap; }
+    #pipe-empty { color:var(--text-xdim); font-size:12px; }
     /* ── Phase 75: Schedules card ───────────────────────────── */
     .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .sched-row:last-child { border-bottom:none; }
@@ -678,6 +684,24 @@
     </details>
   </div>
 
+  <!-- ── Pipelines card (Phase 79) ──────────────────────────── -->
+  <div class="card" id="pipelines-card">
+    <details id="pipe-section">
+      <summary id="pipe-summary" style="cursor:pointer">Pipelines (0)</summary>
+      <div id="pipe-list"><div id="pipe-empty">No pipelines defined.</div></div>
+      <!-- Run panel -->
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)">
+        <div class="card-title" style="margin-bottom:6px">Run Pipeline</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="pipe-run-select" style="flex:1;min-width:120px"><option value="">Select pipeline…</option></select>
+          <input id="pipe-run-input" type="text" placeholder="Input text (replaces {{input}})" style="flex:2;min-width:180px">
+          <button class="btn primary" onclick="runPipeline()">▶ Run</button>
+        </div>
+        <div id="pipe-run-out" class="pipe-run-out" style="display:none"></div>
+      </div>
+    </details>
+  </div>
+
 </div><!-- #app -->
 
 <div id="version-footer">LegionForge <span id="footer-version">…</span> · <span id="footer-usage" style="display:none">Today: <span id="footer-usage-today">—</span> tok</span></div>
@@ -743,6 +767,7 @@ const el = {
   initTheme();  // Phase 72: apply saved/system light-dark preference
   initNotifButton();  // Phase 74: init notification bell
   loadSchedules().catch(() => {});  // Phase 75
+  loadPipelines().catch(() => {});  // Phase 79
 
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
@@ -2187,6 +2212,91 @@ async function toggleTimeline(taskId) {
       '</div>';
     }).join('');
   } catch(e) { panel.innerHTML = '(Error loading timeline)'; console.warn('[timeline] error:', e); }
+}
+
+// ── Phase 79: Pipeline Runner ────────────────────────────────────────────────
+async function loadPipelines() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    const res = await fetch('/pipelines?limit=50', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const pipes = data.pipelines || [];
+    const summary = document.getElementById('pipe-summary');
+    if (summary) summary.textContent = 'Pipelines (' + pipes.length + ')';
+    const listEl = document.getElementById('pipe-list');
+    const emptyEl = document.getElementById('pipe-empty');
+    const sel = document.getElementById('pipe-run-select');
+    if (!listEl || !sel) return;
+    // Rebuild select
+    sel.innerHTML = '<option value="">Select pipeline…</option>';
+    pipes.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.pipeline_id || p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    if (!pipes.length) {
+      if (emptyEl) emptyEl.style.display = 'block';
+      listEl.querySelectorAll('.pipe-row').forEach(n => n.remove());
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    listEl.querySelectorAll('.pipe-row').forEach(n => n.remove());
+    pipes.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'pipe-row';
+      const steps = (p.steps || []).length;
+      row.innerHTML =
+        '<span class="pipe-name" title="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</span>' +
+        '<span style="color:var(--text-xdim);font-size:11px">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</span>' +
+        '<button class="sched-del" onclick="deletePipeline(' + JSON.stringify(p.pipeline_id || p.id) + ')" title="Delete">✕</button>';
+      listEl.appendChild(row);
+    });
+  } catch(e) { console.warn('[pipelines] load error:', e); }
+}
+
+async function runPipeline() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const sel = document.getElementById('pipe-run-select');
+  const inp = document.getElementById('pipe-run-input');
+  const out = document.getElementById('pipe-run-out');
+  const pipeId = sel ? sel.value : '';
+  if (!pipeId) { if (out) { out.style.display = 'block'; out.textContent = 'Select a pipeline first.'; } return; }
+  const input = inp ? inp.value.trim() : '';
+  if (out) { out.style.display = 'block'; out.textContent = 'Starting pipeline run…'; }
+  try {
+    const res = await fetch('/pipelines/' + pipeId + '/run', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (out) out.textContent = 'Error: ' + (data.detail || res.status);
+      return;
+    }
+    if (out) out.textContent = 'Run #' + data.run_id + ' started (' + (data.steps || '?') + ' steps). Poll: GET /pipelines/runs/' + data.run_id;
+  } catch(e) {
+    if (out) out.textContent = 'Error: ' + e.message;
+    console.warn('[pipelines] run error:', e);
+  }
+}
+
+async function deletePipeline(pipeId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey || !confirm('Delete this pipeline?')) return;
+  try {
+    await fetch('/pipelines/' + pipeId, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    await loadPipelines();
+  } catch(e) { console.warn('[pipelines] delete error:', e); }
 }
 
 // Phase 73: export history as Markdown via GET /tasks/export?format=markdown
