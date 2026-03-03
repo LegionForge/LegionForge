@@ -13197,3 +13197,140 @@ def test_p125_ui_load_admin_schedules_fetches_admin_endpoint():
     fn_start = html.find("function loadAdminSchedules(")
     fn_body = html[fn_start : fn_start + 600]
     assert "/admin/schedules" in fn_body
+
+
+# ── Phase 126 — Pipeline Edit ─────────────────────────────────────────────────
+
+
+def test_p126_ui_pipeline_edit_card_present():
+    """#pipeline-edit-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-edit-card" in html
+
+
+def test_p126_ui_save_pipeline_edit_function_defined():
+    """savePipelineEdit() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function savePipelineEdit(" in html
+
+
+def test_p126_ui_save_pipeline_edit_puts_pipelines_endpoint():
+    """savePipelineEdit() calls PUT /pipelines/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function savePipelineEdit(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "PUT" in fn_body
+    assert "/pipelines/" in fn_body
+
+
+def test_p126_ui_load_pipelines_populates_edit_selector():
+    """loadPipelines() populates #pipeline-edit-sel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("async function loadPipelines(")
+    fn_body = html[fn_start : fn_start + 1800]
+    assert "pipeline-edit-sel" in fn_body
+
+
+# ── Phase 127 — Pipeline Detail Viewer ───────────────────────────────────────
+
+
+def test_p127_ui_pipeline_detail_card_present():
+    """#pipeline-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-detail-card" in html
+
+
+def test_p127_ui_load_pipeline_detail_function_defined():
+    """loadPipelineDetail() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineDetail(" in html
+
+
+def test_p127_ui_load_pipeline_detail_fetches_pipeline():
+    """loadPipelineDetail() fetches /pipelines/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineDetail(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/pipelines/" in fn_body
+
+
+# ── Phase 128 — Session Detail Viewer ────────────────────────────────────────
+
+
+def test_p128_ui_session_detail_card_present():
+    """#session-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-detail-card" in html
+
+
+def test_p128_ui_load_session_detail_function_defined():
+    """loadSessionDetail() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadSessionDetail(" in html
+
+
+def test_p128_ui_load_session_detail_fetches_session():
+    """loadSessionDetail() fetches /sessions/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadSessionDetail(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/sessions/" in fn_body
+
+
+def test_p128_ui_load_sessions_populates_detail_selector():
+    """loadSessions() populates #session-detail-sel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("async function loadSessions(")
+    fn_body = html[fn_start : fn_start + 1600]
+    assert "session-detail-sel" in fn_body
+
+
+# ── Phase 129 — A2A Task Status Check ────────────────────────────────────────
+
+
+def test_p129_ui_a2a_status_card_present():
+    """#a2a-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "a2a-status-card" in html
+
+
+def test_p129_ui_check_a2a_task_function_defined():
+    """checkA2ATask() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function checkA2ATask(" in html
+
+
+def test_p129_ui_check_a2a_task_fetches_a2a_endpoint():
+    """checkA2ATask() fetches /a2a/tasks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function checkA2ATask(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/a2a/tasks/" in fn_body
