@@ -142,6 +142,13 @@
     .sched-form-row { display:flex; gap:8px; }
     .sched-form-row input, .sched-form-row select, .sched-form-row textarea { flex:1; }
     #sched-empty { color:var(--text-xdim); font-size:12px; }
+    /* ── Phase 110: Task Detail ──────────────────────────────── */
+    .td-field { display:grid; grid-template-columns:90px 1fr; gap:6px; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .td-field:last-child { border-bottom:none; }
+    .td-label { color:var(--text-xdim); }
+    .td-value { color:var(--text); font-family:var(--mono); white-space:pre-wrap; word-break:break-word; }
+    /* ── Phase 112: Task Labels ──────────────────────────────── */
+    .label-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:var(--blue); color:#fff; font-size:10px; cursor:pointer; }
     /* ── Phase 105: Document List ────────────────────────────── */
     .doc-row { display:grid; grid-template-columns:1fr 80px 40px; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .doc-row:last-child { border-bottom:none; }
@@ -1015,6 +1022,58 @@
     <details id="doc-list-section">
       <summary style="cursor:pointer">Documents <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocuments(event)" title="Refresh">↻</button></summary>
       <div id="doc-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load documents.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Detail Viewer card (Phase 110) ──────────────── -->
+  <div class="card" id="task-detail-card">
+    <details id="task-detail-section">
+      <summary style="cursor:pointer">Task Detail</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <input id="task-detail-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTaskDetail()">↻</button>
+      </div>
+      <div id="task-detail-body" style="color:var(--text-xdim);font-size:12px">Enter task ID and click ↻.</div>
+    </details>
+  </div>
+
+  <!-- ── A2A Info card (Phase 111) ─────────────────────────── -->
+  <div class="card" id="a2a-info-card">
+    <details id="a2a-section">
+      <summary style="cursor:pointer">A2A / MCP Discovery <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAgentCard(event)" title="Refresh">↻</button></summary>
+      <div id="a2a-info-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ to load agent discovery info.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Labels Editor card (Phase 112) ───────────────── -->
+  <div class="card" id="task-labels-card">
+    <details id="task-labels-section">
+      <summary style="cursor:pointer">Task Labels</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <input id="task-labels-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTaskLabels()">↻</button>
+      </div>
+      <div id="task-labels-body" style="color:var(--text-xdim);font-size:12px">Enter task ID and click ↻.</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applyLabel('bookmarked')">🔖 bookmarked</button>
+        <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applyLabel('starred')">⭐ starred</button>
+        <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applyLabel('important')">❗ important</button>
+        <button class="btn ghost" style="font-size:11px;padding:2px 8px" onclick="applyLabel('archived')">📦 archived</button>
+        <button class="btn ghost" style="font-size:11px;padding:2px 8px;color:var(--text-xdim)" onclick="applyLabel()">✕ clear</button>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── File Attachment Upload card (Phase 113) ───────────── -->
+  <div class="card" id="upload-attach-card">
+    <details id="upload-attach-section">
+      <summary style="cursor:pointer">Upload Attachment</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input id="upload-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <input id="upload-file-input" type="file" style="font-size:11px;flex:1;min-width:140px">
+      </div>
+      <button class="btn secondary" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="uploadAttachment()">↑ Upload</button>
+      <div id="upload-attach-result" style="margin-top:6px;font-size:11px;color:var(--text-xdim)"></div>
     </details>
   </div>
 
@@ -2913,6 +2972,125 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 110: Task Detail Viewer ─────────────────────────────────────────────
+async function loadTaskDetail(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-detail-id') || {}).value?.trim();
+  const bodyEl = document.getElementById('task-detail-body');
+  if (!taskId) { if (bodyEl) bodyEl.textContent = 'Enter a task ID first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + taskId, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const t = await res.json();
+    if (!bodyEl) return;
+    const fields = [
+      ['ID', t.task_id || taskId],
+      ['Status', t.status || '—'],
+      ['Agent', t.agent_type || '—'],
+      ['Created', t.created_at ? new Date(t.created_at).toLocaleString() : '—'],
+      ['Completed', t.completed_at ? new Date(t.completed_at).toLocaleString() : '—'],
+      ['Labels', (t.labels && t.labels.length) ? t.labels.join(', ') : '—'],
+      ['Tags', (t.tags && t.tags.length) ? t.tags.join(', ') : '—'],
+      ['Result', t.result ? t.result.slice(0, 300) + (t.result.length > 300 ? '…' : '') : '—'],
+    ];
+    bodyEl.innerHTML = fields.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 111: A2A / MCP Info Card ────────────────────────────────────────────
+async function loadAgentCard(evt) {
+  if (evt) evt.stopPropagation();
+  const bodyEl = document.getElementById('a2a-info-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/.well-known/agent.json');
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const rows = [
+      ['Name', d.name || '—'],
+      ['Version', d.version || '—'],
+      ['Description', d.description || '—'],
+      ['URL', d.url || '—'],
+      ['Capabilities', d.capabilities ? Object.keys(d.capabilities).filter(k => d.capabilities[k]).join(', ') : '—'],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 112: Task Labels Editor ─────────────────────────────────────────────
+async function loadTaskLabels(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-labels-id') || {}).value?.trim();
+  const bodyEl = document.getElementById('task-labels-body');
+  if (!taskId) { if (bodyEl) bodyEl.textContent = 'Enter a task ID first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/tasks/' + taskId, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const t = await res.json();
+    if (!bodyEl) return;
+    const labels = (t.labels && t.labels.length) ? t.labels : [];
+    bodyEl.innerHTML = labels.length
+      ? labels.map(l => '<span class="label-pill">' + l + '</span>').join(' ')
+      : '<span style="color:var(--text-xdim)">No labels.</span>';
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+async function applyLabel(labelName) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('task-labels-id') || {}).value?.trim();
+  if (!taskId) { alert('Enter a task ID first.'); return; }
+  const labels = labelName ? [labelName] : [];
+  try {
+    const res = await fetch('/tasks/' + taskId + '/labels', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ labels }),
+    });
+    if (!res.ok) { alert('Failed (status ' + res.status + ').'); return; }
+    await loadTaskLabels();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Phase 113: File Attachment Upload ─────────────────────────────────────────
+async function uploadAttachment() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('upload-task-id') || {}).value?.trim();
+  const fileInput = document.getElementById('upload-file-input');
+  const resultEl = document.getElementById('upload-attach-result');
+  if (!taskId) { if (resultEl) resultEl.textContent = 'Enter a task ID first.'; return; }
+  if (!fileInput || !fileInput.files || !fileInput.files.length) {
+    if (resultEl) resultEl.textContent = 'Select a file first.'; return;
+  }
+  const file = fileInput.files[0];
+  if (resultEl) resultEl.textContent = 'Uploading…';
+  try {
+    const text = await file.text();
+    const res = await fetch('/tasks/' + taskId + '/attachments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ filename: file.name, data: text, content_type: file.type || 'text/plain' }),
+    });
+    if (!res.ok) { if (resultEl) resultEl.textContent = 'Upload failed (status ' + res.status + ').'; return; }
+    const d = await res.json();
+    if (resultEl) resultEl.textContent = 'Uploaded: ' + (d.filename || file.name) + ' (' + (d.attachment_id || '') + ')';
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 102: Bulk Task Operations ───────────────────────────────────────────

@@ -12624,3 +12624,150 @@ def test_p109_ui_export_csv_calls_csv_format():
     fn_start = html.find("function exportTasksCsv(")
     fn_body = html[fn_start : fn_start + 500]
     assert "format=csv" in fn_body
+
+
+# ── Phase 110 — Task Detail Viewer ───────────────────────────────────────────
+
+
+def test_p110_ui_task_detail_card_present():
+    """#task-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-detail-card" in html
+
+
+def test_p110_ui_load_task_detail_function_defined():
+    """loadTaskDetail() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTaskDetail(" in html
+
+
+def test_p110_ui_load_task_detail_calls_tasks_endpoint():
+    """loadTaskDetail() fetches /tasks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskDetail(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/tasks/" in fn_body
+    assert "task-detail-body" in fn_body
+
+
+def test_p110_ui_task_detail_renders_td_field():
+    """loadTaskDetail() uses .td-field / .td-label / .td-value CSS classes."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTaskDetail(")
+    fn_body = html[fn_start : fn_start + 1800]
+    assert "td-field" in fn_body
+
+
+# ── Phase 111 — A2A / MCP Info Card ─────────────────────────────────────────
+
+
+def test_p111_ui_a2a_info_card_present():
+    """#a2a-info-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "a2a-info-card" in html
+
+
+def test_p111_ui_load_agent_card_function_defined():
+    """loadAgentCard() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAgentCard(" in html
+
+
+def test_p111_ui_load_agent_card_fetches_well_known():
+    """loadAgentCard() fetches /.well-known/agent.json."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAgentCard(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert ".well-known/agent.json" in fn_body
+
+
+# ── Phase 112 — Task Labels Editor ───────────────────────────────────────────
+
+
+def test_p112_ui_task_labels_card_present():
+    """#task-labels-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-labels-card" in html
+
+
+def test_p112_ui_apply_label_function_defined():
+    """applyLabel() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function applyLabel(" in html
+
+
+def test_p112_ui_apply_label_puts_labels_endpoint():
+    """applyLabel() calls PUT /tasks/{id}/labels."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function applyLabel(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "PUT" in fn_body
+    assert "/labels" in fn_body
+
+
+def test_p112_ui_label_pill_css_defined():
+    """.label-pill CSS class is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".label-pill" in html
+
+
+# ── Phase 113 — File Attachment Upload ───────────────────────────────────────
+
+
+def test_p113_ui_upload_attach_card_present():
+    """#upload-attach-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "upload-attach-card" in html
+
+
+def test_p113_ui_upload_attachment_function_defined():
+    """uploadAttachment() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function uploadAttachment(" in html
+
+
+def test_p113_ui_upload_attachment_posts_to_attachments():
+    """uploadAttachment() posts to /tasks/{id}/attachments."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function uploadAttachment(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "POST" in fn_body
+    assert "/attachments" in fn_body
+
+
+def test_p113_ui_upload_attachment_reads_file_text():
+    """uploadAttachment() uses file.text() to read file contents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function uploadAttachment(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "file.text()" in fn_body
