@@ -1748,4 +1748,9 @@ Added as compact addendum. See git log for full details.
 | 112 | #132 | Task Labels Editor (task-labels-card, loadTaskLabels/applyLabel, PUT /tasks/{id}/labels, label-pill CSS) | +4 | 1085 |
 | 113 | #132 | File Attachment Upload (upload-attach-card, uploadAttachment, file.text(), POST /tasks/{id}/attachments) | +4 | 1089 |
 
-**Current state:** 1089/1089 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 114 | #133 | MCP Tools Viewer (mcp-tools-card, loadMcpTools, GET /mcp/tools, mcp-row CSS, status coloring) | +4 | 1093 |
+| 115 | #133 | Agent Details Viewer (agent-detail-card, loadAgentDetail, GET /agents/{type}, type selector) | +4 | 1097 |
+| 116 | #133 | Memory Manual Ingest (memory-ingest-card, ingestMemory, POST /memory/ingest, textarea input) | +3 | 1100 |
+| 117 | #133 | Pipeline Create UI (pipeline-create-card, createPipeline, POST /pipelines, JSON steps textarea) | +4 | 1104 |
+
+**Current state:** 1104/1104 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
