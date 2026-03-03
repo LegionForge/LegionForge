@@ -11722,3 +11722,93 @@ def test_p85_ui_search_renders_similarity_score():
     fn_body = html[fn_start : fn_start + 1500]
     assert "similarity" in fn_body
     assert "mem-result" in fn_body
+
+
+# ── Phase 86 — Security Threats Summary UI ────────────────────────────────────
+
+
+def test_p86_ui_threats_card_present():
+    """Phase 86 threats card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threats-card" in html
+    assert "threats-body" in html
+
+
+def test_p86_ui_load_threats_function_defined():
+    """loadThreats() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadThreats(" in html
+
+
+def test_p86_ui_threats_calls_admin_endpoint():
+    """loadThreats() calls GET /admin/threats/summary."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadThreats(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/admin/threats/summary" in fn_body
+
+
+def test_p86_ui_threats_renders_breakdown():
+    """loadThreats() renders breakdown rows with threat_type."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadThreats(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "threat_type" in fn_body
+    assert "threat-row" in fn_body
+
+
+# ── Phase 87 — Tool Registry Admin UI ────────────────────────────────────────
+
+
+def test_p87_ui_tool_registry_card_present():
+    """Phase 87 tool registry card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tool-registry-card" in html
+    assert "tools-list" in html
+
+
+def test_p87_ui_load_tools_function_defined():
+    """loadTools() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTools(" in html
+
+
+def test_p87_ui_revoke_approve_function_defined():
+    """revokeOrApproveTool() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function revokeOrApproveTool(" in html
+
+
+def test_p87_ui_tools_calls_admin_tools_endpoint():
+    """loadTools() calls GET /admin/tools."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTools(")
+    fn_body = html[fn_start : fn_start + 400]
+    assert "/admin/tools" in fn_body
+
+
+def test_p87_ui_revoke_calls_put_status_endpoint():
+    """revokeOrApproveTool() calls PUT /admin/tools/{id}/status."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function revokeOrApproveTool(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/status" in fn_body
+    assert "PUT" in fn_body

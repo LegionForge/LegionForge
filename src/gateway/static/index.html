@@ -63,6 +63,17 @@
     .mem-result { padding:5px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .mem-result:last-child { border-bottom:none; }
     .mem-score { color:var(--text-xdim); font-size:10px; margin-left:6px; }
+    /* ── Phase 86: Security Threats card ────────────────────── */
+    .threat-row { display:grid; grid-template-columns:1fr 50px 70px; gap:6px; align-items:center; padding:3px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .threat-row:last-child { border-bottom:none; }
+    .threat-type { color:var(--orange); font-family:var(--mono); font-size:11px; }
+    /* ── Phase 87: Tool Registry card ───────────────────────── */
+    .tool-row { display:grid; grid-template-columns:1fr 70px 60px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .tool-row:last-child { border-bottom:none; }
+    .tool-status { font-size:10px; padding:2px 5px; border-radius:3px; text-align:center; }
+    .tool-status.APPROVED { background:var(--green); color:#fff; }
+    .tool-status.REVOKED { background:var(--red); color:#fff; }
+    .tool-status.PENDING { background:var(--yellow); color:#000; }
     /* ── Phase 79: Pipelines card ───────────────────────────── */
     .pipe-row { display:grid; grid-template-columns:1fr 60px 60px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .pipe-row:last-child { border-bottom:none; }
@@ -728,6 +739,22 @@
         <button class="btn primary" onclick="searchMemory()">Search</button>
       </div>
       <div id="memsearch-results" style="margin-top:8px;font-size:12px;color:var(--text-xdim)">Enter a query and click Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Security Threats card (Phase 86) [admin only] ────── -->
+  <div class="card" id="threats-card">
+    <details id="threats-section">
+      <summary style="cursor:pointer">Security Threats <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreats(event)" title="Refresh">↻</button></summary>
+      <div id="threats-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load threat summary (last 24 h).</div>
+    </details>
+  </div>
+
+  <!-- ── Tool Registry card (Phase 87) [admin only] ────────── -->
+  <div class="card" id="tool-registry-card">
+    <details id="tool-registry-section">
+      <summary style="cursor:pointer">Tool Registry <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTools(event)" title="Refresh">↻</button></summary>
+      <div id="tools-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load tool registry.</div>
     </details>
   </div>
 
@@ -2351,6 +2378,79 @@ async function searchMemory() {
   } catch(e) {
     if (resultsEl) resultsEl.textContent = 'Error: ' + e.message;
   }
+}
+
+// ── Phase 86: Security Threats ───────────────────────────────────────────────
+async function loadThreats(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const body = document.getElementById('threats-body');
+  if (!body) return;
+  if (!apiKey) { body.textContent = 'Enter admin API key to view threats.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/threats/summary?since_hours=24', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 403) { body.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { body.textContent = 'Could not load threats.'; return; }
+    const d = await res.json();
+    const breakdown = d.breakdown || [];
+    if (!breakdown.length) { body.innerHTML = '<span style="color:var(--green)">✓ No threats in last 24 h</span>'; return; }
+    body.innerHTML =
+      '<div class="threat-row" style="font-weight:600;font-size:11px"><span>Type</span><span>Count</span><span>Last seen</span></div>' +
+      breakdown.map(t => {
+        const ts = t.last_seen ? new Date(t.last_seen).toLocaleTimeString() : '';
+        return '<div class="threat-row"><span class="threat-type">' + escapeHtml(t.threat_type || '') + '</span><span>' + t.count + '</span><span style="font-size:10px;color:var(--text-xdim)">' + ts + '</span></div>';
+      }).join('') +
+      '<div style="margin-top:6px;font-size:11px;color:var(--text-dim)">Total: ' + (d.total_events || 0) + ' event(s) in 24 h</div>';
+  } catch(e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 87: Tool Registry ───────────────────────────────────────────────────
+async function loadTools(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('tools-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter admin API key to view tools.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/tools', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 403) { listEl.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load tools.'; return; }
+    const d = await res.json();
+    const tools = d.tools || [];
+    if (!tools.length) { listEl.textContent = 'No tools in registry.'; return; }
+    listEl.innerHTML = tools.map(t => {
+      const st = t.status || 'PENDING';
+      const name = (t.tool_id || '').slice(0, 40);
+      return '<div class="tool-row">' +
+        '<span style="font-family:var(--mono);font-size:11px;color:var(--text)">' + escapeHtml(name) + '</span>' +
+        '<span class="tool-status ' + st + '">' + st + '</span>' +
+        '<button class="btn ghost" style="font-size:11px" onclick="revokeOrApproveTool(\'' + escapeHtml(t.tool_id || '') + '\',\'' + (st === 'REVOKED' ? 'APPROVED' : 'REVOKED') + '\')">' +
+          (st === 'REVOKED' ? '↑ Restore' : '✕ Revoke') +
+        '</button>' +
+      '</div>';
+    }).join('');
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+async function revokeOrApproveTool(toolId, newStatus) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  if (!confirm((newStatus === 'REVOKED' ? 'Revoke' : 'Restore') + ' tool ' + toolId + '?')) return;
+  try {
+    const res = await fetch('/admin/tools/' + encodeURIComponent(toolId) + '/status', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (res.ok) await loadTools(null);
+    else { const d = await res.json().catch(() => ({})); alert('Error: ' + (d.detail || res.status)); }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── Phase 82: Task Stats ─────────────────────────────────────────────────────

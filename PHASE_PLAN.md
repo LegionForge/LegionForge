@@ -1717,5 +1717,7 @@ Added as compact addendum. See git log for full details.
 | 81 | #121 | Cost Estimator UI (≈ Estimate button, estimateCost(), dry_run:true, token+cost display) | +4 | 967 |
 | 82 | #122 | Task Stats Card (↻ refresh, GET /tasks/stats, stats-grid with total+status+tokens) | +4 | 971 |
 | 83 | #122 | Agents Directory Card (GET /agents, agent-type-badge+desc, auto-load in init) | +5 | 976 |
+| 84 | #123 | Document Ingestor UI (ingestor-card, ingestDocument(), POST /documents/ingest, chunk count) | +4 | 980 |
+| 85 | #123 | Memory Search UI (memory-search-card, searchMemory(), POST /memory/search, similarity%) | +4 | 984 |
 
-**Current state:** 976/976 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 984/984 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
