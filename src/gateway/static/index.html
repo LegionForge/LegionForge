@@ -599,6 +599,8 @@
       <button class="btn primary" id="submit-btn" onclick="submitTask()">▶ Submit <kbd style="font-size:10px;opacity:0.7">⌘↵</kbd></button>
       <button class="btn danger"  id="cancel-btn" onclick="cancelTask()" style="display:none">✕ Cancel</button>
       <button class="btn ghost"   onclick="clearOutput()">Clear</button>
+      <button class="btn ghost"   id="estimate-btn" onclick="estimateCost()" title="Estimate token cost without running (Phase 81)">≈ Estimate</button>
+      <span id="cost-estimate" style="font-size:11px;color:var(--text-dim);"></span>
       <!-- Phase 70: file attachment -->
       <label class="btn ghost" id="attach-label" title="Attach a text file (TXT, MD, CSV, JSON — max 16 KB)" style="cursor:pointer">
         📎 Attach
@@ -1949,10 +1951,24 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
     setStatus('error', '✗ Error', detail);
     appendSpan('\n[error] ' + detail + '\n', 'o-error');
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: (taskInputText || '').slice(0, 80), status: 'error', elapsed_ms: 0, tokens: 0, ts: Date.now() });
+    // Phase 80: Retry button for failed tasks
+    if (taskId) {
+      const retryBar = document.createElement('div');
+      retryBar.style.cssText = 'margin-top:6px;display:flex;gap:6px;align-items:center;';
+      retryBar.innerHTML = '<button class="btn ghost" onclick="retryTask(\'' + taskId + '\')" title="Retry this task">↩ Retry</button>';
+      el.output().appendChild(retryBar);
+    }
   } else if (status === 'cancelled') {
     setStatus('cancelled', '⊘ Cancelled', '');
     appendSpan('\n[cancelled]\n', 'o-cancelled');
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: (taskInputText || '').slice(0, 80), status: 'cancelled', elapsed_ms: 0, tokens: 0, ts: Date.now() });
+    // Phase 80: Retry button for cancelled tasks
+    if (taskId) {
+      const retryBar = document.createElement('div');
+      retryBar.style.cssText = 'margin-top:6px;display:flex;gap:6px;align-items:center;';
+      retryBar.innerHTML = '<button class="btn ghost" onclick="retryTask(\'' + taskId + '\')" title="Retry this task">↩ Retry</button>';
+      el.output().appendChild(retryBar);
+    }
   }
 
   S.activeTaskId = null;
@@ -2297,6 +2313,54 @@ async function deletePipeline(pipeId) {
     });
     await loadPipelines();
   } catch(e) { console.warn('[pipelines] delete error:', e); }
+}
+
+// ── Phase 80: Task Retry ─────────────────────────────────────────────────────
+async function retryTask(taskId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key to retry.\n', 'o-error'); return; }
+  try {
+    const res = await fetch('/tasks/' + taskId + '/retry', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      appendSpan('\n[retry error] ' + (data.detail || res.status) + '\n', 'o-error');
+      return;
+    }
+    appendSpan('\n[retry] New task queued: ' + (data.task_id || data.id || '…') + '\n', 'o-complete');
+  } catch(e) {
+    appendSpan('\n[retry error] ' + e.message + '\n', 'o-error');
+  }
+}
+
+// ── Phase 81: Cost Estimator ─────────────────────────────────────────────────
+async function estimateCost() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key to estimate cost.\n', 'o-error'); return; }
+  const input = el.taskInput().value.trim();
+  if (!input) { appendSpan('\n[error] Enter a task to estimate.\n', 'o-error'); return; }
+  const agent = el.agentType().value || 'orchestrator';
+  const costEl = document.getElementById('cost-estimate');
+  if (costEl) costEl.textContent = 'Estimating…';
+  try {
+    const res = await fetch('/tasks', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: input, agent_type: agent, dry_run: true })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (costEl) costEl.textContent = 'Error: ' + (data.detail || res.status);
+      return;
+    }
+    const tok = data.estimated_tokens ? data.estimated_tokens.toLocaleString() + ' tokens' : '';
+    const cost = data.estimated_cost_usd != null ? ' · ~$' + data.estimated_cost_usd.toFixed(4) : '';
+    if (costEl) costEl.textContent = tok + cost;
+  } catch(e) {
+    if (costEl) costEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 // Phase 73: export history as Markdown via GET /tasks/export?format=markdown
