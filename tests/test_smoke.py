@@ -11084,3 +11084,61 @@ def test_p72_ui_respects_system_preference():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "prefers-color-scheme" in html
+
+
+# ── Phase 73 — Task Export to Markdown ────────────────────────────────────────
+
+
+def test_p73_valid_export_formats_includes_markdown():
+    """_VALID_EXPORT_FORMATS includes 'markdown' in tasks.py."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert '"markdown"' in src or "'markdown'" in src
+    # Must be in the _VALID_EXPORT_FORMATS set
+    idx = src.find("_VALID_EXPORT_FORMATS")
+    fmt_line = src[idx : idx + 80]
+    assert "markdown" in fmt_line
+
+
+def test_p73_export_route_handles_markdown_format():
+    """Export endpoint has a markdown format branch that returns .md file."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "tasks_export.md" in src
+    assert "text/markdown" in src
+
+
+def test_p73_markdown_export_includes_task_fields():
+    """Markdown export renders key task fields: status, agent, input, result."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    md_block_start = src.find("# Phase 73: Markdown export")
+    md_block = src[md_block_start : md_block_start + 2000]
+    assert "Status" in md_block
+    assert "Agent" in md_block
+    assert "Input" in md_block
+    assert "Result" in md_block
+
+
+def test_p73_ui_has_export_md_button():
+    """History card in the UI has an Export Markdown (↓ md) button."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "exportTasksMd" in html
+    assert "↓ md" in html
+
+
+def test_p73_ui_export_tasks_md_function_defined():
+    """exportTasksMd() JS function is defined and calls the export endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function exportTasksMd(" in html
+    fn_start = html.find("function exportTasksMd(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "format=markdown" in fn_body
+    assert "tasks_export.md" in fn_body

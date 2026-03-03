@@ -658,23 +658,25 @@ _EXPORT_CSV_FIELDS = [
     "tags",
 ]
 
-_VALID_EXPORT_FORMATS = {"json", "csv"}
+_VALID_EXPORT_FORMATS = {"json", "csv", "markdown"}  # Phase 73 adds markdown
 
 
 @router.get("/export")
 async def export_tasks(
     user: dict = Depends(require_user),
-    format: str = Query(default="json", description="Export format: 'json' or 'csv'"),
+    format: str = Query(
+        default="json", description="Export format: 'json', 'csv', or 'markdown'"
+    ),
     limit: int = Query(default=500, ge=1, le=5000, description="Max tasks to export"),
     status_filter: str | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None, max_length=200),
     tags: list[str] | None = Query(default=None),
 ):
     """
-    Export the authenticated user's tasks as JSON or CSV.
+    Export the authenticated user's tasks as JSON, CSV, or Markdown.
 
     Query params:
-    - ``format`` — ``json`` (default) or ``csv``
+    - ``format`` — ``json`` (default), ``csv``, or ``markdown``
     - ``limit``  — max tasks to include (1–5000, default 500)
     - ``status`` — filter by task status
     - ``q``      — substring search on task input
@@ -724,6 +726,63 @@ async def export_tasks(
             media_type="text/csv",
             headers={
                 "Content-Disposition": 'attachment; filename="tasks_export.csv"',
+                "X-Export-Count": str(len(tasks_rows)),
+            },
+        )
+
+    # Phase 73: Markdown export
+    if format == "markdown":
+        from datetime import datetime, timezone as _tz
+
+        lines: list[str] = [
+            "# LegionForge Task Export",
+            f"",
+            f"Generated: {datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}  ",
+            f"Total: {len(tasks_rows)} task(s)  ",
+            "",
+            "---",
+        ]
+        for row in tasks_rows:
+            tid = str(row.get("task_id", ""))[:8]
+            status_val = row.get("status", "")
+            agent = row.get("agent_type", "")
+            created = str(row.get("created_at", ""))[:19]
+            completed = str(row.get("completed_at", ""))[:19] or "—"
+            tags_val = row.get("tags") or []
+            tags_str = ", ".join(tags_val) if tags_val else "—"
+            labels_val = row.get("labels") or []
+            labels_str = ", ".join(labels_val) if labels_val else "—"
+            task_input = str(row.get("input", "")).strip()
+            result = str(row.get("result") or "").strip()
+
+            lines += [
+                "",
+                f"## Task `{tid}…`",
+                "",
+                f"**Status:** {status_val}  **Agent:** {agent}  ",
+                f"**Created:** {created}  **Completed:** {completed}  ",
+                f"**Tags:** {tags_str}  **Labels:** {labels_str}  ",
+                "",
+                "**Input:**",
+                "",
+            ]
+            for input_line in task_input.splitlines()[:20]:
+                lines.append(f"> {input_line}")
+            if result:
+                lines += [
+                    "",
+                    "**Result:**",
+                    "",
+                    result[:2000],
+                ]
+            lines += ["", "---"]
+
+        md_bytes = "\n".join(lines).encode("utf-8")
+        return StreamingResponse(
+            iter([md_bytes]),
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": 'attachment; filename="tasks_export.md"',
                 "X-Export-Count": str(len(tasks_rows)),
             },
         )
