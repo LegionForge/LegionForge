@@ -1798,4 +1798,9 @@ Added as compact addendum. See git log for full details.
 | 152 | #142 | Recent Tasks Live Refresh (recent-tasks-card, loadRecentTasks, GET /tasks?limit=5, status-colored rows) | +3 | 1219 |
 | 153 | #142 | Tag Cloud Explorer (tag-cloud-card, loadTagCloud, GET /tasks?limit=100, tag aggregation pill cloud) | +3 | 1222 |
 
-**Current state:** 1222/1222 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 154 | #143 | Multi-Tag Search (multi-tag-search-card, searchByMultipleTags, GET /tasks?tags[]=A&tags[]=B comma-separated) | +3 | 1225 |
+| 155 | #143 | Threats Live Monitor (threats-monitor-card, loadThreatsMonitor, GET /admin/threats?since_hours=1, red labels) | +3 | 1228 |
+| 156 | #143 | Pipeline Health Overview (pipeline-health-card, loadPipelineHealth, GET /pipelines step-count rows) | +3 | 1231 |
+| 157 | #143 | Token Budget Progress Bar (token-budget-card, loadTokenBudget, GET /usage/me, CSS bar green/warn/danger) | +4 | 1235 |
+
+**Current state:** 1235/1235 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

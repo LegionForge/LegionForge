@@ -14202,3 +14202,138 @@ def test_p157_ui_token_bar_css_defined():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "token-bar-fill" in html
     assert "token-bar-wrap" in html
+
+
+# ── Phase 158: Draft Auto-Save ────────────────────────────────────────────────
+
+
+def test_p158_ui_draft_save_card_present():
+    """Draft save card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "draft-save-card" in html
+
+
+def test_p158_ui_save_draft_function_defined():
+    """saveDraft() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function saveDraft(" in html
+
+
+def test_p158_ui_restore_draft_function_defined():
+    """restoreDraft() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function restoreDraft(" in html
+
+
+def test_p158_ui_draft_uses_local_storage():
+    """Draft functions use localStorage."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function saveDraft(")
+    fn_body = html[fn_start : fn_start + 400]
+    assert "localStorage" in fn_body
+
+
+def test_p158_ui_on_task_input_calls_save_draft():
+    """onTaskInput() calls saveDraft() for auto-save."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function onTaskInput(")
+    fn_body = html[fn_start : fn_start + 400]
+    assert "saveDraft" in fn_body
+
+
+# ── Phase 159: Live Task Counter ──────────────────────────────────────────────
+
+
+def test_p159_ui_live_counter_card_present():
+    """Live counter card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "live-counter-card" in html
+
+
+def test_p159_ui_poll_task_counter_function_defined():
+    """pollTaskCounter() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function pollTaskCounter(" in html
+
+
+def test_p159_ui_poll_task_counter_fetches_tasks_by_status():
+    """pollTaskCounter() fetches /tasks?status= for multiple statuses."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function pollTaskCounter(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/tasks" in fn_body
+    assert "status" in fn_body
+
+
+# ── Phase 160: Load More Tasks (Keyset Pagination) ────────────────────────────
+
+
+def test_p160_ui_load_more_card_present():
+    """Load more card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "load-more-card" in html
+
+
+def test_p160_ui_load_more_tasks_first_function_defined():
+    """loadMoreTasksFirst() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadMoreTasksFirst(" in html
+
+
+def test_p160_ui_load_more_tasks_uses_cursor_pagination():
+    """_fetchMoreTasks() uses cursor-based pagination."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("async function _fetchMoreTasks(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "cursor" in fn_body
+
+
+# ── Phase 161: Input Analyzer ─────────────────────────────────────────────────
+
+
+def test_p161_ui_char_counter_card_present():
+    """Char counter card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "char-counter-card" in html
+
+
+def test_p161_ui_analyze_input_function_defined():
+    """analyzeInput() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function analyzeInput(" in html
+
+
+def test_p161_ui_analyze_input_estimates_tokens():
+    """analyzeInput() includes a token estimate."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function analyzeInput(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "token" in fn_body.lower()

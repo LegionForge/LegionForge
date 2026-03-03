@@ -1223,6 +1223,55 @@
     </details>
   </div>
 
+  <!-- ── Draft Auto-Save card (Phase 158) ─────────────────── -->
+  <div class="card" id="draft-save-card">
+    <details id="draft-save-section">
+      <summary style="cursor:pointer">Draft Auto-Save</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:11px">
+        <div style="color:var(--text-xdim)">Auto-saves your task input locally. On reload, your draft is restored.</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn secondary" style="font-size:11px;padding:2px 8px" onclick="restoreDraft()">↩ Restore Draft</button>
+          <button class="btn ghost" style="font-size:11px;padding:2px 8px;color:var(--red)" onclick="clearDraft()">✕ Clear Draft</button>
+        </div>
+        <div id="draft-status" style="font-size:10px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Live Task Counter card (Phase 159) ────────────────── -->
+  <div class="card" id="live-counter-card">
+    <details id="live-counter-section">
+      <summary style="cursor:pointer">Live Task Counter <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="pollTaskCounter()" title="Refresh">↻</button></summary>
+      <div id="live-counter-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ to load counts.</div>
+    </details>
+  </div>
+
+  <!-- ── Load More Tasks card (Phase 160) ──────────────────── -->
+  <div class="card" id="load-more-card">
+    <details id="load-more-section">
+      <summary style="cursor:pointer">Task History (Paginated)</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadMoreTasksFirst()">↻ Load First Page</button>
+          <button class="btn ghost" id="load-more-btn" style="font-size:11px;padding:2px 8px;display:none" onclick="loadMoreTasksNext()">Load More ↓</button>
+        </div>
+        <div id="load-more-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Char Counter card (Phase 161) ─────────────────────── -->
+  <div class="card" id="char-counter-card">
+    <details id="char-counter-section">
+      <summary style="cursor:pointer">Input Analyzer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:11px">
+        <div style="color:var(--text-xdim)">Analyze the current task input for length and estimated token count.</div>
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 8px;align-self:flex-start" onclick="analyzeInput()">⊞ Analyze</button>
+        <div id="char-counter-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Quick Clone card (Phase 150) ───────────────── -->
   <div class="card" id="task-clone-card">
     <details id="task-clone-section">
@@ -2174,6 +2223,8 @@ function onTaskInput(ta) {
   ta.style.height = Math.min(ta.scrollHeight, 300) + 'px';
   const n = ta.value.length;
   el.charCount().textContent = n > 0 ? n + ' chars' : '';
+  // Phase 158: auto-save draft
+  if (n > 0) saveDraft();
 }
 
 // ── Keyboard shortcut: Cmd/Ctrl + Enter ──────────────────────────
@@ -3550,6 +3601,108 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 158: Draft Auto-Save ────────────────────────────────────────────────
+const _DRAFT_KEY = 'lf_task_draft';
+function saveDraft() {
+  const text = el.taskInput().value;
+  if (text.trim()) {
+    localStorage.setItem(_DRAFT_KEY, text);
+    const s = document.getElementById('draft-status');
+    if (s) { s.textContent = 'Draft saved (' + new Date().toLocaleTimeString() + ')'; }
+  }
+}
+function restoreDraft() {
+  const saved = localStorage.getItem(_DRAFT_KEY);
+  if (!saved) { const s = document.getElementById('draft-status'); if (s) s.textContent = 'No draft saved.'; return; }
+  el.taskInput().value = saved;
+  onTaskInput(el.taskInput());
+  const s = document.getElementById('draft-status');
+  if (s) s.textContent = 'Draft restored (' + saved.length + ' chars).';
+}
+function clearDraft() {
+  localStorage.removeItem(_DRAFT_KEY);
+  const s = document.getElementById('draft-status');
+  if (s) s.textContent = 'Draft cleared.';
+}
+
+// ── Phase 159: Live Task Counter ──────────────────────────────────────────────
+async function pollTaskCounter() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('live-counter-body');
+  if (bodyEl) bodyEl.textContent = 'Polling…';
+  try {
+    const statuses = ['running', 'queued', 'complete', 'failed'];
+    const counts = {};
+    await Promise.all(statuses.map(async st => {
+      const r = await fetch(`/tasks?status=${st}&limit=1`, { headers: { Authorization: 'Bearer ' + apiKey } });
+      if (r.ok) {
+        const d = await r.json();
+        counts[st] = d.total || (Array.isArray(d) ? d.length : (d.tasks || []).length);
+      } else { counts[st] = '?'; }
+    }));
+    if (!bodyEl) return;
+    const colorMap = { running: 'var(--blue)', queued: 'var(--text-xdim)', complete: 'var(--green)', failed: 'var(--red)' };
+    bodyEl.innerHTML = statuses.map(st =>
+      `<div class="td-field"><span class="td-label" style="color:${colorMap[st]}">${st}</span><span class="td-value">${counts[st]}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 160: Load More Tasks (Keyset Pagination) ────────────────────────────
+let _loadMoreCursor = null;
+async function loadMoreTasksFirst() {
+  _loadMoreCursor = null;
+  document.getElementById('load-more-body').innerHTML = '';
+  await _fetchMoreTasks();
+}
+async function loadMoreTasksNext() {
+  await _fetchMoreTasks();
+}
+async function _fetchMoreTasks() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('load-more-body');
+  const moreBtn = document.getElementById('load-more-btn');
+  const qs = _loadMoreCursor ? `?cursor=${encodeURIComponent(_loadMoreCursor)}&limit=10` : '?limit=10';
+  try {
+    const r = await fetch(`/tasks${qs}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    _loadMoreCursor = data.next_cursor || null;
+    if (moreBtn) moreBtn.style.display = _loadMoreCursor ? 'inline-flex' : 'none';
+    if (!bodyEl) return;
+    const newRows = tasks.map(t => {
+      const statusColor = t.status === 'complete' ? 'var(--green)' : t.status === 'failed' ? 'var(--red)' : 'var(--text-xdim)';
+      return `<div class="td-field"><span class="td-label" style="color:${statusColor}">${t.status || '?'}</span><span class="td-value">${escapeHtml((t.task_text || '').slice(0,70))}</span></div>`;
+    }).join('');
+    bodyEl.innerHTML += newRows || (bodyEl.innerHTML ? '' : 'No tasks found.');
+    if (!tasks.length && !bodyEl.textContent.trim()) bodyEl.textContent = 'No tasks found.';
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 161: Input Analyzer ─────────────────────────────────────────────────
+function analyzeInput() {
+  const text = el.taskInput().value;
+  const bodyEl = document.getElementById('char-counter-body');
+  if (!bodyEl) return;
+  const chars = text.length;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const lines = text.split('\n').length;
+  // Rough token estimate: ~4 chars per token for English text
+  const estTokens = Math.ceil(chars / 4);
+  const fields = [
+    ['characters', chars.toLocaleString()],
+    ['words', words.toLocaleString()],
+    ['lines', lines.toLocaleString()],
+    ['est. tokens', estTokens.toLocaleString() + ' (~4 chars/tok)'],
+  ];
+  bodyEl.innerHTML = fields.map(([k, v]) =>
+    `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+  ).join('');
 }
 
 // ── Phase 154: Multi-Tag Search ───────────────────────────────────────────────
