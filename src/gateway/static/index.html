@@ -615,7 +615,7 @@
   <!-- ── History ────────────────────────────────────────── -->
   <div class="card">
     <details id="history-section">
-      <summary id="history-summary">History (0)</summary>
+      <summary id="history-summary">History (0) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="exportTasksMd(event)" title="Export task history as Markdown">↓ md</button></summary>
       <div id="history-list">
         <div id="history-empty">No tasks yet this session.</div>
       </div>
@@ -1871,6 +1871,28 @@ function saveHistory(entry) {
   if (S.history.length > MAX_HISTORY) S.history.length = MAX_HISTORY;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S.history)); } catch(_) {}
   renderHistory();
+}
+
+// Phase 73: export history as Markdown via GET /tasks/export?format=markdown
+async function exportTasksMd(evt) {
+  evt.stopPropagation();  // prevent <details> toggle
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key to export.\n', 'o-error'); return; }
+  try {
+    const resp = await fetch('/tasks/export?format=markdown&limit=500', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!resp.ok) { appendSpan('\n[error] Export failed: ' + resp.status + '\n', 'o-error'); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tasks_export.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    appendSpan('\n[error] Export error: ' + e.message + '\n', 'o-error');
+  }
 }
 
 function renderHistory() {
