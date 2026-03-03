@@ -506,6 +506,7 @@
   <div id="header">
     <h1>LegionForge</h1>
     <span class="subtitle">agent gateway</span>
+    <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion">🔕</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <div id="conn-dot" title="Stream connection status"></div>
   </div>
@@ -685,6 +686,7 @@ const el = {
 // ── Init ─────────────────────────────────────────────────────────
 (function init() {
   initTheme();  // Phase 72: apply saved/system light-dark preference
+  initNotifButton();  // Phase 74: init notification bell
 
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
@@ -731,6 +733,31 @@ const el = {
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
+// ── Phase 74: Browser Notifications ────────────────────────────────────────
+function _notifIcon() { return document.getElementById('notif-toggle'); }
+async function requestNotifPermission() {
+  if (\!("Notification" in window)) return;
+  const p = await Notification.requestPermission();
+  _notifIcon().textContent = p === "granted" ? "🔔" : "🔕";
+  localStorage.setItem("lf-notif", p);
+}
+function initNotifButton() {
+  const btn = _notifIcon();
+  if (\!btn) return;
+  if (\!("Notification" in window)) { btn.style.display = "none"; return; }
+  if (Notification.permission === "granted") btn.textContent = "🔔";
+  else btn.textContent = "🔕";
+}
+function notifyTaskComplete(taskInput, elapsed) {
+  if (\!("Notification" in window) || Notification.permission \!== "granted") return;
+  const preview = (taskInput || "Task").slice(0, 60);
+  new Notification("LegionForge — Task Complete", {
+    body: "✓ " + preview + "... (" + elapsed + "s)",
+    icon: "/favicon.ico",
+    tag: "lf-task-complete",
+  });
+}
+
 // ── Phase 72: Light/Dark Mode ──────────────────────────────────────────────
 function toggleTheme() {
   const light = document.body.classList.toggle('light-mode');
@@ -1809,6 +1836,7 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
       el.output().appendChild(bar);
     }
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
+    notifyTaskComplete(taskInputText, elapsed);  // Phase 74
   } else if (status === 'error') {
     setStatus('error', '✗ Error', detail);
     appendSpan('\n[error] ' + detail + '\n', 'o-error');
