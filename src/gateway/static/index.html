@@ -27,6 +27,17 @@
       --mono:      'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace, 'Noto Sans Mono', system-ui;
     }
 
+    /* ── Phase 76: Task Notes ───────────────────────────────── */
+    .notes-panel { margin-top:6px; padding:6px 8px; background:var(--panel2); border-radius:var(--radius); border:1px solid var(--border2); font-size:12px; }
+    .note-item { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; padding:4px 0; border-bottom:1px solid var(--border2); }
+    .note-item:last-child { border-bottom:none; }
+    .note-text { color:var(--text); white-space:pre-wrap; flex:1; }
+    .note-del { color:var(--red); cursor:pointer; background:none; border:none; font-size:13px; padding:0; flex-shrink:0; }
+    .note-add-row { display:flex; gap:6px; margin-top:6px; }
+    .note-add-row textarea { flex:1; min-height:40px; resize:vertical; font-size:12px; }
+    /* ── Phase 77: Share Link ────────────────────────────────── */
+    .share-row { display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap; }
+    .share-url { font-size:11px; color:var(--blue); word-break:break-all; flex:1; }
     /* ── Phase 75: Schedules card ───────────────────────────── */
     .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .sched-row:last-child { border-bottom:none; }
@@ -1870,8 +1881,28 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
       bar.innerHTML =
         '<span style="color:var(--text-dim);font-size:12px;">Rate:</span>' +
         '<button class="btn ghost" id="rb-up-' + taskId + '" onclick="rateTask(\'' + taskId + '\',1)" title="Thumbs up">👍</button>' +
-        '<button class="btn ghost" id="rb-down-' + taskId + '" onclick="rateTask(\'' + taskId + '\',-1)" title="Thumbs down">👎</button>';
+        '<button class="btn ghost" id="rb-down-' + taskId + '" onclick="rateTask(\'' + taskId + '\',-1)" title="Thumbs down">👎</button>' +
+        '<button class="btn ghost" onclick="toggleNotesPanel(\'' + taskId + '\')" title="Task notes" style="margin-left:8px">📝 Notes</button>' +
+        '<button class="btn ghost" onclick="shareTask(\'' + taskId + '\')" title="Share result" id="share-btn-' + taskId + '">🔗 Share</button>';
       el.output().appendChild(bar);
+      // Phase 76: notes panel (hidden initially)
+      const notesDiv = document.createElement('div');
+      notesDiv.className = 'notes-panel';
+      notesDiv.id = 'notes-panel-' + taskId;
+      notesDiv.style.display = 'none';
+      notesDiv.innerHTML =
+        '<div id="notes-list-' + taskId + '" style="min-height:16px"></div>' +
+        '<div class="note-add-row">' +
+          '<textarea id="note-input-' + taskId + '" placeholder="Add a note…"></textarea>' +
+          '<button class="btn" onclick="addNote(\'' + taskId + '\')">Add</button>' +
+        '</div>';
+      el.output().appendChild(notesDiv);
+      // Phase 77: share URL row (hidden initially)
+      const shareDiv = document.createElement('div');
+      shareDiv.className = 'share-row';
+      shareDiv.id = 'share-row-' + taskId;
+      shareDiv.style.display = 'none';
+      el.output().appendChild(shareDiv);
     }
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
     notifyTaskComplete(taskInputText, elapsed);  // Phase 74
@@ -2016,6 +2047,103 @@ async function deleteSchedule(schedId) {
     });
     await loadSchedules();
   } catch(e) { console.warn('[schedules] delete error:', e); }
+}
+
+// ── Phase 76: Task Notes ─────────────────────────────────────────────────────
+async function toggleNotesPanel(taskId) {
+  const panel = document.getElementById('notes-panel-' + taskId);
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  if (visible) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  await loadNotes(taskId);
+}
+
+async function loadNotes(taskId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const listEl = document.getElementById('notes-list-' + taskId);
+  if (!listEl) return;
+  try {
+    const res = await fetch('/tasks/' + taskId + '/notes', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { listEl.textContent = '(Could not load notes)'; return; }
+    const data = await res.json();
+    const notes = data.notes || [];
+    if (!notes.length) { listEl.innerHTML = '<span style="color:var(--text-xdim);font-size:11px">No notes yet.</span>'; return; }
+    listEl.innerHTML = notes.map(n =>
+      '<div class="note-item">' +
+        '<span class="note-text">' + escapeHtml(n.content || n.note || '') + '</span>' +
+        '<button class="note-del" onclick="deleteNote(\'' + taskId + '\',\'' + (n.note_id || n.id) + '\')" title="Delete note">✕</button>' +
+      '</div>'
+    ).join('');
+  } catch(e) { console.warn('[notes] load error:', e); }
+}
+
+async function addNote(taskId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const inp = document.getElementById('note-input-' + taskId);
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  try {
+    const res = await fetch('/tasks/' + taskId + '/notes', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text })
+    });
+    if (res.ok) { inp.value = ''; await loadNotes(taskId); }
+    else console.warn('[notes] add failed:', res.status);
+  } catch(e) { console.warn('[notes] add error:', e); }
+}
+
+async function deleteNote(taskId, noteId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  try {
+    await fetch('/tasks/' + taskId + '/notes/' + noteId, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    await loadNotes(taskId);
+  } catch(e) { console.warn('[notes] delete error:', e); }
+}
+
+// ── Phase 77: Task Share Link ────────────────────────────────────────────────
+async function shareTask(taskId) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key to share.\n', 'o-error'); return; }
+  const btn = document.getElementById('share-btn-' + taskId);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await fetch('/tasks/' + taskId + '/share', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendSpan('\n[share error] ' + (err.detail || res.status) + '\n', 'o-error');
+      if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
+      return;
+    }
+    const data = await res.json();
+    const shareUrl = window.location.origin + '/shared/' + data.share_token;
+    const rowEl = document.getElementById('share-row-' + taskId);
+    if (rowEl) {
+      rowEl.style.display = 'flex';
+      rowEl.innerHTML =
+        '<span style="color:var(--text-dim);font-size:11px">Share link:</span>' +
+        '<a class="share-url" href="' + escapeHtml(shareUrl) + '" target="_blank">' + escapeHtml(shareUrl) + '</a>' +
+        '<button class="btn ghost" style="font-size:11px" onclick="navigator.clipboard.writeText(\'' + escapeHtml(shareUrl) + '\').then(()=>this.textContent=\'Copied!\')">Copy</button>';
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Shared'; }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Share'; }
+    console.warn('[share] error:', e);
+  }
 }
 
 // Phase 73: export history as Markdown via GET /tasks/export?format=markdown
