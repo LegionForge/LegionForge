@@ -15660,3 +15660,119 @@ def test_p205_ui_user_prefs_hits_preferences_endpoint():
     idx = html.index("async function loadUserPreferences()")
     fn_body = html[idx : idx + 600]
     assert "/preferences" in fn_body
+
+
+# ── Phase 206: MCP Tools Viewer ───────────────────────────────────────────────
+
+
+def test_p206_ui_mcp_tools_card_present():
+    """mcp-tools-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "mcp-tools-card" in html
+
+
+def test_p206_ui_load_mcp_tools_function_defined():
+    """loadMcpToolsList function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMcpToolsList()" in html
+
+
+def test_p206_ui_mcp_tools_hits_mcp_endpoint():
+    """loadMcpToolsList fetches /mcp/tools."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMcpToolsList()")
+    fn_body = html[idx : idx + 600]
+    assert "/mcp/tools" in fn_body
+
+
+# ── Phase 207: Task Cost Dry-Run ──────────────────────────────────────────────
+
+
+def test_p207_ui_cost_dryrun_card_present():
+    """cost-dryrun-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cost-dryrun-card" in html
+
+
+def test_p207_ui_run_cost_estimate_function_defined():
+    """runCostEstimate function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function runCostEstimate()" in html
+
+
+def test_p207_ui_cost_estimate_posts_dry_run():
+    """runCostEstimate sends dry_run: true."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function runCostEstimate()")
+    fn_body = html[idx : idx + 700]
+    assert "dry_run" in fn_body
+
+
+# ── Phase 208: Audit Log Viewer ───────────────────────────────────────────────
+
+
+def test_p208_ui_audit_log_card_present():
+    """audit-log-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-log-card" in html
+
+
+def test_p208_ui_load_audit_log_function_defined():
+    """loadAuditLog function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAuditLog()" in html
+
+
+def test_p208_ui_audit_log_hits_admin_audit():
+    """loadAuditLog fetches /admin/audit endpoint."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAuditLog()")
+    fn_body = html[idx : idx + 600]
+    assert "/admin/audit" in fn_body
+
+
+# ── Phase 209: Threats Summary ────────────────────────────────────────────────
+
+
+def test_p209_ui_threats_summary_card_present():
+    """threats-summary-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threats-summary-card" in html
+
+
+def test_p209_ui_load_threats_summary_function_defined():
+    """loadThreatsSummary function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadThreatsSummary()" in html
+
+
+def test_p209_ui_threats_summary_hits_admin_endpoint():
+    """loadThreatsSummary fetches /admin/threats/summary."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadThreatsSummary()")
+    fn_body = html[idx : idx + 600]
+    assert "threats/summary" in fn_body

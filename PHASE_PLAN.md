@@ -1855,5 +1855,9 @@ Added as compact addendum. See git log for full details.
 | 199 | #154 | Task Share Links (task-shares-card, loadTaskShares, GET /tasks/{id}/shares, anchor links) | +3 | 1369 |
 | 200 | #154 | Task Attachments (task-attachments-card, loadTaskAttachments, GET /tasks/{id}/attachments, KB sizes) | +3 | 1372 |
 | 201 | #154 | Bulk Tag Tasks (bulk-tag-card, bulkTagTasks, POST /tasks/bulk/tag, tag name + IDs textarea) | +3 | 1375 |
+| 202 | #155 | Pipelines Compact View (pipelines-compact-card, loadPipelinesCompact, GET /pipelines, ID/name/steps table) | +3 | 1378 |
+| 203 | #155 | Schedule Next-Run (schedule-next-run-card, loadScheduleNextRun, GET /schedules/{id}, cron+next_run) | +3 | 1381 |
+| 204 | #155 | Task Retry History (retry-history-card, loadRetryHistory, GET /tasks/{id}/timeline, filter retry events) | +3 | 1384 |
+| 205 | #155 | User Preferences (user-prefs-card, loadUserPreferences, GET /preferences, key-value table) | +3 | 1387 |
 
-**Current state:** 1375/1375 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1387/1387 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

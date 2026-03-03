@@ -1184,6 +1184,42 @@
     </details>
   </div>
 
+  <!-- ── MCP Tools Viewer card (Phase 206) ────────────────── -->
+  <div class="card" id="mcp-tools-card">
+    <details id="mcp-tools-section">
+      <summary style="cursor:pointer">MCP Tools <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMcpToolsList()" title="Refresh">↻</button></summary>
+      <div id="mcp-tools-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Cost Dry-Run card (Phase 207) ─────────────────────── -->
+  <div class="card" id="cost-dryrun-card">
+    <details id="cost-dryrun-section">
+      <summary style="cursor:pointer">Task Cost Estimate (Dry Run)</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="cost-dryrun-prompt" placeholder="Enter task prompt…" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="runCostEstimate()">💰 Estimate</button>
+      </div>
+      <div id="cost-dryrun-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter a prompt and click 💰 Estimate.</div>
+    </details>
+  </div>
+
+  <!-- ── Audit Log Viewer card (Phase 208) ─────────────────── -->
+  <div class="card" id="audit-log-card">
+    <details id="audit-log-section">
+      <summary style="cursor:pointer">Audit Log <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLog()" title="Refresh">↻</button></summary>
+      <div id="audit-log-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load recent audit events.</div>
+    </details>
+  </div>
+
+  <!-- ── Threats Summary card (Phase 209) ──────────────────── -->
+  <div class="card" id="threats-summary-card">
+    <details id="threats-summary-section">
+      <summary style="cursor:pointer">Threat Event Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatsSummary()" title="Refresh">↻</button></summary>
+      <div id="threats-summary-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
   <!-- ── Pipelines Compact List card (Phase 202) ──────────── -->
   <div class="card" id="pipelines-compact-card">
     <details id="pipelines-compact-section">
@@ -4205,6 +4241,85 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 206: MCP Tools Viewer ───────────────────────────────────────────────
+async function loadMcpToolsList() {
+  const el = document.getElementById('mcp-tools-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/mcp/tools');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tools = Array.isArray(data) ? data : (data.tools || []);
+    if (!tools.length) { el.textContent = 'No MCP tools registered.'; return; }
+    el.innerHTML = tools.map(t => {
+      const name = t.name || t.tool_name || '-';
+      const desc = t.description || '';
+      return `<div style="margin-bottom:6px;font-size:12px"><strong>${name}</strong>${desc ? ' — <span style="color:var(--text-xdim)">' + desc + '</span>' : ''}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 207: Task Cost Dry-Run ──────────────────────────────────────────────
+async function runCostEstimate() {
+  const prompt = document.getElementById('cost-dryrun-prompt').value.trim();
+  const el = document.getElementById('cost-dryrun-body');
+  if (!prompt) { el.textContent = 'Enter a prompt.'; return; }
+  el.textContent = 'Estimating…';
+  try {
+    const r = await apiFetch('/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, dry_run: true }),
+    });
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Est. Input Tokens</span><span class="td-value">${d.estimated_input_tokens ?? d.input_tokens ?? 'N/A'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Est. Output Tokens</span><span class="td-value">${d.estimated_output_tokens ?? d.output_tokens ?? 'N/A'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Est. Cost (USD)</span><span class="td-value">${d.estimated_cost_usd != null ? '$' + d.estimated_cost_usd.toFixed(4) : 'N/A'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Model</span><span class="td-value">${d.model ?? 'N/A'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 208: Audit Log Viewer ───────────────────────────────────────────────
+async function loadAuditLog() {
+  const el = document.getElementById('audit-log-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/audit?limit=10');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const events = Array.isArray(data) ? data : (data.events || data.items || []);
+    if (!events.length) { el.textContent = 'No audit events found.'; return; }
+    el.innerHTML = events.map(e => {
+      const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '-';
+      const type = e.event_type || e.type || '-';
+      const agent = e.agent_id || e.user_id || '-';
+      return `<div style="margin-bottom:4px;font-size:11px">${ts} — <strong>${type}</strong> — ${agent}</div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 209: Threats Summary ────────────────────────────────────────────────
+async function loadThreatsSummary() {
+  const el = document.getElementById('threats-summary-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/threats/summary');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const summary = data.summary ?? data;
+    const entries = typeof summary === 'object' && summary !== null ? Object.entries(summary) : [];
+    if (!entries.length) { el.textContent = 'No threat data.'; return; }
+    const total = entries.reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
+    el.innerHTML = `<div style="margin-bottom:6px;font-size:12px;color:var(--text-xdim)">Total events: ${total}</div>`
+      + entries.map(([k, v]) =>
+          `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+        ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 202: Pipelines Compact View ─────────────────────────────────────────
