@@ -131,6 +131,17 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 
 ---
 
+## Open Security Issues
+
+> These are accepted risks for local development, tracked here as pre-1.0 release blockers.
+> See [`SECURITY.md — Known Security Gaps`](./SECURITY.md#known-security-gaps--pre-10-blockers) for full details and remediation steps.
+
+| Issue | Severity | Status |
+|---|---|---|
+| **PostgreSQL `trust` auth** — any local process can connect to the DB without a password | Medium (local dev) / High (shared/remote) | ⚠️ Accepted for local dev — **must fix before v1.0** |
+
+---
+
 ## Quick Start
 
 **→ Full setup guide:** [`docs/quick-start.md`](./docs/quick-start.md)

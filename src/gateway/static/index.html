@@ -402,6 +402,15 @@
         <option value="base_agent">Base Agent — general LLM with tool access</option>
       </select>
     </div>
+
+    <div class="field-row">
+      <label for="session-picker">Session</label>
+      <select id="session-picker" onchange="onSessionChange(this.value)" title="Run within a persistent conversation session so the agent remembers prior turns">
+        <option value="">— Standalone (no session) —</option>
+      </select>
+      <button class="btn ghost icon" onclick="newSession()" title="Create new session">＋</button>
+      <button class="btn ghost icon" id="del-session-btn" onclick="deleteCurrentSession()" title="Delete this session" style="display:none">✕</button>
+    </div>
   </div>
 
   <!-- ── Input card ─────────────────────────────────────── -->
@@ -450,7 +459,7 @@
 
 <script>
 // ════════════════════════════════════════════════════════════════
-//  LegionForge Web UI — Phase 15
+//  LegionForge Web UI — Phase 57
 //  Vanilla JS, no framework, single file.
 // ════════════════════════════════════════════════════════════════
 
@@ -469,6 +478,7 @@ const S = {
   toolsAttempted: 0,      // tool_start events received this run
   toolsCompleted: 0,      // tool_end events received this run
   toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
+  sessionId:      null,   // string | null — active conversation session_id (Phase 57)
 };
 
 const MAX_HISTORY = 20;
@@ -490,8 +500,9 @@ const el = {
   connDot:    () => $('conn-dot'),
   histList:   () => $('history-list'),
   histEmpty:  () => $('history-empty'),
-  histSummary:() => $('history-summary'),
-  charCount:  () => $('char-count'),
+  histSummary:   () => $('history-summary'),
+  charCount:     () => $('char-count'),
+  sessionPicker: () => $('session-picker'),
 };
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -500,12 +511,16 @@ const el = {
   const saved = localStorage.getItem(APIKEY_KEY);
   if (saved) el.apiKey().value = saved;
 
-  // Save API key on change
+  // Save API key on change; reload sessions when key is updated
   el.apiKey().addEventListener('input', () => {
     const v = el.apiKey().value.trim();
     if (v) localStorage.setItem(APIKEY_KEY, v);
     else   localStorage.removeItem(APIKEY_KEY);
   });
+  el.apiKey().addEventListener('blur', () => { if (el.apiKey().value.trim()) loadSessions(); });
+
+  // Load sessions on startup if key is already saved
+  if (saved) loadSessions();
 
   // Restore history
   try {
@@ -529,6 +544,84 @@ function toggleKeyVisibility() {
 function clearApiKey() {
   el.apiKey().value = '';
   localStorage.removeItem(APIKEY_KEY);
+}
+
+// ── Session management (Phase 57) ─────────────────────────────────
+async function loadSessions() {
+  const apiKey = el.apiKey().value.trim();
+  const picker = el.sessionPicker();
+  if (!apiKey) {
+    picker.innerHTML = '<option value="">— Standalone (no session) —</option>';
+    S.sessionId = null;
+    $('del-session-btn').style.display = 'none';
+    return;
+  }
+  try {
+    const res = await fetch('/sessions?limit=50', {
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const sessions = data.sessions || [];
+    const prev = picker.value;
+    picker.innerHTML = '<option value="">— Standalone (no session) —</option>' +
+      sessions.map(s => {
+        const label = (s.name || 'Session').replace(/"/g, '&quot;');
+        const turns = s.turn_count || 0;
+        return `<option value="${s.session_id}">${label} (${turns} turn${turns !== 1 ? 's' : ''})</option>`;
+      }).join('');
+    // Restore previous selection if it still exists
+    if (prev && sessions.find(s => s.session_id === prev)) {
+      picker.value = prev;
+    }
+    onSessionChange(picker.value);
+  } catch (_) { /* network error — leave picker unchanged */ }
+}
+
+async function newSession() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { appendSpan('\n[error] Enter your API key before creating a session.\n', 'o-error'); return; }
+  const name = window.prompt('Session name (optional):', '');
+  if (name === null) return; // user cancelled prompt
+  const agent = el.agentType().value;
+  try {
+    const res = await fetch('/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ name: name.trim(), agent_type: agent }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendSpan('\n[error] ' + escapeHtml(err.detail || 'Could not create session') + '\n', 'o-error');
+      return;
+    }
+    const sess = await res.json();
+    await loadSessions();
+    el.sessionPicker().value = sess.session_id;
+    onSessionChange(sess.session_id);
+    appendSpan('\n[session created: ' + escapeHtml(sess.name || sess.session_id.slice(0, 8)) + ']\n', 'o-status');
+  } catch (e) {
+    appendSpan('\n[error] ' + escapeHtml(e.message) + '\n', 'o-error');
+  }
+}
+
+async function deleteCurrentSession() {
+  const sessionId = S.sessionId;
+  if (!sessionId) return;
+  if (!window.confirm('Delete this session? Tasks within it will be kept but unlinked.')) return;
+  const apiKey = el.apiKey().value.trim();
+  try {
+    await fetch('/sessions/' + sessionId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+    });
+  } catch (_) { /* ignore */ }
+  await loadSessions();
+}
+
+function onSessionChange(val) {
+  S.sessionId = val || null;
+  $('del-session-btn').style.display = val ? 'inline-flex' : 'none';
 }
 
 // ── Textarea auto-resize + char count ────────────────────────────
@@ -760,7 +853,7 @@ async function submitTask() {
         'Content-Type':  'application/json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify({ task, agent_type: agent }),
+      body: JSON.stringify({ task, agent_type: agent, ...(S.sessionId ? { session_id: S.sessionId } : {}) }),
     });
 
     if (!res.ok) {
@@ -1085,6 +1178,9 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
   }
 
   S.activeTaskId = null;
+
+  // Refresh session list to update turn counts after a session task completes
+  if (S.sessionId) loadSessions();
 }
 
 // ── Cancel task ───────────────────────────────────────────────────
