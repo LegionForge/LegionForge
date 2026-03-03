@@ -126,6 +126,13 @@
     .attach-row { display:flex; gap:8px; align-items:center; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .attach-row:last-child { border-bottom:none; }
     .attach-name { color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* ── Phase 100: Batch Submit ─────────────────────────────── */
+    .batch-row { display:flex; gap:6px; align-items:flex-start; padding:4px 0; border-bottom:1px solid var(--border2); }
+    .batch-row:last-child { border-bottom:none; }
+    .batch-num { color:var(--text-xdim); min-width:20px; font-size:11px; padding-top:2px; }
+    /* ── Phase 101: Session Tasks Browser ───────────────────── */
+    .sess-task-row { display:grid; grid-template-columns:80px 1fr 60px; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .sess-task-row:last-child { border-bottom:none; }
     .sched-cron { color:var(--text-dim); font-size:11px; }
     .sched-next { color:var(--text-xdim); font-size:11px; }
     .sched-enabled { color:var(--green); text-align:center; }
@@ -930,6 +937,39 @@
     </details>
   </div>
 
+  <!-- ── API Key Rotation card (Phase 99) ─────────────────── -->
+  <div class="card" id="rotate-key-card">
+    <details id="rotate-key-section">
+      <summary style="cursor:pointer">API Key Rotation</summary>
+      <p style="font-size:11px;color:var(--text-dim);margin:6px 0">Generate a new API key. Your current key will stop working immediately. The new key is shown <strong>once</strong>.</p>
+      <button class="btn secondary" style="font-size:11px;padding:4px 10px" onclick="rotateApiKey()">⟳ Rotate Key</button>
+      <div id="rotate-key-result" style="margin-top:8px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── Batch Task Submission card (Phase 100) ────────────── -->
+  <div class="card" id="batch-card">
+    <details id="batch-section">
+      <summary style="cursor:pointer">Batch Task Submit</summary>
+      <p style="font-size:11px;color:var(--text-dim);margin:6px 0">Submit up to 20 tasks at once. Enter one task per line.</p>
+      <textarea id="batch-input" rows="4" placeholder="Task 1 prompt&#10;Task 2 prompt&#10;Task 3 prompt" style="width:100%;box-sizing:border-box;font-size:11px;padding:6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical"></textarea>
+      <button class="btn secondary" style="font-size:11px;padding:4px 10px;margin-top:6px" onclick="submitBatch()">↑ Submit Batch</button>
+      <div id="batch-result" style="margin-top:8px;font-size:11px;color:var(--text-xdim)"></div>
+    </details>
+  </div>
+
+  <!-- ── Session Tasks Browser card (Phase 101) ────────────── -->
+  <div class="card" id="session-tasks-card">
+    <details id="session-tasks-section">
+      <summary style="cursor:pointer">Session Tasks</summary>
+      <div style="margin:6px 0 4px;display:flex;gap:6px;align-items:center">
+        <select id="sess-tasks-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)"><option value="">— select session —</option></select>
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadSessionTasks()">↻</button>
+      </div>
+      <div id="sess-tasks-list" style="color:var(--text-xdim);font-size:12px">Select a session above and click ↻.</div>
+    </details>
+  </div>
+
   <!-- ── Task Stats card (Phase 82) ────────────────────────── -->
   <div class="card" id="stats-card">
     <details id="stats-section">
@@ -1393,6 +1433,7 @@ async function loadSessions() {
       picker.value = prev;
     }
     onSessionChange(picker.value);
+    populateSessTasksSel().catch(() => {});  // Phase 101
   } catch (_) { /* network error — leave picker unchanged */ }
 }
 
@@ -2718,6 +2759,110 @@ async function loadAnnotations(evt) {
       '</div>';
     }).join('') +
     '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing ' + items.length + ' annotation(s)</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 99: API Key Rotation ─────────────────────────────────────────────────
+async function rotateApiKey() {
+  const apiKey = el.apiKey().value.trim();
+  const resultEl = document.getElementById('rotate-key-result');
+  if (!resultEl) return;
+  if (!apiKey) { resultEl.textContent = 'Enter API key first.'; return; }
+  if (!confirm('Rotate your API key? Your current key will stop working immediately.')) return;
+  resultEl.textContent = 'Rotating…';
+  try {
+    const res = await fetch('/auth/rotate-key', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { const e = await res.json(); resultEl.textContent = 'Error: ' + (e.detail || res.status); return; }
+    const d = await res.json();
+    const newKey = d.api_key || d.new_key || '(see response)';
+    resultEl.innerHTML = '<span style="color:var(--green)">✓ New key (shown once):</span><br>' +
+      '<code style="font-size:11px;word-break:break-all;background:var(--input-bg);padding:4px 6px;border-radius:4px;display:block;margin-top:4px">' + escapeHtml(newKey) + '</code>' +
+      '<button class="btn ghost icon" style="font-size:11px;margin-top:4px" onclick="navigator.clipboard.writeText(' + JSON.stringify(newKey) + ')">Copy</button>';
+    // Update the API key input automatically
+    el.apiKey().value = newKey;
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 100: Batch Task Submission ──────────────────────────────────────────
+async function submitBatch() {
+  const apiKey = el.apiKey().value.trim();
+  const textarea = document.getElementById('batch-input');
+  const resultEl = document.getElementById('batch-result');
+  if (!resultEl || !textarea) return;
+  if (!apiKey) { resultEl.textContent = 'Enter API key.'; return; }
+  const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (!lines.length) { resultEl.textContent = 'Enter at least one task.'; return; }
+  if (lines.length > 20) { resultEl.textContent = 'Maximum 20 tasks per batch.'; return; }
+  resultEl.textContent = 'Submitting ' + lines.length + ' task(s)…';
+  const tasks = lines.map(task => ({ task, agent_type: 'researcher' }));
+  try {
+    const res = await fetch('/tasks/batch', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks }),
+    });
+    if (!res.ok) { const e = await res.json(); resultEl.textContent = 'Error: ' + (e.detail || res.status); return; }
+    const d = await res.json();
+    const submitted = d.tasks || [];
+    resultEl.innerHTML = '<span style="color:var(--green)">✓ Submitted ' + submitted.length + ' task(s)</span><br>' +
+      submitted.map((t, i) => '<div class="batch-row"><span class="batch-num">' + (i+1) + '.</span>' +
+        '<span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">' + escapeHtml((t.task_id||'').slice(0,12)) + '…</span></div>'
+      ).join('');
+    textarea.value = '';
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 101: Session Tasks Browser ──────────────────────────────────────────
+async function populateSessTasksSel() {
+  const apiKey = el.apiKey().value.trim();
+  const sel = document.getElementById('sess-tasks-sel');
+  if (!sel || !apiKey) return;
+  try {
+    const res = await fetch('/sessions?limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!res.ok) return;
+    const d = await res.json();
+    sel.innerHTML = '<option value="">— select session —</option>';
+    (d.sessions || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.session_id;
+      opt.textContent = (s.name || 'Session') + ' (' + (s.turn_count || 0) + ' turns)';
+      sel.appendChild(opt);
+    });
+  } catch(_) {}
+}
+
+async function loadSessionTasks() {
+  const apiKey = el.apiKey().value.trim();
+  const sel = document.getElementById('sess-tasks-sel');
+  const listEl = document.getElementById('sess-tasks-list');
+  if (!listEl || !sel) return;
+  const sessionId = sel.value;
+  if (!apiKey) { listEl.textContent = 'Enter API key.'; return; }
+  if (!sessionId) { listEl.textContent = 'Select a session first.'; return; }
+  listEl.textContent = 'Loading session tasks…';
+  try {
+    const res = await fetch('/sessions/' + encodeURIComponent(sessionId) + '/tasks', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 404) { listEl.textContent = 'Session not found.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load session tasks.'; return; }
+    const d = await res.json();
+    const tasks = d.tasks || [];
+    if (!tasks.length) { listEl.textContent = 'No tasks in this session.'; return; }
+    listEl.innerHTML = tasks.map(t => {
+      const statusColor = t.status === 'complete' ? 'var(--green)' : t.status === 'failed' ? 'var(--red)' : 'var(--text-dim)';
+      const taskIdShort = (t.task_id || '').slice(0, 8) + '…';
+      const preview = (t.input_text || t.task || '').slice(0, 50);
+      return '<div class="sess-task-row">' +
+        '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px">' + escapeHtml(taskIdShort) + '</span>' +
+        '<span style="color:var(--text-dim)">' + escapeHtml(preview) + '</span>' +
+        '<span style="color:' + statusColor + ';text-align:right">' + escapeHtml(t.status || '?') + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">' + tasks.length + ' task(s) · ' + (d.turn_count || 0) + ' turn(s)</div>';
   } catch(e) { listEl.textContent = 'Error: ' + e.message; }
 }
 

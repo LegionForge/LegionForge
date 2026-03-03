@@ -1728,5 +1728,9 @@ Added as compact addendum. See git log for full details.
 | 92 | #127 | Webhook Management UI (webhooks-card, loadWebhooks/registerWebhook/deleteWebhook, POST/DELETE /webhooks) | +4 | 1015 |
 | 93 | #127 | User Preferences UI (preferences-card, loadPreferences/savePreference/deletePreference, /auth/preferences) | +4 | 1019 |
 | 94 | #127 | Admin Annotations Viewer (annotations-card, loadAnnotations, /admin/annotations, 👍/👎 rendering) | +4 | 1023 |
+| 95 | #128 | Who Am I Identity Badge (identity-card, loadIdentity, GET /auth/me, username/role/quota) | +4 | 1027 |
+| 96 | #128 | Pipeline Run History (run-history-card, loadPipelineRuns, GET /pipelines/{id}/runs) | +3 | 1030 |
+| 97 | #128 | Audit Chain Integrity Verify (audit-verify-card, verifyAuditChain, GET /admin/audit/verify, ✓/✗ display) | +4 | 1034 |
+| 98 | #128 | Task Attachments Viewer (attachments-card, loadAttachments, GET /tasks/{id}/attachments) | +3 | 1037 |
 
-**Current state:** 1023/1023 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1037/1037 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
