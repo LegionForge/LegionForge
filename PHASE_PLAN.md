@@ -1919,5 +1919,9 @@ Added as compact addendum. See git log for full details.
 | 263 | #170 | Pipeline Summary (pipeline-summary-card, loadPipelineSummary, GET /pipelines?limit=100, total/active/disabled + first 5) | +3 | 1561 |
 | 264 | #170 | User Sessions (user-sessions-card, loadUserSessions, GET /sessions?username=X, session ID/title/task-count) | +3 | 1564 |
 | 265 | #170 | Task Dependency Graph (task-dependency-graph-card, loadTaskDependencyGraph, GET /tasks/{id}+depends_on lookup, chain view) | +3 | 1567 |
+| 266 | #171 | Token Budget Status (token-budget-status-card, loadTokenBudgetStatus, GET /usage/me, used/quota/remaining/% + color bar) | +3 | 1570 |
+| 267 | #171 | Tasks by Agent Type (tasks-by-agent-card, loadTasksByAgent, GET /tasks?agent_type=X&limit=20, filtered table) | +3 | 1573 |
+| 268 | #171 | Audit Hash Verify (audit-hash-verify-card, loadAuditHashVerify, GET /admin/audit/verify, integrity status + count) | +3 | 1576 |
+| 269 | #171 | Usage Trend (usage-trend-card, loadUsageTrend, GET /usage/history?days=30, 14-day ASCII bar chart) | +3 | 1579 |
 
-**Current state:** 1567/1567 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1579/1579 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

@@ -1233,6 +1233,52 @@
     </details>
   </div>
 
+  <!-- ── Task Status Breakdown card (Phase 270) ───────────────── -->
+  <div class="card" id="task-status-breakdown-card">
+    <details id="task-status-breakdown-section">
+      <summary style="cursor:pointer">Task Status Breakdown <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskStatusBreakdown()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="task-status-breakdown-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule List card (Phase 271) ────────────────────────── -->
+  <div class="card" id="schedule-list-card">
+    <details id="schedule-list-section">
+      <summary style="cursor:pointer">Schedule List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduleList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="schedule-list-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Notes by ID card (Phase 272) ─────────────────────── -->
+  <div class="card" id="notes-by-id-card">
+    <details id="notes-by-id-section">
+      <summary style="cursor:pointer">Task Notes
+        <input id="notes-by-id-input" placeholder="task ID" style="width:200px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadNotesById()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="notes-by-id-body" style="font-size:12px;color:var(--text-dim)">Enter a task ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Batch Results by ID card (Phase 273) ──────────────────── -->
+  <div class="card" id="batch-by-id-card">
+    <details id="batch-by-id-section">
+      <summary style="cursor:pointer">Batch Task Status
+        <input id="batch-by-id-label" placeholder="batch label" style="width:140px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadBatchById()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="batch-by-id-body" style="font-size:12px;color:var(--text-dim)">Enter a batch label and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Token Budget Status card (Phase 266) ─────────────────── -->
   <div class="card" id="token-budget-status-card">
     <details id="token-budget-status-section">
@@ -4906,6 +4952,90 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 270: Task Status Breakdown ─────────────────────────────────────────
+async function loadTaskStatusBreakdown() {
+  const el = document.getElementById('task-status-breakdown-body');
+  el.textContent = 'Loading…';
+  try {
+    const statuses = ['complete', 'running', 'failed', 'pending', 'cancelled'];
+    const counts = await Promise.all(statuses.map(async s => {
+      const r = await apiFetch(`/tasks?status=${s}&limit=1`);
+      if (!r.ok) return { status: s, count: '?' };
+      const data = await r.json();
+      const total = data.total ?? data.count ?? (Array.isArray(data) ? data.length : '?');
+      return { status: s, count: total };
+    }));
+    el.innerHTML = counts.map(c =>
+      `<div class="td-field"><span class="td-label">${c.status}</span><span class="td-value">${c.count}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 271: Schedule List ──────────────────────────────────────────────────
+async function loadScheduleList() {
+  const el = document.getElementById('schedule-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/schedules?limit=20');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const schedules = Array.isArray(data) ? data : (data.schedules || data.items || []);
+    if (!schedules.length) { el.textContent = 'No schedules configured.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Name</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Cron</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Enabled</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Next Run</th></tr>' +
+      schedules.map(s => `<tr>
+        <td style="padding:2px 4px">${s.name||s.id}</td>
+        <td style="padding:2px 4px;font-family:monospace">${s.cron||s.cron_expr||'—'}</td>
+        <td style="padding:2px 4px">${s.enabled !== false ? '✓' : '✗'}</td>
+        <td style="padding:2px 4px">${(s.next_run||'—').slice(0,16)}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 272: Task Notes by ID ───────────────────────────────────────────────
+async function loadNotesById() {
+  const el = document.getElementById('notes-by-id-body');
+  const id = (document.getElementById('notes-by-id-input') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a task ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks/${encodeURIComponent(id)}/notes`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const notes = Array.isArray(data) ? data : (data.notes || []);
+    if (!notes.length) { el.textContent = 'No notes for this task.'; return; }
+    el.innerHTML = notes.map((n, i) =>
+      `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:6px;margin-bottom:6px">
+        <div style="font-size:10px;color:var(--text-xdim);margin-bottom:2px">#${i+1} · ${(n.created_at||'').slice(0,10)}</div>
+        <div style="white-space:pre-wrap;word-break:break-word">${n.content||n.body||n.note||''}</div>
+      </div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 273: Batch Task Status by Label ─────────────────────────────────────
+async function loadBatchById() {
+  const el = document.getElementById('batch-by-id-body');
+  const label = (document.getElementById('batch-by-id-label') || {value: ''}).value.trim();
+  if (!label) { el.textContent = 'Enter a batch label above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks?label=${encodeURIComponent(label)}&limit=50`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = `No tasks with label "${label}".`; return; }
+    const byStatus = tasks.reduce((acc, t) => { acc[t.status||'unknown'] = (acc[t.status||'unknown'] || 0) + 1; return acc; }, {});
+    el.innerHTML = `<div style="color:var(--text-xdim);margin-bottom:4px">${tasks.length} task(s) · label: ${label}</div>` +
+      Object.entries(byStatus).map(([s, n]) =>
+        `<div class="td-field"><span class="td-label">${s}</span><span class="td-value">${n}</span></div>`
+      ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 266: Token Budget Status ───────────────────────────────────────────

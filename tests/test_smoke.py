@@ -17516,3 +17516,119 @@ def test_p269_ui_usage_trend_renders_bar_chart():
     idx = html.index("async function loadUsageTrend()")
     fn_body = html[idx : idx + 1300]
     assert "/usage/history" in fn_body and "bar(" in fn_body
+
+
+# ── Phase 270: Task Status Breakdown ──────────────────────────────────────────
+
+
+def test_p270_ui_task_status_breakdown_card_present():
+    """task-status-breakdown-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-status-breakdown-card" in html
+
+
+def test_p270_ui_load_task_status_breakdown_function_defined():
+    """loadTaskStatusBreakdown() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskStatusBreakdown()" in html
+
+
+def test_p270_ui_task_status_breakdown_queries_all_statuses():
+    """loadTaskStatusBreakdown queries multiple statuses."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskStatusBreakdown()")
+    fn_body = html[idx : idx + 900]
+    assert "complete" in fn_body and "failed" in fn_body and "running" in fn_body
+
+
+# ── Phase 271: Schedule List ──────────────────────────────────────────────────
+
+
+def test_p271_ui_schedule_list_card_present():
+    """schedule-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-list-card" in html
+
+
+def test_p271_ui_load_schedule_list_function_defined():
+    """loadScheduleList() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleList()" in html
+
+
+def test_p271_ui_schedule_list_calls_schedules():
+    """loadScheduleList calls /schedules."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadScheduleList()")
+    fn_body = html[idx : idx + 700]
+    assert "/schedules" in fn_body
+
+
+# ── Phase 272: Task Notes by ID ───────────────────────────────────────────────
+
+
+def test_p272_ui_notes_by_id_card_present():
+    """notes-by-id-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notes-by-id-card" in html
+
+
+def test_p272_ui_load_notes_by_id_function_defined():
+    """loadNotesById() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadNotesById()" in html
+
+
+def test_p272_ui_notes_by_id_calls_task_notes():
+    """loadNotesById calls /tasks/{id}/notes."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadNotesById()")
+    fn_body = html[idx : idx + 700]
+    assert "/notes" in fn_body and "/tasks/" in fn_body
+
+
+# ── Phase 273: Batch Task Status ──────────────────────────────────────────────
+
+
+def test_p273_ui_batch_by_id_card_present():
+    """batch-by-id-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-by-id-card" in html
+
+
+def test_p273_ui_load_batch_by_id_function_defined():
+    """loadBatchById() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBatchById()" in html
+
+
+def test_p273_ui_batch_by_id_uses_label_param():
+    """loadBatchById filters tasks by label."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadBatchById()")
+    fn_body = html[idx : idx + 800]
+    assert "label" in fn_body and "/tasks" in fn_body
