@@ -1703,5 +1703,10 @@ Added as compact addendum. See git log for full details.
 | 69 | #108 | Streaming Token Output + pytest-timeout fix | +8 | 900 |
 | 70 | #109 | File Attachment on Tasks (FileReader, attachment_text, inject) | +8 | 908 |
 | 71 | #110 | Agent Self-Verification Loop (verify_node, MAX_VERIFY_ROUNDS=1) | +6 | 914 |
+| — | #111 | fix: tool_accuracy tests (DDG kwargs); PHASE_PLAN 64-71 docs | +2 | 916 |
+| — | #112 | perf: bounded _terminal_events OrderedDict FIFO (2000 entries) | +2 | 916 |
+| 72 | #113 | Light/Dark Mode Toggle (CSS vars, 🌙/☀️, localStorage) | +6 | 922 |
+| 73 | #114 | Task Export to Markdown (GET /tasks/export?format=markdown) | +5 | 927 |
+| 74 | #115 | Browser Notifications (🔕/🔔, notifyTaskComplete, tag dedup) | +4 | 931 |
 
-**Current state:** 914/914 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 931/931 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
