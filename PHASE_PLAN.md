@@ -1719,5 +1719,9 @@ Added as compact addendum. See git log for full details.
 | 83 | #122 | Agents Directory Card (GET /agents, agent-type-badge+desc, auto-load in init) | +5 | 976 |
 | 84 | #123 | Document Ingestor UI (ingestor-card, ingestDocument(), POST /documents/ingest, chunk count) | +4 | 980 |
 | 85 | #123 | Memory Search UI (memory-search-card, searchMemory(), POST /memory/search, similarity%) | +4 | 984 |
+| 86 | #124 | Security Threats Summary (admin, threats-card, loadThreats, GET /admin/threats/summary) | +4 | 988 |
+| 87 | #124 | Tool Registry Admin UI (admin, tool-registry-card, loadTools/revokeOrApproveTool) | +5 | 993 |
+| 88 | #125 | Health Metrics Dashboard (admin, health-metrics-card, loadHealthMetrics, CPU/RAM/Disk grid) | +4 | 997 |
+| 89 | #125 | User Management Admin UI (admin, user-mgmt-card, loadUsers/createUser, POST /admin/users) | +5 | 1002 |
 
-**Current state:** 984/984 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1002/1002 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

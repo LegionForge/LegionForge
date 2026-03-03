@@ -11903,3 +11903,96 @@ def test_p89_ui_load_users_calls_get_admin_users():
     fn_start = html.find("function loadUsers(")
     fn_body = html[fn_start : fn_start + 500]
     assert "/admin/users" in fn_body
+
+
+# ── Phase 90 — Audit Log Viewer UI ────────────────────────────────────────────
+
+
+def test_p90_ui_audit_log_card_present():
+    """Phase 90 audit log card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-log-card" in html
+    assert "audit-list" in html
+
+
+def test_p90_ui_load_audit_log_function_defined():
+    """loadAuditLog() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAuditLog(" in html
+
+
+def test_p90_ui_audit_calls_admin_endpoint():
+    """loadAuditLog() calls GET /admin/audit."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAuditLog(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/admin/audit" in fn_body
+
+
+def test_p90_ui_audit_renders_event_type_and_timestamp():
+    """loadAuditLog() renders event_type and timestamp for each entry."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAuditLog(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "event_type" in fn_body
+    assert "audit-row" in fn_body
+
+
+# ── Phase 91 — Keyboard Shortcuts Help Modal ──────────────────────────────────
+
+
+def test_p91_ui_help_modal_present():
+    """Phase 91 help modal element is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "help-modal" in html
+    assert "help-modal-box" in html
+
+
+def test_p91_ui_toggle_help_modal_function_defined():
+    """toggleHelpModal() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleHelpModal(" in html
+
+
+def test_p91_ui_help_button_in_header():
+    """? button to open help modal is in the header."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "help-btn" in html
+    assert "toggleHelpModal()" in html
+
+
+def test_p91_ui_help_modal_lists_key_shortcuts():
+    """Help modal lists at least the core keyboard shortcuts."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    modal_start = html.find('id="help-modal"')
+    modal_body = html[modal_start : modal_start + 2000]
+    assert "Ctrl" in modal_body or "⌘" in modal_body
+    assert "Enter" in modal_body
+    assert "Escape" in modal_body
+
+
+def test_p91_ui_toggle_opens_closes_modal():
+    """toggleHelpModal() toggles the 'open' class on the modal element."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleHelpModal(")
+    fn_body = html[fn_start : fn_start + 300]
+    assert "classList.toggle" in fn_body
+    assert "open" in fn_body

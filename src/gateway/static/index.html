@@ -94,6 +94,11 @@
     /* ── Phase 75: Schedules card ───────────────────────────── */
     .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .sched-row:last-child { border-bottom:none; }
+    /* ── Phase 90: Audit Log card ────────────────────────────── */
+    .audit-row { display:grid; grid-template-columns:90px 1fr 100px; gap:6px; align-items:baseline; padding:3px 0; border-bottom:1px solid var(--border2); font-size:11px; }
+    .audit-row:last-child { border-bottom:none; }
+    .audit-type { color:var(--blue); font-family:var(--mono); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .audit-ts { color:var(--text-xdim); font-size:10px; text-align:right; }
     .sched-name { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .sched-cron { color:var(--text-dim); font-size:11px; }
     .sched-next { color:var(--text-xdim); font-size:11px; }
@@ -574,9 +579,33 @@
       .history-item { grid-template-columns: 12px 1fr 50px; }
       .history-item .hi-id, .history-item .hi-agent { display: none; }
     }
+    /* ── Phase 91: Help modal ────────────────────────────────── */
+    #help-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; align-items:center; justify-content:center; }
+    #help-modal.open { display:flex; }
+    #help-modal-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px 24px; max-width:420px; width:90%; }
+    .help-row { display:grid; grid-template-columns:160px 1fr; gap:6px; padding:4px 0; border-bottom:1px solid var(--border2); font-size:13px; }
+    .help-row:last-child { border-bottom:none; }
+    .help-key { font-family:var(--mono); color:var(--blue); font-size:12px; }
   </style>
 </head>
 <body>
+<!-- Phase 91: Keyboard Shortcuts Help Modal -->
+<div id="help-modal" onclick="if(event.target===this)toggleHelpModal()">
+  <div id="help-modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong>Keyboard Shortcuts</strong>
+      <button onclick="toggleHelpModal()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px">×</button>
+    </div>
+    <div class="help-row"><span class="help-key">⌘ / Ctrl + Enter</span><span>Submit task</span></div>
+    <div class="help-row"><span class="help-key">Escape</span><span>Cancel running task</span></div>
+    <div class="help-row"><span class="help-key">⌘ / Ctrl + Shift + C</span><span>Copy result to clipboard</span></div>
+    <div class="help-row"><span class="help-key">⌘ / Ctrl + Shift + T</span><span>Clear output</span></div>
+    <div class="help-row"><span class="help-key">? button (header)</span><span>Open this help dialog</span></div>
+    <div class="help-row"><span class="help-key">🌙 button</span><span>Toggle light/dark mode</span></div>
+    <div class="help-row"><span class="help-key">🔕 button</span><span>Enable browser notifications</span></div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text-xdim)">Press Escape or click outside to close</div>
+  </div>
+</div>
 <div id="app">
 
   <!-- ── Header ─────────────────────────────────────────── -->
@@ -585,6 +614,7 @@
     <span class="subtitle">agent gateway</span>
     <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion">🔕</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
+    <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts (Phase 91)" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
     <div id="conn-dot" title="Stream connection status"></div>
   </div>
 
@@ -750,6 +780,14 @@
         <button class="btn primary" onclick="searchMemory()">Search</button>
       </div>
       <div id="memsearch-results" style="margin-top:8px;font-size:12px;color:var(--text-xdim)">Enter a query and click Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Audit Log card (Phase 90) [admin only] ───────────── -->
+  <div class="card" id="audit-log-card">
+    <details id="audit-section">
+      <summary style="cursor:pointer">Audit Log <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLog(event)" title="Refresh">↻</button></summary>
+      <div id="audit-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load recent audit events.</div>
     </details>
   </div>
 
@@ -930,11 +968,12 @@ const el = {
 
   // Phase 66: keyboard shortcuts
   // Ctrl+Enter / Cmd+Enter is already handled by onTaskKeydown on the textarea.
-  // Escape — cancel a running task from anywhere on the page
+  // Escape — cancel a running task from anywhere on the page; also close help modal
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && S.activeES) {
-      e.preventDefault();
-      cancelTask();
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('help-modal');
+      if (modal && modal.classList.contains('open')) { e.preventDefault(); toggleHelpModal(); return; }
+      if (S.activeES) { e.preventDefault(); cancelTask(); }
     }
   });
 })();
@@ -2413,6 +2452,43 @@ async function searchMemory() {
   } catch(e) {
     if (resultsEl) resultsEl.textContent = 'Error: ' + e.message;
   }
+}
+
+// ── Phase 90: Audit Log ───────────────────────────────────────────────────────
+async function loadAuditLog(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('audit-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter admin API key.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/audit?limit=20', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 403) { listEl.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load audit log.'; return; }
+    const d = await res.json();
+    const entries = d.entries || [];
+    if (!entries.length) { listEl.textContent = 'No audit events found.'; return; }
+    listEl.innerHTML = entries.map(e => {
+      const ts = e.ts ? new Date(e.ts).toLocaleString() : '';
+      const agentId = (e.agent_id || '').slice(0, 14);
+      return '<div class="audit-row">' +
+        '<span class="audit-type">' + escapeHtml(e.event_type || '') + '</span>' +
+        '<span style="color:var(--text-dim)">' + escapeHtml(agentId) + '</span>' +
+        '<span class="audit-ts">' + escapeHtml(ts) + '</span>' +
+      '</div>';
+    }).join('') +
+    '<div style="margin-top:4px;font-size:10px;color:var(--text-xdim)">Showing latest 20 of ' + (d.total || '?') + ' events</div>';
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 91: Help Modal ───────────────────────────────────────────────────────
+function toggleHelpModal() {
+  const modal = document.getElementById('help-modal');
+  if (!modal) return;
+  modal.classList.toggle('open');
 }
 
 // ── Phase 88: Health Metrics ─────────────────────────────────────────────────
