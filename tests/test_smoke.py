@@ -13714,3 +13714,130 @@ def test_p141_ui_load_task_annotation_fetches_annotation_endpoint():
     fn_start = html.find("function loadTaskAnnotation(")
     fn_body = html[fn_start : fn_start + 700]
     assert "/annotation" in fn_body
+
+
+# ── Phase 142: Schedule Detail Viewer ─────────────────────────────────────────
+
+
+def test_p142_ui_schedule_detail_card_present():
+    """Schedule detail card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-detail-card" in html
+
+
+def test_p142_ui_load_schedule_detail_function_defined():
+    """loadScheduleDetail() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadScheduleDetail(" in html
+
+
+def test_p142_ui_load_schedule_detail_fetches_schedules_endpoint():
+    """loadScheduleDetail() fetches /schedules/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadScheduleDetail(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/schedules/" in fn_body
+
+
+# ── Phase 143: Template Detail Viewer ─────────────────────────────────────────
+
+
+def test_p143_ui_template_detail_card_present():
+    """Template detail card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-detail-card" in html
+
+
+def test_p143_ui_load_template_detail_function_defined():
+    """loadTemplateDetail() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTemplateDetail(" in html
+
+
+def test_p143_ui_load_template_detail_fetches_templates_endpoint():
+    """loadTemplateDetail() fetches /templates/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTemplateDetail(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/templates/" in fn_body
+
+
+def test_p143_ui_load_templates_populates_detail_selector():
+    """loadTemplates() also populates #template-detail-sel."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTemplates(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "template-detail-sel" in fn_body
+
+
+# ── Phase 144: Task Label Filter ──────────────────────────────────────────────
+
+
+def test_p144_ui_label_filter_card_present():
+    """Label filter card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "label-filter-card" in html
+
+
+def test_p144_ui_load_tasks_by_label_function_defined():
+    """loadTasksByLabel() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTasksByLabel(" in html
+
+
+def test_p144_ui_load_tasks_by_label_fetches_with_label_param():
+    """loadTasksByLabel() fetches /tasks with label query param."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTasksByLabel(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "label" in fn_body
+    assert "/tasks" in fn_body
+
+
+# ── Phase 145: Task Notes Browser ─────────────────────────────────────────────
+
+
+def test_p145_ui_notes_browser_card_present():
+    """Notes browser card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "notes-browser-card" in html
+
+
+def test_p145_ui_browse_task_notes_function_defined():
+    """browseTaskNotes() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function browseTaskNotes(" in html
+
+
+def test_p145_ui_browse_task_notes_fetches_notes_endpoint():
+    """browseTaskNotes() fetches /tasks/{id}/notes."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function browseTaskNotes(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/notes" in fn_body

@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 173
+UPDATE: 174
 BRANCH: main
-COMMIT: ddc90d5
-TIMESTAMP: 2026-03-03T23:00Z
-LAST_OP: PR #138 — Phase 134-137 — Attachment Viewer, Status Filter, Admin User Profile, Task Note Quick-Add
-SMOKE_TESTS: 1172/1172
+COMMIT: da243ee
+TIMESTAMP: 2026-03-03T23:30Z
+LAST_OP: PR #139 — Phase 138-141 — Admin Stats, Share Revoke, Pipeline Runs, Task Annotation Viewer
+SMOKE_TESTS: 1185/1185
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

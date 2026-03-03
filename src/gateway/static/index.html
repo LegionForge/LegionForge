@@ -1129,6 +1129,68 @@
     </details>
   </div>
 
+  <!-- ── Schedule Detail Viewer card (Phase 142) ─────────── -->
+  <div class="card" id="schedule-detail-card">
+    <details id="schedule-detail-section">
+      <summary style="cursor:pointer">Schedule Detail Viewer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="sched-detail-id" placeholder="Schedule ID (integer)" style="flex:1;min-width:120px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadScheduleDetail()">↻ Load</button>
+        </div>
+        <div id="sched-detail-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Template Detail Viewer card (Phase 143) ───────────── -->
+  <div class="card" id="template-detail-card">
+    <details id="template-detail-section">
+      <summary style="cursor:pointer">Template Detail Viewer</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="template-detail-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)"><option value="">— select template —</option></select>
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadTemplateDetail()">↻ Load</button>
+        </div>
+        <div id="template-detail-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Label Filter card (Phase 144) ────────────────── -->
+  <div class="card" id="label-filter-card">
+    <details id="label-filter-section">
+      <summary style="cursor:pointer">Task Label Filter</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="label-filter-sel" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+            <option value="">— select label —</option>
+            <option value="bookmarked">bookmarked</option>
+            <option value="starred">starred</option>
+            <option value="important">important</option>
+            <option value="reviewed">reviewed</option>
+          </select>
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="loadTasksByLabel()">Search</button>
+        </div>
+        <div id="label-filter-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Notes Browser card (Phase 145) ───────────────── -->
+  <div class="card" id="notes-browser-card">
+    <details id="notes-browser-section">
+      <summary style="cursor:pointer">Task Notes Browser</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="notes-browse-task-id" placeholder="Task ID (UUID)" style="flex:1;min-width:140px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn ghost icon" style="font-size:11px;padding:2px 8px" onclick="browseTaskNotes()">↻ Load</button>
+        </div>
+        <div id="notes-browser-body" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Attachment Content Viewer card (Phase 134) ──────── -->
   <div class="card" id="attachment-viewer-card">
     <details id="attachment-viewer-section">
@@ -1809,16 +1871,17 @@ async function loadTemplates() {
     const data = await res.json();
     S.templates = data.templates || [];
     renderTemplates();
-    // Phase 118: keep run-template selector in sync
-    const runSel = document.getElementById('template-run-sel');
-    if (runSel) {
-      runSel.innerHTML = '<option value="">— select template —</option>';
+    // Phase 118+143: keep run and detail selectors in sync
+    ['template-run-sel', 'template-detail-sel'].forEach(selId => {
+      const s = document.getElementById(selId);
+      if (!s) return;
+      s.innerHTML = '<option value="">— select template —</option>';
       S.templates.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t.template_id; opt.textContent = t.name;
-        runSel.appendChild(opt);
+        s.appendChild(opt);
       });
-    }
+    });
   } catch (_) {}
 }
 
@@ -3355,6 +3418,104 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 142: Schedule Detail Viewer ─────────────────────────────────────────
+async function loadScheduleDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const schedId = (document.getElementById('sched-detail-id') || {}).value.trim();
+  if (!schedId) { alert('Enter a Schedule ID.'); return; }
+  const bodyEl = document.getElementById('sched-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/schedules/${encodeURIComponent(schedId)}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'Schedule not found.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const s = await r.json();
+    if (!bodyEl) return;
+    const fields = [
+      ['id', String(s.sched_id || s.id || '')],
+      ['name', s.name || ''],
+      ['cron_expr', s.cron_expr || ''],
+      ['enabled', String(s.enabled !== false)],
+      ['agent_type', s.agent_type || ''],
+      ['next_run', s.next_run_at ? new Date(s.next_run_at).toLocaleString() : 'not scheduled'],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${escapeHtml(v)}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 143: Template Detail Viewer ─────────────────────────────────────────
+async function loadTemplateDetail() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const sel = document.getElementById('template-detail-sel');
+  const templateId = sel ? sel.value : '';
+  if (!templateId) { alert('Select a template first.'); return; }
+  const bodyEl = document.getElementById('template-detail-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/templates/${encodeURIComponent(templateId)}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'Template not found.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const t = await r.json();
+    if (!bodyEl) return;
+    const fields = [
+      ['name', t.name || ''],
+      ['agent_type', t.agent_type || ''],
+      ['template_id', t.template_id || ''],
+      ['input_template', (t.input_template || '').slice(0, 200)],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${escapeHtml(v)}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 144: Task Label Filter ───────────────────────────────────────────────
+async function loadTasksByLabel() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const label = (document.getElementById('label-filter-sel') || {}).value;
+  const bodyEl = document.getElementById('label-filter-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const qs = label ? `?label=${encodeURIComponent(label)}&limit=20` : '?limit=20';
+    const r = await fetch(`/tasks${qs}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No tasks found with this label.'; return; }
+    bodyEl.innerHTML = tasks.map(t =>
+      `<div class="td-field"><span class="td-label">${(t.task_id || t.id || '').slice(0,8)}</span><span class="td-value">${t.status || ''} — ${(t.task_text || '').slice(0,60)}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 145: Task Notes Browser ─────────────────────────────────────────────
+async function browseTaskNotes() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('notes-browse-task-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a Task ID.'); return; }
+  const bodyEl = document.getElementById('notes-browser-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}/notes`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (bodyEl) bodyEl.textContent = 'Task not found.'; return; }
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const notes = data.notes || [];
+    if (!bodyEl) return;
+    if (!notes.length) { bodyEl.textContent = 'No notes for this task.'; return; }
+    bodyEl.innerHTML = notes.map(n =>
+      `<div class="td-field"><span class="td-label">${n.note_id ? n.note_id.slice(0,8) : '—'}</span><span class="td-value">${escapeHtml(n.content || n.note_text || n.note || '')}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 138: Admin System Stats ─────────────────────────────────────────────

@@ -1778,4 +1778,9 @@ Added as compact addendum. See git log for full details.
 | 136 | #138 | Admin User Profile (admin-user-profile-card, loadAdminUserProfile, GET /admin/users/{u}, td-field layout) | +3 | 1169 |
 | 137 | #138 | Task Note Quick-Add (note-quick-add-card, addQuickNote, POST /tasks/{id}/notes, note_text payload) | +3 | 1172 |
 
-**Current state:** 1172/1172 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 138 | #139 | Admin System Stats (admin-stats-card, loadAdminStats, GET /admin/stats, td-field grid of all stats) | +3 | 1175 |
+| 139 | #139 | Share Revoke (share-revoke-card, revokeShare, DELETE /tasks/{id}/shares/{token}, confirm guard) | +3 | 1178 |
+| 140 | #139 | Pipeline Runs List (pipeline-runs-card, loadPipelineRuns, GET /pipelines/{id}/runs, runs-sel populated in loadPipelines) | +4 | 1182 |
+| 141 | #139 | Task Annotation Viewer (task-annotation-card, loadTaskAnnotation, GET /tasks/{id}/annotation, rating + comment) | +3 | 1185 |
+
+**Current state:** 1185/1185 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
