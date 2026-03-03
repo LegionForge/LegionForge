@@ -1233,6 +1233,50 @@
     </details>
   </div>
 
+  <!-- ── Model List card (Phase 286) ───────────────────── -->
+  <div class="card" id="model-list-card">
+    <details id="model-list-section">
+      <summary style="cursor:pointer">Model List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadModelList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="model-list-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Threat Event Detail card (Phase 287) ───────────────────── -->
+  <div class="card" id="threat-event-detail-card">
+    <details id="threat-event-detail-section">
+      <summary style="cursor:pointer">Threat Event Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatEventDetail()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Event ID <input id="threat-event-detail-id" class="input" style="width:80px;margin-left:6px" placeholder="123"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadThreatEventDetail()">Load</button>
+        <div id="threat-event-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Activity card (Phase 288) ───────────────────── -->
+  <div class="card" id="user-activity-card">
+    <details id="user-activity-section">
+      <summary style="cursor:pointer">User Activity <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserActivity()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Username <input id="user-activity-name" class="input" style="width:160px;margin-left:6px" placeholder="username"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadUserActivity()">Load</button>
+        <div id="user-activity-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Connector Status card (Phase 289) ───────────────────── -->
+  <div class="card" id="connector-status-card">
+    <details id="connector-status-section">
+      <summary style="cursor:pointer">Connector Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadConnectorStatus()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="connector-status-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Annotation Summary card (Phase 282) ───────────────────── -->
   <div class="card" id="annotation-summary-card">
     <details id="annotation-summary-section">
@@ -5086,6 +5130,97 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 286: Model List ──────────────────────────────────────────────
+async function loadModelList() {
+  const el = document.getElementById('model-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/agents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const agents = Array.isArray(data) ? data : (data.agents || data.items || []);
+    if (!agents.length) { el.textContent = 'No agents found.'; return; }
+    const seen = new Set();
+    const models = [];
+    for (const a of agents) {
+      const m = a.model || a.llm_model || '—';
+      if (!seen.has(m)) { seen.add(m); models.push({ model: m, agent_type: a.agent_type || a.type || '—' }); }
+    }
+    const cols = ['Model', 'Agent Type'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const m of models) {
+      tbl += `<tr><td style="padding:2px 6px">${m.model}</td><td style="padding:2px 6px">${m.agent_type}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 287: Threat Event Detail ──────────────────────────────────────────────
+async function loadThreatEventDetail() {
+  const el = document.getElementById('threat-event-detail-body');
+  const eventId = document.getElementById('threat-event-detail-id').value.trim();
+  if (!eventId) { el.textContent = 'Enter an event ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/threats?limit=200');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const events = Array.isArray(data) ? data : (data.events || data.items || []);
+    const ev = events.find(e => String(e.id) === eventId || String(e.event_id) === eventId);
+    if (!ev) { el.textContent = 'Event not found.'; return; }
+    const rows = Object.entries(ev).slice(0, 10).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')]);
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 288: User Activity ──────────────────────────────────────────────
+async function loadUserActivity() {
+  const el = document.getElementById('user-activity-body');
+  const username = document.getElementById('user-activity-name').value.trim();
+  if (!username) { el.textContent = 'Enter a username.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users/' + encodeURIComponent(username));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const u = await r.json();
+    const rows = [
+      ['Username', u.username || username],
+      ['User ID', u.user_id || '—'],
+      ['Tokens Used', u.tokens_used != null ? u.tokens_used : '—'],
+      ['Daily Quota', u.daily_token_quota != null ? u.daily_token_quota : '—'],
+      ['Is Admin', u.is_admin ? 'Yes' : 'No'],
+      ['Created', u.created_at ? u.created_at.slice(0, 10) : '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 289: Connector Status ──────────────────────────────────────────────
+async function loadConnectorStatus() {
+  const el = document.getElementById('connector-status-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const connectors = data.connectors || data.services || {};
+    const entries = typeof connectors === 'object' && !Array.isArray(connectors)
+      ? Object.entries(connectors)
+      : Object.entries(data).filter(([k]) => ['discord', 'telegram', 'slack', 'webhook'].some(c => k.toLowerCase().includes(c)));
+    if (!entries.length) { el.textContent = 'No connector data in health endpoint.'; return; }
+    el.innerHTML = entries.map(([k, v]) => {
+      const status = typeof v === 'object' ? (v.status || v.connected || '—') : v;
+      const colour = String(status).toLowerCase().includes('ok') || status === true ? 'var(--green)' : 'var(--text-dim)';
+      return `<div class="td-field"><span class="td-label">${k}</span><span class="td-value" style="color:${colour}">${status}</span></div>`;
+    }).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 282: Annotation Summary ──────────────────────────────────────────────

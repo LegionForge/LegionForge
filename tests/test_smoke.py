@@ -17940,3 +17940,99 @@ def test_p285_ui_api_usage_stats_calls_usage_me():
     idx = html.index("async function loadApiUsageStats()")
     fn_body = html[idx : idx + 900]
     assert "/usage/me" in fn_body
+
+
+# ── Phase 286: Model List ──────────────────────────────────────────────────
+def test_p286_ui_model_list_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="model-list-card"' in html
+
+
+def test_p286_ui_model_list_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadModelList()" in html
+
+
+def test_p286_ui_model_list_calls_agents_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadModelList()")
+    fn_body = html[idx : idx + 800]
+    assert "/agents" in fn_body
+
+
+# ── Phase 287: Threat Event Detail ──────────────────────────────────────────────
+def test_p287_ui_threat_event_detail_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="threat-event-detail-card"' in html
+
+
+def test_p287_ui_threat_event_detail_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadThreatEventDetail()" in html
+
+
+def test_p287_ui_threat_event_detail_calls_admin_threats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadThreatEventDetail()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/threats" in fn_body
+
+
+# ── Phase 288: User Activity ──────────────────────────────────────────────────
+def test_p288_ui_user_activity_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="user-activity-card"' in html
+
+
+def test_p288_ui_user_activity_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserActivity()" in html
+
+
+def test_p288_ui_user_activity_calls_admin_users():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadUserActivity()")
+    fn_body = html[idx : idx + 800]
+    assert "/admin/users/" in fn_body
+
+
+# ── Phase 289: Connector Status ──────────────────────────────────────────────
+def test_p289_ui_connector_status_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="connector-status-card"' in html
+
+
+def test_p289_ui_connector_status_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadConnectorStatus()" in html
+
+
+def test_p289_ui_connector_status_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadConnectorStatus()")
+    fn_body = html[idx : idx + 800]
+    assert "/health" in fn_body

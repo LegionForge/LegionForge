@@ -1935,5 +1935,9 @@ Added as compact addendum. See git log for full details.
 | 279 | #174 | Cost Estimate (cost-estimate-card, loadCostEstimate, POST /tasks dry_run=true, estimated_tokens/cost) | +3 | 1609 |
 | 280 | #174 | Pipeline List (pipeline-list-card, loadPipelineList, GET /pipelines?limit=50, id/name/enabled/steps table) | +3 | 1612 |
 | 281 | #174 | Schedule Run Log (schedule-run-log-card, loadScheduleRunLog, GET /schedules/{id}/runs, run history table) | +3 | 1615 |
+| 282 | #175 | Annotation Summary (annotation-summary-card, loadAnnotationSummary, GET /admin/annotations, thumbs-up/down totals) | +3 | 1618 |
+| 283 | #175 | Document List (document-list-card, loadDocumentList, GET /documents, id/source/chunks/ingested table) | +3 | 1621 |
+| 284 | #175 | Batch Status (batch-status-card, loadBatchStatus, GET /tasks?label=X, per-status count breakdown) | +3 | 1624 |
+| 285 | #175 | API Usage Stats (api-usage-stats-card, loadApiUsageStats, Promise.all /usage/me+/usage/history?days=7) | +3 | 1627 |
 
-**Current state:** 1615/1615 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1627/1627 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
