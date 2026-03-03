@@ -11547,3 +11547,95 @@ def test_p81_ui_cost_estimate_span_present():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "cost-estimate" in html
+
+
+# ── Phase 82 — Task Stats Card ────────────────────────────────────────────────
+
+
+def test_p82_ui_stats_card_present():
+    """Phase 82 stats card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "stats-card" in html
+    assert "stats-section" in html
+
+
+def test_p82_ui_load_stats_function_defined():
+    """loadStats() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadStats(" in html
+
+
+def test_p82_ui_stats_calls_tasks_stats_endpoint():
+    """loadStats() calls GET /tasks/stats."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadStats(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/tasks/stats" in fn_body
+
+
+def test_p82_ui_stats_renders_total():
+    """loadStats() renders a Total stat box."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadStats(")
+    fn_body = html[fn_start : fn_start + 1000]
+    assert "total" in fn_body.lower()
+    assert "stats-grid" in fn_body
+
+
+# ── Phase 83 — Agents Directory Card ─────────────────────────────────────────
+
+
+def test_p83_ui_agents_card_present():
+    """Phase 83 agents card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agents-card" in html
+    assert "agents-list" in html
+
+
+def test_p83_ui_load_agents_function_defined():
+    """loadAgents() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAgents(" in html
+
+
+def test_p83_ui_load_agents_called_in_init():
+    """loadAgents() is called in init() so agents load on page start."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    init_start = html.find("function init()")
+    init_body = html[init_start : init_start + 700]
+    assert "loadAgents" in init_body
+
+
+def test_p83_ui_agents_calls_get_agents():
+    """loadAgents() calls GET /agents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAgents(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "'/agents'" in fn_body or '"/agents"' in fn_body or "/agents" in fn_body
+
+
+def test_p83_ui_agents_renders_description():
+    """loadAgents() renders each agent's description field."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAgents(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "description" in fn_body
+    assert "agent-type-badge" in fn_body
