@@ -1713,5 +1713,7 @@ Added as compact addendum. See git log for full details.
 | 77 | #118 | Task Share Link (🔗 Share button, shareTask(), inline copy URL) | +5 | 948 |
 | 78 | #119 | Task Timeline UI (⏱ Timeline button, toggleTimeline(), tl-event/dot/type/ts CSS) | +5 | 953 |
 | 79 | #120 | Pipeline Runner UI (Pipelines card, loadPipelines/runPipeline/deletePipeline) | +6 | 959 |
+| 80 | #121 | Task Retry Button (↩ Retry on error/cancel, retryTask(), POST /tasks/{id}/retry) | +4 | 963 |
+| 81 | #121 | Cost Estimator UI (≈ Estimate button, estimateCost(), dry_run:true, token+cost display) | +4 | 967 |
 
-**Current state:** 959/959 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 967/967 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
