@@ -296,7 +296,12 @@ async def run_task(task: dict) -> None:
             except Exception as usage_err:
                 logger.warning(f"[worker] Failed to record user usage: {usage_err}")
 
-        await publish_event(task_id, build_task_complete_event(task_id))
+        # Phase 69: include result + tokens inline so browsers render without
+        # a second REST round-trip.
+        await publish_event(
+            task_id,
+            build_task_complete_event(task_id, result=result_text, tokens=tokens),
+        )
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
 
         # Phase 54: increment session turn counter
