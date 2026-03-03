@@ -160,6 +160,10 @@
       color: var(--blue);
     }
 
+    /* ── Task rating buttons (Phase 59) ─────────────────────────── */
+    .rating-bar { display:flex; align-items:center; gap:8px; margin-top:6px; }
+    .rating-bar .btn.rated { background:#1a3a5c; border-color:var(--blue); color:var(--blue); }
+
     /* ── Task input ──────────────────────────────────────────────── */
     #task-input {
       width: 100%;
@@ -569,6 +573,24 @@ function setModelPref(pref) {
   document.querySelectorAll('.model-pref').forEach(b => b.classList.remove('active-pref'));
   const btn = $('mp-' + pref);
   if (btn) btn.classList.add('active-pref');
+}
+
+// ── Task rating (Phase 59) ────────────────────────────────────────
+async function rateTask(taskId, rating) {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey || !taskId) return;
+  try {
+    await fetch('/tasks/' + taskId + '/annotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ rating }),
+    });
+    // Highlight the chosen button
+    const upBtn   = $('rb-up-'   + taskId);
+    const downBtn = $('rb-down-' + taskId);
+    if (upBtn)   upBtn.classList.toggle('rated',   rating === 1);
+    if (downBtn) downBtn.classList.toggle('rated', rating === -1);
+  } catch (_) { /* silent */ }
 }
 
 // ── Session management (Phase 57) ─────────────────────────────────
@@ -1191,6 +1213,17 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
     const summary = '✓ Complete' + tokenStr + ' · ' + elapsed + 's';
     setStatus('complete', summary, '');
     appendSpan('\n' + summary + '\n', 'o-complete');
+    // Phase 59: show thumbs up/down rating bar for completed tasks
+    if (taskId) {
+      const bar = document.createElement('div');
+      bar.className = 'rating-bar';
+      bar.id = 'rating-bar-' + taskId;
+      bar.innerHTML =
+        '<span style="color:var(--text-dim);font-size:12px;">Rate:</span>' +
+        '<button class="btn ghost" id="rb-up-' + taskId + '" onclick="rateTask(\'' + taskId + '\',1)" title="Thumbs up">👍</button>' +
+        '<button class="btn ghost" id="rb-down-' + taskId + '" onclick="rateTask(\'' + taskId + '\',-1)" title="Thumbs down">👎</button>';
+      el.output().appendChild(bar);
+    }
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
   } else if (status === 'error') {
     setStatus('error', '✗ Error', detail);

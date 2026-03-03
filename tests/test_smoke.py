@@ -10222,3 +10222,103 @@ def test_p58_ui_model_pref_in_submit_body():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "model_preference: S.modelPref" in html
     assert "modelPref:" in html  # state field exists
+
+
+# ── Phase 59: Task Rating & Feedback ─────────────────────────────────────────
+
+
+def test_p59_upsert_task_annotation_importable():
+    """upsert_task_annotation() can be imported from database."""
+    from src.database import upsert_task_annotation
+
+    import inspect
+
+    assert inspect.iscoroutinefunction(upsert_task_annotation)
+
+
+def test_p59_get_task_annotation_importable():
+    """get_task_annotation() can be imported from database."""
+    from src.database import get_task_annotation
+
+    import inspect
+
+    assert inspect.iscoroutinefunction(get_task_annotation)
+
+
+def test_p59_list_annotations_admin_importable():
+    """list_annotations_admin() can be imported from database."""
+    from src.database import list_annotations_admin
+
+    import inspect
+
+    assert inspect.iscoroutinefunction(list_annotations_admin)
+
+
+def test_p59_annotations_route_file_exists():
+    """annotations.py route file is present."""
+    import pathlib
+
+    p = pathlib.Path("src/gateway/routes/annotations.py")
+    assert p.exists()
+
+
+def test_p59_annotate_route_registered():
+    """POST /tasks/{task_id}/annotate route is registered in the gateway app."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any("annotate" in p for p in paths), f"No /annotate route in {paths}"
+
+
+def test_p59_annotation_get_route_registered():
+    """GET /tasks/{task_id}/annotation route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any(
+        "annotation" in p and "annotate" not in p for p in paths
+    ), f"No /annotation GET route in {paths}"
+
+
+def test_p59_admin_annotations_route_registered():
+    """GET /admin/annotations route is registered."""
+    from src.gateway.app import app
+
+    paths = [r.path for r in app.routes]
+    assert any(
+        p == "/admin/annotations" for p in paths
+    ), f"No /admin/annotations in {paths}"
+
+
+def test_p59_annotate_request_schema():
+    """AnnotateRequest validates rating range -1 to 1."""
+    import pytest
+    from pydantic import ValidationError
+
+    from src.gateway.routes.annotations import AnnotateRequest
+
+    assert AnnotateRequest(rating=1).rating == 1
+    assert AnnotateRequest(rating=0).rating == 0
+    assert AnnotateRequest(rating=-1).rating == -1
+    with pytest.raises(ValidationError):
+        AnnotateRequest(rating=2)
+    with pytest.raises(ValidationError):
+        AnnotateRequest(rating=-2)
+
+
+def test_p59_ui_has_rate_task_function():
+    """Web UI defines rateTask() function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rateTask" in html
+
+
+def test_p59_ui_has_rating_bar():
+    """Web UI includes rating-bar element with thumbs up/down buttons."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rating-bar" in html
+    assert "rb-up-" in html
+    assert "rb-down-" in html
