@@ -1738,5 +1738,9 @@ Added as compact addendum. See git log for full details.
 | 102 | #130 | Bulk Task Operations (bulk-ops-card, bulkCancel/Delete/Tag, /tasks/bulk/{cancel,delete,tag}) | +5 | 1054 |
 | 104 | #130 | Task Share Links Viewer (shares-list-card, loadShares, GET /tasks/{id}/shares) | +3 | 1057 |
 | 105 | #130 | Document List UI (doc-list-card, loadDocuments/deleteDocument, GET /documents) | +4 | 1061 |
+| 106 | #131 | Single Task Delete Button (🗑 in rating bar, deleteTask, DELETE /tasks/{id}) | +3 | 1064 |
+| 107 | #131 | Task Tags Editor (setTaskTags, PUT /tasks/{id}/tags, comma-separated input) | +2 | 1066 |
+| 108 | #131 | Memory Stats & Clear (loadMemoryStats, clearMemory, GET /memory/stats, DELETE /memory) | +4 | 1070 |
+| 109 | #131 | Export CSV/JSON (exportTasksCsv/Json, ↓ csv/json buttons, /tasks/export?format=) | +4 | 1074 |
 
-**Current state:** 1061/1061 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1074/1074 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
