@@ -16588,3 +16588,119 @@ def test_p237_ui_set_priority_sends_priority_field():
     idx = html.index("async function setTaskPriorityById()")
     fn_body = html[idx : idx + 700]
     assert "priority" in fn_body and "PATCH" in fn_body
+
+
+# ── Phase 238: Task Completion Rate ───────────────────────────────────────────
+
+
+def test_p238_ui_task_completion_rate_card_present():
+    """task-completion-rate-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-completion-rate-card" in html
+
+
+def test_p238_ui_load_task_completion_rate_function_defined():
+    """loadTaskCompletionRate() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskCompletionRate()" in html
+
+
+def test_p238_ui_task_completion_rate_shows_complete():
+    """loadTaskCompletionRate renders completion rate."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskCompletionRate()")
+    fn_body = html[idx : idx + 900]
+    assert "complete" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 239: Search History ─────────────────────────────────────────────────
+
+
+def test_p239_ui_search_history_card_present():
+    """search-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "search-history-card" in html
+
+
+def test_p239_ui_load_search_history_function_defined():
+    """loadSearchHistory() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSearchHistory()" in html
+
+
+def test_p239_ui_search_history_renders_table():
+    """loadSearchHistory renders a task table."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadSearchHistory()")
+    fn_body = html[idx : idx + 1000]
+    assert "<table" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 240: Agent Run Metrics ──────────────────────────────────────────────
+
+
+def test_p240_ui_agent_run_metrics_card_present():
+    """agent-run-metrics-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-run-metrics-card" in html
+
+
+def test_p240_ui_load_agent_run_metrics_function_defined():
+    """loadAgentRunMetrics() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAgentRunMetrics()" in html
+
+
+def test_p240_ui_agent_run_metrics_calls_agents_endpoint():
+    """loadAgentRunMetrics calls /agents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAgentRunMetrics()")
+    fn_body = html[idx : idx + 900]
+    assert "/agents" in fn_body
+
+
+# ── Phase 241: Active Connectors ──────────────────────────────────────────────
+
+
+def test_p241_ui_active_connectors_card_present():
+    """active-connectors-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "active-connectors-card" in html
+
+
+def test_p241_ui_load_active_connectors_function_defined():
+    """loadActiveConnectors() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadActiveConnectors()" in html
+
+
+def test_p241_ui_active_connectors_calls_health():
+    """loadActiveConnectors fetches /health."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadActiveConnectors()")
+    fn_body = html[idx : idx + 700]
+    assert "/health" in fn_body

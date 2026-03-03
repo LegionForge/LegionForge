@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 197
+UPDATE: 198
 BRANCH: main
-COMMIT: 7f98608
-TIMESTAMP: 2026-03-04T21:00Z
-LAST_OP: PR #162 — Phase 230-233 — API Key Rotate, Task Siblings, Pipeline Step Result, Template Preview
-SMOKE_TESTS: 1471/1471
+COMMIT: 427adc3
+TIMESTAMP: 2026-03-05T00:00Z
+LAST_OP: PR #163 — Phase 234-237 — My Usage Today, Admin Stats Summary, Webhook History, Set Task Priority
+SMOKE_TESTS: 1483/1483
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

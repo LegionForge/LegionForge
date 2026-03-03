@@ -2,7 +2,7 @@
 # LegionForge — Phased Roadmap
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-05
 **Status:** Phases 0–59 ✅ complete (846/846 smoke tests · 38/38 integration · 5/5 Kerberos · 40/40 UI)
 
 > **See bottom of this file** for Phases 17–59 compact history added 2026-03-03.
@@ -1887,5 +1887,9 @@ Added as compact addendum. See git log for full details.
 | 231 | #162 | Task Siblings (task-siblings-card, loadTaskSiblings, GET /tasks/{id}→session→GET /sessions/{id}/tasks) | +3 | 1465 |
 | 232 | #162 | Pipeline Step Result (pipeline-step-result-card, loadPipelineStepResult, GET /pipelines/runs/{id}, step index) | +3 | 1468 |
 | 233 | #162 | Template Preview (template-preview-card, previewTemplate, GET /templates/{id}, name/agent/prompt block) | +3 | 1471 |
+| 234 | #163 | My Usage Today (my-usage-today-card, loadMyUsageToday, GET /usage/history?days=1 + /usage/me, tokens/quota/requests) | +3 | 1474 |
+| 235 | #163 | Admin Stats Summary (admin-stats-summary-card, loadAdminStatsSummary, GET /admin/stats, all stat entries as td-field rows) | +3 | 1477 |
+| 236 | #163 | Webhook History (webhook-history-card, loadWebhookHistory, GET /webhooks, ID/URL/active table) | +3 | 1480 |
+| 237 | #163 | Set Task Priority (set-priority-card, setTaskPriorityById, PATCH /tasks/{id} with priority integer) | +3 | 1483 |
 
-**Current state:** 1471/1471 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1483/1483 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

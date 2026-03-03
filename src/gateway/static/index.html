@@ -1184,6 +1184,46 @@
     </details>
   </div>
 
+  <!-- ── Task Completion Rate card (Phase 238) ───────────────── -->
+  <div class="card" id="task-completion-rate-card">
+    <details id="task-completion-rate-section">
+      <summary style="cursor:pointer">Task Completion Rate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskCompletionRate()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="task-completion-rate-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Search History card (Phase 239) ──────────────────────── -->
+  <div class="card" id="search-history-card">
+    <details id="search-history-section">
+      <summary style="cursor:pointer">Recent Searches <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSearchHistory()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="search-history-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Agent Run Metrics card (Phase 240) ────────────────────── -->
+  <div class="card" id="agent-run-metrics-card">
+    <details id="agent-run-metrics-section">
+      <summary style="cursor:pointer">Agent Run Metrics <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAgentRunMetrics()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="agent-run-metrics-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Active Connectors card (Phase 241) ────────────────────── -->
+  <div class="card" id="active-connectors-card">
+    <details id="active-connectors-section">
+      <summary style="cursor:pointer">Active Connectors <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadActiveConnectors()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="active-connectors-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── My Usage Today card (Phase 234) ──────────────────── -->
   <div class="card" id="my-usage-today-card">
     <details id="my-usage-today-section">
@@ -4548,6 +4588,104 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 238: Task Completion Rate ───────────────────────────────────────────
+async function loadTaskCompletionRate() {
+  const el = document.getElementById('task-completion-rate-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=200');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const total = tasks.length;
+    const complete = tasks.filter(t => t.status === 'complete').length;
+    const failed = tasks.filter(t => t.status === 'failed').length;
+    const running = tasks.filter(t => t.status === 'running').length;
+    const rate = total > 0 ? ((complete / total) * 100).toFixed(1) : '0.0';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Total Tasks</span><span class="td-value">${total}</span></div>`,
+      `<div class="td-field"><span class="td-label">Complete</span><span class="td-value">${complete} (${rate}%)</span></div>`,
+      `<div class="td-field"><span class="td-label">Failed</span><span class="td-value">${failed}</span></div>`,
+      `<div class="td-field"><span class="td-label">Running</span><span class="td-value">${running}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 239: Search History ─────────────────────────────────────────────────
+async function loadSearchHistory() {
+  const el = document.getElementById('search-history-body');
+  el.textContent = 'Loading…';
+  try {
+    const q = document.getElementById('search-input') ? document.getElementById('search-input').value.trim() : '';
+    const url = q ? `/tasks?q=${encodeURIComponent(q)}&limit=10` : '/tasks?limit=10';
+    const r = await apiFetch(url);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = 'No recent tasks.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Prompt</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Status</th></tr>' +
+      tasks.map(t => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(t.task_id||t.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.prompt||''}</td>
+        <td style="padding:2px 4px">${t.status||''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 240: Agent Run Metrics ──────────────────────────────────────────────
+async function loadAgentRunMetrics() {
+  const el = document.getElementById('agent-run-metrics-body');
+  el.textContent = 'Loading…';
+  try {
+    const [tasksR, agentsR] = await Promise.all([
+      apiFetch('/tasks?limit=200'),
+      apiFetch('/agents'),
+    ]);
+    const tasksData = tasksR.ok ? await tasksR.json() : {};
+    const tasks = Array.isArray(tasksData) ? tasksData : (tasksData.tasks || tasksData.items || []);
+    const agentsData = agentsR.ok ? await agentsR.json() : [];
+    const agents = Array.isArray(agentsData) ? agentsData : (agentsData.agents || []);
+    const byAgent = {};
+    tasks.forEach(t => {
+      const a = t.agent_type || 'unknown';
+      if (!byAgent[a]) byAgent[a] = { total: 0, complete: 0 };
+      byAgent[a].total++;
+      if (t.status === 'complete') byAgent[a].complete++;
+    });
+    const rows = Object.entries(byAgent).map(([a, s]) =>
+      `<div class="td-field"><span class="td-label">${a}</span><span class="td-value">${s.complete}/${s.total} complete</span></div>`
+    );
+    el.innerHTML = rows.length ? rows.join('') : `<div style="color:var(--text-xdim)">${agents.length} agent type(s) registered, no tasks yet.</div>`;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 241: Active Connectors ──────────────────────────────────────────────
+async function loadActiveConnectors() {
+  const el = document.getElementById('active-connectors-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const connectors = data.connectors || data.services || {};
+    const entries = typeof connectors === 'object' && !Array.isArray(connectors)
+      ? Object.entries(connectors)
+      : [];
+    if (!entries.length) {
+      el.innerHTML = '<div style="color:var(--text-xdim)">No connector data in /health response.</div>';
+      return;
+    }
+    el.innerHTML = entries.map(([name, status]) =>
+      `<div class="td-field"><span class="td-label">${name}</span><span class="td-value">${
+        typeof status === 'object' ? JSON.stringify(status) : status
+      }</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 234: My Usage Today ─────────────────────────────────────────────────
