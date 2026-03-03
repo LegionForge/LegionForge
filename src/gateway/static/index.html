@@ -260,6 +260,17 @@
     .o-result li { margin: 2px 0; }
     .o-result hr { border: none; border-top: 1px solid var(--border2); margin: 8px 0; }
     .o-result p { margin: 4px 0; }
+    /* ── Copy-result button (Phase 65) ──────────────── */
+    .result-wrap { position: relative; }
+    .result-copy-btn { position: absolute; top: 10px; right: 0; font-size: 11px; padding: 2px 6px;
+      opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+    .result-wrap:hover .result-copy-btn { opacity: 1; pointer-events: auto; }
+    /* ── Syntax highlighting (Phase 67) ─────────────── */
+    .syn-kw   { color: #c792ea; }           /* keywords — purple */
+    .syn-str  { color: #c3e88d; }           /* strings  — green */
+    .syn-cmt  { color: #546e7a; font-style: italic; }  /* comments — grey */
+    .syn-num  { color: #f78c6c; }           /* numbers  — orange */
+    .syn-bi   { color: #82aaff; }           /* built-ins / types — blue */
 
     /* Tool block */
     .tool-block {
@@ -649,6 +660,16 @@ const el = {
 
   // Phase 63: load today's usage counter if API key is available
   if (saved) loadUsage();
+
+  // Phase 66: keyboard shortcuts
+  // Ctrl+Enter / Cmd+Enter is already handled by onTaskKeydown on the textarea.
+  // Escape — cancel a running task from anywhere on the page
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && S.activeES) {
+      e.preventDefault();
+      cancelTask();
+    }
+  });
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
@@ -771,7 +792,7 @@ function loadSearchResult(task) {
   if (task.agent_type) el.agentType().value = task.agent_type;
   clearOutput();
   if (task.result) {
-    appendHTML('<span class="o-result">' + renderMarkdown((task.result || '').trim()) + '</span>');
+    appendResult((task.result || '').trim());
     appendSpan('\n[restored from search: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
   } else {
     appendSpan('[task: ' + (task.task_id || '').slice(0, 8) + '… · ' + (task.status || '') + ']\n', 'o-status');
@@ -1125,7 +1146,8 @@ function renderMarkdown(raw) {
   const codeBlocks = [];
   s = s.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const idx = codeBlocks.length;
-    codeBlocks.push('<pre><code>' + code + '</code></pre>');
+    const highlighted = lang ? highlightCode(code, lang.toLowerCase()) : code;
+    codeBlocks.push('<pre><code>' + highlighted + '</code></pre>');
     return '\x00CB' + idx + '\x00';
   });
 
@@ -1198,6 +1220,84 @@ function inlineMarkdown(s) {
   // italic _
   s = s.replace(/_([^_\s][^_]*)_/g, '<em>$1</em>');
   return s;
+}
+
+// ── Syntax highlighting (Phase 67) ────────────────────────────────
+function highlightCode(code, lang) {
+  // code is already HTML-escaped; we add <span> tags for color.
+  // Process in order: line-comments → block-comments → strings → keywords → numbers
+  // Use NUL-delimited placeholders to avoid double-processing.
+  const parts = [];
+  const PH = (cls, txt) => { const k = '\x00H' + parts.length + '\x00'; parts.push('<span class="' + cls + '">' + txt + '</span>'); return k; };
+
+  // Line comments (# for py/bash/yaml, // for js/ts/go/java/c/cpp, -- for sql)
+  const lcPat = /([#].*$|\/\/.*$|--.*$)/gm;
+  // Block comments /* ... */
+  const bcPat = /\/\*[\s\S]*?\*\//g;
+  // Triple-quoted strings (python)
+  const tqPat = /("""[\s\S]*?"""|'''[\s\S]*?''')/g;
+  // Regular strings: "..." and '...' (non-greedy, no newlines)
+  const strPat = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
+
+  // Apply block/triple first, then line comments, then strings
+  code = code.replace(bcPat,  m => PH('syn-cmt', m));
+  code = code.replace(tqPat,  m => PH('syn-str', m));
+  code = code.replace(lcPat,  m => PH('syn-cmt', m));
+  code = code.replace(strPat, m => PH('syn-str', m));
+
+  // Keywords by language family
+  const KW = {
+    py:   /\b(def|class|import|from|return|if|elif|else|for|while|with|as|try|except|finally|pass|break|continue|lambda|yield|async|await|in|not|and|or|is|raise|del|global|nonlocal|assert|match|case)\b/g,
+    js:   /\b(function|const|let|var|return|if|else|for|while|do|switch|case|break|continue|new|delete|typeof|instanceof|class|extends|import|export|default|async|await|try|catch|finally|throw|of|in|from|void|super|this|static)\b/g,
+    go:   /\b(func|var|const|type|struct|interface|package|import|return|if|else|for|range|switch|case|break|continue|defer|go|chan|select|map|append|len|cap|make|new|delete)\b/g,
+    sql:  /\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|IN|IS|NULL|CREATE|TABLE|ALTER|DROP|INDEX|PRIMARY|KEY|FOREIGN|REFERENCES|UNIQUE|DEFAULT|VALUES|SET|LIMIT|ORDER|BY|GROUP|HAVING|AS|DISTINCT|COUNT|SUM|AVG|MIN|MAX|RETURNING|WITH|CTE)\b/gi,
+    bash: /\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|export|local|echo|exit|source|read|shift|set|unset)\b/g,
+  };
+  const BI = {
+    py:   /\b(None|True|False|print|len|range|int|str|float|bool|list|dict|set|tuple|type|super|object|Exception|self|cls)\b/g,
+    js:   /\b(true|false|null|undefined|NaN|Infinity|console|Promise|Array|Object|String|Number|Boolean|Math|JSON|Error|Map|Set|Symbol|window|document|fetch)\b/g,
+    go:   /\b(true|false|nil|error|string|int|int64|float64|bool|byte|rune|uint|uint64)\b/g,
+    sql:  null,
+    bash: /\b(true|false|null|\$[A-Za-z_][A-Za-z0-9_]*)\b/g,
+  };
+  const langMap = { python: 'py', javascript: 'js', typescript: 'js', jsx: 'js', tsx: 'js',
+    golang: 'go', shell: 'bash', sh: 'bash', zsh: 'bash', yaml: 'bash', sql: 'sql' };
+  const l = langMap[lang] || lang;
+  if (KW[l]) code = code.replace(KW[l], m => PH('syn-kw', m));
+  if (BI[l]) code = code.replace(BI[l], m => PH('syn-bi', m));
+
+  // Numbers (not inside placeholder tokens)
+  code = code.replace(/\b(\d+\.?\d*)\b/g, (m, n) => PH('syn-num', n));
+
+  // Restore placeholders
+  parts.forEach((v, i) => { code = code.replace('\x00H' + i + '\x00', v); });
+  return code;
+}
+
+// ── Copy result (Phase 65) ─────────────────────────────────────────
+function appendResult(text) {
+  appendHTML(
+    '<div class="result-wrap">' +
+    '<button class="btn ghost icon result-copy-btn" onclick="copyResultEl(this)" title="Copy result">⎘</button>' +
+    '<span class="o-result">' + renderMarkdown(text) + '</span>' +
+    '</div>'
+  );
+}
+
+function copyResultEl(btn) {
+  const span = btn.nextElementSibling;
+  const text = span ? (span.innerText || span.textContent) : '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => {
+    // Fallback: select the result span
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
 }
 
 // ── Copy output ───────────────────────────────────────────────────
@@ -1345,7 +1445,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
                        : (d.result && d.result.output) ? d.result.output : '';
       if (resultText && resultText.trim()) {
         appendSpan('\n', '');
-        appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
+        appendResult(resultText.trim());
         const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
         finishRun('complete', '', taskId, agent, taskInput, tokens);
         return;
@@ -1467,7 +1567,7 @@ async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
                      : (result && result.output) ? result.output : '';
     if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
       appendSpan('\n', '');
-      appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
+      appendResult(resultText.trim());
     }
     if (data.status === 'failed') {
       finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
@@ -1512,7 +1612,7 @@ function pollTaskUntilComplete(taskId, apiKey, agent, taskInputText) {
                        : (result && result.output) ? result.output : '';
       if (resultText && resultText.trim() && !S.outputBuffer.includes(resultText.slice(0, 50).trim())) {
         appendSpan('\n', '');
-        appendHTML('<span class="o-result">' + renderMarkdown(resultText.trim()) + '</span>');
+        appendResult(resultText.trim());
       }
       if (data.status === 'failed') {
         finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
