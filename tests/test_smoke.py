@@ -11357,3 +11357,54 @@ def test_p77_ui_share_shows_copy_button():
     fn_body = html[fn_start : fn_start + 1500]
     assert "Copy" in fn_body
     assert "clipboard" in fn_body
+
+
+# ── Phase 78 — Task Timeline UI ───────────────────────────────────────────────
+
+
+def test_p78_ui_timeline_panel_css_present():
+    """Phase 78 timeline panel CSS class exists."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "timeline-panel" in html
+    assert "tl-event" in html
+
+
+def test_p78_ui_toggle_timeline_function_defined():
+    """toggleTimeline() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleTimeline(" in html
+
+
+def test_p78_ui_timeline_button_in_rating_bar():
+    """Timeline button appears in the rating bar block of finishRun."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function finishRun(")
+    fn_body = html[fn_start : fn_start + 3500]
+    assert "toggleTimeline" in fn_body
+    assert "⏱ Timeline" in fn_body
+
+
+def test_p78_ui_timeline_calls_timeline_endpoint():
+    """toggleTimeline() calls GET /tasks/{id}/timeline."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleTimeline(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/timeline" in fn_body
+
+
+def test_p78_ui_timeline_renders_event_type():
+    """toggleTimeline() renders event_type field from each event."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleTimeline(")
+    fn_body = html[fn_start : fn_start + 1500]
+    assert "event_type" in fn_body
