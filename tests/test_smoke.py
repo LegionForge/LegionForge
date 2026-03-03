@@ -10554,15 +10554,15 @@ def test_p64_ui_render_markdown_escapes_html_first():
 
 
 def test_p64_ui_result_uses_render_markdown():
-    """All o-result appendHTML calls use renderMarkdown not escapeHtml."""
+    """All result display sites use appendResult() which calls renderMarkdown."""
     import pathlib, re
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    # No o-result span should use raw escapeHtml for result content
-    assert not re.search(r'o-result">\'\s*\+\s*escapeHtml\(resultText', html)
-    assert not re.search(r'o-result">\'\s*\+\s*escapeHtml\(\(task\.result', html)
-    # All 4 result display sites must use renderMarkdown
-    assert len(re.findall(r'o-result">\'\s*\+\s*renderMarkdown\(', html)) == 4
+    # appendResult() must be defined and call renderMarkdown
+    assert "function appendResult(" in html
+    assert "renderMarkdown(text)" in html
+    # All 4 call sites use appendResult (not raw escapeHtml)
+    assert len(re.findall(r"appendResult\(", html)) >= 5  # 1 def + 4 call sites
 
 
 def test_p64_ui_markdown_css_for_headers():
@@ -10592,3 +10592,121 @@ def test_p64_render_markdown_handles_fenced_code_blocks():
     m_end = html.find("function inlineMarkdown(")
     body = html[m_start:m_end]
     assert "```" in body or "\\`\\`\\`" in body or "pre><code" in body
+
+
+# ── Phase 65 — Copy Result to Clipboard ───────────────────────────
+
+
+def test_p65_ui_has_append_result_function():
+    """Web UI defines appendResult(text) helper function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function appendResult(" in html
+
+
+def test_p65_ui_has_copy_result_el_function():
+    """Web UI defines copyResultEl(btn) for per-result copy."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function copyResultEl(" in html
+
+
+def test_p65_ui_result_wrap_has_copy_btn():
+    """appendResult wraps result in .result-wrap with a copy button."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "result-wrap" in html
+    assert "result-copy-btn" in html
+
+
+def test_p65_ui_copy_btn_css_hover_reveal():
+    """CSS reveals .result-copy-btn on hover via opacity transition."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert ".result-wrap:hover .result-copy-btn" in html
+
+
+def test_p65_ui_copy_result_uses_clipboard_api():
+    """copyResultEl uses navigator.clipboard.writeText."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function copyResultEl(")
+    fn_end = html.find("function copyOutput(")
+    body = html[fn_start:fn_end]
+    assert "clipboard.writeText" in body
+
+
+# ── Phase 66 — Keyboard Shortcuts ─────────────────────────────────
+
+
+def test_p66_ui_ctrl_enter_handler_exists():
+    """Web UI handles Ctrl+Enter / Cmd+Enter to submit task."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # Either inline handler on textarea or addEventListener in init
+    assert ("ctrlKey" in html or "metaKey" in html) and "submitTask" in html
+
+
+def test_p66_ui_escape_cancels_task():
+    """Web UI adds Escape key listener that calls cancelTask()."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'key === "Escape"' in html or "key === 'Escape'" in html
+    assert "cancelTask" in html
+
+
+def test_p66_submit_btn_shows_keyboard_hint():
+    """Submit button shows keyboard shortcut hint (⌘↵ or Ctrl+↵)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "kbd" in html and ("⌘↵" in html or "Ctrl" in html or "↵" in html)
+
+
+# ── Phase 67 — Syntax Highlighting ────────────────────────────────
+
+
+def test_p67_ui_has_highlight_code_function():
+    """Web UI defines highlightCode(code, lang) function."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function highlightCode(" in html
+
+
+def test_p67_ui_highlight_css_classes_defined():
+    """CSS defines .syn-kw, .syn-str, .syn-cmt, .syn-num color classes."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    for cls in (".syn-kw", ".syn-str", ".syn-cmt", ".syn-num"):
+        assert cls in html, f"Missing CSS class: {cls}"
+
+
+def test_p67_ui_render_markdown_calls_highlight():
+    """renderMarkdown calls highlightCode when a language tag is present."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    rm_start = html.find("function renderMarkdown(")
+    rm_end = html.find("function inlineMarkdown(")
+    body = html[rm_start:rm_end]
+    assert "highlightCode(" in body
+
+
+def test_p67_ui_highlight_supports_python_keywords():
+    """highlightCode function body references Python keyword list."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    hc_start = html.find("function highlightCode(")
+    hc_end = html.find("// ── Copy result")
+    body = html[hc_start:hc_end]
+    assert "def" in body and "class" in body and "import" in body
