@@ -1708,5 +1708,6 @@ Added as compact addendum. See git log for full details.
 | 72 | #113 | Light/Dark Mode Toggle (CSS vars, 🌙/☀️, localStorage) | +6 | 922 |
 | 73 | #114 | Task Export to Markdown (GET /tasks/export?format=markdown) | +5 | 927 |
 | 74 | #115 | Browser Notifications (🔕/🔔, notifyTaskComplete, tag dedup) | +4 | 931 |
+| 75 | #117 | Scheduled Tasks UI (Schedules card, CRUD, loadSchedules/createSchedule/deleteSchedule) | +6 | 937 |
 
-**Current state:** 931/931 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 937/937 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
