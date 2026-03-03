@@ -13334,3 +13334,120 @@ def test_p129_ui_check_a2a_task_fetches_a2a_endpoint():
     fn_start = html.find("function checkA2ATask(")
     fn_body = html[fn_start : fn_start + 700]
     assert "/a2a/tasks/" in fn_body
+
+
+# ── Phase 130 — Usage History Detail ─────────────────────────────────────────
+
+
+def test_p130_ui_usage_history_card_present():
+    """#usage-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "usage-history-card" in html
+
+
+def test_p130_ui_load_usage_history_function_defined():
+    """loadUsageHistory() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadUsageHistory(" in html
+
+
+def test_p130_ui_load_usage_history_fetches_endpoint():
+    """loadUsageHistory() fetches /usage/history."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadUsageHistory(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/usage/history" in fn_body
+
+
+# ── Phase 131 — Task Tag Filter ───────────────────────────────────────────────
+
+
+def test_p131_ui_task_tag_filter_card_present():
+    """#task-tag-filter-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-tag-filter-card" in html
+
+
+def test_p131_ui_load_tasks_by_tag_function_defined():
+    """loadTasksByTag() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTasksByTag(" in html
+
+
+def test_p131_ui_load_tasks_by_tag_fetches_with_tags_param():
+    """loadTasksByTag() fetches /tasks with tags[] query param."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTasksByTag(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "tags[]" in fn_body
+    assert "/tasks" in fn_body
+
+
+# ── Phase 132 — Admin Metrics History ────────────────────────────────────────
+
+
+def test_p132_ui_metrics_history_card_present():
+    """#metrics-history-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "metrics-history-card" in html
+
+
+def test_p132_ui_load_metrics_history_function_defined():
+    """loadMetricsHistory() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadMetricsHistory(" in html
+
+
+def test_p132_ui_load_metrics_history_fetches_admin_metrics():
+    """loadMetricsHistory() fetches /admin/metrics/history."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadMetricsHistory(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/admin/metrics/history" in fn_body
+
+
+# ── Phase 133 — Shared Task Viewer ───────────────────────────────────────────
+
+
+def test_p133_ui_shared_task_viewer_card_present():
+    """#shared-task-viewer-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "shared-task-viewer-card" in html
+
+
+def test_p133_ui_view_shared_task_function_defined():
+    """viewSharedTask() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function viewSharedTask(" in html
+
+
+def test_p133_ui_view_shared_task_fetches_shared_endpoint():
+    """viewSharedTask() fetches /shared/{token} (no auth required)."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function viewSharedTask(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/shared/" in fn_body

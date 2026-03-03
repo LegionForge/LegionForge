@@ -1080,6 +1080,50 @@
     </details>
   </div>
 
+  <!-- ── Usage History Detail card (Phase 130) ───────────── -->
+  <div class="card" id="usage-history-card">
+    <details id="usage-history-section">
+      <summary style="cursor:pointer">Usage History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUsageHistory(event)" title="Refresh">↻</button></summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--text-dim)">Days:</label>
+        <input id="usage-history-days" type="number" value="7" min="1" max="90" style="width:50px;font-size:11px;padding:2px 4px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+      </div>
+      <div id="usage-history-body" style="margin-top:6px;color:var(--text-xdim);font-size:12px">Click ↻ to load usage history.</div>
+    </details>
+  </div>
+
+  <!-- ── Task Tag Filter card (Phase 131) ──────────────────── -->
+  <div class="card" id="task-tag-filter-card">
+    <details id="task-tag-filter-section">
+      <summary style="cursor:pointer">Tasks by Tag</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <input id="tag-filter-input" placeholder="Tag (e.g. bookmarked)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadTasksByTag()">Search</button>
+      </div>
+      <div id="tag-filter-body" style="margin-top:6px;color:var(--text-xdim);font-size:12px">Enter a tag and click Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Admin Metrics History card (Phase 132) ────────────── -->
+  <div class="card" id="metrics-history-card">
+    <details id="metrics-history-section">
+      <summary style="cursor:pointer">Metrics History (Admin) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMetricsHistory(event)" title="Refresh">↻</button></summary>
+      <div id="metrics-history-body" style="color:var(--text-xdim);font-size:12px">Click ↻ to load recent metric data points.</div>
+    </details>
+  </div>
+
+  <!-- ── Shared Task Viewer card (Phase 133) ───────────────── -->
+  <div class="card" id="shared-task-viewer-card">
+    <details id="shared-task-viewer-section">
+      <summary style="cursor:pointer">View Shared Task</summary>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        <input id="shared-token-input" placeholder="Share token (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="viewSharedTask()">↻ Load</button>
+      </div>
+      <div id="shared-task-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter share token and click ↻ Load.</div>
+    </details>
+  </div>
+
   <!-- ── Pipeline Edit card (Phase 126) ───────────────────── -->
   <div class="card" id="pipeline-edit-card">
     <details id="pipeline-edit-section">
@@ -3200,6 +3244,107 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 130: Usage History Detail ───────────────────────────────────────────
+async function loadUsageHistory(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const days = parseInt((document.getElementById('usage-history-days') || {}).value || '7', 10);
+  const bodyEl = document.getElementById('usage-history-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/usage/history?days=' + days, {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const days_data = d.days || d;
+    if (!days_data || typeof days_data !== 'object') { bodyEl.textContent = 'No usage data.'; return; }
+    const entries = Object.entries(days_data).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
+    if (!entries.length) { bodyEl.textContent = 'No usage data for this period.'; return; }
+    bodyEl.innerHTML = entries.map(([date, info]) => {
+      const tokens = typeof info === 'object' ? (info.total_tokens || 0) : info;
+      return '<div class="td-field"><span class="td-label">' + date + '</span><span class="td-value">' +
+        tokens.toLocaleString() + ' tokens</span></div>';
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 131: Task Tag Filter ─────────────────────────────────────────────────
+async function loadTasksByTag() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const tag = (document.getElementById('tag-filter-input') || {}).value?.trim();
+  const bodyEl = document.getElementById('tag-filter-body');
+  if (!tag) { if (bodyEl) bodyEl.textContent = 'Enter a tag first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Searching…';
+  try {
+    const res = await fetch('/tasks?tags[]=' + encodeURIComponent(tag) + '&limit=20', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    const tasks = d.tasks || [];
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No tasks with tag "' + tag + '".'; return; }
+    bodyEl.innerHTML = '<div style="color:var(--text-dim);font-size:11px;margin-bottom:4px">' + tasks.length + ' task(s) with tag "' + tag + '"</div>' +
+      tasks.map(t =>
+        '<div class="td-field"><span class="td-label" style="font-family:var(--mono)">' + (t.task_id || '—').slice(0, 8) + '…</span><span class="td-value">' +
+        (t.status || '—') + ' · ' + (t.agent_type || '—') + '</span></div>'
+      ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 132: Admin Metrics History ──────────────────────────────────────────
+async function loadMetricsHistory(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const bodyEl = document.getElementById('metrics-history-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/metrics/history?since_hours=1&limit=10', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status + ' (admin only)'; return; }
+    const d = await res.json();
+    const points = d.points || [];
+    if (!bodyEl) return;
+    if (!points.length) { bodyEl.textContent = 'No metric data points in the last hour.'; return; }
+    bodyEl.innerHTML = points.map(p =>
+      '<div class="td-field"><span class="td-label" style="font-size:10px">' +
+      (p.ts ? new Date(p.ts).toLocaleTimeString() : '—') +
+      '</span><span class="td-value" style="font-size:10px">CPU ' + (p.cpu_pct ?? '—') +
+      '% · RAM ' + (p.ram_pct ?? '—') + '% · Disk ' + (p.disk_pct ?? '—') + '%</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 133: Shared Task Viewer ─────────────────────────────────────────────
+async function viewSharedTask() {
+  const token = (document.getElementById('shared-token-input') || {}).value?.trim();
+  const bodyEl = document.getElementById('shared-task-body');
+  if (!token) { if (bodyEl) bodyEl.textContent = 'Enter a share token first.'; return; }
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/shared/' + encodeURIComponent(token));
+    if (!res.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + res.status + ' — token not found or expired.'; return; }
+    const d = await res.json();
+    if (!bodyEl) return;
+    const rows = [
+      ['Status', d.status || '—'],
+      ['Agent', d.agent_type || '—'],
+      ['Created', d.created_at ? new Date(d.created_at).toLocaleString() : '—'],
+      ['Result', d.result ? d.result.slice(0, 300) + (d.result.length > 300 ? '…' : '') : '—'],
+    ];
+    bodyEl.innerHTML = rows.map(([label, value]) =>
+      '<div class="td-field"><span class="td-label">' + label + '</span><span class="td-value">' +
+      String(value).replace(/</g, '&lt;') + '</span></div>'
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 126: Pipeline Edit ───────────────────────────────────────────────────

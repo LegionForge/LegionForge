@@ -1763,4 +1763,9 @@ Added as compact addendum. See git log for full details.
 | 124 | #135 | Admin Privilege Toggle (admin-toggle-card, toggleUserAdmin, PUT /admin/users/{u}/admin) | +3 | 1129 |
 | 125 | #135 | Admin Schedules Viewer (admin-schedules-card, loadAdminSchedules, GET /admin/schedules) | +3 | 1132 |
 
-**Current state:** 1132/1132 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 126 | #136 | Pipeline Edit (pipeline-edit-card, savePipelineEdit, PUT /pipelines/{id}, loadPipelineForEdit) | +4 | 1136 |
+| 127 | #136 | Pipeline Detail Viewer (pipeline-detail-card, loadPipelineDetail, GET /pipelines/{id}, step chain) | +3 | 1139 |
+| 128 | #136 | Session Detail Viewer (session-detail-card, loadSessionDetail, GET /sessions/{id}, detail sel) | +4 | 1143 |
+| 129 | #136 | A2A Task Status Check (a2a-status-card, checkA2ATask, GET /a2a/tasks/{id}, artifact result) | +3 | 1146 |
+
+**Current state:** 1146/1146 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
