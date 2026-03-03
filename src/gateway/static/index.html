@@ -1233,6 +1233,49 @@
     </details>
   </div>
 
+  <!-- ── Token Budget Status card (Phase 266) ─────────────────── -->
+  <div class="card" id="token-budget-status-card">
+    <details id="token-budget-status-section">
+      <summary style="cursor:pointer">Token Budget Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTokenBudgetStatus()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="token-budget-status-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Tasks by Agent card (Phase 267) ───────────────────────── -->
+  <div class="card" id="tasks-by-agent-card">
+    <details id="tasks-by-agent-section">
+      <summary style="cursor:pointer">Tasks by Agent Type
+        <input id="tasks-by-agent-input" placeholder="agent type" style="width:130px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadTasksByAgent()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="tasks-by-agent-body" style="font-size:12px;color:var(--text-dim)">Enter agent type and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Audit Hash Verify card (Phase 268) ────────────────────── -->
+  <div class="card" id="audit-hash-verify-card">
+    <details id="audit-hash-verify-section">
+      <summary style="cursor:pointer">Audit Log Integrity <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditHashVerify()" title="Verify">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="audit-hash-verify-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to verify hash chain.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Usage Trend card (Phase 269) ──────────────────────────── -->
+  <div class="card" id="usage-trend-card">
+    <details id="usage-trend-section">
+      <summary style="cursor:pointer">Usage Trend (30 days) <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUsageTrend()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="usage-trend-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Running Tasks card (Phase 262) ───────────────────────── -->
   <div class="card" id="running-tasks-card">
     <details id="running-tasks-section">
@@ -4863,6 +4906,96 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 266: Token Budget Status ───────────────────────────────────────────
+async function loadTokenBudgetStatus() {
+  const el = document.getElementById('token-budget-status-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/me');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const used = data.tokens_used || data.total_tokens || 0;
+    const quota = data.daily_token_quota || 0;
+    const pct = quota > 0 ? ((used / quota) * 100).toFixed(1) : '—';
+    const remaining = quota > 0 ? quota - used : '—';
+    const barWidth = quota > 0 ? Math.min(100, (used / quota) * 100) : 0;
+    const barColor = barWidth >= 100 ? '#e74c3c' : barWidth >= 80 ? '#e67e22' : '#2ecc71';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Used Today</span><span class="td-value">${used.toLocaleString()}</span></div>`,
+      `<div class="td-field"><span class="td-label">Daily Quota</span><span class="td-value">${quota.toLocaleString()}</span></div>`,
+      `<div class="td-field"><span class="td-label">Remaining</span><span class="td-value">${typeof remaining === 'number' ? remaining.toLocaleString() : remaining}</span></div>`,
+      `<div class="td-field"><span class="td-label">Usage %</span><span class="td-value">${pct}%</span></div>`,
+      quota > 0 ? `<div style="background:var(--border);border-radius:4px;height:8px;margin-top:6px"><div style="width:${barWidth}%;background:${barColor};height:8px;border-radius:4px"></div></div>` : '',
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 267: Tasks by Agent Type ────────────────────────────────────────────
+async function loadTasksByAgent() {
+  const el = document.getElementById('tasks-by-agent-body');
+  const agentType = (document.getElementById('tasks-by-agent-input') || {value: ''}).value.trim();
+  if (!agentType) { el.textContent = 'Enter an agent type above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/tasks?agent_type=${encodeURIComponent(agentType)}&limit=20`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { el.textContent = `No tasks found for agent "${agentType}".`; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">ID</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Status</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Prompt</th></tr>' +
+      tasks.map(t => `<tr>
+        <td style="padding:2px 4px;font-family:monospace">${(t.task_id||t.id||'').slice(0,8)}</td>
+        <td style="padding:2px 4px">${t.status||'?'}</td>
+        <td style="padding:2px 4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.prompt||''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 268: Audit Hash Verify ──────────────────────────────────────────────
+async function loadAuditHashVerify() {
+  const el = document.getElementById('audit-hash-verify-body');
+  el.textContent = 'Verifying…';
+  try {
+    const r = await apiFetch('/admin/audit/verify');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const ok = data.valid === true || data.status === 'ok' || data.ok === true;
+    const checked = data.records_checked || data.count || '?';
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Integrity</span><span class="td-value" style="color:${ok ? '#2ecc71' : '#e74c3c'}">${ok ? '✓ Valid' : '✗ BROKEN'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Records Checked</span><span class="td-value">${checked}</span></div>`,
+      data.message ? `<div class="td-field"><span class="td-label">Message</span><span class="td-value">${data.message}</span></div>` : '',
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 269: Usage Trend ────────────────────────────────────────────────────
+async function loadUsageTrend() {
+  const el = document.getElementById('usage-trend-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/history?days=30');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const rows = Array.isArray(data) ? data : (data.history || data.usage || []);
+    if (!rows.length) { el.textContent = 'No usage data for last 30 days.'; return; }
+    const maxTokens = Math.max(...rows.map(r => r.total_tokens || 0), 1);
+    const bar = (val) => {
+      const w = Math.round((val / maxTokens) * 20);
+      return '▪'.repeat(w) + '░'.repeat(20 - w);
+    };
+    el.innerHTML = '<table style="width:100%;font-size:10px;border-collapse:collapse;font-family:monospace">' +
+      rows.slice(-14).map(r =>
+        `<tr><td style="padding:1px 4px;white-space:nowrap">${(r.date||r.day||'').slice(5)}</td>` +
+        `<td style="padding:1px 4px;color:var(--text-xdim)">${bar(r.total_tokens||0)}</td>` +
+        `<td style="padding:1px 4px;text-align:right">${(r.total_tokens||0).toLocaleString()}</td></tr>`
+      ).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 262: Running Tasks ──────────────────────────────────────────────────

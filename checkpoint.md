@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 204
+UPDATE: 205
 BRANCH: main
-COMMIT: c5bb274
-TIMESTAMP: 2026-03-05T06:00Z
-LAST_OP: PR #169 — Phase 258-261 — Recent Errors, Threats by Type, Ingest Status, Agent List
-SMOKE_TESTS: 1555/1555
+COMMIT: 71b010c
+TIMESTAMP: 2026-03-05T07:00Z
+LAST_OP: PR #170 — Phase 262-265 — Running Tasks, Pipeline Summary, User Sessions, Task Dependency Graph
+SMOKE_TESTS: 1567/1567
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

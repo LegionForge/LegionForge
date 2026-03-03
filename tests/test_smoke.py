@@ -17400,3 +17400,119 @@ def test_p265_ui_task_dependency_graph_reads_depends_on():
     idx = html.index("async function loadTaskDependencyGraph()")
     fn_body = html[idx : idx + 900]
     assert "depends_on" in fn_body and "/tasks/" in fn_body
+
+
+# ── Phase 266: Token Budget Status ────────────────────────────────────────────
+
+
+def test_p266_ui_token_budget_status_card_present():
+    """token-budget-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "token-budget-status-card" in html
+
+
+def test_p266_ui_load_token_budget_status_function_defined():
+    """loadTokenBudgetStatus() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTokenBudgetStatus()" in html
+
+
+def test_p266_ui_token_budget_status_shows_progress_bar():
+    """loadTokenBudgetStatus renders a visual progress bar."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTokenBudgetStatus()")
+    fn_body = html[idx : idx + 1200]
+    assert "/usage/me" in fn_body and "barWidth" in fn_body
+
+
+# ── Phase 267: Tasks by Agent Type ────────────────────────────────────────────
+
+
+def test_p267_ui_tasks_by_agent_card_present():
+    """tasks-by-agent-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tasks-by-agent-card" in html
+
+
+def test_p267_ui_load_tasks_by_agent_function_defined():
+    """loadTasksByAgent() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTasksByAgent()" in html
+
+
+def test_p267_ui_tasks_by_agent_filters_by_agent_type():
+    """loadTasksByAgent uses agent_type query param."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTasksByAgent()")
+    fn_body = html[idx : idx + 800]
+    assert "agent_type" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 268: Audit Hash Verify ──────────────────────────────────────────────
+
+
+def test_p268_ui_audit_hash_verify_card_present():
+    """audit-hash-verify-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-hash-verify-card" in html
+
+
+def test_p268_ui_load_audit_hash_verify_function_defined():
+    """loadAuditHashVerify() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAuditHashVerify()" in html
+
+
+def test_p268_ui_audit_hash_verify_calls_audit_verify():
+    """loadAuditHashVerify calls /admin/audit/verify."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadAuditHashVerify()")
+    fn_body = html[idx : idx + 700]
+    assert "/admin/audit/verify" in fn_body
+
+
+# ── Phase 269: Usage Trend ────────────────────────────────────────────────────
+
+
+def test_p269_ui_usage_trend_card_present():
+    """usage-trend-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "usage-trend-card" in html
+
+
+def test_p269_ui_load_usage_trend_function_defined():
+    """loadUsageTrend() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUsageTrend()" in html
+
+
+def test_p269_ui_usage_trend_renders_bar_chart():
+    """loadUsageTrend renders ASCII bar chart."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadUsageTrend()")
+    fn_body = html[idx : idx + 1300]
+    assert "/usage/history" in fn_body and "bar(" in fn_body

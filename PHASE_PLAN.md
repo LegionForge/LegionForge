@@ -1915,5 +1915,9 @@ Added as compact addendum. See git log for full details.
 | 259 | #169 | Threats by Type (threats-by-type-card, loadThreatsByType, GET /admin/threats/summary, type→count sorted breakdown) | +3 | 1549 |
 | 260 | #169 | Document Ingest Status (ingest-status-card, loadIngestStatus, GET /documents, doc count/total chunks/latest) | +3 | 1552 |
 | 261 | #169 | Available Agents (agent-list-card, loadAgentList, GET /agents, type/model/description table) | +3 | 1555 |
+| 262 | #170 | Running Tasks (running-tasks-card, loadRunningTasks, GET /tasks?status=running&limit=20, ID/agent/prompt table) | +3 | 1558 |
+| 263 | #170 | Pipeline Summary (pipeline-summary-card, loadPipelineSummary, GET /pipelines?limit=100, total/active/disabled + first 5) | +3 | 1561 |
+| 264 | #170 | User Sessions (user-sessions-card, loadUserSessions, GET /sessions?username=X, session ID/title/task-count) | +3 | 1564 |
+| 265 | #170 | Task Dependency Graph (task-dependency-graph-card, loadTaskDependencyGraph, GET /tasks/{id}+depends_on lookup, chain view) | +3 | 1567 |
 
-**Current state:** 1555/1555 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1567/1567 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
