@@ -1179,6 +1179,44 @@
     </details>
   </div>
 
+  <!-- ── Task Quick Clone card (Phase 150) ───────────────── -->
+  <div class="card" id="task-clone-card">
+    <details id="task-clone-section">
+      <summary style="cursor:pointer">Task Quick Clone</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="clone-task-id" placeholder="Task ID (UUID) to clone" style="flex:1;min-width:140px;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <button class="btn secondary" style="font-size:11px;padding:2px 8px" onclick="cloneTask()">↗ Clone to Input</button>
+        </div>
+        <div id="clone-result" style="font-size:11px;color:var(--text-xdim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Gateway Health Card (Phase 151) ───────────────────── -->
+  <div class="card" id="gateway-health-card">
+    <details id="gateway-health-section">
+      <summary style="cursor:pointer">Gateway Health <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadGatewayHealth(event)" title="Refresh">↻</button></summary>
+      <div id="gateway-health-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load health.</div>
+    </details>
+  </div>
+
+  <!-- ── Recent Tasks Live Refresh card (Phase 152) ───────── -->
+  <div class="card" id="recent-tasks-card">
+    <details id="recent-tasks-section">
+      <summary style="cursor:pointer">Recent Tasks <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRecentTasks(event)" title="Refresh">↻</button></summary>
+      <div id="recent-tasks-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load recent tasks.</div>
+    </details>
+  </div>
+
+  <!-- ── Tag Cloud Explorer card (Phase 153) ───────────────── -->
+  <div class="card" id="tag-cloud-card">
+    <details id="tag-cloud-section">
+      <summary style="cursor:pointer">Tag Cloud <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTagCloud(event)" title="Refresh">↻</button></summary>
+      <div id="tag-cloud-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load tag cloud.</div>
+    </details>
+  </div>
+
   <!-- ── Schedule Detail Viewer card (Phase 142) ─────────── -->
   <div class="card" id="schedule-detail-card">
     <details id="schedule-detail-section">
@@ -3468,6 +3506,97 @@ async function exportTasksJson(evt) {
     a.href = url; a.download = 'legionforge-tasks.json'; a.click();
     URL.revokeObjectURL(url);
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Phase 150: Task Quick Clone ───────────────────────────────────────────────
+async function cloneTask() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('Enter API key first.'); return; }
+  const taskId = (document.getElementById('clone-task-id') || {}).value.trim();
+  if (!taskId) { alert('Enter a Task ID to clone.'); return; }
+  const resultEl = document.getElementById('clone-result');
+  if (resultEl) resultEl.textContent = 'Fetching…';
+  try {
+    const r = await fetch(`/tasks/${encodeURIComponent(taskId)}`, { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (r.status === 404) { if (resultEl) resultEl.textContent = 'Task not found.'; return; }
+    if (!r.ok) { if (resultEl) resultEl.textContent = 'Error ' + r.status; return; }
+    const task = await r.json();
+    const text = task.task_text || task.input || '';
+    if (!text) { if (resultEl) resultEl.textContent = 'No input text found on task.'; return; }
+    el.taskInput().value = text;
+    onTaskInput(el.taskInput());
+    if (task.agent_type) el.agentType().value = task.agent_type;
+    el.taskInput().focus();
+    el.taskInput().scrollIntoView({ behavior: 'smooth' });
+    if (resultEl) resultEl.textContent = 'Cloned! Edit the prompt above and submit.';
+  } catch(e) { if (resultEl) resultEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 151: Gateway Health Card ────────────────────────────────────────────
+async function loadGatewayHealth(evt) {
+  if (evt) evt.stopPropagation();
+  const bodyEl = document.getElementById('gateway-health-body');
+  if (bodyEl) bodyEl.textContent = 'Checking…';
+  try {
+    const r = await fetch('/health');
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Gateway unreachable (status ' + r.status + ')'; return; }
+    const d = await r.json();
+    if (!bodyEl) return;
+    const statusColor = d.status === 'ok' ? 'var(--green)' : 'var(--red)';
+    const fields = [
+      ['status', d.status || 'unknown'],
+      ['service', d.service || ''],
+      ['version', d.version || ''],
+    ];
+    bodyEl.innerHTML = fields.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value" ${k === 'status' ? `style="color:${statusColor};font-weight:600"` : ''}>${escapeHtml(v)}</span></div>`
+    ).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 152: Recent Tasks Live Refresh ──────────────────────────────────────
+async function loadRecentTasks(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { if (document.getElementById('recent-tasks-body')) document.getElementById('recent-tasks-body').textContent = 'Enter API key first.'; return; }
+  const bodyEl = document.getElementById('recent-tasks-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/tasks?limit=5', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!bodyEl) return;
+    if (!tasks.length) { bodyEl.textContent = 'No recent tasks.'; return; }
+    bodyEl.innerHTML = tasks.map(t => {
+      const statusColor = t.status === 'complete' ? 'var(--green)' : t.status === 'failed' ? 'var(--red)' : t.status === 'running' ? 'var(--blue)' : 'var(--text-xdim)';
+      return `<div class="td-field"><span class="td-label" style="color:${statusColor}">${t.status || '?'}</span><span class="td-value">${escapeHtml((t.task_text || '').slice(0, 70))}</span></div>`;
+    }).join('');
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 153: Tag Cloud Explorer ─────────────────────────────────────────────
+async function loadTagCloud(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { if (document.getElementById('tag-cloud-body')) document.getElementById('tag-cloud-body').textContent = 'Enter API key first.'; return; }
+  const bodyEl = document.getElementById('tag-cloud-body');
+  if (bodyEl) bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/tasks?limit=100', { headers: { Authorization: 'Bearer ' + apiKey } });
+    if (!r.ok) { if (bodyEl) bodyEl.textContent = 'Error ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    const tagCounts = {};
+    tasks.forEach(t => (t.tags || []).forEach(tag => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }));
+    if (!bodyEl) return;
+    const entries = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { bodyEl.textContent = 'No tags found in recent tasks.'; return; }
+    bodyEl.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:2px 0">' +
+      entries.map(([tag, count]) =>
+        `<span class="label-pill" style="cursor:pointer" onclick="document.getElementById('label-filter-sel')&&(document.getElementById('label-filter-sel').value='');document.getElementById('status-filter-sel')&&(document.getElementById('status-filter-sel').value='');" title="${count} task(s)">${escapeHtml(tag)} <span style="opacity:0.7">${count}</span></span>`
+      ).join('') + '</div>';
+  } catch(e) { if (bodyEl) bodyEl.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 146: Provider Usage Breakdown ───────────────────────────────────────

@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 175
+UPDATE: 176
 BRANCH: main
-COMMIT: 5e57bab
-TIMESTAMP: 2026-03-03T23:50Z
-LAST_OP: PR #140 — Phase 142-145 — Schedule Detail, Template Detail, Label Filter, Notes Browser
-SMOKE_TESTS: 1198/1198
+COMMIT: a89e22f
+TIMESTAMP: 2026-03-04T00:10Z
+LAST_OP: PR #141 — Phase 146-149 — Provider Usage, Task Timeline, Attachments List, Audit Filter
+SMOKE_TESTS: 1210/1210
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

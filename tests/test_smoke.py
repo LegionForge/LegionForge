@@ -13958,3 +13958,122 @@ def test_p149_ui_load_audit_filtered_fetches_admin_audit():
     fn_body = html[fn_start : fn_start + 700]
     assert "/admin/audit" in fn_body
     assert "event_type" in fn_body
+
+
+# ── Phase 150: Task Quick Clone ───────────────────────────────────────────────
+
+
+def test_p150_ui_task_clone_card_present():
+    """Task clone card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-clone-card" in html
+
+
+def test_p150_ui_clone_task_function_defined():
+    """cloneTask() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function cloneTask(" in html
+
+
+def test_p150_ui_clone_task_fetches_task_and_fills_input():
+    """cloneTask() fetches /tasks/{id} and fills taskInput."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function cloneTask(")
+    fn_body = html[fn_start : fn_start + 900]
+    assert "/tasks/" in fn_body
+    assert "taskInput" in fn_body or "task_text" in fn_body
+
+
+# ── Phase 151: Gateway Health Card ────────────────────────────────────────────
+
+
+def test_p151_ui_gateway_health_card_present():
+    """Gateway health card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "gateway-health-card" in html
+
+
+def test_p151_ui_load_gateway_health_function_defined():
+    """loadGatewayHealth() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadGatewayHealth(" in html
+
+
+def test_p151_ui_load_gateway_health_fetches_health_endpoint():
+    """loadGatewayHealth() fetches /health."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadGatewayHealth(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/health" in fn_body
+
+
+# ── Phase 152: Recent Tasks Live Refresh ──────────────────────────────────────
+
+
+def test_p152_ui_recent_tasks_card_present():
+    """Recent tasks card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "recent-tasks-card" in html
+
+
+def test_p152_ui_load_recent_tasks_function_defined():
+    """loadRecentTasks() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadRecentTasks(" in html
+
+
+def test_p152_ui_load_recent_tasks_fetches_tasks_limit_5():
+    """loadRecentTasks() fetches /tasks with limit=5."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadRecentTasks(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "/tasks" in fn_body
+    assert "limit" in fn_body
+
+
+# ── Phase 153: Tag Cloud Explorer ─────────────────────────────────────────────
+
+
+def test_p153_ui_tag_cloud_card_present():
+    """Tag cloud card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tag-cloud-card" in html
+
+
+def test_p153_ui_load_tag_cloud_function_defined():
+    """loadTagCloud() JS function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadTagCloud(" in html
+
+
+def test_p153_ui_load_tag_cloud_aggregates_tags_from_tasks():
+    """loadTagCloud() fetches /tasks and aggregates tags."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadTagCloud(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "/tasks" in fn_body
+    assert "tags" in fn_body
