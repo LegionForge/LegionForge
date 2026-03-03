@@ -13069,3 +13069,131 @@ def test_p121_ui_edit_schedule_puts_schedules_endpoint():
     fn_body = html[fn_start : fn_start + 1100]
     assert "PUT" in fn_body
     assert "/schedules/" in fn_body
+
+
+# ── Phase 122 — Pipeline Run Detail ──────────────────────────────────────────
+
+
+def test_p122_ui_pipeline_run_detail_card_present():
+    """#pipeline-run-detail-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-run-detail-card" in html
+
+
+def test_p122_ui_load_pipeline_run_detail_function_defined():
+    """loadPipelineRunDetail() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPipelineRunDetail(" in html
+
+
+def test_p122_ui_load_pipeline_run_detail_fetches_run():
+    """loadPipelineRunDetail() fetches /pipelines/runs/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPipelineRunDetail(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/pipelines/runs/" in fn_body
+
+
+# ── Phase 123 — A2A Task Submit ───────────────────────────────────────────────
+
+
+def test_p123_ui_a2a_submit_card_present():
+    """#a2a-submit-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "a2a-submit-card" in html
+
+
+def test_p123_ui_submit_a2a_task_function_defined():
+    """submitA2ATask() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function submitA2ATask(" in html
+
+
+def test_p123_ui_submit_a2a_task_posts_to_a2a_tasks():
+    """submitA2ATask() POSTs to /a2a/tasks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function submitA2ATask(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "POST" in fn_body
+    assert "/a2a/tasks" in fn_body
+
+
+def test_p123_ui_a2a_submit_uses_a2a_message_format():
+    """submitA2ATask() wraps text in A2A message format with parts."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function submitA2ATask(")
+    fn_body = html[fn_start : fn_start + 800]
+    assert "parts" in fn_body
+
+
+# ── Phase 124 — Admin Toggle User Admin ──────────────────────────────────────
+
+
+def test_p124_ui_admin_toggle_card_present():
+    """#admin-toggle-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-toggle-card" in html
+
+
+def test_p124_ui_toggle_user_admin_function_defined():
+    """toggleUserAdmin() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function toggleUserAdmin(" in html
+
+
+def test_p124_ui_toggle_user_admin_calls_admin_endpoint():
+    """toggleUserAdmin() calls PUT /admin/users/{username}/admin."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function toggleUserAdmin(")
+    fn_body = html[fn_start : fn_start + 700]
+    assert "PUT" in fn_body
+    assert "/admin" in fn_body
+
+
+# ── Phase 125 — Admin Schedules Viewer ───────────────────────────────────────
+
+
+def test_p125_ui_admin_schedules_card_present():
+    """#admin-schedules-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-schedules-card" in html
+
+
+def test_p125_ui_load_admin_schedules_function_defined():
+    """loadAdminSchedules() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAdminSchedules(" in html
+
+
+def test_p125_ui_load_admin_schedules_fetches_admin_endpoint():
+    """loadAdminSchedules() fetches /admin/schedules."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAdminSchedules(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/admin/schedules" in fn_body

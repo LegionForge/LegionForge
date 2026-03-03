@@ -1753,4 +1753,9 @@ Added as compact addendum. See git log for full details.
 | 116 | #133 | Memory Manual Ingest (memory-ingest-card, ingestMemory, POST /memory/ingest, textarea input) | +3 | 1100 |
 | 117 | #133 | Pipeline Create UI (pipeline-create-card, createPipeline, POST /pipelines, JSON steps textarea) | +4 | 1104 |
 
-**Current state:** 1104/1104 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+| 118 | #134 | Template Run UI (template-run-card, runTemplate, POST /templates/{id}/run; loadTemplates populates run-sel) | +4 | 1108 |
+| 119 | #134 | Admin Threat Events (threat-events-card, loadThreatEvents, GET /admin/threats, red type + timestamp) | +3 | 1111 |
+| 120 | #134 | Admin User Actions (admin-user-actions-card, adminDeactivateUser/adminSetQuota, DELETE+PUT /admin/users) | +4 | 1115 |
+| 121 | #134 | Schedule Edit UI (schedule-edit-card, editSchedule, PUT /schedules/{id}, cron+name+enabled) | +4 | 1119 |
+
+**Current state:** 1119/1119 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
