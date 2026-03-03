@@ -1735,5 +1735,8 @@ Added as compact addendum. See git log for full details.
 | 99 | #129 | API Key Rotation UI (rotate-key-card, rotateApiKey, POST /auth/rotate-key, auto-fill input) | +4 | 1041 |
 | 100 | #129 | Batch Task Submission UI (batch-card, submitBatch, POST /tasks/batch, ≤20 task guard) | +4 | 1045 |
 | 101 | #129 | Session Tasks Browser (session-tasks-card, loadSessionTasks, GET /sessions/{id}/tasks) | +4 | 1049 |
+| 102 | #130 | Bulk Task Operations (bulk-ops-card, bulkCancel/Delete/Tag, /tasks/bulk/{cancel,delete,tag}) | +5 | 1054 |
+| 104 | #130 | Task Share Links Viewer (shares-list-card, loadShares, GET /tasks/{id}/shares) | +3 | 1057 |
+| 105 | #130 | Document List UI (doc-list-card, loadDocuments/deleteDocument, GET /documents) | +4 | 1061 |
 
-**Current state:** 1049/1049 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1061/1061 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
