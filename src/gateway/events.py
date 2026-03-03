@@ -35,9 +35,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of terminal events to cache in memory.
+# Each entry is ~300–400 bytes (UUID + event dict).  2 000 entries ≈ 800 KB.
+# Oldest entries are evicted FIFO when the limit is reached.  The cache
+# exists only to close the late-subscriber race (subscriber arrives after
+# the channel is torn down but within the same request cycle, typically <1 s).
+_TERMINAL_CACHE_MAXSIZE = 2_000
 
 # ── SSE event builder ─────────────────────────────────────────────────────────
 
@@ -216,9 +224,9 @@ _SENTINEL = object()  # signals end-of-stream to subscribers
 # anything and the client hangs on heartbeats forever.  With the cache the
 # late subscriber finds the terminal event immediately and returns it.
 #
-# The dict is unbounded but small (one entry per completed task per process
-# lifetime — typically a few hundred bytes each).
-_terminal_events: dict[str, dict] = {}
+# Bounded at _TERMINAL_CACHE_MAXSIZE (2 000) via OrderedDict FIFO eviction
+# to prevent unbounded growth on long-running servers.
+_terminal_events: OrderedDict[str, dict] = OrderedDict()
 
 
 def _get_or_create_channel(task_id: str) -> list[asyncio.Queue]:
@@ -234,6 +242,9 @@ async def publish_event(task_id: str, event: dict) -> None:
     if is_terminal:
         # Cache before notifying subscribers so any subscriber that calls
         # subscribe_task_events() immediately after this returns will find it.
+        # Evict oldest entry if the bounded cache is full.
+        if len(_terminal_events) >= _TERMINAL_CACHE_MAXSIZE:
+            _terminal_events.popitem(last=False)
         _terminal_events[task_id] = event
     for q in queues:
         await q.put(event)
@@ -286,7 +297,7 @@ async def subscribe_task_events(task_id: str) -> asyncio.AsyncGenerator[dict, No
 _PIPELINE_TERMINAL_EVENTS = {"pipeline_complete", "pipeline_failed"}
 
 _pipeline_channels: dict[str, list[asyncio.Queue]] = {}
-_pipeline_terminal_events: dict[str, dict] = {}
+_pipeline_terminal_events: OrderedDict[str, dict] = OrderedDict()
 
 
 def build_pipeline_start_event(run_id: int, pipeline_id: int, total_steps: int) -> dict:
@@ -362,6 +373,8 @@ async def publish_pipeline_event(run_id: int, event: dict) -> None:
     queues = _pipeline_channels.get(key, [])
     is_terminal = event.get("event") in _PIPELINE_TERMINAL_EVENTS
     if is_terminal:
+        if len(_pipeline_terminal_events) >= _TERMINAL_CACHE_MAXSIZE:
+            _pipeline_terminal_events.popitem(last=False)
         _pipeline_terminal_events[key] = event
     for q in queues:
         await q.put(event)
