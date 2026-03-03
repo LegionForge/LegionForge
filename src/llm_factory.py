@@ -15,6 +15,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from functools import lru_cache
 
@@ -23,6 +24,32 @@ from langchain_ollama import ChatOllama
 
 from config.settings import settings
 from src.rate_limiter import get_limiter
+
+# ── Per-task model preference (Phase 58) ──────────────────────────────────────
+# A ContextVar lets each async task independently override the primary model
+# without touching global state or changing any agent code.
+#
+# Usage (worker sets before running agent):
+#   set_task_model_preference("fast")   # or "balanced" / "powerful" / None
+#   llm = get_primary_llm()            # returns model for that preference
+_task_model_pref: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "task_model_pref", default=None
+)
+
+
+def set_task_model_preference(pref: str | None) -> None:
+    """
+    Set the model preference for the current async task context.
+
+    Call this in the worker before invoking any agent run_* function.
+    The ContextVar is scoped to the current asyncio Task — concurrent
+    task runs are fully isolated from each other.
+
+    Args:
+        pref: "fast", "balanced", "powerful", or None (= default primary model).
+    """
+    _task_model_pref.set(pref)
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +92,26 @@ def get_llm(
 
 
 def get_primary_llm(**kwargs) -> BaseChatModel:
-    """Get the primary reasoning LLM from the hardware profile."""
+    """
+    Get the primary reasoning LLM from the hardware profile.
+
+    If a task model preference has been set via ``set_task_model_preference()``,
+    the preference is resolved against ``settings.model_preferences`` and the
+    matching model is used instead of the profile's default primary model.
+    """
+    pref = _task_model_pref.get()
+    if pref:
+        model_id = settings.model_preferences.get(pref)
+        if model_id:
+            logger.info(
+                f"Loading model by preference '{pref}': "
+                f"{settings.models.primary.provider}/{model_id}"
+            )
+            return get_llm(settings.models.primary.provider, model_id, **kwargs)
+        else:
+            logger.warning(
+                f"Unknown model preference '{pref}' — falling back to primary model"
+            )
     m = settings.models.primary
     logger.info(f"Loading primary model: {m.provider}/{m.model_id}")
     return get_llm(m.provider, m.model_id, **kwargs)

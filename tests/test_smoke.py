@@ -10131,3 +10131,94 @@ def test_p57_ui_has_delete_current_session():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "deleteCurrentSession" in html
+
+
+# ── Phase 58: Model Selection per Task ───────────────────────────────────────
+
+
+def test_p58_settings_has_model_preferences():
+    """HardwareSettings exposes model_preferences with fast/balanced/powerful."""
+    from config.settings import settings
+
+    mp = settings.model_preferences
+    assert hasattr(mp, "fast")
+    assert hasattr(mp, "balanced")
+    assert hasattr(mp, "powerful")
+    assert mp.fast  # non-empty string
+    assert mp.balanced
+    assert mp.powerful
+
+
+def test_p58_set_task_model_preference_importable():
+    """set_task_model_preference() can be imported from llm_factory."""
+    from src.llm_factory import set_task_model_preference
+
+    assert callable(set_task_model_preference)
+
+
+def test_p58_contextvar_default_is_none():
+    """_task_model_pref ContextVar defaults to None (no override)."""
+    import contextvars
+
+    from src.llm_factory import _task_model_pref
+
+    assert isinstance(_task_model_pref, contextvars.ContextVar)
+    assert _task_model_pref.get() is None
+
+
+def test_p58_task_request_has_model_preference_field():
+    """TaskRequest accepts model_preference field (fast/balanced/powerful/null)."""
+    from src.gateway.routes.tasks import TaskRequest
+
+    req = TaskRequest(task="hello")
+    assert req.model_preference is None  # default
+
+    req2 = TaskRequest(task="hello", model_preference="fast")
+    assert req2.model_preference == "fast"
+
+    req3 = TaskRequest(task="hello", model_preference="balanced")
+    assert req3.model_preference == "balanced"
+
+    req4 = TaskRequest(task="hello", model_preference="powerful")
+    assert req4.model_preference == "powerful"
+
+
+def test_p58_task_request_rejects_invalid_model_preference():
+    """TaskRequest raises ValidationError for unknown model_preference values."""
+    import pytest
+    from pydantic import ValidationError
+
+    from src.gateway.routes.tasks import TaskRequest
+
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", model_preference="turbo")
+
+
+def test_p58_create_task_accepts_model_preference():
+    """create_task() signature includes model_preference parameter."""
+    import inspect
+
+    from src.database import create_task
+
+    sig = inspect.signature(create_task)
+    assert "model_preference" in sig.parameters
+
+
+def test_p58_ui_has_model_pref_buttons():
+    """Web UI includes Fast/Balanced/Powerful model preference toggle buttons."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "mp-fast" in html
+    assert "mp-balanced" in html
+    assert "mp-powerful" in html
+    assert "setModelPref" in html
+
+
+def test_p58_ui_model_pref_in_submit_body():
+    """Web UI submitTask() includes model_preference in the POST body."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "model_preference: S.modelPref" in html
+    assert "modelPref:" in html  # state field exists

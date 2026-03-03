@@ -1366,5 +1366,5 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        app, host="0.0.0.0", port=8765, log_level="info"
-    )  # nosec B104 — intentional LAN binding for operator health API
+        app, host="0.0.0.0", port=8765, log_level="info"  # nosec B104
+    )  # intentional LAN binding for operator health API

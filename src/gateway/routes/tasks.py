@@ -152,6 +152,24 @@ class TaskRequest(BaseModel):
             "Phase 54 — Conversation Sessions."
         ),
     )
+    model_preference: str | None = Field(
+        default=None,
+        description=(
+            "Named model speed preset: 'fast' (qwen2.5:3b — quick, lower quality), "
+            "'balanced' (llama3.1:8b — default), or 'powerful' (best available model).  "
+            "Maps to models defined in hardware profile model_preferences.  "
+            "Phase 58 — Model Selection per Task."
+        ),
+    )
+
+    @field_validator("model_preference")
+    @classmethod
+    def model_preference_must_be_valid(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("fast", "balanced", "powerful"):
+            raise ValueError(
+                "model_preference must be 'fast', 'balanced', 'powerful', or null"
+            )
+        return v
 
     @field_validator("task")
     @classmethod
@@ -302,6 +320,7 @@ async def submit_task(
         tags=body.tags,
         depends_on=body.depends_on,
         session_id=body.session_id,
+        model_preference=body.model_preference,
     )
 
     task_id = row["task_id"]
