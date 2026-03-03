@@ -1,9 +1,14 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 1.0.1
-**Last updated:** 2026-03-01
-**Status:** Phase 0 ✅ | Phase 1 ✅ | Phase 2 ✅ | Phase 3 ✅ | Phase 4 ✅ | Phase 5 ✅ | Phase 5.5 ✅ | Phase 6 ✅ | Phase 7 ✅ | Phase 8 ✅ | Phase 9 ✅ | Phase 9.5 ✅ | Phase 10 ✅ | Phase 11 ✅ | Phase 12 ✅ | Phase 13 ✅ | Phase 14 ✅ | Phase 15 ✅ | Phase 16 ✅
+**Version:** 0.7.0-alpha
+**Last updated:** 2026-03-03
+**Status:** Phases 0–59 ✅ complete (846/846 smoke tests · 38/38 integration · 5/5 Kerberos · 40/40 UI)
+
+> **See bottom of this file** for Phases 17–59 compact history added 2026-03-03.
+
+Phases 0–16 are documented in full detail below.
+Phases 17–59 are summarised in the addendum section at the end.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary
@@ -1634,3 +1639,59 @@ No new phases. Bug fixes and operational completions only.
 | Kerberos integration test DB API fixed (psycopg, `%s`, `get_pool()`) | #40 | Tests 4-5 no longer fail on wrong DB API |
 | MIT Kerberos 1.22.2 KDC live; `gssapi` built vs MIT; `make test-kerberos` | #41 | 3/5 Kerberos tests pass live |
 | `gateway_users.user_id TEXT`; `api_key_hash UNIQUE` dropped; sentinel standardised | #42 | 5/5 Kerberos tests pass (DB provisioning fixed) |
+
+---
+
+## Phases 17–59 — Task Platform & Conversation Intelligence (2026-03-01 → 2026-03-03)
+
+Added as compact addendum. See git log for full details.
+
+| Phase | PR | Feature | New Smoke Tests | Running Total |
+|---|---|---|---|---|
+| 17 | #43 | Researcher Agent (LangGraph web-search + web-fetch) | +24 | 516 |
+| 18 | #44 | UI Tests + TestLab Admin Platform (Playwright, :8090) | +9 | 525 |
+| 19 | #45 | Attack Test Suite + Dockerised Ollama (104 testlab tests) | +9 | 534 |
+| 20 | #48 | Multi-Machine Ollama Cluster (health poll, routing, failover) | +11 | 545 |
+| 21 | #49 | Persistent Agent Memory (pgvector recall/store) | +10 | 555 |
+| 22 | #50 | Document Ingestion Pipeline (chunk, PDF, HTML strip) | +10 | 565 |
+| 23 | #51 | Scheduled Tasks (cron + @every shortcuts, croniter) | +11 | 576 |
+| 24 | #52 | Admin API (user CRUD, quota, promote, stats) | +10 | 586 |
+| 25 | #53 | Audit Log & Observability API (threats, metrics, tools) | +8 | 594 |
+| 26 | #54 | Task Result Webhooks (callback_url, HMAC-SHA256) | +6 | 600 |
+| 27 | #55 | Task Pipelines (pipelines+pipeline_runs, 8 endpoints) | +8 | 608 |
+| 28 | #56 | Task Priority Queue + Batch Submission | +5 | 613 |
+| 29 | #57 | Task Result Cache (content_hash, use_cache, cache_ttl) | +5 | 618 |
+| 30 | #58 | Pipeline SSE Progress Streaming | +4 | 622 |
+| 31 | #59 | Task Tags & Search (tags TEXT[], q+tags filters) | +5 | 627 |
+| 32 | #60 | Task Notes (task_notes table, POST/GET/DELETE) | +5 | 632 |
+| 33 | #61 | Task Retry API (POST /tasks/{id}/retry) | +4 | 636 |
+| 34 | #62 | Task Dependencies (depends_on, fail propagation) | +5 | 641 |
+| 35 | #63 | Worker Concurrency (WORKER_CONCURRENCY, SKIP LOCKED) | +4 | 645 |
+| 36 | #64 | Task Cost Estimation (dry_run, /estimate) | +5 | 650 |
+| 37 | #65 | Agent Capabilities Registry (GET /agents) | +4 | 654 |
+| 38 | #66 | Task Export API (GET /tasks/export?format=json\|csv) | +4 | 658 |
+| 39 | #67 | Task Timeline (task_events, GET /tasks/{id}/timeline) | +5 | 663 |
+| 40 | #68 | Task Labels (labels TEXT[], GIN index, PUT /labels) | +5 | 668 |
+| 41–42 | #69–70 | Ollama cluster UI tab; pipeline SSE improvements | +8 | 676 |
+| 43 | #71 | Task Bulk Operations (bulk-cancel, bulk-delete) | +5 | 681 |
+| 44 | #72 | Task Stats & Analytics (GET /tasks/stats) | +5 | 686 |
+| 45 | #73 | Rate Limit Dashboard (GET /admin/rate-limits) | +4 | 690 |
+| 46 | #74 | Task Watchdog Heartbeat (reap stuck 'running' tasks) | +4 | 694 |
+| 47 | #75 | Keyset Pagination (cursor-based, GET /tasks) | +5 | 699 |
+| 48 | #76 | Webhook Registry (multi-subscribe, HMAC-SHA256 delivery) | +6 | 705 |
+| 49 | #77 | Task Attachments (text blobs, GET/POST/DELETE) | +5 | 710 |
+| 50 | #78 | Task Templates (reusable, GET/POST/PUT/DELETE) | +5 | 715 |
+| 51 | #79 | Task Sharing (read-only share tokens) | +5 | 720 |
+| 52 | #80 | User Preferences (per-user task defaults) | +5 | 725 |
+| 53 | #81 | Usage History (per-day token breakdown, GET /usage/history) | +5 | 730 |
+| 54 | #82 | Conversation Sessions (LangGraph thread persistence) | +6 | 736 |
+| 55 | #85 | Tool Accuracy & Anti-Hallucination Test Suite (29 tests) | +29 | 765 |
+| 56 | #95 | Configurable Search Providers (ddg/tavily/brave/exa/etc.) | +9 | 774 |
+| — | #91–94 | Bug fixes: SSE fallback, tool hash mismatch, UI, startup | +18 | 792 |
+| — | #96–97 | Gateway startup fix (trust auth, Keychain lookup) | +0 | 792 |
+| 57 | #98 | Conversation Session UI Integration (picker, JS, POST) | +10 | 828 (after +36 tool accuracy) |
+| — | #90 | Bug fixes: task failures, DB init, web fetch, TestLab LAN | +0 | 828 |
+| 58 | #99 | Model Selection per Task (ContextVar, Fast/Balanced/Powerful) | +8 | 836 |
+| 59 | #100 | Task Rating & Feedback (thumbs up/down, /annotate endpoints) | +10 | 846 |
+
+**Current state:** 846/846 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
