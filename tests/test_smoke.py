@@ -11996,3 +11996,122 @@ def test_p91_ui_toggle_opens_closes_modal():
     fn_body = html[fn_start : fn_start + 300]
     assert "classList.toggle" in fn_body
     assert "open" in fn_body
+
+
+# ── Phase 92 — Webhook Management UI ─────────────────────────────────────────
+
+
+def test_p92_ui_webhooks_card_present():
+    """Phase 92 webhooks card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhooks-card" in html
+    assert "webhooks-list" in html
+
+
+def test_p92_ui_load_webhooks_function_defined():
+    """loadWebhooks() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadWebhooks(" in html
+
+
+def test_p92_ui_load_webhooks_calls_endpoint():
+    """loadWebhooks() calls GET /webhooks."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadWebhooks(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/webhooks" in fn_body
+
+
+def test_p92_ui_register_and_delete_webhook_defined():
+    """registerWebhook() and deleteWebhook() functions exist."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function registerWebhook(" in html
+    assert "function deleteWebhook(" in html
+
+
+# ── Phase 93 — User Preferences UI ──────────────────────────────────────────
+
+
+def test_p93_ui_preferences_card_present():
+    """Phase 93 preferences card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "preferences-card" in html
+    assert "prefs-list" in html
+
+
+def test_p93_ui_load_preferences_function_defined():
+    """loadPreferences() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadPreferences(" in html
+
+
+def test_p93_ui_load_preferences_calls_endpoint():
+    """loadPreferences() calls GET /auth/preferences."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadPreferences(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/auth/preferences" in fn_body
+
+
+def test_p93_ui_save_and_delete_preference_defined():
+    """savePreference() and deletePreference() functions exist."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function savePreference(" in html
+    assert "function deletePreference(" in html
+
+
+# ── Phase 94 — Admin Annotations Viewer ──────────────────────────────────────
+
+
+def test_p94_ui_annotations_card_present():
+    """Phase 94 annotations card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "annotations-card" in html
+    assert "annotations-list" in html
+
+
+def test_p94_ui_load_annotations_function_defined():
+    """loadAnnotations() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadAnnotations(" in html
+
+
+def test_p94_ui_load_annotations_calls_admin_endpoint():
+    """loadAnnotations() calls GET /admin/annotations."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAnnotations(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/admin/annotations" in fn_body
+
+
+def test_p94_ui_annotations_renders_rating_emoji():
+    """loadAnnotations() renders 👍/👎 rating emoji."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadAnnotations(")
+    fn_body = html[fn_start : fn_start + 1200]
+    assert "👍" in fn_body
+    assert "👎" in fn_body

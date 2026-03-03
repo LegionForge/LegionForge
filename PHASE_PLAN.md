@@ -1723,5 +1723,7 @@ Added as compact addendum. See git log for full details.
 | 87 | #124 | Tool Registry Admin UI (admin, tool-registry-card, loadTools/revokeOrApproveTool) | +5 | 993 |
 | 88 | #125 | Health Metrics Dashboard (admin, health-metrics-card, loadHealthMetrics, CPU/RAM/Disk grid) | +4 | 997 |
 | 89 | #125 | User Management Admin UI (admin, user-mgmt-card, loadUsers/createUser, POST /admin/users) | +5 | 1002 |
+| 90 | #126 | Audit Log Viewer (admin, audit-log-card, loadAuditLog, GET /admin/audit, event_type+ts) | +4 | 1006 |
+| 91 | #126 | Keyboard Shortcuts Help Modal (? button, toggleHelpModal, #help-modal overlay, Escape closes) | +5 | 1011 |
 
-**Current state:** 1002/1002 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1011/1011 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
