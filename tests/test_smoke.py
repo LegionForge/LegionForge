@@ -12378,3 +12378,117 @@ def test_p101_ui_populate_sess_tasks_sel_defined():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "function populateSessTasksSel(" in html
     assert "populateSessTasksSel" in html
+
+
+# ── Phase 102 — Bulk Task Operations UI ──────────────────────────────────────
+
+
+def test_p102_ui_bulk_ops_card_present():
+    """Phase 102 bulk operations card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "bulk-ops-card" in html
+    assert "bulk-ids-input" in html
+
+
+def test_p102_ui_bulk_cancel_function_defined():
+    """bulkCancel() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function bulkCancel(" in html
+
+
+def test_p102_ui_bulk_delete_function_defined():
+    """bulkDelete() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function bulkDelete(" in html
+
+
+def test_p102_ui_bulk_tag_function_defined():
+    """bulkTag() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function bulkTag(" in html
+
+
+def test_p102_ui_bulk_ops_call_correct_endpoints():
+    """Bulk functions call /tasks/bulk/cancel, /tasks/bulk/delete, /tasks/bulk/tag."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "/tasks/bulk/cancel" in html
+    assert "/tasks/bulk/delete" in html
+    assert "/tasks/bulk/tag" in html
+
+
+# ── Phase 104 — Task Shares List UI ──────────────────────────────────────────
+
+
+def test_p104_ui_shares_list_card_present():
+    """Phase 104 shares list card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "shares-list-card" in html
+    assert "shares-list" in html
+
+
+def test_p104_ui_load_shares_function_defined():
+    """loadShares() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadShares(" in html
+
+
+def test_p104_ui_load_shares_calls_endpoint():
+    """loadShares() calls GET /tasks/{id}/shares."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadShares(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/shares" in fn_body
+
+
+# ── Phase 105 — Document List UI ─────────────────────────────────────────────
+
+
+def test_p105_ui_doc_list_card_present():
+    """Phase 105 document list card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "doc-list-card" in html
+    assert "doc-list" in html
+
+
+def test_p105_ui_load_documents_function_defined():
+    """loadDocuments() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadDocuments(" in html
+
+
+def test_p105_ui_load_documents_calls_endpoint():
+    """loadDocuments() calls GET /documents."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadDocuments(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/documents" in fn_body
+
+
+def test_p105_ui_delete_document_function_defined():
+    """deleteDocument() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function deleteDocument(" in html
