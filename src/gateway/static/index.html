@@ -1233,6 +1233,52 @@
     </details>
   </div>
 
+  <!-- ── Task Retry Log card (Phase 278) ───────────────────── -->
+  <div class="card" id="retry-log-card">
+    <details id="retry-log-section">
+      <summary style="cursor:pointer">Task Retry Log <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskRetryLog()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="retry-log-task-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskRetryLog()">Load</button>
+        <div id="retry-log-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Cost Estimate card (Phase 279) ───────────────────── -->
+  <div class="card" id="cost-estimate-card">
+    <details id="cost-estimate-section">
+      <summary style="cursor:pointer">Cost Estimate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadCostEstimate()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Prompt <input id="cost-estimate-prompt" class="input" style="width:260px;margin-left:6px" placeholder="describe your task…"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadCostEstimate()">Estimate</button>
+        <div id="cost-estimate-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline List card (Phase 280) ───────────────────── -->
+  <div class="card" id="pipeline-list-card">
+    <details id="pipeline-list-section">
+      <summary style="cursor:pointer">Pipeline List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineList()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="pipeline-list-body" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Run Log card (Phase 281) ───────────────────── -->
+  <div class="card" id="schedule-run-log-card">
+    <details id="schedule-run-log-section">
+      <summary style="cursor:pointer">Schedule Run Log <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduleRunLog()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Schedule ID <input id="schedule-run-log-id" class="input" style="width:160px;margin-left:6px" placeholder="123"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadScheduleRunLog()">Load</button>
+        <div id="schedule-run-log-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Memory Store Info card (Phase 274) ───────────────────── -->
   <div class="card" id="memory-store-info-card">
     <details id="memory-store-info-section">
@@ -4998,6 +5044,98 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 278: Task Retry Log ──────────────────────────────────────────────
+async function loadTaskRetryLog() {
+  const el = document.getElementById('retry-log-body');
+  const taskId = document.getElementById('retry-log-task-id').value.trim();
+  if (!taskId) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const rows = [
+      ['Task ID', t.task_id || taskId],
+      ['Status', t.status || '—'],
+      ['Retry Count', t.retry_count != null ? t.retry_count : '0'],
+      ['Agent Type', t.agent_type || '—'],
+      ['Created', t.created_at ? t.created_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Last Updated', t.updated_at ? t.updated_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 279: Cost Estimate ──────────────────────────────────────────────
+async function loadCostEstimate() {
+  const el = document.getElementById('cost-estimate-body');
+  const prompt = document.getElementById('cost-estimate-prompt').value.trim();
+  if (!prompt) { el.textContent = 'Enter a prompt to estimate.'; return; }
+  el.textContent = 'Estimating…';
+  try {
+    const r = await apiFetch('/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, dry_run: true }),
+    });
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const rows = [
+      ['Estimated Tokens', data.estimated_tokens != null ? data.estimated_tokens : '—'],
+      ['Estimated Cost ($)', data.estimated_cost != null ? data.estimated_cost.toFixed(4) : '—'],
+      ['Agent Type', data.agent_type || '—'],
+      ['Model', data.model || '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 280: Pipeline List ──────────────────────────────────────────────
+async function loadPipelineList() {
+  const el = document.getElementById('pipeline-list-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines?limit=50');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const pipelines = Array.isArray(data) ? data : (data.pipelines || data.items || []);
+    if (!pipelines.length) { el.textContent = 'No pipelines found.'; return; }
+    const cols = ['ID', 'Name', 'Enabled', 'Steps'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const p of pipelines.slice(0, 20)) {
+      tbl += `<tr><td style="padding:2px 6px">${p.pipeline_id ?? p.id ?? '—'}</td><td style="padding:2px 6px">${p.name || '—'}</td><td style="padding:2px 6px">${p.enabled !== undefined ? (p.enabled ? 'Yes' : 'No') : '—'}</td><td style="padding:2px 6px">${p.step_count ?? (p.steps ? p.steps.length : '—')}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 281: Schedule Run Log ──────────────────────────────────────────────
+async function loadScheduleRunLog() {
+  const el = document.getElementById('schedule-run-log-body');
+  const schedId = document.getElementById('schedule-run-log-id').value.trim();
+  if (!schedId) { el.textContent = 'Enter a schedule ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/schedules/' + encodeURIComponent(schedId) + '/runs');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const runs = Array.isArray(data) ? data : (data.runs || data.items || []);
+    if (!runs.length) { el.textContent = 'No run history found.'; return; }
+    const cols = ['Run ID', 'Status', 'Started', 'Completed'];
+    let tbl = `<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">${c}</th>`).join('')}</tr>`;
+    for (const rn of runs.slice(0, 15)) {
+      tbl += `<tr><td style="padding:2px 6px">${rn.run_id ?? rn.id ?? '—'}</td><td style="padding:2px 6px">${rn.status || '—'}</td><td style="padding:2px 6px">${rn.started_at ? rn.started_at.slice(0, 19).replace('T', ' ') : '—'}</td><td style="padding:2px 6px">${rn.completed_at ? rn.completed_at.slice(0, 19).replace('T', ' ') : '—'}</td></tr>`;
+    }
+    tbl += '</table>';
+    el.innerHTML = tbl;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 274: Memory Store Info ──────────────────────────────────────────────

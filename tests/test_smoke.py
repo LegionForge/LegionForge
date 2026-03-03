@@ -17748,3 +17748,99 @@ def test_p277_ui_task_labels_list_calls_tasks():
     idx = html.index("async function loadTaskLabelsList()")
     fn_body = html[idx : idx + 700]
     assert "labels" in fn_body and "/tasks/" in fn_body
+
+
+# ── Phase 278: Task Retry Log ──────────────────────────────────────────────────
+def test_p278_ui_retry_log_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="retry-log-card"' in html
+
+
+def test_p278_ui_retry_log_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskRetryLog()" in html
+
+
+def test_p278_ui_retry_log_calls_tasks_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTaskRetryLog()")
+    fn_body = html[idx : idx + 800]
+    assert "/tasks/" in fn_body
+
+
+# ── Phase 279: Cost Estimate ──────────────────────────────────────────────────
+def test_p279_ui_cost_estimate_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="cost-estimate-card"' in html
+
+
+def test_p279_ui_cost_estimate_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadCostEstimate()" in html
+
+
+def test_p279_ui_cost_estimate_uses_dry_run():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadCostEstimate()")
+    fn_body = html[idx : idx + 800]
+    assert "dry_run" in fn_body
+
+
+# ── Phase 280: Pipeline List ──────────────────────────────────────────────────
+def test_p280_ui_pipeline_list_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="pipeline-list-card"' in html
+
+
+def test_p280_ui_pipeline_list_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineList()" in html
+
+
+def test_p280_ui_pipeline_list_calls_pipelines_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineList()")
+    fn_body = html[idx : idx + 800]
+    assert "/pipelines" in fn_body
+
+
+# ── Phase 281: Schedule Run Log ──────────────────────────────────────────────
+def test_p281_ui_schedule_run_log_card_present():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="schedule-run-log-card"' in html
+
+
+def test_p281_ui_schedule_run_log_function_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleRunLog()" in html
+
+
+def test_p281_ui_schedule_run_log_calls_schedules_runs():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadScheduleRunLog()")
+    fn_body = html[idx : idx + 800]
+    assert "/runs" in fn_body
