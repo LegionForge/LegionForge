@@ -1184,6 +1184,53 @@
     </details>
   </div>
 
+  <!-- ── A2A Task Status card (Phase 214) ─────────────────── -->
+  <div class="card" id="a2a-task-status-card">
+    <details id="a2a-task-status-section">
+      <summary style="cursor:pointer">A2A Task Status</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="a2a-task-id" placeholder="Task ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadA2ATaskStatus()">↻ Load</button>
+      </div>
+      <div id="a2a-task-status-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter task ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Documents Compact card (Phase 215) ────────────────── -->
+  <div class="card" id="documents-compact-card">
+    <details id="documents-compact-section">
+      <summary style="cursor:pointer">Documents Compact <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentsCompact()" title="Refresh">↻</button></summary>
+      <div id="documents-compact-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Click ↻ to load.</div>
+    </details>
+  </div>
+
+  <!-- ── Session Task Summary card (Phase 216) ─────────────── -->
+  <div class="card" id="session-task-summary-card">
+    <details id="session-task-summary-section">
+      <summary style="cursor:pointer">Session Task Summary</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="session-task-summary-id" placeholder="Session ID (UUID)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="loadSessionTaskSummary()">↻ Load</button>
+      </div>
+      <div id="session-task-summary-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px">Enter session ID and click ↻ Load.</div>
+    </details>
+  </div>
+
+  <!-- ── Export Download card (Phase 217) ──────────────────── -->
+  <div class="card" id="export-download-card">
+    <details id="export-download-section">
+      <summary style="cursor:pointer">Export Tasks</summary>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <select id="export-format-sel" style="font-size:11px;padding:3px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+          <option value="csv">CSV</option>
+          <option value="json">JSON</option>
+        </select>
+        <button class="btn secondary" style="font-size:11px;padding:3px 8px" onclick="downloadTaskExport()">⬇ Download</button>
+      </div>
+      <div id="export-download-body" style="margin-top:8px;color:var(--text-xdim);font-size:12px"></div>
+    </details>
+  </div>
+
   <!-- ── Admin Metrics History card (Phase 210) ───────────── -->
   <div class="card" id="admin-metrics-card">
     <details id="admin-metrics-section">
@@ -4282,6 +4329,78 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 214: A2A Task Status ────────────────────────────────────────────────
+async function loadA2ATaskStatus() {
+  const id = document.getElementById('a2a-task-id').value.trim();
+  const el = document.getElementById('a2a-task-status-body');
+  if (!id) { el.textContent = 'Enter a task ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/a2a/tasks/' + id);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    el.innerHTML = [
+      `<div class="td-field"><span class="td-label">Status</span><span class="td-value">${d.status ?? d.state ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Agent</span><span class="td-value">${d.agent_type ?? d.agent ?? '-'}</span></div>`,
+      `<div class="td-field"><span class="td-label">Created</span><span class="td-value">${d.created_at ? new Date(d.created_at).toLocaleString() : '-'}</span></div>`,
+    ].join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 215: Documents Compact ──────────────────────────────────────────────
+async function loadDocumentsCompact() {
+  const el = document.getElementById('documents-compact-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/documents');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const docs = Array.isArray(data) ? data : (data.documents || []);
+    if (!docs.length) { el.textContent = 'No documents ingested.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<tr style="color:var(--text-xdim)"><th style="text-align:left;padding:2px 6px">ID</th><th style="text-align:left;padding:2px 6px">Source</th><th style="text-align:left;padding:2px 6px">Chunks</th></tr>'
+      + docs.map(d => `<tr><td style="padding:2px 6px">${(d.id ?? '-').toString().slice(0,8)}</td><td style="padding:2px 6px">${d.source ?? d.filename ?? '-'}</td><td style="padding:2px 6px">${d.chunk_count ?? '-'}</td></tr>`).join('')
+      + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 216: Session Task Summary ───────────────────────────────────────────
+async function loadSessionTaskSummary() {
+  const id = document.getElementById('session-task-summary-id').value.trim();
+  const el = document.getElementById('session-task-summary-body');
+  if (!id) { el.textContent = 'Enter a session ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/sessions/' + id + '/tasks');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || []);
+    if (!tasks.length) { el.textContent = 'No tasks in this session.'; return; }
+    const counts = tasks.reduce((acc, t) => { acc[t.status ?? 'unknown'] = (acc[t.status ?? 'unknown'] || 0) + 1; return acc; }, {});
+    el.innerHTML = `<div style="margin-bottom:6px;font-size:12px;color:var(--text-xdim)">Total: ${tasks.length}</div>`
+      + Object.entries(counts).map(([s, c]) =>
+          `<div class="td-field"><span class="td-label">${s}</span><span class="td-value">${c}</span></div>`
+        ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 217: Export Tasks Download ──────────────────────────────────────────
+async function downloadTaskExport() {
+  const fmt = document.getElementById('export-format-sel').value;
+  const el = document.getElementById('export-download-body');
+  el.textContent = 'Preparing export…';
+  try {
+    const r = await apiFetch('/tasks/export?format=' + fmt);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'tasks.' + fmt; a.click();
+    URL.revokeObjectURL(url);
+    el.textContent = `✓ Download started (tasks.${fmt})`;
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 210: Admin Metrics History ──────────────────────────────────────────

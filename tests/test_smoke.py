@@ -15892,3 +15892,119 @@ def test_p213_ui_run_template_by_id_posts_to_run_endpoint():
     idx = html.index("async function runTemplateById()")
     fn_body = html[idx : idx + 600]
     assert "/run" in fn_body and "templates" in fn_body
+
+
+# ── Phase 214: A2A Task Status ────────────────────────────────────────────────
+
+
+def test_p214_ui_a2a_task_status_card_present():
+    """a2a-task-status-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "a2a-task-status-card" in html
+
+
+def test_p214_ui_load_a2a_task_status_function_defined():
+    """loadA2ATaskStatus function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadA2ATaskStatus()" in html
+
+
+def test_p214_ui_a2a_task_status_hits_a2a_endpoint():
+    """loadA2ATaskStatus fetches /a2a/tasks/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadA2ATaskStatus()")
+    fn_body = html[idx : idx + 600]
+    assert "/a2a/tasks/" in fn_body
+
+
+# ── Phase 215: Documents Compact ──────────────────────────────────────────────
+
+
+def test_p215_ui_documents_compact_card_present():
+    """documents-compact-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "documents-compact-card" in html
+
+
+def test_p215_ui_load_documents_compact_function_defined():
+    """loadDocumentsCompact function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentsCompact()" in html
+
+
+def test_p215_ui_documents_compact_renders_table():
+    """loadDocumentsCompact renders a table."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadDocumentsCompact()")
+    fn_body = html[idx : idx + 700]
+    assert "<table" in fn_body and "/documents" in fn_body
+
+
+# ── Phase 216: Session Task Summary ───────────────────────────────────────────
+
+
+def test_p216_ui_session_task_summary_card_present():
+    """session-task-summary-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-task-summary-card" in html
+
+
+def test_p216_ui_load_session_task_summary_function_defined():
+    """loadSessionTaskSummary function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSessionTaskSummary()" in html
+
+
+def test_p216_ui_session_task_summary_shows_counts():
+    """loadSessionTaskSummary shows per-status counts."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadSessionTaskSummary()")
+    fn_body = html[idx : idx + 800]
+    assert "/sessions/" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 217: Export Tasks Download ──────────────────────────────────────────
+
+
+def test_p217_ui_export_download_card_present():
+    """export-download-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "export-download-card" in html
+
+
+def test_p217_ui_download_task_export_function_defined():
+    """downloadTaskExport function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function downloadTaskExport()" in html
+
+
+def test_p217_ui_export_download_uses_export_endpoint():
+    """downloadTaskExport fetches /tasks/export?format=."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function downloadTaskExport()")
+    fn_body = html[idx : idx + 700]
+    assert "tasks/export" in fn_body and "download" in fn_body

@@ -1863,5 +1863,9 @@ Added as compact addendum. See git log for full details.
 | 207 | #156 | Task Cost Dry-Run (cost-dryrun-card, runCostEstimate, POST /tasks dry_run:true, est tokens+cost+model) | +3 | 1393 |
 | 208 | #156 | Audit Log Viewer (audit-log-card, loadAuditLog, GET /admin/audit?limit=10, ts/type/agent rows) | +3 | 1396 |
 | 209 | #156 | Threats Summary Panel (threats-summary-card, loadThreatsSummary, GET /admin/threats/summary, total+per-type) | +3 | 1399 |
+| 210 | #157 | Admin Metrics Chart (admin-metrics-card, loadAdminMetrics, GET /admin/metrics/history, ASCII ██ bar) | +3 | 1402 |
+| 211 | #157 | Webhook List (webhook-list-card, loadWebhookList, GET /webhooks, ID+URL list) | +3 | 1405 |
+| 212 | #157 | Pipeline Edit by ID (pipeline-edit-by-id-card, editPipelineById, PUT /pipelines/{id}, rename) | +3 | 1408 |
+| 213 | #157 | Template Runner by ID (template-runner-card, runTemplateById, POST /templates/{id}/run) | +3 | 1411 |
 
-**Current state:** 1399/1399 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1411/1411 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
