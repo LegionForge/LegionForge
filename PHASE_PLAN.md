@@ -1895,5 +1895,9 @@ Added as compact addendum. See git log for full details.
 | 239 | #164 | Search History (search-history-card, loadSearchHistory, GET /tasks?q=&limit=10, task table) | +3 | 1489 |
 | 240 | #164 | Agent Run Metrics (agent-run-metrics-card, loadAgentRunMetrics, Promise.all /tasks+/agents, complete/total per agent_type) | +3 | 1492 |
 | 241 | #164 | Active Connectors (active-connectors-card, loadActiveConnectors, GET /health, connectors/services as td-field rows) | +3 | 1495 |
+| 242 | #165 | Tasks by Label Filter (tasks-by-label-filter-card, loadTasksByLabelFilter, GET /tasks?label=X, ID/status/prompt table; renamed to avoid collision) | +3 | 1498 |
+| 243 | #165 | Ollama Model Status (ollama-status-card, loadOllamaStatus, GET /agents + GET /health, reachability + type/model) | +3 | 1501 |
+| 244 | #165 | Gateway Stats (gateway-stats-card, loadGatewayStats, GET /admin/stats, all stat entries as td-field rows) | +3 | 1504 |
+| 245 | #165 | Clear Completed Tasks (clear-completed-card, clearCompletedTasks, GET /tasks?status=complete → DELETE each older than N days) | +3 | 1507 |
 
-**Current state:** 1495/1495 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1507/1507 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

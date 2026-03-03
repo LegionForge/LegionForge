@@ -16820,3 +16820,119 @@ def test_p245_ui_clear_completed_uses_delete():
     idx = html.index("async function clearCompletedTasks()")
     fn_body = html[idx : idx + 1400]
     assert "DELETE" in fn_body and "/tasks" in fn_body
+
+
+# ── Phase 246: Top Token Users ────────────────────────────────────────────────
+
+
+def test_p246_ui_top_token_users_card_present():
+    """top-token-users-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "top-token-users-card" in html
+
+
+def test_p246_ui_load_top_token_users_function_defined():
+    """loadTopTokenUsers() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTopTokenUsers()" in html
+
+
+def test_p246_ui_top_token_users_calls_admin_users():
+    """loadTopTokenUsers calls /admin/users."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadTopTokenUsers()")
+    fn_body = html[idx : idx + 900]
+    assert "/admin/users" in fn_body
+
+
+# ── Phase 247: Pipeline Step List ─────────────────────────────────────────────
+
+
+def test_p247_ui_pipeline_step_list_card_present():
+    """pipeline-step-list-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-list-card" in html
+
+
+def test_p247_ui_load_pipeline_step_list_function_defined():
+    """loadPipelineStepList() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineStepList()" in html
+
+
+def test_p247_ui_pipeline_step_list_reads_steps():
+    """loadPipelineStepList reads steps from pipeline."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadPipelineStepList()")
+    fn_body = html[idx : idx + 1000]
+    assert "steps" in fn_body and "/pipelines/" in fn_body
+
+
+# ── Phase 248: Memory Recall ──────────────────────────────────────────────────
+
+
+def test_p248_ui_memory_recall_card_present():
+    """memory-recall-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-recall-card" in html
+
+
+def test_p248_ui_load_memory_recall_function_defined():
+    """loadMemoryRecall() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemoryRecall()" in html
+
+
+def test_p248_ui_memory_recall_calls_memory_search():
+    """loadMemoryRecall POSTs to /memory/search."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadMemoryRecall()")
+    fn_body = html[idx : idx + 900]
+    assert "/memory/search" in fn_body
+
+
+# ── Phase 249: Document Chunks ────────────────────────────────────────────────
+
+
+def test_p249_ui_document_chunks_card_present():
+    """document-chunks-card is in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "document-chunks-card" in html
+
+
+def test_p249_ui_load_document_chunks_function_defined():
+    """loadDocumentChunks() is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentChunks()" in html
+
+
+def test_p249_ui_document_chunks_calls_documents_endpoint():
+    """loadDocumentChunks calls /documents/{id}."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("async function loadDocumentChunks()")
+    fn_body = html[idx : idx + 800]
+    assert "/documents/" in fn_body

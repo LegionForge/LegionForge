@@ -1233,6 +1233,54 @@
     </details>
   </div>
 
+  <!-- ── Top Token Users card (Phase 246) ─────────────────────── -->
+  <div class="card" id="top-token-users-card">
+    <details id="top-token-users-section">
+      <summary style="cursor:pointer">Top Token Users <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTopTokenUsers()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <div id="top-token-users-body" style="font-size:12px;color:var(--text-dim)">Click ↻ to load.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Step List card (Phase 247) ───────────────────── -->
+  <div class="card" id="pipeline-step-list-card">
+    <details id="pipeline-step-list-section">
+      <summary style="cursor:pointer">Pipeline Steps
+        <input id="pipeline-step-list-id" placeholder="pipeline ID" style="width:120px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadPipelineStepList()" title="Refresh">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="pipeline-step-list-body" style="font-size:12px;color:var(--text-dim)">Enter a pipeline ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Memory Recall card (Phase 248) ────────────────────────── -->
+  <div class="card" id="memory-recall-card">
+    <details id="memory-recall-section">
+      <summary style="cursor:pointer">Memory Recall</summary>
+      <div style="margin-top:8px">
+        <textarea id="memory-recall-query" rows="2" placeholder="Enter search text…" style="width:100%;font-size:12px;padding:4px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);resize:vertical"></textarea>
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 8px;margin-top:4px" onclick="loadMemoryRecall()">Search</button>
+        <div id="memory-recall-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document Chunks card (Phase 249) ─────────────────────── -->
+  <div class="card" id="document-chunks-card">
+    <details id="document-chunks-section">
+      <summary style="cursor:pointer">Document Chunks
+        <input id="document-chunks-id" placeholder="document ID" style="width:130px;font-size:11px;padding:2px 6px;margin:0 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+        <button class="btn ghost icon" style="font-size:11px;padding:2px 6px" onclick="loadDocumentChunks()" title="Load">↻</button>
+      </summary>
+      <div style="margin-top:8px">
+        <div id="document-chunks-body" style="font-size:12px;color:var(--text-dim)">Enter a document ID and click ↻.</div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Completion Rate card (Phase 238) ───────────────── -->
   <div class="card" id="task-completion-rate-card">
     <details id="task-completion-rate-section">
@@ -4637,6 +4685,102 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 246: Top Token Users ────────────────────────────────────────────────
+async function loadTopTokenUsers() {
+  const el = document.getElementById('top-token-users-body');
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users');
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const users = Array.isArray(data) ? data : (data.users || data.items || []);
+    const sorted = users
+      .filter(u => u.tokens_used != null || u.total_tokens != null)
+      .sort((a, b) => ((b.tokens_used || b.total_tokens || 0) - (a.tokens_used || a.total_tokens || 0)))
+      .slice(0, 10);
+    if (!sorted.length) { el.textContent = 'No token usage data available.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">User</th>' +
+      '<th style="text-align:right;padding:2px 4px;color:var(--text-xdim)">Tokens Used</th></tr>' +
+      sorted.map(u => `<tr>
+        <td style="padding:2px 4px">${u.username || u.user_id || '?'}</td>
+        <td style="padding:2px 4px;text-align:right">${(u.tokens_used || u.total_tokens || 0).toLocaleString()}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 247: Pipeline Step List ─────────────────────────────────────────────
+async function loadPipelineStepList() {
+  const el = document.getElementById('pipeline-step-list-body');
+  const id = (document.getElementById('pipeline-step-list-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a pipeline ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/pipelines/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const steps = data.steps || data.pipeline?.steps || [];
+    if (!steps.length) { el.textContent = 'No steps found.'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:11px;border-collapse:collapse">' +
+      '<tr><th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">#</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Name</th>' +
+      '<th style="text-align:left;padding:2px 4px;color:var(--text-xdim)">Agent</th></tr>' +
+      steps.map((s, i) => `<tr>
+        <td style="padding:2px 4px">${i + 1}</td>
+        <td style="padding:2px 4px">${s.name || s.step_name || s.prompt?.slice(0,40) || ''}</td>
+        <td style="padding:2px 4px">${s.agent_type || ''}</td>
+      </tr>`).join('') + '</table>';
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 248: Memory Recall ──────────────────────────────────────────────────
+async function loadMemoryRecall() {
+  const el = document.getElementById('memory-recall-body');
+  const query = (document.getElementById('memory-recall-query') || {value: ''}).value.trim();
+  if (!query) { el.textContent = 'Enter search text above.'; return; }
+  el.textContent = 'Searching…';
+  try {
+    const r = await apiFetch('/memory/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, top_k: 5 }),
+    });
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const results = Array.isArray(data) ? data : (data.results || data.chunks || []);
+    if (!results.length) { el.textContent = 'No matching memories.'; return; }
+    el.innerHTML = results.map((c, i) =>
+      `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:6px;margin-bottom:6px">
+        <div style="font-size:10px;color:var(--text-xdim);margin-bottom:3px">Result ${i+1} · score: ${(c.score||0).toFixed(3)}</div>
+        <div style="white-space:pre-wrap;word-break:break-word">${(c.content||c.text||'').slice(0,300)}</div>
+      </div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 249: Document Chunks ────────────────────────────────────────────────
+async function loadDocumentChunks() {
+  const el = document.getElementById('document-chunks-body');
+  const id = (document.getElementById('document-chunks-id') || {value: ''}).value.trim();
+  if (!id) { el.textContent = 'Enter a document ID above.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch(`/documents/${encodeURIComponent(id)}`);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const chunks = data.chunks || data.content || [];
+    const chunkList = Array.isArray(chunks) ? chunks : [chunks];
+    const meta = data.filename || data.title || data.source || id;
+    el.innerHTML = `<div class="td-field"><span class="td-label">Source</span><span class="td-value">${meta}</span></div>` +
+      `<div class="td-field"><span class="td-label">Chunks</span><span class="td-value">${chunkList.length}</span></div>` +
+      chunkList.slice(0, 5).map((c, i) =>
+        `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:5px;margin-top:5px;font-size:11px">
+          <span style="color:var(--text-xdim)">#${i+1}</span> ${(typeof c === 'string' ? c : c.content || JSON.stringify(c)).slice(0,200)}
+        </div>`
+      ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 242: Tasks by Label Filter ─────────────────────────────────────────
