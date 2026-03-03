@@ -80,6 +80,17 @@
     .pipe-name { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pipe-run-out { margin-top:8px; padding:6px; background:var(--panel2); border-radius:var(--radius); font-size:11px; color:var(--text-dim); white-space:pre-wrap; }
     #pipe-empty { color:var(--text-xdim); font-size:12px; }
+    /* ── Phase 88: Health Metrics card ──────────────────────── */
+    .health-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+    .health-box { background:var(--panel2); border-radius:var(--radius); padding:6px 8px; text-align:center; border:1px solid var(--border2); }
+    .health-val { font-size:18px; font-weight:700; color:var(--text); }
+    .health-lbl { font-size:10px; color:var(--text-xdim); text-transform:uppercase; }
+    .health-ok { color:var(--green); }
+    .health-bad { color:var(--red); }
+    /* ── Phase 89: User Management card ─────────────────────── */
+    .user-row { display:grid; grid-template-columns:1fr 60px 80px 40px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
+    .user-row:last-child { border-bottom:none; }
+    .user-admin-badge { font-size:10px; color:var(--orange); font-weight:600; }
     /* ── Phase 75: Schedules card ───────────────────────────── */
     .sched-row { display:grid; grid-template-columns:1fr 80px 80px 60px 30px; gap:6px; align-items:center; padding:4px 0; border-bottom:1px solid var(--border2); font-size:12px; }
     .sched-row:last-child { border-bottom:none; }
@@ -739,6 +750,30 @@
         <button class="btn primary" onclick="searchMemory()">Search</button>
       </div>
       <div id="memsearch-results" style="margin-top:8px;font-size:12px;color:var(--text-xdim)">Enter a query and click Search.</div>
+    </details>
+  </div>
+
+  <!-- ── Health Metrics card (Phase 88) [admin only] ─────── -->
+  <div class="card" id="health-metrics-card">
+    <details id="health-section">
+      <summary style="cursor:pointer">Health Metrics <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadHealthMetrics(event)" title="Refresh">↻</button></summary>
+      <div id="health-body" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to load the latest system metrics.</div>
+    </details>
+  </div>
+
+  <!-- ── User Management card (Phase 89) [admin only] ─────── -->
+  <div class="card" id="user-mgmt-card">
+    <details id="user-mgmt-section">
+      <summary style="cursor:pointer">User Management <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUsers(event)" title="Refresh">↻</button></summary>
+      <div id="users-list" style="color:var(--text-xdim);font-size:12px;padding:4px 0">Click ↻ or open to list users.</div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
+        <div class="card-title" style="margin-bottom:6px;font-size:12px">Create User</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="new-user-name" type="text" placeholder="Username" style="flex:1;font-size:12px">
+          <button class="btn primary" style="font-size:12px" onclick="createUser()">Create</button>
+          <span id="new-user-result" style="font-size:11px;color:var(--green)"></span>
+        </div>
+      </div>
     </details>
   </div>
 
@@ -2377,6 +2412,94 @@ async function searchMemory() {
     }
   } catch(e) {
     if (resultsEl) resultsEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Phase 88: Health Metrics ─────────────────────────────────────────────────
+async function loadHealthMetrics(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const body = document.getElementById('health-body');
+  if (!body) return;
+  if (!apiKey) { body.textContent = 'Enter admin API key.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/metrics/history?limit=1&since_hours=1', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 403) { body.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { body.textContent = 'Could not load metrics.'; return; }
+    const d = await res.json();
+    const pts = d.points || [];
+    if (!pts.length) { body.textContent = 'No metrics available (health server may not be running).'; return; }
+    const p = pts[0];
+    const ok = v => v ? '<span class="health-ok">✓</span>' : '<span class="health-bad">✗</span>';
+    body.innerHTML =
+      '<div class="health-grid">' +
+        '<div class="health-box"><div class="health-val">' + (p.cpu_pct != null ? p.cpu_pct + '%' : '—') + '</div><div class="health-lbl">CPU</div></div>' +
+        '<div class="health-box"><div class="health-val">' + (p.ram_pct != null ? p.ram_pct + '%' : '—') + '</div><div class="health-lbl">RAM</div></div>' +
+        '<div class="health-box"><div class="health-val">' + (p.disk_pct != null ? p.disk_pct + '%' : '—') + '</div><div class="health-lbl">Disk</div></div>' +
+        '<div class="health-box"><div class="health-val">' + ok(p.ollama_ok) + '</div><div class="health-lbl">Ollama</div></div>' +
+        '<div class="health-box"><div class="health-val">' + ok(p.postgres_ok) + '</div><div class="health-lbl">Postgres</div></div>' +
+        '<div class="health-box"><div class="health-val">' + (p.active_tasks != null ? p.active_tasks : '—') + '</div><div class="health-lbl">Active Tasks</div></div>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--text-xdim);margin-top:4px">Snapshot: ' + escapeHtml(p.ts ? new Date(p.ts).toLocaleString() : 'unknown') + '</div>';
+  } catch(e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 89: User Management ────────────────────────────────────────────────
+async function loadUsers(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const listEl = document.getElementById('users-list');
+  if (!listEl) return;
+  if (!apiKey) { listEl.textContent = 'Enter admin API key.'; return; }
+  listEl.textContent = 'Loading…';
+  try {
+    const res = await fetch('/admin/users', {
+      headers: { Authorization: 'Bearer ' + apiKey }
+    });
+    if (res.status === 403) { listEl.textContent = 'Admin access required.'; return; }
+    if (!res.ok) { listEl.textContent = 'Could not load users.'; return; }
+    const d = await res.json();
+    const users = d.users || d || [];
+    if (!users.length) { listEl.textContent = 'No users found.'; return; }
+    listEl.innerHTML = users.map(u => {
+      const adminBadge = u.is_admin ? '<span class="user-admin-badge">ADMIN</span>' : '';
+      const limit = u.daily_token_limit != null ? u.daily_token_limit.toLocaleString() : '—';
+      return '<div class="user-row">' +
+        '<span style="color:var(--text)">' + escapeHtml(u.username || '') + ' ' + adminBadge + '</span>' +
+        '<span style="color:var(--text-xdim);font-size:11px">' + escapeHtml(limit) + ' tok/d</span>' +
+        '<span style="font-size:10px;color:' + (u.is_active !== false ? 'var(--green)' : 'var(--red)') + '">' + (u.is_active !== false ? 'active' : 'inactive') + '</span>' +
+        '<span style="font-size:10px;color:var(--text-xdim)">' + (u.user_id || '').slice(0, 6) + '</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) { listEl.textContent = 'Error: ' + e.message; }
+}
+
+async function createUser() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const nameInp = document.getElementById('new-user-name');
+  const resultEl = document.getElementById('new-user-result');
+  const username = nameInp ? nameInp.value.trim() : '';
+  if (!username) { if (resultEl) { resultEl.textContent = 'Enter a username.'; resultEl.style.color = 'var(--red)'; } return; }
+  try {
+    const res = await fetch('/admin/users', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (resultEl) { resultEl.textContent = 'Error: ' + (data.detail || res.status); resultEl.style.color = 'var(--red)'; }
+      return;
+    }
+    if (resultEl) { resultEl.textContent = '✓ Created. Key: ' + (data.api_key || '(see DB)'); resultEl.style.color = 'var(--green)'; }
+    if (nameInp) nameInp.value = '';
+    await loadUsers(null);
+  } catch(e) {
+    if (resultEl) { resultEl.textContent = 'Error: ' + e.message; resultEl.style.color = 'var(--red)'; }
   }
 }
 

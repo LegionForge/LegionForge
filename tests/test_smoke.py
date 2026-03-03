@@ -11812,3 +11812,94 @@ def test_p87_ui_revoke_calls_put_status_endpoint():
     fn_body = html[fn_start : fn_start + 600]
     assert "/status" in fn_body
     assert "PUT" in fn_body
+
+
+# ── Phase 88 — Health Metrics Dashboard UI ────────────────────────────────────
+
+
+def test_p88_ui_health_metrics_card_present():
+    """Phase 88 health metrics card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "health-metrics-card" in html
+    assert "health-body" in html
+
+
+def test_p88_ui_load_health_metrics_function_defined():
+    """loadHealthMetrics() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadHealthMetrics(" in html
+
+
+def test_p88_ui_metrics_calls_admin_endpoint():
+    """loadHealthMetrics() calls GET /admin/metrics/history."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadHealthMetrics(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/admin/metrics/history" in fn_body
+
+
+def test_p88_ui_metrics_renders_cpu_ram_disk():
+    """loadHealthMetrics() renders CPU, RAM, and Disk metrics."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadHealthMetrics(")
+    fn_body = html[fn_start : fn_start + 1800]
+    assert "cpu_pct" in fn_body
+    assert "ram_pct" in fn_body
+    assert "disk_pct" in fn_body
+
+
+# ── Phase 89 — User Management Admin UI ──────────────────────────────────────
+
+
+def test_p89_ui_user_mgmt_card_present():
+    """Phase 89 user management card exists in the HTML."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-mgmt-card" in html
+    assert "users-list" in html
+
+
+def test_p89_ui_load_users_function_defined():
+    """loadUsers() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadUsers(" in html
+
+
+def test_p89_ui_create_user_function_defined():
+    """createUser() function is defined in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function createUser(" in html
+
+
+def test_p89_ui_create_user_calls_post_admin_users():
+    """createUser() calls POST /admin/users."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function createUser(")
+    fn_body = html[fn_start : fn_start + 600]
+    assert "/admin/users" in fn_body
+    assert "POST" in fn_body
+
+
+def test_p89_ui_load_users_calls_get_admin_users():
+    """loadUsers() calls GET /admin/users."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    fn_start = html.find("function loadUsers(")
+    fn_body = html[fn_start : fn_start + 500]
+    assert "/admin/users" in fn_body
