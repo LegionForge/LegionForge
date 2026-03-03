@@ -10997,3 +10997,25 @@ def test_p71_verify_node_uses_verified_keyword():
     fn_end = src.find("\ndef ", fn_start + 1)
     fn_body = src[fn_start:fn_end]
     assert "VERIFIED" in fn_body
+
+
+# ── Optimization: bounded terminal event cache ─────────────────────────────────
+
+
+def test_terminal_event_cache_is_bounded_ordereddict():
+    """_terminal_events uses OrderedDict with a _TERMINAL_CACHE_MAXSIZE cap."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/events.py").read_text()
+    assert "OrderedDict" in src
+    assert "_TERMINAL_CACHE_MAXSIZE" in src
+    assert "popitem(last=False)" in src
+
+
+def test_pipeline_terminal_event_cache_is_bounded():
+    """_pipeline_terminal_events also uses bounded OrderedDict eviction."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/events.py").read_text()
+    # Must appear twice (once for task, once for pipeline)
+    assert src.count("popitem(last=False)") >= 2
