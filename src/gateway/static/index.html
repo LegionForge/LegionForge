@@ -1233,6 +1233,55 @@
     </details>
   </div>
 
+  <!-- ── Token Usage Summary card (Phase 302) ───────────────────── -->
+  <div class="card" id="token-usage-summary-card">
+    <details id="token-usage-summary-section">
+      <summary style="cursor:pointer">Token Usage Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTokenUsageSummary()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Days <input id="token-usage-summary-days" class="input" style="width:60px;margin-left:6px" placeholder="7" value="7"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTokenUsageSummary()">Load</button>
+        <div id="token-usage-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document Metadata card (Phase 303) ───────────────────── -->
+  <div class="card" id="document-metadata-card">
+    <details id="document-metadata-section">
+      <summary style="cursor:pointer">Document Metadata <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentMetadata()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Document ID <input id="document-metadata-id" class="input" style="width:200px;margin-left:6px" placeholder="doc-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadDocumentMetadata()">Load</button>
+        <div id="document-metadata-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Step Info card (Phase 304) ───────────────────── -->
+  <div class="card" id="pipeline-step-info-card">
+    <details id="pipeline-step-info-section">
+      <summary style="cursor:pointer">Pipeline Step Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineStepInfo()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Pipeline ID <input id="pipeline-step-info-pid" class="input" style="width:60px;margin-left:6px" placeholder="1"></label>
+        <label style="font-size:12px;margin-left:8px">Step <input id="pipeline-step-info-step" class="input" style="width:60px;margin-left:4px" placeholder="0"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadPipelineStepInfo()">Load</button>
+        <div id="pipeline-step-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Session Detail card (Phase 305) ───────────────────── -->
+  <div class="card" id="user-session-detail-card">
+    <details id="user-session-detail-section">
+      <summary style="cursor:pointer">User Session Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserSessionDetail()" title="Refresh">↻</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Session ID <input id="user-session-detail-id" class="input" style="width:220px;margin-left:6px" placeholder="session-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadUserSessionDetail()">Load</button>
+        <div id="user-session-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Audit Log Page card (Phase 298) ───────────────────── -->
   <div class="card" id="audit-log-page-card">
     <details id="audit-log-page-section">
@@ -3396,6 +3445,19 @@ const el = {
 })();
 
 // ── API key helpers ───────────────────────────────────────────────
+
+/**
+ * Authenticated fetch wrapper used by all phase card functions.
+ * Automatically injects the user's Bearer token from the API key field.
+ * Falls back gracefully if no key is set (server will return 401).
+ */
+function apiFetch(path, opts = {}) {
+  const apiKey = el.apiKey().value.trim();
+  const headers = { ...(opts.headers || {}) };
+  if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+  return fetch(path, { ...opts, headers });
+}
+
 // ── Phase 74: Browser Notifications ────────────────────────────────────────
 function _notifIcon() { return document.getElementById('notif-toggle'); }
 async function requestNotifPermission() {
@@ -5264,6 +5326,103 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 302: Token Usage Summary ──────────────────────────────────────────────
+async function loadTokenUsageSummary() {
+  const el = document.getElementById('token-usage-summary-body');
+  const days = parseInt(document.getElementById('token-usage-summary-days').value.trim() || '7', 10);
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/history?days=' + days);
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const hist = Array.isArray(data) ? data : (data.history || data.items || []);
+    const total = hist.reduce((s, d) => s + (d.tokens_used || d.total_tokens || 0), 0);
+    const avgPerDay = hist.length > 0 ? Math.round(total / hist.length) : 0;
+    const peak = hist.reduce((m, d) => Math.max(m, d.tokens_used || d.total_tokens || 0), 0);
+    const rows = [
+      ['Period', `${days} days (${hist.length} data points)`],
+      ['Total Tokens', total.toLocaleString()],
+      ['Avg / Day', avgPerDay.toLocaleString()],
+      ['Peak Day', peak.toLocaleString()],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 303: Document Metadata ──────────────────────────────────────────────
+async function loadDocumentMetadata() {
+  const el = document.getElementById('document-metadata-body');
+  const docId = document.getElementById('document-metadata-id').value.trim();
+  if (!docId) { el.textContent = 'Enter a document ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/documents/' + encodeURIComponent(docId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Document ID', d.document_id ?? d.id ?? docId],
+      ['Source', d.source || d.filename || '—'],
+      ['MIME Type', d.mime_type || d.content_type || '—'],
+      ['Chunks', d.chunk_count ?? '—'],
+      ['Ingested', d.created_at ? d.created_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Size (bytes)', d.size_bytes ?? '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 304: Pipeline Step Info ──────────────────────────────────────────────
+async function loadPipelineStepInfo() {
+  const el = document.getElementById('pipeline-step-info-body');
+  const pid = document.getElementById('pipeline-step-info-pid').value.trim();
+  const step = document.getElementById('pipeline-step-info-step').value.trim();
+  if (!pid) { el.textContent = 'Enter a pipeline ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines/' + encodeURIComponent(pid));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const steps = data.steps || [];
+    const stepIdx = step !== '' ? parseInt(step, 10) : null;
+    const target = stepIdx !== null ? steps[stepIdx] : steps[0];
+    if (!target) { el.textContent = 'Step not found.'; return; }
+    const rows = Object.entries(target).slice(0, 8).map(([k, v]) =>
+      [k, typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')]
+    );
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 305: User Session Detail ──────────────────────────────────────────────
+async function loadUserSessionDetail() {
+  const el = document.getElementById('user-session-detail-body');
+  const sessionId = document.getElementById('user-session-detail-id').value.trim();
+  if (!sessionId) { el.textContent = 'Enter a session ID.'; return; }
+  el.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/sessions/' + encodeURIComponent(sessionId));
+    if (!r.ok) { el.textContent = 'HTTP ' + r.status; return; }
+    const s = await r.json();
+    const rows = [
+      ['Session ID', s.session_id ?? s.id ?? sessionId],
+      ['Title', s.title || '—'],
+      ['Task Count', s.task_count ?? '—'],
+      ['User', s.user_id || s.username || '—'],
+      ['Created', s.created_at ? s.created_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Updated', s.updated_at ? s.updated_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    el.innerHTML = rows.map(([k, v]) =>
+      `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
+    ).join('');
+  } catch (e) { el.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 298: Audit Log Page ──────────────────────────────────────────────

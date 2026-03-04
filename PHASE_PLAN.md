@@ -1951,5 +1951,9 @@ Added as compact addendum. See git log for full details.
 | 295 | #178 | Admin Quota List (admin-quota-list-card, loadAdminQuotaList, GET /admin/users, username/quota/used/remaining table) | +3 | 1657 |
 | 296 | #178 | Task Output Raw (task-output-raw-card, loadTaskOutputRaw, GET /tasks/{id}, result/output in raw pre block) | +3 | 1660 |
 | 297 | #178 | Schedule Next Run Info (schedule-next-run-info-card, loadScheduleNextRunInfo, GET /schedules/{id}; renamed) | +3 | 1663 |
+| 298 | #179 | Audit Log Page (audit-log-page-card, loadAuditLogPage, GET /admin/audit?limit=20&offset=N, paginated table) | +3 | 1666 |
+| 299 | #179 | Memory Search Results (memory-search-results-card, loadMemorySearchResults, POST /memory/search, top-5 chunks) | +3 | 1669 |
+| 300 | #179 | Task Cost Breakdown (task-cost-breakdown-card, loadTaskCostBreakdown, GET /tasks/{id}, token breakdown) | +3 | 1672 |
+| 301 | #179 | Webhook Event Types (webhook-event-types-card, loadWebhookEventTypes, GET /webhooks, aggregate event_types) | +3 | 1675 |
 
-**Current state:** 1663/1663 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**Current state:** 1675/1675 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

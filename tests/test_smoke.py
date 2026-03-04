@@ -18324,3 +18324,21 @@ def test_p301_ui_webhook_event_types_calls_webhooks():
     idx = html.index("async function loadWebhookEventTypes()")
     fn_body = html[idx : idx + 800]
     assert "/webhooks" in fn_body
+
+
+# ── apiFetch definition guard ─────────────────────────────────────────────────
+def test_ui_apiFetch_is_defined():
+    """apiFetch must be defined so all phase card functions work."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function apiFetch(" in html
+
+
+def test_ui_apiFetch_injects_bearer_token():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    idx = html.index("function apiFetch(")
+    fn_body = html[idx : idx + 400]
+    assert "Authorization" in fn_body and "Bearer" in fn_body
