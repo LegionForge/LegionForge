@@ -1243,6 +1243,51 @@
 
 
 
+  <!-- ── Active Pipeline Runs card (Phase 378) ───────────────── -->
+  <div class="card" id="active-pipeline-runs-card">
+    <details id="active-pipeline-runs-section">
+      <summary style="cursor:pointer">Active Pipeline Runs <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadActivePipelineRuns()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadActivePipelineRuns()">Load</button>
+        <div id="active-pipeline-runs-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Quota Usage card (Phase 379) ───────────────── -->
+  <div class="card" id="user-quota-usage-card">
+    <details id="user-quota-usage-section">
+      <summary style="cursor:pointer">User Quota Usage <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserQuotaUsage()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Username <input id="user-quota-username" class="input" style="width:140px;margin-left:6px" placeholder="username"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadUserQuotaUsage()">Load</button>
+        <div id="user-quota-usage-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Ollama Model List card (Phase 380) ───────────────── -->
+  <div class="card" id="ollama-model-list-card">
+    <details id="ollama-model-list-section">
+      <summary style="cursor:pointer">Ollama Model List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadOllamaModelList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadOllamaModelList()">Load</button>
+        <div id="ollama-model-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Retry Count card (Phase 381) ───────────────── -->
+  <div class="card" id="task-retry-count-card">
+    <details id="task-retry-count-section">
+      <summary style="cursor:pointer">Task Retry Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskRetryCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTaskRetryCount()">Load</button>
+        <div id="task-retry-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Metrics History card (Phase 374) ───────────────── -->
   <div class="card" id="metrics-history-card">
     <details id="metrics-history-section">
@@ -6151,6 +6196,92 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 378: Active Pipeline Runs ──────────────────────────────────────────────
+async function loadActivePipelineRuns() {
+  const body = document.getElementById('active-pipeline-runs-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/pipelines/runs');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const runs = Array.isArray(d) ? d : (d.runs || d.items || []);
+    const active = runs.filter(r => r.status === 'running' || r.status === 'pending');
+    const rows = [
+      ['Active Runs', String(active.length)],
+      ['Total Runs', String(d.total ?? runs.length)],
+      ['Latest Status', runs[0] ? runs[0].status : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 379: User Quota Usage ──────────────────────────────────────────────
+async function loadUserQuotaUsage() {
+  const body = document.getElementById('user-quota-usage-body');
+  const username = document.getElementById('user-quota-username').value.trim();
+  if (!username) { body.textContent = 'Enter a username.'; return; }
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/users/' + encodeURIComponent(username));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const u = await r.json();
+    const rows = [
+      ['Username', u.username || username],
+      ['Daily Limit', u.daily_token_limit !== undefined ? u.daily_token_limit.toLocaleString() : '—'],
+      ['Is Admin', u.is_admin ? 'Yes' : 'No'],
+      ['Created', u.created_at ? u.created_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 380: Ollama Model List ──────────────────────────────────────────────
+async function loadOllamaModelList() {
+  const body = document.getElementById('ollama-model-list-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/agents');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const agents = Array.isArray(d) ? d : (d.agents || d.items || []);
+    const models = [...new Set(agents.map(a => a.model || a.llm_model || '—').filter(m => m !== '—'))];
+    const rows = [
+      ['Agents', String(agents.length)],
+      ['Unique Models', String(models.length)],
+    ];
+    if (models.length) rows.push(['Models', models.slice(0, 3).join(', ')]);
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value" style="word-break:break-all">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 381: Task Retry Count ──────────────────────────────────────────────
+async function loadTaskRetryCount() {
+  const body = document.getElementById('task-retry-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?limit=100');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const retried = tasks.filter(t => t.retry_count > 0 || t.retried).length;
+    const maxRetry = tasks.reduce((m, t) => Math.max(m, t.retry_count || 0), 0);
+    const rows = [
+      ['Sample', String(tasks.length)],
+      ['Tasks Retried', String(retried)],
+      ['Max Retries', String(maxRetry)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 374: Metrics History ──────────────────────────────────────────────

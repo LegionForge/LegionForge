@@ -20043,3 +20043,91 @@ def test_ui_phase377_loadRecentAuditEvents_calls_admin_audit():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadRecentAuditEvents" in html and "/admin/audit" in html
+
+
+# ── Phase 378: Active Pipeline Runs ──────────────────────────────────────────
+def test_ui_phase378_active_pipeline_runs_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "active-pipeline-runs-card" in html
+
+
+def test_ui_phase378_loadActivePipelineRuns_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadActivePipelineRuns(" in html
+
+
+def test_ui_phase378_loadActivePipelineRuns_calls_pipeline_runs():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadActivePipelineRuns" in html and "Active Runs" in html
+
+
+# ── Phase 379: User Quota Usage ───────────────────────────────────────────────
+def test_ui_phase379_user_quota_usage_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-quota-usage-card" in html
+
+
+def test_ui_phase379_loadUserQuotaUsage_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserQuotaUsage(" in html
+
+
+def test_ui_phase379_loadUserQuotaUsage_calls_admin_users():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadUserQuotaUsage" in html and "/admin/users/" in html
+
+
+# ── Phase 380: Ollama Model List ─────────────────────────────────────────────
+def test_ui_phase380_ollama_model_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ollama-model-list-card" in html
+
+
+def test_ui_phase380_loadOllamaModelList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadOllamaModelList(" in html
+
+
+def test_ui_phase380_loadOllamaModelList_calls_agents():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadOllamaModelList" in html and "'/agents'" in html
+
+
+# ── Phase 381: Task Retry Count ───────────────────────────────────────────────
+def test_ui_phase381_task_retry_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-retry-count-card" in html
+
+
+def test_ui_phase381_loadTaskRetryCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskRetryCount(" in html
+
+
+def test_ui_phase381_loadTaskRetryCount_checks_retry_count():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskRetryCount" in html and "retry_count" in html
