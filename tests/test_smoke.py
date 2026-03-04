@@ -18537,3 +18537,91 @@ def test_ui_phase309_loadWebhookTestFire_calls_webhooks_test():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadWebhookTestFire" in html and "/webhooks/" in html
+
+
+# ── Phase 310: Task Input Preview ────────────────────────────────────────────
+def test_ui_phase310_task_input_preview_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-input-preview-card" in html
+
+
+def test_ui_phase310_loadTaskInputPreview_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskInputPreview(" in html
+
+
+def test_ui_phase310_loadTaskInputPreview_calls_tasks_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskInputPreview" in html and "task-input-preview-id" in html
+
+
+# ── Phase 311: Connector Health ──────────────────────────────────────────────
+def test_ui_phase311_connector_health_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "connector-health-card" in html
+
+
+def test_ui_phase311_loadConnectorHealth_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadConnectorHealth(" in html
+
+
+def test_ui_phase311_loadConnectorHealth_calls_connectors_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadConnectorHealth" in html and "/connectors" in html
+
+
+# ── Phase 312: Scheduled Task Next Run ───────────────────────────────────────
+def test_ui_phase312_scheduled_task_next_run_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "scheduled-task-next-run-card" in html
+
+
+def test_ui_phase312_loadScheduledTaskNextRun_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduledTaskNextRun(" in html
+
+
+def test_ui_phase312_loadScheduledTaskNextRun_calls_schedules_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadScheduledTaskNextRun" in html and "/schedules/" in html
+
+
+# ── Phase 313: Admin User Detail ─────────────────────────────────────────────
+def test_ui_phase313_admin_user_detail_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-user-detail-card" in html
+
+
+def test_ui_phase313_loadAdminUserDetail_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminUserDetail(" in html
+
+
+def test_ui_phase313_loadAdminUserDetail_calls_admin_users_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAdminUserDetail" in html and "/admin/users/" in html

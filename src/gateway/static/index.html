@@ -1234,6 +1234,54 @@
   </div>
 
 
+
+  <!-- ── Task Input Preview card (Phase 310) ───────────────────── -->
+  <div class="card" id="task-input-preview-card">
+    <details id="task-input-preview-section">
+      <summary style="cursor:pointer">Task Input Preview <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskInputPreview()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-input-preview-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskInputPreview()">Load</button>
+        <div id="task-input-preview-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Connector Health card (Phase 311) ───────────────────── -->
+  <div class="card" id="connector-health-card">
+    <details id="connector-health-section">
+      <summary style="cursor:pointer">Connector Health <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadConnectorHealth()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadConnectorHealth()">Load</button>
+        <div id="connector-health-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Scheduled Task Next Run card (Phase 312) ───────────────────── -->
+  <div class="card" id="scheduled-task-next-run-card">
+    <details id="scheduled-task-next-run-section">
+      <summary style="cursor:pointer">Scheduled Task Next Run <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduledTaskNextRun()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Schedule ID <input id="scheduled-task-next-run-id" class="input" style="width:200px;margin-left:6px" placeholder="schedule-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadScheduledTaskNextRun()">Load</button>
+        <div id="scheduled-task-next-run-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Admin User Detail card (Phase 313) ───────────────────── -->
+  <div class="card" id="admin-user-detail-card">
+    <details id="admin-user-detail-section">
+      <summary style="cursor:pointer">Admin User Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminUserDetail()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Username <input id="admin-user-detail-name" class="input" style="width:150px;margin-left:6px" placeholder="username"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadAdminUserDetail()">Load</button>
+        <div id="admin-user-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Agent Run History card (Phase 306) ───────────────────── -->
   <div class="card" id="agent-run-history-card">
     <details id="agent-run-history-section">
@@ -5374,6 +5422,92 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 310: Task Input Preview ──────────────────────────────────────────────
+async function loadTaskInputPreview() {
+  const body = document.getElementById('task-input-preview-body');
+  const taskId = document.getElementById('task-input-preview-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const inputText = t.input || t.task || t.prompt || '—';
+    const rows = [
+      ['Task ID', (t.task_id || t.id || taskId).slice(0, 12) + '…'],
+      ['Agent', t.agent_type || '—'],
+      ['Status', t.status || '—'],
+      ['Input (preview)', inputText.slice(0, 200) + (inputText.length > 200 ? '…' : '')],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value" style="max-width:320px;word-break:break-word">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 311: Connector Health ──────────────────────────────────────────────
+async function loadConnectorHealth() {
+  const body = document.getElementById('connector-health-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/connectors');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const connectors = Array.isArray(data) ? data : (data.connectors || data.items || []);
+    if (!connectors.length) { body.textContent = 'No connectors found.'; return; }
+    body.innerHTML = connectors.map(c =>
+      '<div class="td-field"><span class="td-label">' + (c.name || c.type || '—') + '</span>' +
+      '<span class="td-value">' + (c.status || c.health || '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 312: Scheduled Task Next Run ──────────────────────────────────────────────
+async function loadScheduledTaskNextRun() {
+  const body = document.getElementById('scheduled-task-next-run-body');
+  const sid = document.getElementById('scheduled-task-next-run-id').value.trim();
+  if (!sid) { body.textContent = 'Enter a schedule ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/schedules/' + encodeURIComponent(sid));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const s = await r.json();
+    const rows = [
+      ['Schedule ID', (s.id || s.schedule_id || sid).slice(0, 12) + '…'],
+      ['Name', s.name || '—'],
+      ['Cron', s.cron_expression || s.cron || '—'],
+      ['Next Run', s.next_run_at ? s.next_run_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Enabled', s.enabled !== undefined ? String(s.enabled) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 313: Admin User Detail ──────────────────────────────────────────────
+async function loadAdminUserDetail() {
+  const body = document.getElementById('admin-user-detail-body');
+  const username = document.getElementById('admin-user-detail-name').value.trim();
+  if (!username) { body.textContent = 'Enter a username.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users/' + encodeURIComponent(username));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const u = await r.json();
+    const rows = [
+      ['User ID', u.user_id || '—'],
+      ['Username', u.username || username],
+      ['Is Admin', u.is_admin !== undefined ? String(u.is_admin) : '—'],
+      ['Daily Quota', u.daily_token_quota !== undefined ? u.daily_token_quota.toLocaleString() : '—'],
+      ['Created', u.created_at ? u.created_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 306: Agent Run History ──────────────────────────────────────────────
