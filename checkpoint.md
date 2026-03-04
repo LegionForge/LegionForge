@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 247
-BRANCH: main
-COMMIT: 567d96a
-TIMESTAMP: 2026-03-04T07:30Z
-LAST_OP: PR #201 — Phase 378-381 — Active Pipeline Runs, User Quota Usage, Ollama Model List, Task Retry Count (HALTED — bug-fix mode)
+UPDATE: 249
+BRANCH: dev
+COMMIT: 36ea81b
+TIMESTAMP: 2026-03-04T09:00Z
+LAST_OP: PR #203 — fix integration test cache isolation (use_cache=False in all test submissions)
 SMOKE_TESTS: 1920/1920
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5

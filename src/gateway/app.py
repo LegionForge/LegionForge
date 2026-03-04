@@ -87,7 +87,21 @@ async def lifespan(app: FastAPI):
     redis_url = _settings.gateway.redis_url or os.environ.get("REDIS_URL", "")
     await init_redis(redis_url)
 
-    worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
+    # Skip worker in test environments to prevent race conditions where the worker
+    # picks up a task before the test can cancel it (GATEWAY_SKIP_WORKER=1).
+    import os as _os
+
+    _skip_worker = _os.environ.get("GATEWAY_SKIP_WORKER", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not _skip_worker:
+        worker_task = asyncio.create_task(task_worker(), name="gateway-task-worker")
+    else:
+        worker_task = asyncio.create_task(
+            asyncio.sleep(0), name="gateway-task-worker-noop"
+        )
 
     # Register agent tools in the security registry so verify_tool_before_invocation
     # succeeds at runtime.  Without this, every invocation hits the lazy-load path

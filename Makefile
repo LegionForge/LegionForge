@@ -815,12 +815,23 @@ format:
 # ── Security Audit ───────────────────────────────────────────
 # Run at every milestone: phase start/end, new library added, new agent added,
 # before any PR merge. Proactive checks prevent downstream compounding errors.
+.PHONY: js-check
+js-check:  ## Syntax-check JS extracted from index.html (node --check on a temp file)
+	@JS_SRC="$(BASE)/src/gateway/static/index.html"; \
+	TMP=$$(mktemp /tmp/lf_js_check_XXXXXX.js); \
+	awk '/<script[^>]*>/{flag=1;next} /<\/script>/{flag=0} flag' "$$JS_SRC" > "$$TMP"; \
+	node --check "$$TMP" && echo "✅ JS syntax OK" || (echo "❌ JS syntax errors in index.html — fix before merging" && rm -f "$$TMP" && exit 1); \
+	rm -f "$$TMP"
+
 .PHONY: security-audit
 security-audit:
 	@echo "🔐 Running security audit..."
 	@echo ""
 	@echo "--- Smoke tests (includes security regression tests) ---"
 	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo ""
+	@echo "--- JS syntax check (index.html) ---"
+	@$(MAKE) --no-print-directory js-check
 	@echo ""
 	@echo "--- bandit static analysis (medium+ severity) ---"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \

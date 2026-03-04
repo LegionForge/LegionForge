@@ -23,3 +23,12 @@ repos:
     hooks:
       - id: black
         language_version: python3.11
+
+  - repo: local
+    hooks:
+      - id: js-syntax-check
+        name: "🟨 JS syntax check (index.html)"
+        language: system
+        entry: bash -c 'TMP=$(mktemp /tmp/lf_js_XXXXXX.js); awk "/<script[^>]*>/{flag=1;next} /<\/script>/{flag=0} flag" src/gateway/static/index.html > "$TMP"; node --check "$TMP"; RC=$?; rm -f "$TMP"; exit $RC'
+        files: src/gateway/static/index\.html$
+        pass_filenames: false

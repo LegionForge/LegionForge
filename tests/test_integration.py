@@ -336,7 +336,7 @@ async def test_task_submit_returns_202_with_expected_fields(
     """POST /tasks returns 202 with task_id, stream_url, stream_token."""
     response = await gateway_client.post(
         "/tasks",
-        json={"task": "say hello", "agent_type": "researcher"},
+        json={"task": "say hello", "agent_type": "researcher", "use_cache": False},
         headers=auth_headers,
     )
     assert (
@@ -387,7 +387,7 @@ async def test_task_get_by_owner_returns_200(
     """GET /tasks/{id} returns 200 for the task owner."""
     post_resp = await gateway_client.post(
         "/tasks",
-        json={"task": "hello", "agent_type": "researcher"},
+        json={"task": "hello", "agent_type": "researcher", "use_cache": False},
         headers=auth_headers,
     )
     assert post_resp.status_code == 202
@@ -424,7 +424,7 @@ async def test_task_get_by_other_user_returns_404(
 
     post_resp = await gateway_client.post(
         "/tasks",
-        json={"task": "hello", "agent_type": "researcher"},
+        json={"task": "hello", "agent_type": "researcher", "use_cache": False},
         headers=headers1,
     )
     assert post_resp.status_code == 202
@@ -450,7 +450,7 @@ async def test_task_list_returns_only_own_tasks(
     """GET /tasks returns only the authenticated user's tasks."""
     post_resp = await gateway_client.post(
         "/tasks",
-        json={"task": "list test task", "agent_type": "researcher"},
+        json={"task": "list test task", "agent_type": "researcher", "use_cache": False},
         headers=auth_headers,
     )
     assert post_resp.status_code == 202
@@ -473,7 +473,11 @@ async def test_task_delete_queued_returns_204(db, gateway_client, auth_headers):
     """DELETE /tasks/{id} on a queued task returns 204."""
     post_resp = await gateway_client.post(
         "/tasks",
-        json={"task": "to be cancelled", "agent_type": "researcher"},
+        json={
+            "task": "to be cancelled",
+            "agent_type": "researcher",
+            "use_cache": False,
+        },
         headers=auth_headers,
     )
     assert post_resp.status_code == 202
@@ -542,7 +546,7 @@ async def test_budget_exceeded_returns_429(db, gateway_client, admin_conn):
     try:
         response = await gateway_client.post(
             "/tasks",
-            json={"task": "hello", "agent_type": "researcher"},
+            json={"task": "hello", "agent_type": "researcher", "use_cache": False},
             headers=headers,
         )
         assert (
@@ -804,6 +808,7 @@ async def test_task_worker_completes_and_writes_result(
             json={
                 "task": "Say hello in exactly three words.",
                 "agent_type": "researcher",
+                "use_cache": False,
             },
             headers=auth_headers,
         )
@@ -838,7 +843,11 @@ async def test_sse_events_received_during_worker_run(db, gateway_client, auth_he
     # 1. Submit task (to get a real task_id + stream_token).
     submit = await gateway_client.post(
         "/tasks",
-        json={"task": "Say hello in exactly three words.", "agent_type": "researcher"},
+        json={
+            "task": "Say hello in exactly three words.",
+            "agent_type": "researcher",
+            "use_cache": False,
+        },
         headers=auth_headers,
     )
     assert submit.status_code == 202
@@ -915,6 +924,7 @@ async def test_api_usage_row_written_with_user_id_after_completion(
             json={
                 "task": "Say hello in exactly three words.",
                 "agent_type": "researcher",
+                "use_cache": False,
             },
             headers=auth_headers,
         )

@@ -27,6 +27,10 @@ def pytest_configure(config):
         "markers", "unit: marks pure unit tests with no external dependencies"
     )
 
+    # Suppress the background task worker in the ASGI test client so integration
+    # tests that cancel queued tasks don't race with the worker picking them up.
+    os.environ.setdefault("GATEWAY_SKIP_WORKER", "1")
+
     # Inject a deterministic test secret for JWT task tokens so smoke tests that
     # exercise ACL/Guardian token validation never hit the macOS Keychain.
     # This is a test-only value — production always reads from Keychain.
