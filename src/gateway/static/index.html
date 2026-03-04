@@ -1237,6 +1237,55 @@
 
 
 
+
+  <!-- ── Task Annotation Detail card (Phase 322) ───────────────── -->
+  <div class="card" id="task-annotation-detail-card">
+    <details id="task-annotation-detail-section">
+      <summary style="cursor:pointer">Task Annotation Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskAnnotationDetail()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-annotation-detail-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskAnnotationDetail()">Load</button>
+        <div id="task-annotation-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── API Version Info card (Phase 323) ───────────────── -->
+  <div class="card" id="api-version-info-card">
+    <details id="api-version-info-section">
+      <summary style="cursor:pointer">API Version Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadApiVersionInfo()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadApiVersionInfo()">Load</button>
+        <div id="api-version-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Export CSV card (Phase 324) ───────────────── -->
+  <div class="card" id="task-export-csv-card">
+    <details id="task-export-csv-section">
+      <summary style="cursor:pointer">Task Export CSV <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskExportCsv()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Limit <input id="task-export-csv-limit" class="input" style="width:60px;margin-left:6px" placeholder="50" value="50"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskExportCsv()">Preview</button>
+        <div id="task-export-csv-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document Chunk Preview card (Phase 325) ───────────────── -->
+  <div class="card" id="document-chunk-preview-card">
+    <details id="document-chunk-preview-section">
+      <summary style="cursor:pointer">Document Chunk Preview <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentChunkPreview()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Doc ID <input id="document-chunk-preview-id" class="input" style="width:200px;margin-left:6px" placeholder="document-uuid"></label>
+        <label style="font-size:12px;margin-left:8px">Chunk # <input id="document-chunk-preview-num" class="input" style="width:50px;margin-left:4px" placeholder="0"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadDocumentChunkPreview()">Load</button>
+        <div id="document-chunk-preview-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Embedding Stats card (Phase 318) ───────────────────── -->
   <div class="card" id="embedding-stats-card">
     <details id="embedding-stats-section">
@@ -5517,6 +5566,89 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 322: Task Annotation Detail ──────────────────────────────────────────────
+async function loadTaskAnnotationDetail() {
+  const body = document.getElementById('task-annotation-detail-body');
+  const taskId = document.getElementById('task-annotation-detail-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId) + '/annotation');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const a = await r.json();
+    const ratingStr = a.rating === 1 ? 'Thumbs up' : a.rating === -1 ? 'Thumbs down' : 'None';
+    const rows = [
+      ['Task ID', taskId.slice(0, 12) + '…'],
+      ['Rating', a.rating !== undefined ? ratingStr : '—'],
+      ['Comment', a.comment || a.note || '—'],
+      ['Created', a.created_at ? a.created_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 323: API Version Info ──────────────────────────────────────────────
+async function loadApiVersionInfo() {
+  const body = document.getElementById('api-version-info-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Service', d.service || '—'],
+      ['Version', d.version || '—'],
+      ['Status', d.status || '—'],
+      ['API Base', window.location.origin],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 324: Task Export CSV ──────────────────────────────────────────────
+async function loadTaskExportCsv() {
+  const body = document.getElementById('task-export-csv-body');
+  const limit = parseInt(document.getElementById('task-export-csv-limit').value.trim() || '50', 10);
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/export?format=csv&limit=' + limit);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const text = await r.text();
+    const allLines = text.trim().split('\n');
+    const preview = allLines.slice(0, 6);
+    body.innerHTML = '<pre style="font-size:10px;overflow:auto;max-height:120px;background:var(--surface);padding:6px;border-radius:4px">' +
+      preview.map(l => l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('\n') +
+      (allLines.length > 6 ? '\n… (' + (allLines.length - 1) + ' rows total)' : '') + '</pre>';
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 325: Document Chunk Preview ──────────────────────────────────────────────
+async function loadDocumentChunkPreview() {
+  const body = document.getElementById('document-chunk-preview-body');
+  const docId = document.getElementById('document-chunk-preview-id').value.trim();
+  const chunkNum = document.getElementById('document-chunk-preview-num').value.trim();
+  if (!docId) { body.textContent = 'Enter a document ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const qs = chunkNum !== '' ? '?chunk=' + encodeURIComponent(chunkNum) : '';
+    const r = await apiFetch('/documents/' + encodeURIComponent(docId) + '/chunks' + qs);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const chunks = Array.isArray(data) ? data : (data.chunks || data.items || []);
+    const idx = chunkNum !== '' ? parseInt(chunkNum, 10) : 0;
+    const target = chunks[idx];
+    if (!target) { body.textContent = 'Chunk not found.'; return; }
+    const text = target.text || target.content || target.chunk || '';
+    body.innerHTML = '<div style="font-size:11px;color:var(--text-xdim)">Chunk ' + idx + ' of ' + chunks.length + '</div>' +
+      '<pre style="font-size:10px;overflow:auto;max-height:120px;white-space:pre-wrap;word-break:break-word;background:var(--surface);padding:6px;border-radius:4px">' +
+      text.slice(0, 500).replace(/&/g, '&amp;').replace(/</g, '&lt;') + (text.length > 500 ? '…' : '') + '</pre>';
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 318: Embedding Stats ──────────────────────────────────────────────

@@ -18801,3 +18801,91 @@ def test_ui_phase321_loadUserBudgetHistory_calls_usage_history():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadUserBudgetHistory" in html and "/usage/history" in html
+
+
+# ── Phase 322: Task Annotation Detail ────────────────────────────────────────
+def test_ui_phase322_task_annotation_detail_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-annotation-detail-card" in html
+
+
+def test_ui_phase322_loadTaskAnnotationDetail_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskAnnotationDetail(" in html
+
+
+def test_ui_phase322_loadTaskAnnotationDetail_calls_annotation_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskAnnotationDetail" in html and "/annotation" in html
+
+
+# ── Phase 323: API Version Info ───────────────────────────────────────────────
+def test_ui_phase323_api_version_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "api-version-info-card" in html
+
+
+def test_ui_phase323_loadApiVersionInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadApiVersionInfo(" in html
+
+
+def test_ui_phase323_loadApiVersionInfo_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadApiVersionInfo" in html and "window.location.origin" in html
+
+
+# ── Phase 324: Task Export CSV ───────────────────────────────────────────────
+def test_ui_phase324_task_export_csv_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-export-csv-card" in html
+
+
+def test_ui_phase324_loadTaskExportCsv_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskExportCsv(" in html
+
+
+def test_ui_phase324_loadTaskExportCsv_calls_export_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskExportCsv" in html and "/tasks/export" in html
+
+
+# ── Phase 325: Document Chunk Preview ────────────────────────────────────────
+def test_ui_phase325_document_chunk_preview_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "document-chunk-preview-card" in html
+
+
+def test_ui_phase325_loadDocumentChunkPreview_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentChunkPreview(" in html
+
+
+def test_ui_phase325_loadDocumentChunkPreview_calls_chunks_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadDocumentChunkPreview" in html and "/chunks" in html
