@@ -1241,6 +1241,51 @@
 
 
 
+
+  <!-- ── Model Preference Summary card (Phase 338) ───────────────── -->
+  <div class="card" id="model-preference-summary-card">
+    <details id="model-preference-summary-section">
+      <summary style="cursor:pointer">Model Preference Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadModelPreferenceSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadModelPreferenceSummary()">Load</button>
+        <div id="model-preference-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Label Counts card (Phase 339) ───────────────── -->
+  <div class="card" id="task-label-counts-card">
+    <details id="task-label-counts-section">
+      <summary style="cursor:pointer">Task Label Counts <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskLabelCounts()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTaskLabelCounts()">Load</button>
+        <div id="task-label-counts-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── API Key Info card (Phase 340) ───────────────── -->
+  <div class="card" id="api-key-info-card">
+    <details id="api-key-info-section">
+      <summary style="cursor:pointer">API Key Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadApiKeyInfo()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadApiKeyInfo()">Load</button>
+        <div id="api-key-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Template List card (Phase 341) ───────────────── -->
+  <div class="card" id="pipeline-template-list-card">
+    <details id="pipeline-template-list-section">
+      <summary style="cursor:pointer">Pipeline Template List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineTemplateList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadPipelineTemplateList()">Load</button>
+        <div id="pipeline-template-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Dependency Info card (Phase 334) ───────────────── -->
   <div class="card" id="task-dependency-info-card">
     <details id="task-dependency-info-section">
@@ -5710,6 +5755,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 338: Model Preference Summary ──────────────────────────────────────────────
+async function loadModelPreferenceSummary() {
+  const body = document.getElementById('model-preference-summary-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=50');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const counts = {};
+    for (const t of tasks) {
+      const p = t.model_preference || 'balanced';
+      counts[p] = (counts[p] || 0) + 1;
+    }
+    if (!Object.keys(counts).length) { body.textContent = 'No data.'; return; }
+    body.innerHTML = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + ' tasks</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 339: Task Label Counts ──────────────────────────────────────────────
+async function loadTaskLabelCounts() {
+  const body = document.getElementById('task-label-counts-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=200');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const counts = {};
+    for (const t of tasks) {
+      for (const label of (t.labels || [])) {
+        counts[label] = (counts[label] || 0) + 1;
+      }
+    }
+    if (!Object.keys(counts).length) { body.textContent = 'No labeled tasks found.'; return; }
+    body.innerHTML = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 340: API Key Info ──────────────────────────────────────────────
+async function loadApiKeyInfo() {
+  const body = document.getElementById('api-key-info-body');
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { body.textContent = 'Enter your API key first.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/me');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Username', d.username || d.user_id || '—'],
+      ['Is Admin', d.is_admin !== undefined ? String(d.is_admin) : '—'],
+      ['Daily Quota', d.daily_token_quota !== undefined ? d.daily_token_quota.toLocaleString() : '—'],
+      ['Key Prefix', apiKey.slice(0, 8) + '…'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 341: Pipeline Template List ──────────────────────────────────────────────
+async function loadPipelineTemplateList() {
+  const body = document.getElementById('pipeline-template-list-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const pipelines = Array.isArray(data) ? data : (data.pipelines || data.items || []);
+    if (!pipelines.length) { body.textContent = 'No pipelines found.'; return; }
+    body.innerHTML = pipelines.slice(0, 10).map(p =>
+      '<div class="td-field"><span class="td-label">' + (p.name || 'Pipeline ' + (p.id || p.pipeline_id)) + '</span>' +
+      '<span class="td-value">' + (p.steps ? p.steps.length + ' steps' : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 334: Task Dependency Info ──────────────────────────────────────────────

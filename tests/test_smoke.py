@@ -19153,3 +19153,91 @@ def test_ui_phase337_loadActiveSessionsOverview_calls_sessions():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadActiveSessionsOverview" in html and "/sessions" in html
+
+
+# ── Phase 338: Model Preference Summary ──────────────────────────────────────
+def test_ui_phase338_model_preference_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "model-preference-summary-card" in html
+
+
+def test_ui_phase338_loadModelPreferenceSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadModelPreferenceSummary(" in html
+
+
+def test_ui_phase338_loadModelPreferenceSummary_counts_preferences():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadModelPreferenceSummary" in html and "model_preference" in html
+
+
+# ── Phase 339: Task Label Counts ──────────────────────────────────────────────
+def test_ui_phase339_task_label_counts_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-label-counts-card" in html
+
+
+def test_ui_phase339_loadTaskLabelCounts_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskLabelCounts(" in html
+
+
+def test_ui_phase339_loadTaskLabelCounts_counts_labels():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskLabelCounts" in html and "t.labels" in html
+
+
+# ── Phase 340: API Key Info ────────────────────────────────────────────────────
+def test_ui_phase340_api_key_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "api-key-info-card" in html
+
+
+def test_ui_phase340_loadApiKeyInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadApiKeyInfo(" in html
+
+
+def test_ui_phase340_loadApiKeyInfo_calls_me_endpoint():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadApiKeyInfo" in html and "/me" in html
+
+
+# ── Phase 341: Pipeline Template List ─────────────────────────────────────────
+def test_ui_phase341_pipeline_template_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-template-list-card" in html
+
+
+def test_ui_phase341_loadPipelineTemplateList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineTemplateList(" in html
+
+
+def test_ui_phase341_loadPipelineTemplateList_calls_pipelines():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineTemplateList" in html and "/pipelines" in html
