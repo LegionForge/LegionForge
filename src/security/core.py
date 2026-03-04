@@ -15,6 +15,7 @@ import inspect
 import json
 import os
 import re
+import unicodedata
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -209,6 +210,12 @@ _INJECTION_PATTERNS = [
     r"repeat\s+(verbatim|exactly|word[\s\-]for[\s\-]word)",
     r"(in|from)\s+your\s+system\s+prompt",
     r"instructions?\s+given\s+to\s+you\s+by\s+(the\s+)?(operator|developer|system|admin)",
+    # Extended exfiltration verbs (leak, dump, expose) applied to system prompt
+    r"(leak|dump|expose|exfiltrate|disclose)\s+(?:(?:the|your|my|this|our)\s+)?(system\s+)(prompt|message|instructions?)",
+    # System prompt synonym nouns (system message, initial instructions, operator prompt, preprompt)
+    r"(reveal|show|print|output|display|repeat|share)\s+(?:(?:the|your|my|this|our)\s+)?(system\s+message|initial\s+(instructions?|prompt)|operator\s+(prompt|instructions?)|pre[\s\-]?prompt)",
+    # Conversational indirect exfiltration ("what were you told/instructed [to do]")
+    r"what\s+were\s+you\s+(told|instructed)",
     # Instruction injection from external content
     r"<\s*(?:system|instruction|prompt)\s*>",
     r"\[INST\]|\[\/INST\]",
@@ -231,6 +238,22 @@ _INJECTION_PATTERNS = [
 _COMPILED_PATTERNS = [
     re.compile(p, re.IGNORECASE | re.MULTILINE) for p in _INJECTION_PATTERNS
 ]
+
+# ── Unicode normalization for injection detection ─────────────────────────────
+# Attackers can split keywords with zero-width characters (U+200B ZWSP, U+200C ZWNJ,
+# U+200D ZWJ, U+200E/F LRM/RLM, U+2060 WJ, U+FEFF BOM) or use fullwidth Unicode
+# equivalents (Ａ→A) to evade regex matching.  NFKC normalization collapses fullwidth
+# and compatibility forms; the zero-width strip removes invisible splitters.
+# Known limitation: Cyrillic homoglyphs (е, р, с) and Unicode small-caps are NOT
+# collapsed by NFKC — a full homoglyph map would be needed for those vectors.
+_ZERO_WIDTH_RE = re.compile(r"[\u200B\u200C\u200D\u200E\u200F\u2060\uFEFF]")
+
+
+def _normalize_for_detection(text: str) -> str:
+    """NFKC-normalize and strip zero-width characters before injection detection."""
+    text = unicodedata.normalize("NFKC", text)
+    return _ZERO_WIDTH_RE.sub("", text)
+
 
 # ── Injection pattern tiering ─────────────────────────────────────────────────
 # Tier 1 (HALT-WORTHY): Unambiguous injection; essentially zero legitimate use in
@@ -256,6 +279,9 @@ _HALT_ON_INJECTION_PATTERNS: frozenset[str] = frozenset(
         r"<\s*(?:system|instruction|prompt)\s*>",
         r"\[INST\]|\[\/INST\]",
         r"<\|im_start\|>|<\|im_end\|>",
+        # Extended exfiltration — synonymous with existing Tier-1 patterns above
+        r"(leak|dump|expose|exfiltrate|disclose)\s+(?:(?:the|your|my|this|our)\s+)?(system\s+)(prompt|message|instructions?)",
+        r"(reveal|show|print|output|display|repeat|share)\s+(?:(?:the|your|my|this|our)\s+)?(system\s+message|initial\s+(instructions?|prompt)|operator\s+(prompt|instructions?)|pre[\s\-]?prompt)",
     }
 )
 
@@ -278,12 +304,16 @@ def detect_injection(text: str) -> tuple[bool, list[str]]:
     """
     Check text for prompt injection patterns.
 
+    Input is NFKC-normalized and zero-width characters are stripped before matching
+    so that fullwidth Unicode and invisible-splitter obfuscation are caught.
+
     Returns:
         (is_suspicious, list_of_matched_patterns)
     """
+    normalized = _normalize_for_detection(text)
     matches = []
     for pattern in _COMPILED_PATTERNS:
-        if pattern.search(text):
+        if pattern.search(normalized):
             matches.append(pattern.pattern)
 
     return bool(matches), matches

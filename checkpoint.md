@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 250
+UPDATE: 251
 BRANCH: dev
-COMMIT: bfd0843
+COMMIT: 6f14cc1
 TIMESTAMP: 2026-03-04T10:00Z
-LAST_OP: PR #208 — audit anchors + DB maintenance scheduler + worker tag-skip (1928/1928 smoke)
+LAST_OP: PR #209 — fix system_prompt_exfiltration + pentest infra (24/24 pentest PASS)
 SMOKE_TESTS: 1928/1928
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
