@@ -19603,3 +19603,91 @@ def test_ui_phase357_loadBudgetAlertStatus_shows_alert_level():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadBudgetAlertStatus" in html and "Alert Level" in html
+
+
+# ── Phase 358: Worker Queue Depth ────────────────────────────────────────────
+def test_ui_phase358_worker_queue_depth_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "worker-queue-depth-card" in html
+
+
+def test_ui_phase358_loadWorkerQueueDepth_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWorkerQueueDepth(" in html
+
+
+def test_ui_phase358_loadWorkerQueueDepth_calls_queued_tasks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadWorkerQueueDepth" in html and "status=queued" in html
+
+
+# ── Phase 359: User Token Spend ───────────────────────────────────────────────
+def test_ui_phase359_user_token_spend_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-token-spend-card" in html
+
+
+def test_ui_phase359_loadUserTokenSpend_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserTokenSpend(" in html
+
+
+def test_ui_phase359_loadUserTokenSpend_calls_usage_history():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadUserTokenSpend" in html and "/usage/history" in html
+
+
+# ── Phase 360: Pipeline Run Count ────────────────────────────────────────────
+def test_ui_phase360_pipeline_run_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-run-count-card" in html
+
+
+def test_ui_phase360_loadPipelineRunCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineRunCount(" in html
+
+
+def test_ui_phase360_loadPipelineRunCount_calls_pipeline_runs():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineRunCount" in html and "/pipelines/runs" in html
+
+
+# ── Phase 361: Session List ───────────────────────────────────────────────────
+def test_ui_phase361_session_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-list-card" in html
+
+
+def test_ui_phase361_loadSessionList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSessionList(" in html
+
+
+def test_ui_phase361_loadSessionList_calls_sessions():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSessionList" in html and "'/sessions'" in html

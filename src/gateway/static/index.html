@@ -1243,6 +1243,51 @@
 
 
 
+  <!-- ── Worker Queue Depth card (Phase 358) ───────────────── -->
+  <div class="card" id="worker-queue-depth-card">
+    <details id="worker-queue-depth-section">
+      <summary style="cursor:pointer">Worker Queue Depth <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWorkerQueueDepth()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadWorkerQueueDepth()">Load</button>
+        <div id="worker-queue-depth-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Token Spend card (Phase 359) ───────────────── -->
+  <div class="card" id="user-token-spend-card">
+    <details id="user-token-spend-section">
+      <summary style="cursor:pointer">User Token Spend <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserTokenSpend()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Days <input id="user-token-spend-days" class="input" style="width:60px;margin-left:6px" placeholder="7" value="7"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadUserTokenSpend()">Load</button>
+        <div id="user-token-spend-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Run Count card (Phase 360) ───────────────── -->
+  <div class="card" id="pipeline-run-count-card">
+    <details id="pipeline-run-count-section">
+      <summary style="cursor:pointer">Pipeline Run Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineRunCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadPipelineRunCount()">Load</button>
+        <div id="pipeline-run-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Session List card (Phase 361) ───────────────── -->
+  <div class="card" id="session-list-card">
+    <details id="session-list-section">
+      <summary style="cursor:pointer">Session List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSessionList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadSessionList()">Load</button>
+        <div id="session-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Recent Task Errors card (Phase 354) ───────────────── -->
   <div class="card" id="recent-task-errors-card">
     <details id="recent-task-errors-section">
@@ -5929,6 +5974,91 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 358: Worker Queue Depth ──────────────────────────────────────────────
+async function loadWorkerQueueDepth() {
+  const body = document.getElementById('worker-queue-depth-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?status=queued&limit=200');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const queued = data.total ?? tasks.length;
+    const rows = [
+      ['Queued Tasks', String(queued)],
+      ['Oldest', tasks[0] && tasks[0].created_at ? tasks[0].created_at.slice(0, 16).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 359: User Token Spend ──────────────────────────────────────────────
+async function loadUserTokenSpend() {
+  const body = document.getElementById('user-token-spend-body');
+  const days = parseInt(document.getElementById('user-token-spend-days').value) || 7;
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/usage/history?days=' + days);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const history = d.history || d.days || (Array.isArray(d) ? d : []);
+    const totalIn = history.reduce((s, x) => s + (x.input_tokens || 0), 0);
+    const totalOut = history.reduce((s, x) => s + (x.output_tokens || 0), 0);
+    const totalCost = history.reduce((s, x) => s + (x.estimated_cost_usd || 0), 0);
+    const rows = [
+      ['Period', days + ' days'],
+      ['Input Tokens', totalIn.toLocaleString()],
+      ['Output Tokens', totalOut.toLocaleString()],
+      ['Est. Cost', '$' + totalCost.toFixed(4)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 360: Pipeline Run Count ──────────────────────────────────────────────
+async function loadPipelineRunCount() {
+  const body = document.getElementById('pipeline-run-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/pipelines/runs');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const runs = Array.isArray(d) ? d : (d.runs || d.items || []);
+    const total = d.total ?? runs.length;
+    const success = runs.filter(r => r.status === 'complete').length;
+    const failed = runs.filter(r => r.status === 'failed').length;
+    const rows = [
+      ['Total Runs', String(total)],
+      ['Complete', String(success)],
+      ['Failed', String(failed)],
+      ['In Response', String(runs.length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 361: Session List ──────────────────────────────────────────────
+async function loadSessionList() {
+  const body = document.getElementById('session-list-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/sessions');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const sessions = Array.isArray(d) ? d : (d.sessions || d.items || []);
+    if (!sessions.length) { body.textContent = 'No sessions found.'; return; }
+    body.innerHTML = sessions.slice(0, 6).map(s =>
+      '<div class="td-field"><span class="td-label">' + (s.title || s.session_id || '—').slice(0, 24) + '</span><span class="td-value">' + (s.created_at ? s.created_at.slice(0, 10) : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 354: Recent Task Errors ──────────────────────────────────────────────

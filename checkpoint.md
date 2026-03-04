@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 231
+UPDATE: 235
 BRANCH: main
-COMMIT: 9c11d1b
-TIMESTAMP: 2026-03-04T00:15Z
-LAST_OP: PR #192 — fix JS syntax (embedded newlines) + Phase 342-345 — Ingest Job Status, Rate Limit Remaining, Session Task Count, Agent Error Rate
-SMOKE_TESTS: 1812/1812
+COMMIT: e20f57c
+TIMESTAMP: 2026-03-04T01:00Z
+LAST_OP: PR #195 — Phase 354-357 — Recent Task Errors, Document Count, Schedule Next Runs, Budget Alert Status
+SMOKE_TESTS: 1848/1848
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
