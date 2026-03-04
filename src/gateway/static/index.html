@@ -1243,6 +1243,51 @@
 
 
 
+  <!-- ── Pipeline Step Detail card (Phase 350) ───────────────── -->
+  <div class="card" id="pipeline-step-detail-card">
+    <details id="pipeline-step-detail-section">
+      <summary style="cursor:pointer">Pipeline Step Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineStepDetail()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Run ID <input id="pipeline-step-run-id" class="input" style="width:200px;margin-left:6px" placeholder="run-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadPipelineStepDetail()">Load</button>
+        <div id="pipeline-step-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Active Threat Count card (Phase 351) ───────────────── -->
+  <div class="card" id="active-threat-count-card">
+    <details id="active-threat-count-section">
+      <summary style="cursor:pointer">Active Threat Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadActiveThreatCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadActiveThreatCount()">Load</button>
+        <div id="active-threat-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Completion Rate card (Phase 352) ───────────────── -->
+  <div class="card" id="task-completion-rate-card">
+    <details id="task-completion-rate-section">
+      <summary style="cursor:pointer">Task Completion Rate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskCompletionRate()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTaskCompletionRate()">Load</button>
+        <div id="task-completion-rate-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Connector Status Summary card (Phase 353) ───────────────── -->
+  <div class="card" id="connector-status-summary-card">
+    <details id="connector-status-summary-section">
+      <summary style="cursor:pointer">Connector Status Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadConnectorStatusSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadConnectorStatusSummary()">Load</button>
+        <div id="connector-status-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Audit Log Entry card (Phase 346) ───────────────── -->
   <div class="card" id="audit-log-entry-card">
     <details id="audit-log-entry-section">
@@ -5839,6 +5884,90 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 350: Pipeline Step Detail ──────────────────────────────────────────────
+async function loadPipelineStepDetail() {
+  const body = document.getElementById('pipeline-step-detail-body');
+  const runId = document.getElementById('pipeline-step-run-id').value.trim();
+  if (!runId) { body.textContent = 'Enter a pipeline run ID.'; return; }
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/pipelines/runs/' + encodeURIComponent(runId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const steps = d.steps || [];
+    const rows = [
+      ['Run ID', runId.slice(0, 12) + '...'],
+      ['Status', d.status || '—'],
+      ['Steps', String(steps.length)],
+      ['Completed', String(steps.filter(s => s.status === 'complete').length)],
+      ['Failed', String(steps.filter(s => s.status === 'failed').length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 351: Active Threat Count ──────────────────────────────────────────────
+async function loadActiveThreatCount() {
+  const body = document.getElementById('active-threat-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/threats/summary');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = Object.entries(d).slice(0, 6).map(([k, v]) => [k, String(v)]);
+    if (!rows.length) { body.textContent = 'No threat data.'; return; }
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 352: Task Completion Rate ──────────────────────────────────────────────
+async function loadTaskCompletionRate() {
+  const body = document.getElementById('task-completion-rate-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?limit=200');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const total = tasks.length;
+    const complete = tasks.filter(t => t.status === 'complete').length;
+    const failed = tasks.filter(t => t.status === 'failed').length;
+    const running = tasks.filter(t => t.status === 'running').length;
+    const rate = total > 0 ? ((complete / total) * 100).toFixed(1) : '0.0';
+    const rows = [
+      ['Sample', String(total)],
+      ['Complete', String(complete)],
+      ['Failed', String(failed)],
+      ['Running', String(running)],
+      ['Completion Rate', rate + '%'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 353: Connector Status Summary ──────────────────────────────────────────────
+async function loadConnectorStatusSummary() {
+  const body = document.getElementById('connector-status-summary-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const connectors = d.connectors || {};
+    const entries = Object.entries(connectors);
+    if (!entries.length) { body.textContent = 'No connector data in /health.'; return; }
+    body.innerHTML = entries.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + (typeof v === 'object' ? (v.status || JSON.stringify(v)) : String(v)) + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 346: Audit Log Entry ──────────────────────────────────────────────

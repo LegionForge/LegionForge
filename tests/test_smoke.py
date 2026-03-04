@@ -19427,3 +19427,91 @@ def test_ui_phase349_loadModelUsageBreakdown_calls_usage_history():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadModelUsageBreakdown" in html and "/usage/history" in html
+
+
+# ── Phase 350: Pipeline Step Detail ──────────────────────────────────────────
+def test_ui_phase350_pipeline_step_detail_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-detail-card" in html
+
+
+def test_ui_phase350_loadPipelineStepDetail_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineStepDetail(" in html
+
+
+def test_ui_phase350_loadPipelineStepDetail_calls_pipeline_runs():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineStepDetail" in html and "/pipelines/runs/" in html
+
+
+# ── Phase 351: Active Threat Count ───────────────────────────────────────────
+def test_ui_phase351_active_threat_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "active-threat-count-card" in html
+
+
+def test_ui_phase351_loadActiveThreatCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadActiveThreatCount(" in html
+
+
+def test_ui_phase351_loadActiveThreatCount_calls_threats_summary():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadActiveThreatCount" in html and "threats/summary" in html
+
+
+# ── Phase 352: Task Completion Rate ──────────────────────────────────────────
+def test_ui_phase352_task_completion_rate_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-completion-rate-card" in html
+
+
+def test_ui_phase352_loadTaskCompletionRate_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskCompletionRate(" in html
+
+
+def test_ui_phase352_loadTaskCompletionRate_computes_rate():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskCompletionRate" in html and "Completion Rate" in html
+
+
+# ── Phase 353: Connector Status Summary ──────────────────────────────────────
+def test_ui_phase353_connector_status_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "connector-status-summary-card" in html
+
+
+def test_ui_phase353_loadConnectorStatusSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadConnectorStatusSummary(" in html
+
+
+def test_ui_phase353_loadConnectorStatusSummary_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadConnectorStatusSummary" in html and "connectors" in html
