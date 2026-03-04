@@ -19691,3 +19691,91 @@ def test_ui_phase361_loadSessionList_calls_sessions():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadSessionList" in html and "'/sessions'" in html
+
+
+# ── Phase 362: Task Duration Stats ───────────────────────────────────────────
+def test_ui_phase362_task_duration_stats_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-duration-stats-card" in html
+
+
+def test_ui_phase362_loadTaskDurationStats_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskDurationStats(" in html
+
+
+def test_ui_phase362_loadTaskDurationStats_computes_avg():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskDurationStats" in html and "Avg Duration" in html
+
+
+# ── Phase 363: Webhook Delivery History ──────────────────────────────────────
+def test_ui_phase363_webhook_delivery_history_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-delivery-history-card" in html
+
+
+def test_ui_phase363_loadWebhookDeliveryHistory_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookDeliveryHistory(" in html
+
+
+def test_ui_phase363_loadWebhookDeliveryHistory_calls_webhooks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadWebhookDeliveryHistory" in html and "'/webhooks'" in html
+
+
+# ── Phase 364: Memory Recall Stats ───────────────────────────────────────────
+def test_ui_phase364_memory_recall_stats_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-recall-stats-card" in html
+
+
+def test_ui_phase364_loadMemoryRecallStats_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemoryRecallStats(" in html
+
+
+def test_ui_phase364_loadMemoryRecallStats_calls_memory_stats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadMemoryRecallStats" in html and "/memory/stats" in html
+
+
+# ── Phase 365: Admin Stats Overview ──────────────────────────────────────────
+def test_ui_phase365_admin_stats_overview_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "admin-stats-overview-card" in html
+
+
+def test_ui_phase365_loadAdminStatsOverview_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAdminStatsOverview(" in html
+
+
+def test_ui_phase365_loadAdminStatsOverview_calls_admin_stats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAdminStatsOverview" in html and "/admin/stats" in html

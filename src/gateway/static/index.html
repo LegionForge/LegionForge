@@ -1243,6 +1243,50 @@
 
 
 
+  <!-- ── Task Duration Stats card (Phase 362) ───────────────── -->
+  <div class="card" id="task-duration-stats-card">
+    <details id="task-duration-stats-section">
+      <summary style="cursor:pointer">Task Duration Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskDurationStats()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTaskDurationStats()">Load</button>
+        <div id="task-duration-stats-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Delivery History card (Phase 363) ───────────────── -->
+  <div class="card" id="webhook-delivery-history-card">
+    <details id="webhook-delivery-history-section">
+      <summary style="cursor:pointer">Webhook Delivery History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhookDeliveryHistory()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadWebhookDeliveryHistory()">Load</button>
+        <div id="webhook-delivery-history-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Memory Recall Stats card (Phase 364) ───────────────── -->
+  <div class="card" id="memory-recall-stats-card">
+    <details id="memory-recall-stats-section">
+      <summary style="cursor:pointer">Memory Recall Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMemoryRecallStats()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadMemoryRecallStats()">Load</button>
+        <div id="memory-recall-stats-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Admin Stats Overview card (Phase 365) ───────────────── -->
+  <div class="card" id="admin-stats-overview-card">
+    <details id="admin-stats-overview-section">
+      <summary style="cursor:pointer">Admin Stats Overview <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAdminStatsOverview()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadAdminStatsOverview()">Load</button>
+        <div id="admin-stats-overview-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Worker Queue Depth card (Phase 358) ───────────────── -->
   <div class="card" id="worker-queue-depth-card">
     <details id="worker-queue-depth-section">
@@ -5974,6 +6018,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 362: Task Duration Stats ──────────────────────────────────────────────
+async function loadTaskDurationStats() {
+  const body = document.getElementById('task-duration-stats-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?status=complete&limit=50');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const durations = tasks.filter(t => t.created_at && t.completed_at).map(t => {
+      const start = new Date(t.created_at).getTime();
+      const end = new Date(t.completed_at).getTime();
+      return (end - start) / 1000;
+    });
+    if (!durations.length) { body.textContent = 'No completed tasks with timing data.'; return; }
+    const avg = durations.reduce((s, v) => s + v, 0) / durations.length;
+    const min = Math.min(...durations);
+    const max = Math.max(...durations);
+    const rows = [
+      ['Sample', String(durations.length)],
+      ['Avg Duration', avg.toFixed(1) + 's'],
+      ['Min', min.toFixed(1) + 's'],
+      ['Max', max.toFixed(1) + 's'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 363: Webhook Delivery History ──────────────────────────────────────────────
+async function loadWebhookDeliveryHistory() {
+  const body = document.getElementById('webhook-delivery-history-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/webhooks');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const webhooks = Array.isArray(d) ? d : (d.webhooks || d.items || []);
+    if (!webhooks.length) { body.textContent = 'No webhooks registered.'; return; }
+    const rows = [
+      ['Registered', String(webhooks.length)],
+      ['Active', String(webhooks.filter(w => w.enabled !== false).length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 364: Memory Recall Stats ──────────────────────────────────────────────
+async function loadMemoryRecallStats() {
+  const body = document.getElementById('memory-recall-stats-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/memory/stats');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = Object.entries(d).slice(0, 6).map(([k, v]) => [k, String(v)]);
+    if (!rows.length) { body.textContent = 'No memory stats.'; return; }
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 365: Admin Stats Overview ──────────────────────────────────────────────
+async function loadAdminStatsOverview() {
+  const body = document.getElementById('admin-stats-overview-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/stats');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = Object.entries(d).slice(0, 8).map(([k, v]) => [k, String(v)]);
+    if (!rows.length) { body.textContent = 'No admin stats.'; return; }
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 358: Worker Queue Depth ──────────────────────────────────────────────
