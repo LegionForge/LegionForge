@@ -20131,3 +20131,110 @@ def test_ui_phase381_loadTaskRetryCount_checks_retry_count():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadTaskRetryCount" in html and "retry_count" in html
+
+
+# ── DB Maintenance & Audit Anchors smoke tests ────────────────────────────────
+
+
+def test_prune_audit_log_function_exists():
+    """prune_audit_log() is importable and has the expected signature."""
+    import inspect
+    from src.database import prune_audit_log
+
+    sig = inspect.signature(prune_audit_log)
+    assert "retention_days" in sig.parameters
+
+
+def test_run_db_maintenance_function_exists():
+    """run_db_maintenance() is importable and accepts per-table day parameters."""
+    import inspect
+    from src.database import run_db_maintenance
+
+    sig = inspect.signature(run_db_maintenance)
+    for param in ("tasks_days", "api_usage_days", "audit_log_days"):
+        assert param in sig.parameters, f"Missing parameter: {param}"
+
+
+def test_audit_anchors_table_defined_in_create_app_tables():
+    """_create_app_tables() SQL includes the audit_anchors table definition."""
+    import inspect
+    from src.database import _create_app_tables
+
+    src = inspect.getsource(_create_app_tables)
+    assert "audit_anchors" in src, "audit_anchors table not found in _create_app_tables"
+    assert "boundary_hash" in src
+    assert "last_seq_kept" in src
+    assert "genesis_hash" in src
+
+
+def test_verify_audit_log_chain_is_anchor_aware():
+    """verify_audit_log_chain() queries audit_anchors for the pruning boundary."""
+    import inspect
+    from src.database import verify_audit_log_chain
+
+    src = inspect.getsource(verify_audit_log_chain)
+    assert "audit_anchors" in src, "verify_audit_log_chain must query audit_anchors"
+    assert "boundary_hash" in src
+    assert "last_seq_kept" in src
+
+
+def test_claim_next_queued_task_skips_integration_test_label():
+    """claim_next_queued_task() SQL excludes __integration_test__ labeled tasks."""
+    import inspect
+    from src.database import claim_next_queued_task
+
+    src = inspect.getsource(claim_next_queued_task)
+    assert "__integration_test__" in src, (
+        "claim_next_queued_task must filter out __integration_test__ tasks "
+        "to prevent the live worker from racing with integration tests"
+    )
+
+
+def test_audit_log_tamper_detection_chain_recompute():
+    """Mutating any field in a chain row produces a detectable hash mismatch (no DB)."""
+    from src.database import _compute_audit_row_hash, _AUDIT_LOG_GENESIS
+
+    # Build a 3-row chain
+    h0 = _AUDIT_LOG_GENESIS
+    h1 = _compute_audit_row_hash(
+        1, "2025-01-01T00:00:00+00:00", "LOGIN", "agent", {}, h0
+    )
+    h2 = _compute_audit_row_hash(
+        2, "2025-01-01T01:00:00+00:00", "ACTION", "agent", {"x": 1}, h1
+    )
+    h3 = _compute_audit_row_hash(
+        3, "2025-01-01T02:00:00+00:00", "LOGOUT", "agent", {}, h2
+    )
+
+    # Tamper row 2 payload
+    h2_tampered = _compute_audit_row_hash(
+        2, "2025-01-01T01:00:00+00:00", "ACTION", "agent", {"x": 999}, h1
+    )
+
+    # Tampered hash differs from original — stored hash mismatch detected
+    assert h2_tampered != h2, "Tampered row must produce a different hash"
+
+    # Row 3's stored prev_hash (= h2) no longer matches if stored h2 was replaced
+    # by h2_tampered — the next-row prev_hash check would also catch the breach
+    assert h3 != _compute_audit_row_hash(
+        3, "2025-01-01T02:00:00+00:00", "LOGOUT", "agent", {}, h2_tampered
+    ), "Downstream rows detect prev_hash mismatch after upstream tamper"
+
+
+def test_db_maintenance_settings_class_exists():
+    """DbMaintenanceSettings is importable with expected retention fields."""
+    from config.settings import DbMaintenanceSettings
+
+    m = DbMaintenanceSettings()
+    assert m.enabled is True
+    assert m.tasks_days > 0
+    assert m.audit_log_days > 0
+
+
+def test_scheduler_has_maintenance_heartbeat():
+    """Scheduler._maybe_run_maintenance is defined and is a coroutine function."""
+    import asyncio
+    from src.scheduler import Scheduler
+
+    assert hasattr(Scheduler, "_maybe_run_maintenance")
+    assert asyncio.iscoroutinefunction(Scheduler._maybe_run_maintenance)

@@ -628,6 +628,23 @@ class ModelPreferencesConfig(BaseModel):
         return getattr(self, pref, None)
 
 
+class DbMaintenanceSettings(BaseModel):
+    """
+    Per-table retention schedule for nightly DB maintenance.
+
+    All *_days values are in days.  Set to 0 to skip pruning for that table.
+    audit_log uses anchor-based pruning (see prune_audit_log() in database.py)
+    so verify_audit_log_chain() remains valid after rows are deleted.
+    """
+
+    enabled: bool = True
+    tasks_days: int = 30
+    api_usage_days: int = 90
+    health_metrics_days: int = 30
+    threat_events_days: int = 90
+    audit_log_days: int = 90
+
+
 class HardwareSettings(BaseModel):
     profile: ProfileMeta
     memory: MemoryConfig
@@ -645,6 +662,7 @@ class HardwareSettings(BaseModel):
     agent_memory: AgentMemoryConfig = AgentMemoryConfig()
     search: SearchSettings = SearchSettings()
     model_preferences: ModelPreferencesConfig = ModelPreferencesConfig()
+    db_maintenance: DbMaintenanceSettings = DbMaintenanceSettings()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

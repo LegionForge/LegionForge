@@ -676,6 +676,40 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         CREATE INDEX IF NOT EXISTS audit_log_event_type_idx ON audit_log (event_type, ts DESC)
     """
     )
+    # Additional indexes for performant range scans and pruning
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_audit_log_seq ON audit_log (seq ASC)
+    """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (ts ASC)
+    """
+    )
+
+    # audit_anchors — records boundary_hash before each prune_audit_log() call so
+    # verify_audit_log_chain() can resume from the pruning boundary without the
+    # deleted rows, enabling full retention-window verification after pruning.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_anchors (
+            anchor_id       BIGSERIAL PRIMARY KEY,
+            pruned_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            retention_days  INT NOT NULL,
+            rows_deleted    INT NOT NULL,
+            last_seq_kept   BIGINT NOT NULL,
+            boundary_hash   TEXT NOT NULL,
+            genesis_hash    TEXT NOT NULL
+        )
+    """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_audit_anchors_pruned_at
+        ON audit_anchors (pruned_at DESC)
+    """
+    )
 
     # RAG provenance — idempotent column additions to documents table.
     # These track where each document came from and whether to trust it.
@@ -1848,26 +1882,46 @@ async def append_audit_log(
 
 async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
     """
-    Walk the audit log from the first row to the last, recomputing each row_hash
-    and verifying it matches the stored value.
+    Walk the retained audit log rows, recomputing each row_hash and verifying it
+    matches the stored value.
+
+    Anchor-aware: if audit_anchors records exist (written by prune_audit_log()),
+    verification starts from the first row after the latest pruning boundary,
+    using the stored boundary_hash as the expected prev_hash for that row.
+    This enables full retention-window verification even after pruning.
 
     Returns:
         (chain_ok, verified_rows, error_message)
         - chain_ok=True, verified_rows=N, error_message=None  — chain is intact
-        - chain_ok=True, verified_rows=0, error_message=None  — empty log (valid on first run)
+        - chain_ok=True, verified_rows=0, error_message=None  — empty/fully-pruned log
         - chain_ok=False, verified_rows=N, error_message=str  — tamper detected at row N+1
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        cur = await conn.execute(
-            "SELECT seq, ts, event_type, agent_id, payload, prev_hash, row_hash FROM audit_log ORDER BY seq ASC"
+        # Load latest anchor to determine starting boundary
+        cur_anc = await conn.execute(
+            "SELECT boundary_hash, last_seq_kept "
+            "FROM audit_anchors ORDER BY pruned_at DESC LIMIT 1"
         )
+        anchor = await cur_anc.fetchone()
+
+        if anchor:
+            cur = await conn.execute(
+                "SELECT seq, ts, event_type, agent_id, payload, prev_hash, row_hash "
+                "FROM audit_log WHERE seq >= %s ORDER BY seq ASC",
+                (anchor["last_seq_kept"],),
+            )
+        else:
+            cur = await conn.execute(
+                "SELECT seq, ts, event_type, agent_id, payload, prev_hash, row_hash "
+                "FROM audit_log ORDER BY seq ASC"
+            )
         rows = await cur.fetchall()
 
     if not rows:
         return True, 0, None
 
-    expected_prev = _AUDIT_LOG_GENESIS
+    expected_prev = anchor["boundary_hash"] if anchor else _AUDIT_LOG_GENESIS
     for i, row in enumerate(rows):
         seq = row["seq"]
         ts = (
@@ -1897,6 +1951,177 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
         expected_prev = stored_hash
 
     return True, len(rows), None
+
+
+async def prune_audit_log(retention_days: int = 90) -> int:
+    """
+    Delete audit_log rows older than retention_days, writing an audit_anchors
+    record first so verify_audit_log_chain() can resume verification from the
+    pruning boundary without needing the deleted rows.
+
+    The anchor stores:
+    - boundary_hash: row_hash of the last deleted row
+    - last_seq_kept: seq of the first retained row
+    - genesis_hash:  row_hash of the original first row (preserved across prunings)
+
+    After pruning, verify_audit_log_chain() starts from last_seq_kept using
+    boundary_hash as expected_prev, maintaining chain continuity.
+
+    Returns:
+        Number of rows deleted (0 if nothing to prune).
+
+    Atomic: anchor write + row deletion occur in one transaction. If deletion
+    fails the anchor is rolled back too.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            # Find the most recent row outside the retention window
+            cur = await conn.execute(
+                """
+                SELECT seq, row_hash
+                FROM audit_log
+                WHERE ts < now() - make_interval(days := %s)
+                ORDER BY seq DESC
+                LIMIT 1
+                """,
+                (retention_days,),
+            )
+            last_to_delete = await cur.fetchone()
+            if not last_to_delete:
+                return 0
+
+            boundary_seq: int = last_to_delete["seq"]
+            boundary_hash: str = last_to_delete["row_hash"]
+
+            # Count rows that will be deleted
+            cur2 = await conn.execute(
+                "SELECT COUNT(*) AS n FROM audit_log WHERE seq <= %s",
+                (boundary_seq,),
+            )
+            count_row = await cur2.fetchone()
+            rows_to_delete: int = count_row["n"] if count_row else 0
+
+            # First seq that will be retained after deletion
+            cur3 = await conn.execute(
+                "SELECT seq FROM audit_log WHERE seq > %s ORDER BY seq ASC LIMIT 1",
+                (boundary_seq,),
+            )
+            first_kept_row = await cur3.fetchone()
+            last_seq_kept: int = (
+                first_kept_row["seq"] if first_kept_row else boundary_seq + 1
+            )
+
+            # Preserve the genesis_hash across multiple pruning rounds
+            cur4 = await conn.execute(
+                "SELECT genesis_hash FROM audit_anchors ORDER BY pruned_at ASC LIMIT 1"
+            )
+            existing_anchor = await cur4.fetchone()
+            if existing_anchor:
+                genesis_hash: str = existing_anchor["genesis_hash"]
+            else:
+                # First pruning — capture row_hash of the original first row
+                cur5 = await conn.execute(
+                    "SELECT row_hash FROM audit_log ORDER BY seq ASC LIMIT 1"
+                )
+                first_row = await cur5.fetchone()
+                genesis_hash = first_row["row_hash"] if first_row else ""
+
+            # Write anchor before deletion (rolled back if delete fails)
+            await conn.execute(
+                """
+                INSERT INTO audit_anchors
+                    (retention_days, rows_deleted, last_seq_kept, boundary_hash, genesis_hash)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    retention_days,
+                    rows_to_delete,
+                    last_seq_kept,
+                    boundary_hash,
+                    genesis_hash,
+                ),
+            )
+
+            # Delete old rows
+            await conn.execute(
+                "DELETE FROM audit_log WHERE seq <= %s",
+                (boundary_seq,),
+            )
+
+    logger.info(
+        "[audit-prune] Deleted %d rows (retention=%d days, boundary_seq=%d)",
+        rows_to_delete,
+        retention_days,
+        boundary_seq,
+    )
+    return rows_to_delete
+
+
+async def run_db_maintenance(
+    tasks_days: int = 30,
+    api_usage_days: int = 90,
+    health_metrics_days: int = 30,
+    threat_events_days: int = 90,
+    audit_log_days: int = 90,
+) -> dict[str, int]:
+    """
+    Prune stale rows from safe tables per the configured retention schedule.
+
+    Pruning rules:
+    - tasks:          only terminal rows (complete/failed/cancelled)
+    - api_usage:      rows older than api_usage_days
+    - health_metrics: rows older than health_metrics_days
+    - threat_events:  rows older than threat_events_days
+    - audit_log:      anchor-based pruning (writes audit_anchors before deleting)
+
+    Set any *_days argument to 0 to skip that table.
+
+    Returns:
+        Dict mapping table name to number of rows deleted.
+    """
+    results: dict[str, int] = {}
+    pool = get_pool()
+
+    async with pool.connection() as conn:
+        if tasks_days > 0:
+            cur = await conn.execute(
+                """
+                DELETE FROM tasks
+                WHERE status IN ('complete', 'failed', 'cancelled')
+                  AND created_at < now() - make_interval(days := %s)
+                """,
+                (tasks_days,),
+            )
+            results["tasks"] = cur.rowcount
+
+        if api_usage_days > 0:
+            cur = await conn.execute(
+                "DELETE FROM api_usage WHERE ts < now() - make_interval(days := %s)",
+                (api_usage_days,),
+            )
+            results["api_usage"] = cur.rowcount
+
+        if health_metrics_days > 0:
+            cur = await conn.execute(
+                "DELETE FROM health_metrics WHERE ts < now() - make_interval(days := %s)",
+                (health_metrics_days,),
+            )
+            results["health_metrics"] = cur.rowcount
+
+        if threat_events_days > 0:
+            cur = await conn.execute(
+                "DELETE FROM threat_events WHERE ts < now() - make_interval(days := %s)",
+                (threat_events_days,),
+            )
+            results["threat_events"] = cur.rowcount
+
+    if audit_log_days > 0:
+        deleted = await prune_audit_log(retention_days=audit_log_days)
+        results["audit_log"] = deleted
+
+    logger.info("[db-maintenance] Pruning complete: %s", results)
+    return results
 
 
 # ── RAG document with provenance ──────────────────────────────────────────────
@@ -3432,6 +3657,7 @@ async def claim_next_queued_task() -> dict | None:
                             AND dep.status = 'complete'
                       )
                   )
+                  AND NOT ('__integration_test__' = ANY(t.labels))
                 ORDER BY t.priority DESC, t.created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1

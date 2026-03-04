@@ -977,7 +977,7 @@ docker-up:
 	@echo "Starting all Docker services..."
 	@docker-compose up -d && echo "✅ Services started"
 
-# ── Audit log ─────────────────────────────────────────────────
+# ── Audit log & DB maintenance ────────────────────────────────
 .PHONY: audit-log-verify
 audit-log-verify:
 	@echo "Verifying audit log hash chain integrity..."
@@ -989,6 +989,25 @@ async def run(): \
     ok, rows, err = await verify_audit_log_chain(); \
     if ok: print(f'✅ Audit log chain valid ({rows} rows verified)'); \
     else: print(f'❌ Chain INVALID at row {rows}: {err}'); sys.exit(1); \
+asyncio.run(run())"
+
+.PHONY: db-maintenance
+db-maintenance:
+	@echo "Running DB maintenance (pruning stale rows per retention config)..."
+	@cd $(BASE) && $(PYTHON) -c "\
+import asyncio, sys; \
+from src.database import init_db, run_db_maintenance; \
+from config.settings import settings; \
+async def run(): \
+    await init_db(); \
+    m = settings.db_maintenance; \
+    if not m.enabled: print('⚠️  DB maintenance disabled in config'); sys.exit(0); \
+    results = await run_db_maintenance( \
+        tasks_days=m.tasks_days, api_usage_days=m.api_usage_days, \
+        health_metrics_days=m.health_metrics_days, \
+        threat_events_days=m.threat_events_days, audit_log_days=m.audit_log_days); \
+    print('✅ DB maintenance complete:'); \
+    [print(f'   {tbl}: {n} rows deleted') for tbl, n in results.items()]; \
 asyncio.run(run())"
 
 # ── Phase 3: JWT task token secret setup ──────────────────────

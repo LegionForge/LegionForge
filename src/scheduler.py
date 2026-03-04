@@ -140,9 +140,12 @@ class Scheduler:
         await scheduler.stop()
     """
 
+    _MAINTENANCE_INTERVAL_SECONDS: int = 86400  # 24 hours
+
     def __init__(self, poll_interval: int = 30) -> None:
         self.poll_interval = poll_interval
         self._task: Optional[asyncio.Task] = None  # type: ignore[type-arg]
+        self._last_maintenance: float = 0.0
 
     async def start(self) -> None:
         """Launch the background polling loop."""
@@ -163,11 +166,39 @@ class Scheduler:
         while True:
             try:
                 await self._tick()
+                await self._maybe_run_maintenance()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.error("[scheduler] Tick error: %s", exc)
             await asyncio.sleep(self.poll_interval)
+
+    async def _maybe_run_maintenance(self) -> None:
+        """Run nightly DB maintenance if 24 hours have elapsed since the last run."""
+        now = asyncio.get_event_loop().time()
+        if now - self._last_maintenance < self._MAINTENANCE_INTERVAL_SECONDS:
+            return
+        self._last_maintenance = now
+
+        try:
+            from config.settings import settings
+
+            m = settings.db_maintenance
+            if not m.enabled:
+                return
+
+            from src.database import run_db_maintenance
+
+            results = await run_db_maintenance(
+                tasks_days=m.tasks_days,
+                api_usage_days=m.api_usage_days,
+                health_metrics_days=m.health_metrics_days,
+                threat_events_days=m.threat_events_days,
+                audit_log_days=m.audit_log_days,
+            )
+            logger.info("[scheduler] Nightly DB maintenance complete: %s", results)
+        except Exception as exc:
+            logger.error("[scheduler] DB maintenance error: %s", exc)
 
     async def _tick(self) -> None:
         """Query and fire all due scheduled tasks."""

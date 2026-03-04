@@ -477,6 +477,7 @@ async def test_task_delete_queued_returns_204(db, gateway_client, auth_headers):
             "task": "to be cancelled",
             "agent_type": "researcher",
             "use_cache": False,
+            "labels": ["__integration_test__"],
         },
         headers=auth_headers,
     )

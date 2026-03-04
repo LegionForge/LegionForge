@@ -300,6 +300,7 @@ All commands assume the venv is active: `source venv/bin/activate`
 | Target | Description | Arguments |
 |--------|-------------|-----------|
 | `audit-log-verify` | Verify audit log SHA-256 hash chain integrity | — |
+| `db-maintenance` | Run DB maintenance — prune stale rows per retention config | — |
 
 ---
 

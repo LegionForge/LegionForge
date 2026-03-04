@@ -423,3 +423,15 @@ model_preferences:
   fast:     "qwen2.5:3b"      # Router model — much faster, less capable
   balanced: "llama3.1:8b"     # Primary model — default for all agents
   powerful: "llama3.1:8b"     # Same as balanced on M4 Mini (no 70b+ loaded)
+
+# ── DB Maintenance — nightly pruning with per-table retention ─────────────────
+# Runs once per 24h via the gateway scheduler (src/scheduler.py).
+# audit_log uses anchor-based pruning so verify_audit_log_chain() stays valid.
+# Set any *_days to 0 to disable pruning for that table.
+db_maintenance:
+  enabled: true
+  tasks_days: 30          # prune terminal tasks (complete/failed/cancelled)
+  api_usage_days: 90      # prune api_usage rows
+  health_metrics_days: 30 # prune health_metrics rows
+  threat_events_days: 90  # prune threat_events rows
+  audit_log_days: 90      # prune audit_log rows (anchor-based, 90-day verifiable)
