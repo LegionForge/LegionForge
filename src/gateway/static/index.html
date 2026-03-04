@@ -1243,6 +1243,51 @@
 
 
 
+  <!-- ── Recent Task Errors card (Phase 354) ───────────────── -->
+  <div class="card" id="recent-task-errors-card">
+    <details id="recent-task-errors-section">
+      <summary style="cursor:pointer">Recent Task Errors <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRecentTaskErrors()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadRecentTaskErrors()">Load</button>
+        <div id="recent-task-errors-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document Count card (Phase 355) ───────────────── -->
+  <div class="card" id="document-count-card">
+    <details id="document-count-section">
+      <summary style="cursor:pointer">Document Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadDocumentCount()">Load</button>
+        <div id="document-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Schedule Next Runs card (Phase 356) ───────────────── -->
+  <div class="card" id="schedule-next-runs-card">
+    <details id="schedule-next-runs-section">
+      <summary style="cursor:pointer">Schedule Next Runs <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadScheduleNextRuns()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadScheduleNextRuns()">Load</button>
+        <div id="schedule-next-runs-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Budget Alert Status card (Phase 357) ───────────────── -->
+  <div class="card" id="budget-alert-status-card">
+    <details id="budget-alert-status-section">
+      <summary style="cursor:pointer">Budget Alert Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadBudgetAlertStatus()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Provider <select id="budget-alert-provider" class="input" style="width:120px;margin-left:6px"><option value="anthropic">anthropic</option><option value="openai">openai</option><option value="ollama">ollama</option></select></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadBudgetAlertStatus()">Load</button>
+        <div id="budget-alert-status-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Pipeline Step Detail card (Phase 350) ───────────────── -->
   <div class="card" id="pipeline-step-detail-card">
     <details id="pipeline-step-detail-section">
@@ -5884,6 +5929,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 354: Recent Task Errors ──────────────────────────────────────────────
+async function loadRecentTaskErrors() {
+  const body = document.getElementById('recent-task-errors-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?status=failed&limit=5');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { body.textContent = 'No recent errors.'; return; }
+    body.innerHTML = tasks.map(t =>
+      '<div class="td-field" style="flex-direction:column;align-items:flex-start;border-bottom:1px solid var(--border2);padding-bottom:4px;margin-bottom:4px">' +
+      '<span class="td-label">' + (t.task_id || '').slice(0, 8) + '...</span>' +
+      '<span style="font-size:11px;color:var(--red)">' + (t.error || 'unknown error').slice(0, 80) + '</span>' +
+      '</div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 355: Document Count ──────────────────────────────────────────────
+async function loadDocumentCount() {
+  const body = document.getElementById('document-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/documents');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const docs = Array.isArray(d) ? d : (d.documents || d.items || []);
+    const total = d.total ?? docs.length;
+    const rows = [
+      ['Total', String(total)],
+      ['In Response', String(docs.length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 356: Schedule Next Runs ──────────────────────────────────────────────
+async function loadScheduleNextRuns() {
+  const body = document.getElementById('schedule-next-runs-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/schedules');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const scheds = Array.isArray(d) ? d : (d.schedules || d.items || []);
+    if (!scheds.length) { body.textContent = 'No schedules found.'; return; }
+    const active = scheds.filter(s => s.enabled);
+    body.innerHTML = active.slice(0, 5).map(s =>
+      '<div class="td-field"><span class="td-label">' + (s.name || '—').slice(0, 20) + '</span><span class="td-value">' + (s.next_run ? s.next_run.slice(0, 16).replace('T', ' ') : '—') + '</span></div>'
+    ).join('') || '<span>No active schedules.</span>';
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 357: Budget Alert Status ──────────────────────────────────────────────
+async function loadBudgetAlertStatus() {
+  const body = document.getElementById('budget-alert-status-body');
+  const provider = document.getElementById('budget-alert-provider').value;
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/usage/rate-limits?provider=' + encodeURIComponent(provider));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const used = d.used_today || 0;
+    const limit = d.daily_limit || 0;
+    const pct = limit > 0 ? ((used / limit) * 100).toFixed(1) : '—';
+    const alertLevel = pct === '—' ? 'unknown' : parseFloat(pct) >= 100 ? 'EXCEEDED' : parseFloat(pct) >= 80 ? 'WARNING' : 'OK';
+    const rows = [
+      ['Provider', provider],
+      ['Used Today', used.toLocaleString()],
+      ['Daily Limit', limit.toLocaleString()],
+      ['Utilization', pct === '—' ? '—' : pct + '%'],
+      ['Alert Level', alertLevel],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value" style="color:' + (v === 'WARNING' ? 'var(--yellow)' : v === 'EXCEEDED' ? 'var(--red)' : 'inherit') + '">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 350: Pipeline Step Detail ──────────────────────────────────────────────

@@ -19515,3 +19515,91 @@ def test_ui_phase353_loadConnectorStatusSummary_calls_health():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadConnectorStatusSummary" in html and "connectors" in html
+
+
+# ── Phase 354: Recent Task Errors ────────────────────────────────────────────
+def test_ui_phase354_recent_task_errors_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "recent-task-errors-card" in html
+
+
+def test_ui_phase354_loadRecentTaskErrors_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRecentTaskErrors(" in html
+
+
+def test_ui_phase354_loadRecentTaskErrors_calls_failed_tasks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadRecentTaskErrors" in html and "status=failed" in html
+
+
+# ── Phase 355: Document Count ─────────────────────────────────────────────────
+def test_ui_phase355_document_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "document-count-card" in html
+
+
+def test_ui_phase355_loadDocumentCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentCount(" in html
+
+
+def test_ui_phase355_loadDocumentCount_calls_documents():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadDocumentCount" in html and "/documents" in html
+
+
+# ── Phase 356: Schedule Next Runs ────────────────────────────────────────────
+def test_ui_phase356_schedule_next_runs_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "schedule-next-runs-card" in html
+
+
+def test_ui_phase356_loadScheduleNextRuns_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadScheduleNextRuns(" in html
+
+
+def test_ui_phase356_loadScheduleNextRuns_calls_schedules():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadScheduleNextRuns" in html and "/schedules" in html
+
+
+# ── Phase 357: Budget Alert Status ───────────────────────────────────────────
+def test_ui_phase357_budget_alert_status_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "budget-alert-status-card" in html
+
+
+def test_ui_phase357_loadBudgetAlertStatus_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBudgetAlertStatus(" in html
+
+
+def test_ui_phase357_loadBudgetAlertStatus_shows_alert_level():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadBudgetAlertStatus" in html and "Alert Level" in html
