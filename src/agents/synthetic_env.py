@@ -364,10 +364,11 @@ class SyntheticEnvironment:
         pentest_dsn = await self._get_pentest_dsn()
         conn = await psycopg.AsyncConnection.connect(pentest_dsn, autocommit=True)
         try:
-            row = await conn.fetchone(
+            cur = await conn.execute(
                 "SELECT schema_hash FROM tool_registry WHERE tool_id = %s",
                 (tool_id,),
             )
+            row = await cur.fetchone()
             return row[0] if row else None
         finally:
             await conn.close()

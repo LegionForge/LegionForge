@@ -206,6 +206,9 @@ _INJECTION_PATTERNS = [
     r"(reveal|show|print|output|display)\s+(your\s+)?(system\s+)?prompt",
     r"(what\s+(are|were)\s+your\s+instructions)",
     r"repeat\s+(everything|all)\s+(above|before)",
+    r"repeat\s+(verbatim|exactly|word[\s\-]for[\s\-]word)",
+    r"(in|from)\s+your\s+system\s+prompt",
+    r"instructions?\s+given\s+to\s+you\s+by\s+(the\s+)?(operator|developer|system|admin)",
     # Instruction injection from external content
     r"<\s*(?:system|instruction|prompt)\s*>",
     r"\[INST\]|\[\/INST\]",

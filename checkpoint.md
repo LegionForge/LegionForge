@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 249
+UPDATE: 250
 BRANCH: dev
-COMMIT: 36ea81b
-TIMESTAMP: 2026-03-04T09:00Z
-LAST_OP: PR #203 — fix integration test cache isolation (use_cache=False in all test submissions)
-SMOKE_TESTS: 1920/1920
+COMMIT: bfd0843
+TIMESTAMP: 2026-03-04T10:00Z
+LAST_OP: PR #208 — audit anchors + DB maintenance scheduler + worker tag-skip (1928/1928 smoke)
+SMOKE_TESTS: 1928/1928
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
