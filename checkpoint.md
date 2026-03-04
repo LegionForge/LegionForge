@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 243
+UPDATE: 247
 BRANCH: main
-COMMIT: 9ece028
-TIMESTAMP: 2026-03-04T02:00Z
-LAST_OP: PR #199 — Phase 370-373 — Task Note Count, Batch Task Summary, Threat Event Types, Search Provider Status
-SMOKE_TESTS: 1896/1896
+COMMIT: 567d96a
+TIMESTAMP: 2026-03-04T07:30Z
+LAST_OP: PR #201 — Phase 378-381 — Active Pipeline Runs, User Quota Usage, Ollama Model List, Task Retry Count (HALTED — bug-fix mode)
+SMOKE_TESTS: 1920/1920
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

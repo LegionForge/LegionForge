@@ -1955,5 +1955,87 @@ Added as compact addendum. See git log for full details.
 | 299 | #179 | Memory Search Results (memory-search-results-card, loadMemorySearchResults, POST /memory/search, top-5 chunks) | +3 | 1669 |
 | 300 | #179 | Task Cost Breakdown (task-cost-breakdown-card, loadTaskCostBreakdown, GET /tasks/{id}, token breakdown) | +3 | 1672 |
 | 301 | #179 | Webhook Event Types (webhook-event-types-card, loadWebhookEventTypes, GET /webhooks, aggregate event_types) | +3 | 1675 |
+| 302 | #180 | Token Usage Summary (token-usage-summary-card, loadTokenUsageSummary, GET /usage/history?days=) | +3 | 1678 |
+| 303 | #180 | Document Metadata (document-metadata-card, loadDocumentMetadata, GET /documents/{id}) | +3 | 1681 |
+| 304 | #180 | Pipeline Step Info (pipeline-step-info-card, loadPipelineStepInfo, GET /pipelines/{id}) | +3 | 1684 |
+| 305 | #180 | User Session Detail (user-session-detail-card, loadUserSessionDetail, GET /sessions/{id}) | +3 | 1687 |
+| 306 | #183 | Agent Run History (agent-run-history-card, loadAgentRunHistory, GET /tasks?agent_type=) | +3 | 1690 |
+| 307 | #183 | Task Queue Depth (task-queue-depth-card, loadTaskQueueDepth, GET /tasks?status=queued) | +3 | 1693 |
+| 308 | #183 | System Uptime Info (system-uptime-info-card, loadSystemUptimeInfo, GET /health) | +3 | 1696 |
+| 309 | #183 | Webhook Test Fire (webhook-test-fire-card, loadWebhookTestFire, POST /webhooks/{id}/test) | +3 | 1699 |
+| 310 | #184 | Task Input Preview (task-input-preview-card, loadTaskInputPreview, GET /tasks/{id}) | +3 | 1702 |
+| 311 | #184 | Connector Health (connector-health-card, loadConnectorHealth, GET /connectors) | +3 | 1705 |
+| 312 | #184 | Scheduled Task Next Run (scheduled-task-next-run-card, loadScheduledTaskNextRun, GET /schedules/{id}) | +3 | 1708 |
+| 313 | #184 | Admin User Detail (admin-user-detail-card, loadAdminUserDetail, GET /admin/users/{name}) | +3 | 1711 |
+| 314 | #185 | Pipeline Run Status (pipeline-run-status-card, loadPipelineRunStatus, GET /pipelines/runs/{id}) | +3 | 1714 |
+| 315 | #185 | Recent Threat Events (recent-threat-events-card, loadRecentThreatEvents, GET /admin/threats?hours=) | +3 | 1717 |
+| 316 | #185 | Memory Store Stats (memory-store-stats-card, loadMemoryStoreStats, GET /memory/stats) | +3 | 1720 |
+| 317 | #185 | Task Siblings List (task-siblings-list-card, loadTaskSiblingsList, GET /tasks/{id}; renamed to avoid Ph231 collision) | +3 | 1723 |
+| 318 | #186 | Embedding Stats (embedding-stats-card, loadEmbeddingStats, GET /memory/stats) | +3 | 1726 |
+| 319 | #186 | Cluster Node List (cluster-node-list-card, loadClusterNodeList, GET /cluster/nodes) | +3 | 1729 |
+| 320 | #186 | Pipeline Definition (pipeline-definition-card, loadPipelineDefinition, GET /pipelines/{id}) | +3 | 1732 |
+| 321 | #186 | User Budget History (user-budget-history-card, loadUserBudgetHistory, GET /usage/history?days=) | +3 | 1735 |
+| 322 | #187 | Task Annotation Detail (task-annotation-detail-card, loadTaskAnnotationDetail, GET /tasks/{id}/annotation) | +3 | 1738 |
+| 323 | #187 | API Version Info (api-version-info-card, loadApiVersionInfo, GET /health) | +3 | 1741 |
+| 324 | #187 | Task Export CSV (task-export-csv-card, loadTaskExportCsv, GET /tasks/export?format=csv) | +3 | 1744 |
+| 325 | #187 | Document Chunk Preview (document-chunk-preview-card, loadDocumentChunkPreview, GET /documents/{id}) | +3 | 1747 |
+| 326 | #188 | Task Tag Filter (task-tag-filter-card, loadTaskTagFilter, GET /tasks?tags=) | +3 | 1750 |
+| 327 | #188 | Ollama Model Detail (ollama-model-detail-card, loadOllamaModelDetail, GET /models/{name}) | +3 | 1753 |
+| 328 | #188 | Task Note List (task-note-list-card, loadTaskNoteList, GET /tasks/{id}/notes) | +3 | 1756 |
+| 329 | #188 | Search Query History (search-query-history-card, loadSearchQueryHistory, GET /tasks?limit=20) | +3 | 1759 |
+| 330 | #189 | Task Result Summary (task-result-summary-card, loadTaskResultSummary, GET /tasks/{id}) | +3 | 1762 |
+| 331 | #189 | Batch Task Progress (batch-task-progress-card, loadBatchTaskProgress, GET /tasks/batch/{label}) | +3 | 1765 |
+| 332 | #189 | Gateway User List (gateway-user-list-card, loadGatewayUserList, GET /admin/users) | +3 | 1768 |
+| 333 | #189 | Threat Rule Summary (threat-rule-summary-card, loadThreatRuleSummary, GET /admin/threats/summary) | +3 | 1771 |
+| 334 | #190 | Task Dependency Info (task-dependency-info-card, loadTaskDependencyInfo, GET /tasks/{id} depends_on chain) | +3 | 1774 |
+| 335 | #190 | Webhook Registry (webhook-registry-card, loadWebhookRegistry, GET /webhooks) | +3 | 1777 |
+| 336 | #190 | Task Priority Info (task-priority-info-card, loadTaskPriorityInfo, GET /tasks/{id}) | +3 | 1780 |
+| 337 | #190 | Active Sessions Overview (active-sessions-overview-card, loadActiveSessionsOverview, GET /sessions) | +3 | 1783 |
+| 338 | #191 | Model Preference Summary (model-preference-summary-card, loadModelPreferenceSummary, GET /tasks?limit=50) | +3 | 1786 |
+| 339 | #191 | Task Label Counts (task-label-counts-card, loadTaskLabelCounts, GET /tasks?limit=200) | +3 | 1789 |
+| 340 | #191 | API Key Info (api-key-info-card, loadApiKeyInfo, GET /me) | +3 | 1792 |
+| 341 | #191 | Pipeline Template List (pipeline-template-list-card, loadPipelineTemplateList, GET /pipelines) | +3 | 1795 |
+| 342 | #192 | Ingest Job Status (ingest-job-status-card, loadIngestJobStatus, GET /documents) | +3 | 1800 |
+| 343 | #192 | Rate Limit Remaining (rate-limit-remaining-card, loadRateLimitRemaining, GET /usage/rate-limits?provider=) | +3 | 1803 |
+| 344 | #192 | Session Task Count (session-task-count-card, loadSessionTaskCount, GET /sessions/{id}) | +3 | 1806 |
+| 345 | #192 | Agent Error Rate (agent-error-rate-card, loadAgentErrorRate, GET /tasks?agent_type=, computes failed/total) | +3 | 1809 |
+| 346 | #193 | Audit Log Entry (audit-log-entry-card, loadAuditLogEntry, GET /admin/audit?event_type=) | +3 | 1812 |
+| 347 | #193 | Tool Call Count (tool-call-count-card, loadToolCallCount, GET /admin/tools) | +3 | 1815 |
+| 348 | #193 | Gateway Uptime (gateway-uptime-card, loadGatewayUptime, GET /health, uptime_seconds display) | +3 | 1818 |
+| 349 | #193 | Model Usage Breakdown (model-usage-breakdown-card, loadModelUsageBreakdown, GET /usage/history?days=) | +3 | 1821 |
+| 350 | #194 | Pipeline Step Detail (pipeline-step-detail-card, loadPipelineStepDetail, GET /pipelines/runs/{id}) | +3 | 1824 |
+| 351 | #194 | Active Threat Count (active-threat-count-card, loadActiveThreatCount, GET /admin/threats/summary) | +3 | 1827 |
+| 352 | #194 | Task Completion Rate (task-completion-rate-card, loadTaskCompletionRate, GET /tasks?limit=200, rate%) | +3 | 1830 |
+| 353 | #194 | Connector Status Summary (connector-status-summary-card, loadConnectorStatusSummary, GET /health connectors) | +3 | 1833 |
+| 354 | #195 | Recent Task Errors (recent-task-errors-card, loadRecentTaskErrors, GET /tasks?status=failed&limit=5) | +3 | 1836 |
+| 355 | #195 | Document Count (document-count-card, loadDocumentCount, GET /documents) | +3 | 1839 |
+| 356 | #195 | Schedule Next Runs (schedule-next-runs-card, loadScheduleNextRuns, GET /schedules, enabled next_run list) | +3 | 1842 |
+| 357 | #195 | Budget Alert Status (budget-alert-status-card, loadBudgetAlertStatus, GET /usage/rate-limits, OK/WARN/EXCEEDED) | +3 | 1845 |
+| 358 | #196 | Worker Queue Depth (worker-queue-depth-card, loadWorkerQueueDepth, GET /tasks?status=queued) | +3 | 1848 |
+| 359 | #196 | User Token Spend (user-token-spend-card, loadUserTokenSpend, GET /usage/history?days=, cost estimate) | +3 | 1851 |
+| 360 | #196 | Pipeline Run Count (pipeline-run-count-card, loadPipelineRunCount, GET /pipelines/runs) | +3 | 1854 |
+| 361 | #196 | Session List (session-list-card, loadSessionList, GET /sessions) | +3 | 1857 |
+| 362 | #197 | Task Duration Stats (task-duration-stats-card, loadTaskDurationStats, GET /tasks?status=complete, avg/min/max) | +3 | 1860 |
+| 363 | #197 | Webhook Delivery History (webhook-delivery-history-card, loadWebhookDeliveryHistory, GET /webhooks) | +3 | 1863 |
+| 364 | #197 | Memory Recall Stats (memory-recall-stats-card, loadMemoryRecallStats, GET /memory/stats) | +3 | 1866 |
+| 365 | #197 | Admin Stats Overview (admin-stats-overview-card, loadAdminStatsOverview, GET /admin/stats) | +3 | 1869 |
+| 366 | #198 | Cluster Health Summary (cluster-health-summary-card, loadClusterHealthSummary, GET /cluster/nodes) | +3 | 1872 |
+| 367 | #198 | Task Input Length Stats (task-input-length-card, loadTaskInputLength, GET /tasks?limit=50, avg char length) | +3 | 1875 |
+| 368 | #198 | Annotation Summary (annotation-summary-card, loadAnnotationSummary, GET /admin/annotations) | +3 | 1878 |
+| 369 | #198 | Template Usage Count (template-usage-count-card, loadTemplateUsageCount, GET /templates) | +3 | 1881 |
+| 370 | #199 | Task Note Count (task-note-count-card, loadTaskNoteCount, GET /tasks/{id}/notes) | +3 | 1884 |
+| 371 | #199 | Batch Task Summary (batch-task-summary-card, loadBatchTaskSummary, GET /tasks?limit=100, group by status) | +3 | 1887 |
+| 372 | #199 | Threat Event Types (threat-event-types-card, loadThreatEventTypes, GET /admin/threats?hours=168) | +3 | 1890 |
+| 373 | #199 | Search Provider Status (search-provider-status-card, loadSearchProviderStatus, GET /health search_providers) | +3 | 1893 |
+| 374 | #200 | Metrics History (metrics-history-card, loadMetricsHistory, GET /admin/metrics/history) | +3 | 1896 |
+| 375 | #200 | Pipeline Success Rate (pipeline-success-rate-card, loadPipelineSuccessRate, GET /pipelines/runs, rate%) | +3 | 1899 |
+| 376 | #200 | Document Ingest Rate (document-ingest-rate-card, loadDocumentIngestRate, GET /documents?limit=20, today count) | +3 | 1902 |
+| 377 | #200 | Recent Audit Events (recent-audit-events-card, loadRecentAuditEvents, GET /admin/audit?limit=8) | +3 | 1905 |
+| 378 | #201 | Active Pipeline Runs (active-pipeline-runs-card, loadActivePipelineRuns, GET /pipelines/runs, running/pending) | +3 | 1908 |
+| 379 | #201 | User Quota Usage (user-quota-usage-card, loadUserQuotaUsage, GET /admin/users/{username}) | +3 | 1911 |
+| 380 | #201 | Ollama Model List (ollama-model-list-card, loadOllamaModelList, GET /agents, unique models) | +3 | 1914 |
+| 381 | #201 | Task Retry Count (task-retry-count-card, loadTaskRetryCount, GET /tasks?limit=100, retry_count analysis) | +3 | 1917 |
 
-**Current state:** 1675/1675 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+**HALTED — bug-fix focus required before continuing. See jp.md for lessons learned.**
+
+**Current state:** 1920/1920 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
