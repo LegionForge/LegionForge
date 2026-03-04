@@ -1243,6 +1243,51 @@
 
 
 
+  <!-- ── Task Note Count card (Phase 370) ───────────────── -->
+  <div class="card" id="task-note-count-card">
+    <details id="task-note-count-section">
+      <summary style="cursor:pointer">Task Note Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskNoteCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-note-count-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskNoteCount()">Load</button>
+        <div id="task-note-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Batch Task Summary card (Phase 371) ───────────────── -->
+  <div class="card" id="batch-task-summary-card">
+    <details id="batch-task-summary-section">
+      <summary style="cursor:pointer">Batch Task Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadBatchTaskSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadBatchTaskSummary()">Load</button>
+        <div id="batch-task-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Threat Event Types card (Phase 372) ───────────────── -->
+  <div class="card" id="threat-event-types-card">
+    <details id="threat-event-types-section">
+      <summary style="cursor:pointer">Threat Event Types <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatEventTypes()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadThreatEventTypes()">Load</button>
+        <div id="threat-event-types-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Search Provider Status card (Phase 373) ───────────────── -->
+  <div class="card" id="search-provider-status-card">
+    <details id="search-provider-status-section">
+      <summary style="cursor:pointer">Search Provider Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSearchProviderStatus()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadSearchProviderStatus()">Load</button>
+        <div id="search-provider-status-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Cluster Health Summary card (Phase 366) ───────────────── -->
   <div class="card" id="cluster-health-summary-card">
     <details id="cluster-health-summary-section">
@@ -6062,6 +6107,86 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 370: Task Note Count ──────────────────────────────────────────────
+async function loadTaskNoteCount() {
+  const body = document.getElementById('task-note-count-body');
+  const taskId = document.getElementById('task-note-count-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId) + '/notes');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const notes = Array.isArray(d) ? d : (d.notes || d.items || []);
+    const rows = [
+      ['Task ID', taskId.slice(0, 12) + '...'],
+      ['Note Count', String(notes.length)],
+      ['Latest', notes[0] && notes[0].created_at ? notes[0].created_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 371: Batch Task Summary ──────────────────────────────────────────────
+async function loadBatchTaskSummary() {
+  const body = document.getElementById('batch-task-summary-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?limit=100');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const byStatus = {};
+    tasks.forEach(t => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
+    const rows = Object.entries(byStatus).map(([k, v]) => [k, String(v)]);
+    rows.unshift(['Total', String(tasks.length)]);
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 372: Threat Event Types ──────────────────────────────────────────────
+async function loadThreatEventTypes() {
+  const body = document.getElementById('threat-event-types-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/threats?hours=168&limit=200');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const threats = d.threats || d.items || (Array.isArray(d) ? d : []);
+    const byType = {};
+    threats.forEach(t => { byType[t.event_type || 'unknown'] = (byType[t.event_type || 'unknown'] || 0) + 1; });
+    const rows = Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => [k, String(v)]);
+    if (!rows.length) { body.textContent = 'No threat events in past 7 days.'; return; }
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 373: Search Provider Status ──────────────────────────────────────────────
+async function loadSearchProviderStatus() {
+  const body = document.getElementById('search-provider-status-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const search = d.search_providers || d.search || {};
+    const entries = Object.entries(search);
+    if (!entries.length) {
+      body.textContent = 'No search provider info in /health.';
+      return;
+    }
+    body.innerHTML = entries.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + (typeof v === 'object' ? (v.status || JSON.stringify(v)) : String(v)) + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 366: Cluster Health Summary ──────────────────────────────────────────────

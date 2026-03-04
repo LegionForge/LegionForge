@@ -19867,3 +19867,91 @@ def test_ui_phase369_loadTemplateUsageCount_calls_templates():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadTemplateUsageCount" in html and "'/templates'" in html
+
+
+# ── Phase 370: Task Note Count ────────────────────────────────────────────────
+def test_ui_phase370_task_note_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-note-count-card" in html
+
+
+def test_ui_phase370_loadTaskNoteCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskNoteCount(" in html
+
+
+def test_ui_phase370_loadTaskNoteCount_calls_task_notes():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskNoteCount" in html and "/notes" in html
+
+
+# ── Phase 371: Batch Task Summary ────────────────────────────────────────────
+def test_ui_phase371_batch_task_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-task-summary-card" in html
+
+
+def test_ui_phase371_loadBatchTaskSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBatchTaskSummary(" in html
+
+
+def test_ui_phase371_loadBatchTaskSummary_groups_by_status():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadBatchTaskSummary" in html and "byStatus" in html
+
+
+# ── Phase 372: Threat Event Types ────────────────────────────────────────────
+def test_ui_phase372_threat_event_types_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threat-event-types-card" in html
+
+
+def test_ui_phase372_loadThreatEventTypes_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadThreatEventTypes(" in html
+
+
+def test_ui_phase372_loadThreatEventTypes_calls_admin_threats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadThreatEventTypes" in html and "/admin/threats" in html
+
+
+# ── Phase 373: Search Provider Status ────────────────────────────────────────
+def test_ui_phase373_search_provider_status_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "search-provider-status-card" in html
+
+
+def test_ui_phase373_loadSearchProviderStatus_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSearchProviderStatus(" in html
+
+
+def test_ui_phase373_loadSearchProviderStatus_reads_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSearchProviderStatus" in html and "search_providers" in html
