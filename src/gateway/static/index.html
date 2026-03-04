@@ -1242,6 +1242,54 @@
 
 
 
+
+  <!-- ── Ingest Job Status card (Phase 342) ───────────────── -->
+  <div class="card" id="ingest-job-status-card">
+    <details id="ingest-job-status-section">
+      <summary style="cursor:pointer">Ingest Job Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadIngestJobStatus()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadIngestJobStatus()">Load</button>
+        <div id="ingest-job-status-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Rate Limit Remaining card (Phase 343) ───────────────── -->
+  <div class="card" id="rate-limit-remaining-card">
+    <details id="rate-limit-remaining-section">
+      <summary style="cursor:pointer">Rate Limit Remaining <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRateLimitRemaining()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Provider <select id="rate-limit-remaining-provider" class="input" style="width:120px;margin-left:6px"><option value="anthropic">anthropic</option><option value="openai">openai</option><option value="ollama">ollama</option></select></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadRateLimitRemaining()">Load</button>
+        <div id="rate-limit-remaining-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Session Task Count card (Phase 344) ───────────────── -->
+  <div class="card" id="session-task-count-card">
+    <details id="session-task-count-section">
+      <summary style="cursor:pointer">Session Task Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSessionTaskCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Session ID <input id="session-task-count-id" class="input" style="width:200px;margin-left:6px" placeholder="session-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadSessionTaskCount()">Load</button>
+        <div id="session-task-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Agent Error Rate card (Phase 345) ───────────────── -->
+  <div class="card" id="agent-error-rate-card">
+    <details id="agent-error-rate-section">
+      <summary style="cursor:pointer">Agent Error Rate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAgentErrorRate()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Agent <select id="agent-error-rate-type" class="input" style="width:130px;margin-left:6px"><option value="base_agent">base_agent</option><option value="researcher">researcher</option><option value="orchestrator">orchestrator</option></select></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadAgentErrorRate()">Load</button>
+        <div id="agent-error-rate-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Model Preference Summary card (Phase 338) ───────────────── -->
   <div class="card" id="model-preference-summary-card">
     <details id="model-preference-summary-section">
@@ -5149,16 +5197,12 @@ async function loadSchedules() {
 }
 async function createSchedule() {
   const apiKey = el.apiKey().value.trim();
-  if (!apiKey) { appendSpan('
-[error] Enter your API key first.
-', 'o-error'); return; }
+  if (!apiKey) { appendSpan('\n[error] Enter your API key first.\n', 'o-error'); return; }
   const name = (document.getElementById('sched-name').value || '').trim();
   const cron = (document.getElementById('sched-cron').value || '').trim();
   const task = (document.getElementById('sched-task').value || '').trim();
   const agent = document.getElementById('sched-agent').value;
-  if (!name || !cron || !task) { appendSpan('
-[error] Fill in name, cron, and task.
-', 'o-error'); return; }
+  if (!name || !cron || !task) { appendSpan('\n[error] Fill in name, cron, and task.\n', 'o-error'); return; }
   try {
     const resp = await fetch('/schedules', {
       method: 'POST',
@@ -5167,21 +5211,15 @@ async function createSchedule() {
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      appendSpan('
-[error] ' + escapeHtml(err.detail || 'Create failed') + '
-', 'o-error');
+      appendSpan('\n[error] ' + escapeHtml(err.detail || 'Create failed') + '\n', 'o-error');
       return;
     }
     document.getElementById('sched-name').value = '';
     document.getElementById('sched-cron').value = '';
     document.getElementById('sched-task').value = '';
-    appendSpan('
-[schedule created]
-', 'o-status');
+    appendSpan('\n[schedule created]\n', 'o-status');
     await loadSchedules();
-  } catch(e) { appendSpan('
-[error] ' + e.message + '
-', 'o-error'); }
+  } catch(e) { appendSpan('\n[error] ' + e.message + '\n', 'o-error'); }
 }
 async function deleteSchedule(schedId) {
   const apiKey = el.apiKey().value.trim();
@@ -5755,6 +5793,98 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 342: Ingest Job Status ──────────────────────────────────────────────
+async function loadIngestJobStatus() {
+  const body = document.getElementById('ingest-job-status-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/documents');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const docs = Array.isArray(data) ? data : (data.documents || data.items || []);
+    const total = data.total ?? docs.length;
+    const rows = [
+      ['Total Documents', String(total)],
+      ['Shown', String(docs.length)],
+      ['Latest', docs[0] && docs[0].created_at ? docs[0].created_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 343: Rate Limit Remaining ──────────────────────────────────────────────
+async function loadRateLimitRemaining() {
+  const body = document.getElementById('rate-limit-remaining-body');
+  const provider = document.getElementById('rate-limit-remaining-provider').value;
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/rate-limits?provider=' + encodeURIComponent(provider));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Provider', provider],
+      ['Daily Limit', d.daily_limit !== undefined ? d.daily_limit.toLocaleString() : '—'],
+      ['Used Today', d.used_today !== undefined ? d.used_today.toLocaleString() : '—'],
+      ['Remaining', d.remaining !== undefined ? d.remaining.toLocaleString() : '—'],
+      ['Reset At', d.reset_at ? d.reset_at.slice(0, 16).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 344: Session Task Count ──────────────────────────────────────────────
+async function loadSessionTaskCount() {
+  const body = document.getElementById('session-task-count-body');
+  const sessionId = document.getElementById('session-task-count-id').value.trim();
+  if (!sessionId) { body.textContent = 'Enter a session ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/sessions/' + encodeURIComponent(sessionId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const s = await r.json();
+    const rows = [
+      ['Session ID', sessionId.slice(0, 12) + '…'],
+      ['Title', s.title || '—'],
+      ['Task Count', s.task_count ?? s.turn_count ?? '—'],
+      ['Created', s.created_at ? s.created_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 345: Agent Error Rate ──────────────────────────────────────────────
+async function loadAgentErrorRate() {
+  const body = document.getElementById('agent-error-rate-body');
+  const agentType = document.getElementById('agent-error-rate-type').value;
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?agent_type=' + encodeURIComponent(agentType) + '&limit=100');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const total = tasks.length;
+    const failed = tasks.filter(t => t.status === 'failed').length;
+    const complete = tasks.filter(t => t.status === 'complete').length;
+    const errorRate = total > 0 ? ((failed / total) * 100).toFixed(1) : '0.0';
+    const rows = [
+      ['Agent', agentType],
+      ['Sample Size', String(total)],
+      ['Complete', String(complete)],
+      ['Failed', String(failed)],
+      ['Error Rate', errorRate + '%'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 338: Model Preference Summary ──────────────────────────────────────────────

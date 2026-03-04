@@ -19241,3 +19241,101 @@ def test_ui_phase341_loadPipelineTemplateList_calls_pipelines():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadPipelineTemplateList" in html and "/pipelines" in html
+
+
+# ── Phase 342: Ingest Job Status ──────────────────────────────────────────────
+def test_ui_phase342_ingest_job_status_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ingest-job-status-card" in html
+
+
+def test_ui_phase342_loadIngestJobStatus_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadIngestJobStatus(" in html
+
+
+def test_ui_phase342_loadIngestJobStatus_calls_documents():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadIngestJobStatus" in html and "/documents" in html
+
+
+# ── Phase 343: Rate Limit Remaining ──────────────────────────────────────────
+def test_ui_phase343_rate_limit_remaining_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "rate-limit-remaining-card" in html
+
+
+def test_ui_phase343_loadRateLimitRemaining_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRateLimitRemaining(" in html
+
+
+def test_ui_phase343_loadRateLimitRemaining_calls_rate_limits():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadRateLimitRemaining" in html and "rate-limits" in html
+
+
+# ── Phase 344: Session Task Count ────────────────────────────────────────────
+def test_ui_phase344_session_task_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "session-task-count-card" in html
+
+
+def test_ui_phase344_loadSessionTaskCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSessionTaskCount(" in html
+
+
+def test_ui_phase344_loadSessionTaskCount_calls_sessions():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSessionTaskCount" in html and "/sessions/" in html
+
+
+# ── Phase 345: Agent Error Rate ───────────────────────────────────────────────
+def test_ui_phase345_agent_error_rate_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-error-rate-card" in html
+
+
+def test_ui_phase345_loadAgentErrorRate_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAgentErrorRate(" in html
+
+
+def test_ui_phase345_loadAgentErrorRate_computes_error_rate():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAgentErrorRate" in html and "failed" in html and "agent_type" in html
+
+
+# ── JS syntax regression guard (Phase 192 fix) ───────────────────────────────
+def test_ui_js_no_embedded_newlines_in_appendspan():
+    """appendSpan string literals must not contain embedded newlines (JS syntax error)."""
+    import pathlib, re
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    bad = re.search(r"appendSpan\('[^\n']*\n", html)
+    assert bad is None, f"Found appendSpan with embedded newline at pos {bad.start()}"
