@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 235
+UPDATE: 243
 BRANCH: main
-COMMIT: e20f57c
-TIMESTAMP: 2026-03-04T01:00Z
-LAST_OP: PR #195 — Phase 354-357 — Recent Task Errors, Document Count, Schedule Next Runs, Budget Alert Status
-SMOKE_TESTS: 1848/1848
+COMMIT: 9ece028
+TIMESTAMP: 2026-03-04T02:00Z
+LAST_OP: PR #199 — Phase 370-373 — Task Note Count, Batch Task Summary, Threat Event Types, Search Provider Status
+SMOKE_TESTS: 1896/1896
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

@@ -19955,3 +19955,91 @@ def test_ui_phase373_loadSearchProviderStatus_reads_health():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadSearchProviderStatus" in html and "search_providers" in html
+
+
+# ── Phase 374: Metrics History ────────────────────────────────────────────────
+def test_ui_phase374_metrics_history_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "metrics-history-card" in html
+
+
+def test_ui_phase374_loadMetricsHistory_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMetricsHistory(" in html
+
+
+def test_ui_phase374_loadMetricsHistory_calls_metrics_history():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadMetricsHistory" in html and "/admin/metrics/history" in html
+
+
+# ── Phase 375: Pipeline Success Rate ─────────────────────────────────────────
+def test_ui_phase375_pipeline_success_rate_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-success-rate-card" in html
+
+
+def test_ui_phase375_loadPipelineSuccessRate_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineSuccessRate(" in html
+
+
+def test_ui_phase375_loadPipelineSuccessRate_computes_rate():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineSuccessRate" in html and "Success Rate" in html
+
+
+# ── Phase 376: Document Ingest Rate ──────────────────────────────────────────
+def test_ui_phase376_document_ingest_rate_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "document-ingest-rate-card" in html
+
+
+def test_ui_phase376_loadDocumentIngestRate_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentIngestRate(" in html
+
+
+def test_ui_phase376_loadDocumentIngestRate_calls_documents():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadDocumentIngestRate" in html and "Ingested Today" in html
+
+
+# ── Phase 377: Recent Audit Events ───────────────────────────────────────────
+def test_ui_phase377_recent_audit_events_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "recent-audit-events-card" in html
+
+
+def test_ui_phase377_loadRecentAuditEvents_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRecentAuditEvents(" in html
+
+
+def test_ui_phase377_loadRecentAuditEvents_calls_admin_audit():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadRecentAuditEvents" in html and "/admin/audit" in html

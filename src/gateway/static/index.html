@@ -1243,6 +1243,50 @@
 
 
 
+  <!-- ── Metrics History card (Phase 374) ───────────────── -->
+  <div class="card" id="metrics-history-card">
+    <details id="metrics-history-section">
+      <summary style="cursor:pointer">Metrics History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMetricsHistory()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadMetricsHistory()">Load</button>
+        <div id="metrics-history-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Success Rate card (Phase 375) ───────────────── -->
+  <div class="card" id="pipeline-success-rate-card">
+    <details id="pipeline-success-rate-section">
+      <summary style="cursor:pointer">Pipeline Success Rate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineSuccessRate()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadPipelineSuccessRate()">Load</button>
+        <div id="pipeline-success-rate-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Document Ingest Rate card (Phase 376) ───────────────── -->
+  <div class="card" id="document-ingest-rate-card">
+    <details id="document-ingest-rate-section">
+      <summary style="cursor:pointer">Document Ingest Rate <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadDocumentIngestRate()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadDocumentIngestRate()">Load</button>
+        <div id="document-ingest-rate-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Recent Audit Events card (Phase 377) ───────────────── -->
+  <div class="card" id="recent-audit-events-card">
+    <details id="recent-audit-events-section">
+      <summary style="cursor:pointer">Recent Audit Events <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRecentAuditEvents()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadRecentAuditEvents()">Load</button>
+        <div id="recent-audit-events-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Note Count card (Phase 370) ───────────────── -->
   <div class="card" id="task-note-count-card">
     <details id="task-note-count-section">
@@ -6107,6 +6151,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 374: Metrics History ──────────────────────────────────────────────
+async function loadMetricsHistory() {
+  const body = document.getElementById('metrics-history-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/metrics/history');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = d.metrics || d.data || (Array.isArray(d) ? d : []);
+    if (!rows.length) { body.textContent = 'No metrics data.'; return; }
+    const latest = rows[rows.length - 1];
+    const entries = Object.entries(latest).slice(0, 5).map(([k, v]) => [k, String(v)]);
+    entries.unshift(['Records', String(rows.length)]);
+    body.innerHTML = entries.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 375: Pipeline Success Rate ──────────────────────────────────────────────
+async function loadPipelineSuccessRate() {
+  const body = document.getElementById('pipeline-success-rate-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/pipelines/runs');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const runs = Array.isArray(d) ? d : (d.runs || d.items || []);
+    const total = d.total ?? runs.length;
+    const success = runs.filter(r => r.status === 'complete').length;
+    const rate = runs.length > 0 ? ((success / runs.length) * 100).toFixed(1) : '0.0';
+    const rows = [
+      ['Total Runs', String(total)],
+      ['In Sample', String(runs.length)],
+      ['Successful', String(success)],
+      ['Success Rate', rate + '%'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 376: Document Ingest Rate ──────────────────────────────────────────────
+async function loadDocumentIngestRate() {
+  const body = document.getElementById('document-ingest-rate-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/documents?limit=20');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const docs = Array.isArray(d) ? d : (d.documents || d.items || []);
+    const total = d.total ?? docs.length;
+    const today = new Date().toISOString().slice(0, 10);
+    const todayCount = docs.filter(doc => doc.created_at && doc.created_at.startsWith(today)).length;
+    const rows = [
+      ['Total Docs', String(total)],
+      ['Ingested Today', String(todayCount)],
+      ['In Sample', String(docs.length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 377: Recent Audit Events ──────────────────────────────────────────────
+async function loadRecentAuditEvents() {
+  const body = document.getElementById('recent-audit-events-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/audit?limit=8');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const entries = d.entries || d.items || (Array.isArray(d) ? d : []);
+    if (!entries.length) { body.textContent = 'No audit events.'; return; }
+    body.innerHTML = entries.slice(0, 8).map(e =>
+      '<div class="td-field"><span class="td-label">' + (e.event_type || '—').slice(0, 28) + '</span><span class="td-value">' + (e.created_at ? e.created_at.slice(11, 16) : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 370: Task Note Count ──────────────────────────────────────────────
