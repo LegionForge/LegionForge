@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 214
+UPDATE: 231
 BRANCH: main
-COMMIT: 3d3b709
-TIMESTAMP: 2026-03-05T16:00Z
-LAST_OP: PR #179 — Phase 298-301 — Audit Log Page, Memory Search Results, Task Cost Breakdown, Webhook Event Types
-SMOKE_TESTS: 1675/1675
+COMMIT: 9c11d1b
+TIMESTAMP: 2026-03-04T00:15Z
+LAST_OP: PR #192 — fix JS syntax (embedded newlines) + Phase 342-345 — Ingest Job Status, Rate Limit Remaining, Session Task Count, Agent Error Rate
+SMOKE_TESTS: 1812/1812
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

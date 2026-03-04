@@ -19339,3 +19339,91 @@ def test_ui_js_no_embedded_newlines_in_appendspan():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     bad = re.search(r"appendSpan\('[^\n']*\n", html)
     assert bad is None, f"Found appendSpan with embedded newline at pos {bad.start()}"
+
+
+# ── Phase 346: Audit Log Entry ────────────────────────────────────────────────
+def test_ui_phase346_audit_log_entry_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "audit-log-entry-card" in html
+
+
+def test_ui_phase346_loadAuditLogEntry_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAuditLogEntry(" in html
+
+
+def test_ui_phase346_loadAuditLogEntry_calls_admin_audit():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAuditLogEntry" in html and "/admin/audit" in html
+
+
+# ── Phase 347: Tool Call Count ────────────────────────────────────────────────
+def test_ui_phase347_tool_call_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "tool-call-count-card" in html
+
+
+def test_ui_phase347_loadToolCallCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadToolCallCount(" in html
+
+
+def test_ui_phase347_loadToolCallCount_calls_admin_tools():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadToolCallCount" in html and "/admin/tools" in html
+
+
+# ── Phase 348: Gateway Uptime ────────────────────────────────────────────────
+def test_ui_phase348_gateway_uptime_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "gateway-uptime-card" in html
+
+
+def test_ui_phase348_loadGatewayUptime_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadGatewayUptime(" in html
+
+
+def test_ui_phase348_loadGatewayUptime_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadGatewayUptime" in html and "'/health'" in html
+
+
+# ── Phase 349: Model Usage Breakdown ─────────────────────────────────────────
+def test_ui_phase349_model_usage_breakdown_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "model-usage-breakdown-card" in html
+
+
+def test_ui_phase349_loadModelUsageBreakdown_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadModelUsageBreakdown(" in html
+
+
+def test_ui_phase349_loadModelUsageBreakdown_calls_usage_history():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadModelUsageBreakdown" in html and "/usage/history" in html

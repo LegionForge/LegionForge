@@ -1243,6 +1243,52 @@
 
 
 
+  <!-- ── Audit Log Entry card (Phase 346) ───────────────── -->
+  <div class="card" id="audit-log-entry-card">
+    <details id="audit-log-entry-section">
+      <summary style="cursor:pointer">Audit Log Entry <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAuditLogEntry()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Event Type <input id="audit-log-event-type" class="input" style="width:160px;margin-left:6px" placeholder="e.g. task_created"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadAuditLogEntry()">Load</button>
+        <div id="audit-log-entry-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Tool Call Count card (Phase 347) ───────────────── -->
+  <div class="card" id="tool-call-count-card">
+    <details id="tool-call-count-section">
+      <summary style="cursor:pointer">Tool Call Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadToolCallCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadToolCallCount()">Load</button>
+        <div id="tool-call-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Gateway Uptime card (Phase 348) ───────────────── -->
+  <div class="card" id="gateway-uptime-card">
+    <details id="gateway-uptime-section">
+      <summary style="cursor:pointer">Gateway Uptime <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadGatewayUptime()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadGatewayUptime()">Load</button>
+        <div id="gateway-uptime-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Model Usage Breakdown card (Phase 349) ───────────────── -->
+  <div class="card" id="model-usage-breakdown-card">
+    <details id="model-usage-breakdown-section">
+      <summary style="cursor:pointer">Model Usage Breakdown <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadModelUsageBreakdown()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Days <input id="model-usage-days" class="input" style="width:60px;margin-left:6px" placeholder="7" value="7"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadModelUsageBreakdown()">Load</button>
+        <div id="model-usage-breakdown-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Ingest Job Status card (Phase 342) ───────────────── -->
   <div class="card" id="ingest-job-status-card">
     <details id="ingest-job-status-section">
@@ -5793,6 +5839,88 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 346: Audit Log Entry ──────────────────────────────────────────────
+async function loadAuditLogEntry() {
+  const body = document.getElementById('audit-log-entry-body');
+  const evType = document.getElementById('audit-log-event-type').value.trim();
+  body.textContent = 'Loading...';
+  try {
+    const url = '/admin/audit' + (evType ? '?event_type=' + encodeURIComponent(evType) : '') + '&limit=5';
+    const r = await apiFetch(url);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const entries = d.entries || d.items || (Array.isArray(d) ? d : []);
+    if (!entries.length) { body.textContent = 'No entries found.'; return; }
+    body.innerHTML = entries.slice(0, 5).map(e =>
+      '<div class="td-field"><span class="td-label">' + (e.event_type || '—') + '</span><span class="td-value">' + (e.created_at ? e.created_at.slice(0, 16).replace('T', ' ') : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 347: Tool Call Count ──────────────────────────────────────────────
+async function loadToolCallCount() {
+  const body = document.getElementById('tool-call-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/tools');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const tools = d.tools || (Array.isArray(d) ? d : []);
+    const rows = [
+      ['Registered Tools', String(tools.length)],
+      ['Active', String(tools.filter(t => t.status === 'active').length)],
+      ['Revoked', String(tools.filter(t => t.status === 'revoked').length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 348: Gateway Uptime ──────────────────────────────────────────────
+async function loadGatewayUptime() {
+  const body = document.getElementById('gateway-uptime-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/health');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Status', d.status || 'unknown'],
+      ['Uptime', d.uptime_seconds ? (d.uptime_seconds / 3600).toFixed(1) + 'h' : '—'],
+      ['Version', d.version || '—'],
+      ['Timestamp', d.timestamp ? d.timestamp.slice(0, 16).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 349: Model Usage Breakdown ──────────────────────────────────────────────
+async function loadModelUsageBreakdown() {
+  const body = document.getElementById('model-usage-breakdown-body');
+  const days = parseInt(document.getElementById('model-usage-days').value) || 7;
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/usage/history?days=' + days);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const history = d.history || d.days || (Array.isArray(d) ? d : []);
+    const totalIn = history.reduce((s, x) => s + (x.input_tokens || 0), 0);
+    const totalOut = history.reduce((s, x) => s + (x.output_tokens || 0), 0);
+    const rows = [
+      ['Period', days + ' days'],
+      ['Total Input', totalIn.toLocaleString()],
+      ['Total Output', totalOut.toLocaleString()],
+      ['Days Recorded', String(history.length)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 342: Ingest Job Status ──────────────────────────────────────────────
