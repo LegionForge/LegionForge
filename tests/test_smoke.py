@@ -18977,3 +18977,91 @@ def test_ui_phase329_loadSearchQueryHistory_filters_researcher_tasks():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadSearchQueryHistory" in html and "researcher" in html
+
+
+# ── Phase 330: Task Result Summary ────────────────────────────────────────────
+def test_ui_phase330_task_result_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-result-summary-card" in html
+
+
+def test_ui_phase330_loadTaskResultSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskResultSummary(" in html
+
+
+def test_ui_phase330_loadTaskResultSummary_shows_tokens():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskResultSummary" in html and "Tokens" in html
+
+
+# ── Phase 331: Batch Task Progress ────────────────────────────────────────────
+def test_ui_phase331_batch_task_progress_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "batch-task-progress-card" in html
+
+
+def test_ui_phase331_loadBatchTaskProgress_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadBatchTaskProgress(" in html
+
+
+def test_ui_phase331_loadBatchTaskProgress_calls_batch_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadBatchTaskProgress" in html and "/tasks/batch/" in html
+
+
+# ── Phase 332: Gateway User List ──────────────────────────────────────────────
+def test_ui_phase332_gateway_user_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "gateway-user-list-card" in html
+
+
+def test_ui_phase332_loadGatewayUserList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadGatewayUserList(" in html
+
+
+def test_ui_phase332_loadGatewayUserList_calls_admin_users():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadGatewayUserList" in html and "/admin/users" in html
+
+
+# ── Phase 333: Threat Rule Summary ────────────────────────────────────────────
+def test_ui_phase333_threat_rule_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "threat-rule-summary-card" in html
+
+
+def test_ui_phase333_loadThreatRuleSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadThreatRuleSummary(" in html
+
+
+def test_ui_phase333_loadThreatRuleSummary_calls_threats_summary():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadThreatRuleSummary" in html and "/admin/threats/summary" in html

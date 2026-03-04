@@ -1239,6 +1239,53 @@
 
 
 
+
+  <!-- ── Task Result Summary card (Phase 330) ───────────────── -->
+  <div class="card" id="task-result-summary-card">
+    <details id="task-result-summary-section">
+      <summary style="cursor:pointer">Task Result Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskResultSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-result-summary-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskResultSummary()">Load</button>
+        <div id="task-result-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Batch Task Progress card (Phase 331) ───────────────── -->
+  <div class="card" id="batch-task-progress-card">
+    <details id="batch-task-progress-section">
+      <summary style="cursor:pointer">Batch Task Progress <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadBatchTaskProgress()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Batch ID <input id="batch-task-progress-id" class="input" style="width:200px;margin-left:6px" placeholder="batch-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadBatchTaskProgress()">Load</button>
+        <div id="batch-task-progress-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Gateway User List card (Phase 332) ───────────────── -->
+  <div class="card" id="gateway-user-list-card">
+    <details id="gateway-user-list-section">
+      <summary style="cursor:pointer">Gateway User List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadGatewayUserList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadGatewayUserList()">Load</button>
+        <div id="gateway-user-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Threat Rule Summary card (Phase 333) ───────────────── -->
+  <div class="card" id="threat-rule-summary-card">
+    <details id="threat-rule-summary-section">
+      <summary style="cursor:pointer">Threat Rule Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadThreatRuleSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadThreatRuleSummary()">Load</button>
+        <div id="threat-rule-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Tag Filter card (Phase 326) ───────────────── -->
   <div class="card" id="task-tag-filter-card">
     <details id="task-tag-filter-section">
@@ -5616,6 +5663,95 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 330: Task Result Summary ──────────────────────────────────────────────
+async function loadTaskResultSummary() {
+  const body = document.getElementById('task-result-summary-body');
+  const taskId = document.getElementById('task-result-summary-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const result = t.result || t.output || '';
+    const rows = [
+      ['Status', t.status || '—'],
+      ['Steps', t.step_count ?? '—'],
+      ['Tokens In', (t.tokens && t.tokens.input) ? t.tokens.input.toLocaleString() : '—'],
+      ['Tokens Out', (t.tokens && t.tokens.output) ? t.tokens.output.toLocaleString() : '—'],
+      ['Result (preview)', result.slice(0, 200) + (result.length > 200 ? '…' : '')],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value" style="max-width:280px;word-break:break-word">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 331: Batch Task Progress ──────────────────────────────────────────────
+async function loadBatchTaskProgress() {
+  const body = document.getElementById('batch-task-progress-body');
+  const batchId = document.getElementById('batch-task-progress-id').value.trim();
+  if (!batchId) { body.textContent = 'Enter a batch ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/batch/' + encodeURIComponent(batchId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const total = tasks.length;
+    const done = tasks.filter(t => t.status === 'complete').length;
+    const failed = tasks.filter(t => t.status === 'failed').length;
+    const running = tasks.filter(t => t.status === 'running').length;
+    const rows = [
+      ['Total', String(total)],
+      ['Complete', String(done)],
+      ['Running', String(running)],
+      ['Failed', String(failed)],
+      ['Queued', String(total - done - failed - running)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 332: Gateway User List ──────────────────────────────────────────────
+async function loadGatewayUserList() {
+  const body = document.getElementById('gateway-user-list-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/users');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const users = Array.isArray(data) ? data : (data.users || data.items || []);
+    if (!users.length) { body.textContent = 'No users found.'; return; }
+    body.innerHTML = users.map(u =>
+      '<div class="td-field"><span class="td-label">' + (u.username || u.user_id || '—') + '</span>' +
+      '<span class="td-value">' + (u.is_admin ? 'admin' : 'user') + ' · ' + (u.created_at ? u.created_at.slice(0, 10) : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 333: Threat Rule Summary ──────────────────────────────────────────────
+async function loadThreatRuleSummary() {
+  const body = document.getElementById('threat-rule-summary-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/threats/summary');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Total Events', (d.total ?? d.count ?? '—').toLocaleString()],
+      ['Unique Types', d.unique_types ?? '—'],
+      ['Top Type', d.top_type || d.most_common || '—'],
+      ['Last 24h', d.last_24h ?? d.recent ?? '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 326: Task Tag Filter ──────────────────────────────────────────────
