@@ -407,9 +407,10 @@ async def init_db() -> None:
             "row_factory": dict_row,
             "autocommit": True,
         },
+        open=False,
     )
     try:
-        await admin_pool.wait()
+        await admin_pool.open(wait=True)
 
         # Enable pgvector extension (requires superuser)
         async with admin_pool.connection() as conn:
@@ -451,8 +452,9 @@ async def init_db() -> None:
                 "row_factory": dict_row,
                 "autocommit": True,
             },
+            open=False,
         )
-        await _pool.wait()
+        await _pool.open(wait=True)
         logger.info(
             f"[db-init] App pool initialized (user={getattr(settings.security, 'db_app_user', 'legionforge_app')!r})"
         )
@@ -472,8 +474,9 @@ async def init_db() -> None:
                 "row_factory": dict_row,
                 "autocommit": True,
             },
+            open=False,
         )
-        await _pool.wait()
+        await _pool.open(wait=True)
 
     # Verify audit log chain integrity. An empty chain is valid on first run.
     # A broken chain (verified_rows > 0 + hash mismatch) means tamper — halt.
