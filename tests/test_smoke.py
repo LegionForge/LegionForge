@@ -18449,3 +18449,91 @@ def test_ui_no_backslash_exclamation_in_js():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert r"\!" not in html
+
+
+# ── Phase 306: Agent Run History ─────────────────────────────────────────────
+def test_ui_phase306_agent_run_history_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "agent-run-history-card" in html
+
+
+def test_ui_phase306_loadAgentRunHistory_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAgentRunHistory(" in html
+
+
+def test_ui_phase306_loadAgentRunHistory_calls_tasks_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAgentRunHistory" in html and "agent_type" in html
+
+
+# ── Phase 307: Task Queue Depth ──────────────────────────────────────────────
+def test_ui_phase307_task_queue_depth_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-queue-depth-card" in html
+
+
+def test_ui_phase307_loadTaskQueueDepth_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskQueueDepth(" in html
+
+
+def test_ui_phase307_loadTaskQueueDepth_checks_queued_status():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskQueueDepth" in html and "status=queued" in html
+
+
+# ── Phase 308: System Uptime Info ────────────────────────────────────────────
+def test_ui_phase308_system_uptime_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "system-uptime-info-card" in html
+
+
+def test_ui_phase308_loadSystemUptimeInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSystemUptimeInfo(" in html
+
+
+def test_ui_phase308_loadSystemUptimeInfo_calls_health():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSystemUptimeInfo" in html and "/health" in html
+
+
+# ── Phase 309: Webhook Test Fire ─────────────────────────────────────────────
+def test_ui_phase309_webhook_test_fire_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-test-fire-card" in html
+
+
+def test_ui_phase309_loadWebhookTestFire_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookTestFire(" in html
+
+
+def test_ui_phase309_loadWebhookTestFire_calls_webhooks_test():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadWebhookTestFire" in html and "/webhooks/" in html
