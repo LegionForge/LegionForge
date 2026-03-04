@@ -1238,6 +1238,56 @@
 
 
 
+
+  <!-- ── Task Tag Filter card (Phase 326) ───────────────── -->
+  <div class="card" id="task-tag-filter-card">
+    <details id="task-tag-filter-section">
+      <summary style="cursor:pointer">Task Tag Filter <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskTagFilter()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Tag <input id="task-tag-filter-tag" class="input" style="width:150px;margin-left:6px" placeholder="my-tag"></label>
+        <label style="font-size:12px;margin-left:8px">Limit <input id="task-tag-filter-limit" class="input" style="width:50px;margin-left:4px" placeholder="10" value="10"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskTagFilter()">Load</button>
+        <div id="task-tag-filter-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Ollama Model Detail card (Phase 327) ───────────────── -->
+  <div class="card" id="ollama-model-detail-card">
+    <details id="ollama-model-detail-section">
+      <summary style="cursor:pointer">Ollama Model Detail <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadOllamaModelDetail()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Model <input id="ollama-model-detail-name" class="input" style="width:180px;margin-left:6px" placeholder="llama3.1:8b"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadOllamaModelDetail()">Load</button>
+        <div id="ollama-model-detail-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Note List card (Phase 328) ───────────────── -->
+  <div class="card" id="task-note-list-card">
+    <details id="task-note-list-section">
+      <summary style="cursor:pointer">Task Note List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskNoteList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-note-list-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskNoteList()">Load</button>
+        <div id="task-note-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Search Query History card (Phase 329) ───────────────── -->
+  <div class="card" id="search-query-history-card">
+    <details id="search-query-history-section">
+      <summary style="cursor:pointer">Search Query History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadSearchQueryHistory()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Limit <input id="search-query-history-limit" class="input" style="width:60px;margin-left:6px" placeholder="10" value="10"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadSearchQueryHistory()">Load</button>
+        <div id="search-query-history-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Annotation Detail card (Phase 322) ───────────────── -->
   <div class="card" id="task-annotation-detail-card">
     <details id="task-annotation-detail-section">
@@ -5566,6 +5616,89 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 326: Task Tag Filter ──────────────────────────────────────────────
+async function loadTaskTagFilter() {
+  const body = document.getElementById('task-tag-filter-body');
+  const tag = document.getElementById('task-tag-filter-tag').value.trim();
+  const limit = parseInt(document.getElementById('task-tag-filter-limit').value.trim() || '10', 10);
+  if (!tag) { body.textContent = 'Enter a tag.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?tags=' + encodeURIComponent(tag) + '&limit=' + limit);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    if (!tasks.length) { body.textContent = 'No tasks with tag "' + tag + '"'; return; }
+    body.innerHTML = tasks.map(t =>
+      '<div class="td-field"><span class="td-label">' + (t.task_id || t.id || '—').slice(0, 8) + '…</span>' +
+      '<span class="td-value">' + (t.status || '—') + ' · ' + (t.agent_type || '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 327: Ollama Model Detail ──────────────────────────────────────────────
+async function loadOllamaModelDetail() {
+  const body = document.getElementById('ollama-model-detail-body');
+  const modelName = document.getElementById('ollama-model-detail-name').value.trim();
+  if (!modelName) { body.textContent = 'Enter a model name.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/models/' + encodeURIComponent(modelName));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Model', d.name || d.model || modelName],
+      ['Size', d.size ? (d.size / 1e9).toFixed(2) + ' GB' : '—'],
+      ['Parameter Size', d.details && d.details.parameter_size ? d.details.parameter_size : '—'],
+      ['Quantization', d.details && d.details.quantization_level ? d.details.quantization_level : '—'],
+      ['Modified', d.modified_at ? d.modified_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 328: Task Note List ──────────────────────────────────────────────
+async function loadTaskNoteList() {
+  const body = document.getElementById('task-note-list-body');
+  const taskId = document.getElementById('task-note-list-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId) + '/notes');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const notes = Array.isArray(data) ? data : (data.notes || data.items || []);
+    if (!notes.length) { body.textContent = 'No notes for this task.'; return; }
+    body.innerHTML = notes.map((n, i) =>
+      '<div class="td-field"><span class="td-label">Note ' + (i + 1) + '</span>' +
+      '<span class="td-value" style="max-width:280px;word-break:break-word">' + (n.content || n.text || n.note || '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 329: Search Query History ──────────────────────────────────────────────
+async function loadSearchQueryHistory() {
+  const body = document.getElementById('search-query-history-body');
+  const limit = parseInt(document.getElementById('search-query-history-limit').value.trim() || '10', 10);
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks?limit=' + limit);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const queries = tasks.filter(t => t.agent_type === 'researcher' && t.input);
+    if (!queries.length) { body.textContent = 'No recent search queries found.'; return; }
+    body.innerHTML = queries.map(t =>
+      '<div class="td-field" style="margin-bottom:4px"><span class="td-label" style="font-size:10px">' +
+      (t.created_at ? t.created_at.slice(0, 10) : '—') + '</span>' +
+      '<span class="td-value" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+      (t.input || '—').slice(0, 80) + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 322: Task Annotation Detail ──────────────────────────────────────────────

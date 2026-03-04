@@ -18889,3 +18889,91 @@ def test_ui_phase325_loadDocumentChunkPreview_calls_chunks_api():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadDocumentChunkPreview" in html and "/chunks" in html
+
+
+# ── Phase 326: Task Tag Filter ────────────────────────────────────────────────
+def test_ui_phase326_task_tag_filter_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-tag-filter-card" in html
+
+
+def test_ui_phase326_loadTaskTagFilter_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskTagFilter(" in html
+
+
+def test_ui_phase326_loadTaskTagFilter_calls_tasks_with_tags():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskTagFilter" in html and "tags=" in html
+
+
+# ── Phase 327: Ollama Model Detail ───────────────────────────────────────────
+def test_ui_phase327_ollama_model_detail_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "ollama-model-detail-card" in html
+
+
+def test_ui_phase327_loadOllamaModelDetail_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadOllamaModelDetail(" in html
+
+
+def test_ui_phase327_loadOllamaModelDetail_calls_models_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadOllamaModelDetail" in html and "/models/" in html
+
+
+# ── Phase 328: Task Note List ─────────────────────────────────────────────────
+def test_ui_phase328_task_note_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-note-list-card" in html
+
+
+def test_ui_phase328_loadTaskNoteList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskNoteList(" in html
+
+
+def test_ui_phase328_loadTaskNoteList_calls_notes_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskNoteList" in html and "/notes" in html
+
+
+# ── Phase 329: Search Query History ──────────────────────────────────────────
+def test_ui_phase329_search_query_history_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "search-query-history-card" in html
+
+
+def test_ui_phase329_loadSearchQueryHistory_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadSearchQueryHistory(" in html
+
+
+def test_ui_phase329_loadSearchQueryHistory_filters_researcher_tasks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadSearchQueryHistory" in html and "researcher" in html
