@@ -1243,6 +1243,50 @@
 
 
 
+  <!-- ── Cluster Health Summary card (Phase 366) ───────────────── -->
+  <div class="card" id="cluster-health-summary-card">
+    <details id="cluster-health-summary-section">
+      <summary style="cursor:pointer">Cluster Health Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadClusterHealthSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadClusterHealthSummary()">Load</button>
+        <div id="cluster-health-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Input Length Stats card (Phase 367) ───────────────── -->
+  <div class="card" id="task-input-length-card">
+    <details id="task-input-length-section">
+      <summary style="cursor:pointer">Task Input Length Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskInputLength()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTaskInputLength()">Load</button>
+        <div id="task-input-length-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Annotation Summary card (Phase 368) ───────────────── -->
+  <div class="card" id="annotation-summary-card">
+    <details id="annotation-summary-section">
+      <summary style="cursor:pointer">Annotation Summary <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadAnnotationSummary()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadAnnotationSummary()">Load</button>
+        <div id="annotation-summary-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Template Usage Count card (Phase 369) ───────────────── -->
+  <div class="card" id="template-usage-count-card">
+    <details id="template-usage-count-section">
+      <summary style="cursor:pointer">Template Usage Count <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTemplateUsageCount()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadTemplateUsageCount()">Load</button>
+        <div id="template-usage-count-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Duration Stats card (Phase 362) ───────────────── -->
   <div class="card" id="task-duration-stats-card">
     <details id="task-duration-stats-section">
@@ -6018,6 +6062,92 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 366: Cluster Health Summary ──────────────────────────────────────────────
+async function loadClusterHealthSummary() {
+  const body = document.getElementById('cluster-health-summary-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/cluster/nodes');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const nodes = Array.isArray(d) ? d : (d.nodes || d.items || []);
+    const healthy = nodes.filter(n => n.status === 'healthy' || n.healthy === true).length;
+    const rows = [
+      ['Total Nodes', String(nodes.length)],
+      ['Healthy', String(healthy)],
+      ['Unhealthy', String(nodes.length - healthy)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 367: Task Input Length Stats ──────────────────────────────────────────────
+async function loadTaskInputLength() {
+  const body = document.getElementById('task-input-length-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/tasks?limit=50');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const tasks = Array.isArray(data) ? data : (data.tasks || data.items || []);
+    const lengths = tasks.map(t => (t.input || '').length).filter(l => l > 0);
+    if (!lengths.length) { body.textContent = 'No task input data.'; return; }
+    const avg = lengths.reduce((s, v) => s + v, 0) / lengths.length;
+    const rows = [
+      ['Sample', String(lengths.length)],
+      ['Avg Length', avg.toFixed(0) + ' chars'],
+      ['Min', String(Math.min(...lengths)) + ' chars'],
+      ['Max', String(Math.max(...lengths)) + ' chars'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 368: Annotation Summary ──────────────────────────────────────────────
+async function loadAnnotationSummary() {
+  const body = document.getElementById('annotation-summary-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/admin/annotations');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const anns = Array.isArray(d) ? d : (d.annotations || d.items || []);
+    const thumbsUp = anns.filter(a => a.rating === 1 || a.rating === 'up').length;
+    const thumbsDown = anns.filter(a => a.rating === -1 || a.rating === 'down').length;
+    const rows = [
+      ['Total', String(anns.length)],
+      ['Positive', String(thumbsUp)],
+      ['Negative', String(thumbsDown)],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 369: Template Usage Count ──────────────────────────────────────────────
+async function loadTemplateUsageCount() {
+  const body = document.getElementById('template-usage-count-body');
+  body.textContent = 'Loading...';
+  try {
+    const r = await apiFetch('/templates');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const templates = Array.isArray(d) ? d : (d.templates || d.items || []);
+    const rows = [
+      ['Total Templates', String(templates.length)],
+      ['Most Recent', templates[0] && templates[0].name ? templates[0].name.slice(0, 24) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 362: Task Duration Stats ──────────────────────────────────────────────

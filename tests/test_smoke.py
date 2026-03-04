@@ -19779,3 +19779,91 @@ def test_ui_phase365_loadAdminStatsOverview_calls_admin_stats():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadAdminStatsOverview" in html and "/admin/stats" in html
+
+
+# ── Phase 366: Cluster Health Summary ────────────────────────────────────────
+def test_ui_phase366_cluster_health_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cluster-health-summary-card" in html
+
+
+def test_ui_phase366_loadClusterHealthSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadClusterHealthSummary(" in html
+
+
+def test_ui_phase366_loadClusterHealthSummary_calls_cluster_nodes():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadClusterHealthSummary" in html and "/cluster/nodes" in html
+
+
+# ── Phase 367: Task Input Length Stats ───────────────────────────────────────
+def test_ui_phase367_task_input_length_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-input-length-card" in html
+
+
+def test_ui_phase367_loadTaskInputLength_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskInputLength(" in html
+
+
+def test_ui_phase367_loadTaskInputLength_computes_avg():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskInputLength" in html and "Avg Length" in html
+
+
+# ── Phase 368: Annotation Summary ────────────────────────────────────────────
+def test_ui_phase368_annotation_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "annotation-summary-card" in html
+
+
+def test_ui_phase368_loadAnnotationSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadAnnotationSummary(" in html
+
+
+def test_ui_phase368_loadAnnotationSummary_calls_admin_annotations():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadAnnotationSummary" in html and "/admin/annotations" in html
+
+
+# ── Phase 369: Template Usage Count ──────────────────────────────────────────
+def test_ui_phase369_template_usage_count_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "template-usage-count-card" in html
+
+
+def test_ui_phase369_loadTemplateUsageCount_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTemplateUsageCount(" in html
+
+
+def test_ui_phase369_loadTemplateUsageCount_calls_templates():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTemplateUsageCount" in html and "'/templates'" in html
