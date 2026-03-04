@@ -1236,6 +1236,53 @@
 
 
 
+
+  <!-- ── Embedding Stats card (Phase 318) ───────────────────── -->
+  <div class="card" id="embedding-stats-card">
+    <details id="embedding-stats-section">
+      <summary style="cursor:pointer">Embedding Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadEmbeddingStats()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadEmbeddingStats()">Load</button>
+        <div id="embedding-stats-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Cluster Node List card (Phase 319) ───────────────────── -->
+  <div class="card" id="cluster-node-list-card">
+    <details id="cluster-node-list-section">
+      <summary style="cursor:pointer">Cluster Node List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadClusterNodeList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadClusterNodeList()">Load</button>
+        <div id="cluster-node-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Pipeline Definition card (Phase 320) ───────────────────── -->
+  <div class="card" id="pipeline-definition-card">
+    <details id="pipeline-definition-section">
+      <summary style="cursor:pointer">Pipeline Definition <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineDefinition()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Pipeline ID <input id="pipeline-definition-id" class="input" style="width:60px;margin-left:6px" placeholder="1"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadPipelineDefinition()">Load</button>
+        <div id="pipeline-definition-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── User Budget History card (Phase 321) ───────────────────── -->
+  <div class="card" id="user-budget-history-card">
+    <details id="user-budget-history-section">
+      <summary style="cursor:pointer">User Budget History <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadUserBudgetHistory()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Days <input id="user-budget-history-days" class="input" style="width:60px;margin-left:6px" placeholder="7" value="7"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadUserBudgetHistory()">Load</button>
+        <div id="user-budget-history-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Pipeline Run Status card (Phase 314) ───────────────────── -->
   <div class="card" id="pipeline-run-status-card">
     <details id="pipeline-run-status-section">
@@ -5470,6 +5517,98 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 318: Embedding Stats ──────────────────────────────────────────────
+async function loadEmbeddingStats() {
+  const body = document.getElementById('embedding-stats-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/memory/stats');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Embedding Model', d.embedding_model || d.model || '—'],
+      ['Vector Dimensions', d.dimensions || d.vector_size || '—'],
+      ['Index Type', d.index_type || 'HNSW'],
+      ['Total Vectors', (d.total_memories ?? d.count ?? '—').toLocaleString()],
+      ['Memory Enabled', d.enabled !== undefined ? String(d.enabled) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 319: Cluster Node List ──────────────────────────────────────────────
+async function loadClusterNodeList() {
+  const body = document.getElementById('cluster-node-list-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/cluster/nodes');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const nodes = Array.isArray(data) ? data : (data.nodes || data.items || []);
+    if (!nodes.length) { body.textContent = 'No cluster nodes configured.'; return; }
+    body.innerHTML = nodes.map((n, i) =>
+      '<div class="td-field" style="margin-bottom:4px">' +
+      '<span class="td-label">' + (n.name || n.host || 'Node ' + (i + 1)) + '</span>' +
+      '<span class="td-value">' + (n.status || n.health || '—') + ' &middot; ' + (n.url || n.host || '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 320: Pipeline Definition ──────────────────────────────────────────────
+async function loadPipelineDefinition() {
+  const body = document.getElementById('pipeline-definition-body');
+  const pid = document.getElementById('pipeline-definition-id').value.trim();
+  if (!pid) { body.textContent = 'Enter a pipeline ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines/' + encodeURIComponent(pid));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const p = await r.json();
+    const steps = p.steps || [];
+    const rows = [
+      ['Pipeline ID', String(p.id || p.pipeline_id || pid)],
+      ['Name', p.name || '—'],
+      ['Description', p.description || '—'],
+      ['Steps', String(steps.length)],
+      ['Created', p.created_at ? p.created_at.slice(0, 10) : '—'],
+    ];
+    let html = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+    if (steps.length) {
+      html += '<div style="margin-top:6px;font-size:11px;color:var(--text-xdim)">Steps: ' +
+        steps.map((s, i) => (i + 1) + '. ' + (s.agent_type || s.type || s.name || 'step')).join(' → ') + '</div>';
+    }
+    body.innerHTML = html;
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 321: User Budget History ──────────────────────────────────────────────
+async function loadUserBudgetHistory() {
+  const body = document.getElementById('user-budget-history-body');
+  const days = parseInt(document.getElementById('user-budget-history-days').value.trim() || '7', 10);
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/usage/history?days=' + days);
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const hist = Array.isArray(data) ? data : (data.history || data.items || []);
+    if (!hist.length) { body.textContent = 'No usage data.'; return; }
+    const cols = ['Date', 'Tokens', 'Requests'];
+    let tbl = '<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>' +
+      cols.map(c => '<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">' + c + '</th>').join('') + '</tr>';
+    for (const d of hist.slice(0, days)) {
+      tbl += '<tr><td style="padding:2px 6px">' + (d.date || d.day || '—') + '</td>' +
+        '<td style="padding:2px 6px">' + ((d.tokens_used || d.total_tokens || 0)).toLocaleString() + '</td>' +
+        '<td style="padding:2px 6px">' + (d.request_count || d.requests || '—') + '</td></tr>';
+    }
+    tbl += '</table>';
+    body.innerHTML = tbl;
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 314: Pipeline Run Status ──────────────────────────────────────────────

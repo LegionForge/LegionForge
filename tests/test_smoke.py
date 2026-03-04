@@ -18713,3 +18713,91 @@ def test_ui_phase317_loadTaskSiblingsList_calls_siblings_api():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadTaskSiblingsList" in html and "/siblings" in html
+
+
+# ── Phase 318: Embedding Stats ───────────────────────────────────────────────
+def test_ui_phase318_embedding_stats_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "embedding-stats-card" in html
+
+
+def test_ui_phase318_loadEmbeddingStats_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadEmbeddingStats(" in html
+
+
+def test_ui_phase318_loadEmbeddingStats_calls_memory_stats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadEmbeddingStats" in html and "/memory/stats" in html
+
+
+# ── Phase 319: Cluster Node List ─────────────────────────────────────────────
+def test_ui_phase319_cluster_node_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "cluster-node-list-card" in html
+
+
+def test_ui_phase319_loadClusterNodeList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadClusterNodeList(" in html
+
+
+def test_ui_phase319_loadClusterNodeList_calls_cluster_nodes():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadClusterNodeList" in html and "/cluster/nodes" in html
+
+
+# ── Phase 320: Pipeline Definition ───────────────────────────────────────────
+def test_ui_phase320_pipeline_definition_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-definition-card" in html
+
+
+def test_ui_phase320_loadPipelineDefinition_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineDefinition(" in html
+
+
+def test_ui_phase320_loadPipelineDefinition_calls_pipelines_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineDefinition" in html and "/pipelines/" in html
+
+
+# ── Phase 321: User Budget History ───────────────────────────────────────────
+def test_ui_phase321_user_budget_history_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-budget-history-card" in html
+
+
+def test_ui_phase321_loadUserBudgetHistory_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserBudgetHistory(" in html
+
+
+def test_ui_phase321_loadUserBudgetHistory_calls_usage_history():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadUserBudgetHistory" in html and "/usage/history" in html
