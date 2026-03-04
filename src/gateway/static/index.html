@@ -1235,6 +1235,54 @@
 
 
 
+
+  <!-- ── Pipeline Run Status card (Phase 314) ───────────────────── -->
+  <div class="card" id="pipeline-run-status-card">
+    <details id="pipeline-run-status-section">
+      <summary style="cursor:pointer">Pipeline Run Status <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadPipelineRunStatus()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Run ID <input id="pipeline-run-status-id" class="input" style="width:200px;margin-left:6px" placeholder="run-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadPipelineRunStatus()">Load</button>
+        <div id="pipeline-run-status-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Recent Threat Events card (Phase 315) ───────────────────── -->
+  <div class="card" id="recent-threat-events-card">
+    <details id="recent-threat-events-section">
+      <summary style="cursor:pointer">Recent Threat Events <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadRecentThreatEvents()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Hours <input id="recent-threat-events-hours" class="input" style="width:60px;margin-left:6px" placeholder="24" value="24"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadRecentThreatEvents()">Load</button>
+        <div id="recent-threat-events-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Memory Store Stats card (Phase 316) ───────────────────── -->
+  <div class="card" id="memory-store-stats-card">
+    <details id="memory-store-stats-section">
+      <summary style="cursor:pointer">Memory Store Stats <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadMemoryStoreStats()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadMemoryStoreStats()">Load</button>
+        <div id="memory-store-stats-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Siblings List card (Phase 317) ───────────────────── -->
+  <div class="card" id="task-siblings-list-card">
+    <details id="task-siblings-list-section">
+      <summary style="cursor:pointer">Task Siblings List <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskSiblingsList()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-siblings-list-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskSiblingsList()">Load</button>
+        <div id="task-siblings-list-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Input Preview card (Phase 310) ───────────────────── -->
   <div class="card" id="task-input-preview-card">
     <details id="task-input-preview-section">
@@ -5422,6 +5470,93 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 314: Pipeline Run Status ──────────────────────────────────────────────
+async function loadPipelineRunStatus() {
+  const body = document.getElementById('pipeline-run-status-body');
+  const runId = document.getElementById('pipeline-run-status-id').value.trim();
+  if (!runId) { body.textContent = 'Enter a run ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/pipelines/runs/' + encodeURIComponent(runId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Run ID', (d.run_id || d.id || runId).slice(0, 12) + '…'],
+      ['Pipeline', d.pipeline_id || '—'],
+      ['Status', d.status || '—'],
+      ['Steps Done', (d.steps_completed ?? d.completed_steps ?? '—') + ' / ' + (d.total_steps ?? '—')],
+      ['Started', d.started_at ? d.started_at.slice(0, 19).replace('T', ' ') : '—'],
+      ['Finished', d.finished_at ? d.finished_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 315: Recent Threat Events ──────────────────────────────────────────────
+async function loadRecentThreatEvents() {
+  const body = document.getElementById('recent-threat-events-body');
+  const hours = parseInt(document.getElementById('recent-threat-events-hours').value.trim() || '24', 10);
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/admin/threats?hours=' + hours + '&limit=15');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const events = Array.isArray(data) ? data : (data.events || data.items || []);
+    if (!events.length) { body.textContent = 'No threat events in last ' + hours + 'h.'; return; }
+    const cols = ['Type', 'Agent', 'Time'];
+    let tbl = '<table style="width:100%;font-size:11px;border-collapse:collapse"><tr>' +
+      cols.map(c => '<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border)">' + c + '</th>').join('') + '</tr>';
+    for (const e of events) {
+      tbl += '<tr><td style="padding:2px 6px">' + (e.threat_type || e.event_type || '—') + '</td>' +
+        '<td style="padding:2px 6px">' + (e.agent_id || '—') + '</td>' +
+        '<td style="padding:2px 6px">' + (e.created_at ? e.created_at.slice(0, 16).replace('T', ' ') : '—') + '</td></tr>';
+    }
+    tbl += '</table>';
+    body.innerHTML = tbl;
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 316: Memory Store Stats ──────────────────────────────────────────────
+async function loadMemoryStoreStats() {
+  const body = document.getElementById('memory-store-stats-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/memory/stats');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const d = await r.json();
+    const rows = [
+      ['Total Memories', (d.total_memories ?? d.count ?? d.total ?? '—').toLocaleString()],
+      ['Unique Agents', d.unique_agents ?? '—'],
+      ['Enabled', d.enabled !== undefined ? String(d.enabled) : '—'],
+      ['Oldest Entry', d.oldest_at ? d.oldest_at.slice(0, 10) : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 317: Task Siblings List ──────────────────────────────────────────────
+async function loadTaskSiblingsList() {
+  const body = document.getElementById('task-siblings-list-body');
+  const taskId = document.getElementById('task-siblings-list-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId) + '/siblings');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const siblings = Array.isArray(data) ? data : (data.siblings || data.tasks || []);
+    if (!siblings.length) { body.textContent = 'No siblings found.'; return; }
+    body.innerHTML = siblings.map(s =>
+      '<div class="td-field"><span class="td-label">' + (s.task_id || s.id || '—').slice(0, 8) + '…</span>' +
+      '<span class="td-value">' + (s.status || '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 310: Task Input Preview ──────────────────────────────────────────────

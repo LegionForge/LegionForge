@@ -18625,3 +18625,91 @@ def test_ui_phase313_loadAdminUserDetail_calls_admin_users_api():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadAdminUserDetail" in html and "/admin/users/" in html
+
+
+# ── Phase 314: Pipeline Run Status ───────────────────────────────────────────
+def test_ui_phase314_pipeline_run_status_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-run-status-card" in html
+
+
+def test_ui_phase314_loadPipelineRunStatus_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineRunStatus(" in html
+
+
+def test_ui_phase314_loadPipelineRunStatus_calls_pipeline_runs_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineRunStatus" in html and "/pipelines/runs/" in html
+
+
+# ── Phase 315: Recent Threat Events ──────────────────────────────────────────
+def test_ui_phase315_recent_threat_events_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "recent-threat-events-card" in html
+
+
+def test_ui_phase315_loadRecentThreatEvents_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadRecentThreatEvents(" in html
+
+
+def test_ui_phase315_loadRecentThreatEvents_calls_threats_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadRecentThreatEvents" in html and "/admin/threats" in html
+
+
+# ── Phase 316: Memory Store Stats ────────────────────────────────────────────
+def test_ui_phase316_memory_store_stats_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "memory-store-stats-card" in html
+
+
+def test_ui_phase316_loadMemoryStoreStats_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadMemoryStoreStats(" in html
+
+
+def test_ui_phase316_loadMemoryStoreStats_calls_memory_stats():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadMemoryStoreStats" in html and "/memory/stats" in html
+
+
+# ── Phase 317: Task Siblings List ─────────────────────────────────────────────
+def test_ui_phase317_task_siblings_list_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-siblings-list-card" in html
+
+
+def test_ui_phase317_loadTaskSiblingsList_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskSiblingsList(" in html
+
+
+def test_ui_phase317_loadTaskSiblingsList_calls_siblings_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskSiblingsList" in html and "/siblings" in html
