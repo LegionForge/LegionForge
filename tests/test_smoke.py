@@ -18352,3 +18352,100 @@ def test_worker_base_agent_uses_build_base_graph():
     src = pathlib.Path("src/gateway/worker.py").read_text()
     assert "build_base_graph" in src
     assert "import build_graph" not in src
+
+
+# ── Phase 302: Token Usage Summary ───────────────────────────────────────────
+def test_ui_phase302_token_usage_summary_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "token-usage-summary-card" in html
+
+
+def test_ui_phase302_loadTokenUsageSummary_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTokenUsageSummary(" in html
+
+
+def test_ui_phase302_loadTokenUsageSummary_calls_usage_history():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "/usage/history" in html
+
+
+# ── Phase 303: Document Metadata ─────────────────────────────────────────────
+def test_ui_phase303_document_metadata_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "document-metadata-card" in html
+
+
+def test_ui_phase303_loadDocumentMetadata_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadDocumentMetadata(" in html
+
+
+def test_ui_phase303_loadDocumentMetadata_calls_documents_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadDocumentMetadata" in html and "/documents/" in html
+
+
+# ── Phase 304: Pipeline Step Info ────────────────────────────────────────────
+def test_ui_phase304_pipeline_step_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "pipeline-step-info-card" in html
+
+
+def test_ui_phase304_loadPipelineStepInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadPipelineStepInfo(" in html
+
+
+def test_ui_phase304_loadPipelineStepInfo_calls_pipelines_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadPipelineStepInfo" in html and "/pipelines/" in html
+
+
+# ── Phase 305: User Session Detail ───────────────────────────────────────────
+def test_ui_phase305_user_session_detail_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "user-session-detail-card" in html
+
+
+def test_ui_phase305_loadUserSessionDetail_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadUserSessionDetail(" in html
+
+
+def test_ui_phase305_loadUserSessionDetail_calls_sessions_api():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadUserSessionDetail" in html and "/sessions/" in html
+
+
+# ── JS syntax guard: no backslash-exclamation in script ──────────────────────
+def test_ui_no_backslash_exclamation_in_js():
+    """Heredoc escaping can produce backslash-! which is a JS syntax error."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert r"\!" not in html

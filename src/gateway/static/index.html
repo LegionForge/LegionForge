@@ -3461,20 +3461,20 @@ function apiFetch(path, opts = {}) {
 // ── Phase 74: Browser Notifications ────────────────────────────────────────
 function _notifIcon() { return document.getElementById('notif-toggle'); }
 async function requestNotifPermission() {
-  if (\!("Notification" in window)) return;
+  if (!("Notification" in window)) return;
   const p = await Notification.requestPermission();
   _notifIcon().textContent = p === "granted" ? "🔔" : "🔕";
   localStorage.setItem("lf-notif", p);
 }
 function initNotifButton() {
   const btn = _notifIcon();
-  if (\!btn) return;
-  if (\!("Notification" in window)) { btn.style.display = "none"; return; }
+  if (!btn) return;
+  if (!("Notification" in window)) { btn.style.display = "none"; return; }
   if (Notification.permission === "granted") btn.textContent = "🔔";
   else btn.textContent = "🔕";
 }
 function notifyTaskComplete(taskInput, elapsed) {
-  if (\!("Notification" in window) || Notification.permission \!== "granted") return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
   const preview = (taskInput || "Task").slice(0, 60);
   new Notification("LegionForge — Task Complete", {
     body: "✓ " + preview + "... (" + elapsed + "s)",
@@ -4691,10 +4691,10 @@ function saveHistory(entry) {
 // ── Phase 75: Scheduled Tasks ───────────────────────────────────────────────
 async function loadSchedules() {
   const apiKey = el.apiKey().value.trim();
-  if (\!apiKey) return;
+  if (!apiKey) return;
   try {
     const resp = await fetch('/schedules?limit=50', { headers: { Authorization: 'Bearer ' + apiKey } });
-    if (\!resp.ok) return;
+    if (!resp.ok) return;
     const data = await resp.json();
     const scheds = data.schedules || data || [];
     const summary = document.getElementById('sched-summary');
@@ -4720,14 +4720,14 @@ async function loadSchedules() {
 }
 async function createSchedule() {
   const apiKey = el.apiKey().value.trim();
-  if (\!apiKey) { appendSpan('
+  if (!apiKey) { appendSpan('
 [error] Enter your API key first.
 ', 'o-error'); return; }
   const name = (document.getElementById('sched-name').value || '').trim();
   const cron = (document.getElementById('sched-cron').value || '').trim();
   const task = (document.getElementById('sched-task').value || '').trim();
   const agent = document.getElementById('sched-agent').value;
-  if (\!name || \!cron || \!task) { appendSpan('
+  if (!name || !cron || !task) { appendSpan('
 [error] Fill in name, cron, and task.
 ', 'o-error'); return; }
   try {
@@ -4736,7 +4736,7 @@ async function createSchedule() {
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
       body: JSON.stringify({ name, cron_expr: cron, task_text: task, agent_type: agent, enabled: true })
     });
-    if (\!resp.ok) {
+    if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       appendSpan('
 [error] ' + escapeHtml(err.detail || 'Create failed') + '
@@ -4756,8 +4756,8 @@ async function createSchedule() {
 }
 async function deleteSchedule(schedId) {
   const apiKey = el.apiKey().value.trim();
-  if (\!apiKey) return;
-  if (\!confirm('Delete this schedule?')) return;
+  if (!apiKey) return;
+  if (!confirm('Delete this schedule?')) return;
   try {
     await fetch('/schedules/' + encodeURIComponent(schedId), {
       method: 'DELETE',
