@@ -7,6 +7,7 @@ Usage:
     python -m src.cli.manage_users create-user  --username alice [--daily-limit 100000]
     python -m src.cli.manage_users deactivate-user --username alice
     python -m src.cli.manage_users set-quota --username alice --daily-limit 500000
+    python -m src.cli.manage_users rotate-key --username alice
     python -m src.cli.manage_users list-users
 
 Security:
@@ -128,6 +129,45 @@ async def set_quota(username: str, daily_limit: int) -> None:
         sys.exit(1)
 
 
+async def rotate_key(username: str) -> None:
+    """
+    Generate a new API key for an existing user and print it once.
+
+    The old key is invalidated immediately.  The new raw key is never stored —
+    treat the output like a password and copy it before closing the terminal.
+
+    Args:
+        username: Username whose key will be rotated.
+    """
+    from src.database import init_db, get_gateway_user_by_username, rotate_api_key
+    from src.gateway.auth import hash_api_key
+
+    await init_db()
+
+    user = await get_gateway_user_by_username(username)
+    if user is None:
+        print(f"ERROR: User '{username}' not found.", file=sys.stderr)
+        sys.exit(1)
+    if not user.get("is_active"):
+        print(f"ERROR: User '{username}' is inactive.", file=sys.stderr)
+        sys.exit(1)
+
+    raw_key = secrets.token_urlsafe(32)
+    key_hash = hash_api_key(raw_key)
+
+    updated = await rotate_api_key(user_id=user["user_id"], new_key_hash=key_hash)
+    if not updated:
+        print(f"ERROR: Failed to rotate key for '{username}'.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"✅ API key rotated for '{username}':")
+    print()
+    print(f"   API KEY (copy now — not stored in plain text):")
+    print(f"   {raw_key}")
+    print()
+    print("   Use with: curl -H 'Authorization: Bearer <key>' ...")
+
+
 async def list_users() -> list:
     """Print all gateway users (active and inactive) in a table. Returns the user list."""
     from src.database import init_db, list_gateway_users
@@ -197,6 +237,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="New daily token limit",
     )
 
+    # rotate-key
+    p_rotate = sub.add_parser("rotate-key", help="Rotate the API key for a user")
+    p_rotate.add_argument(
+        "--username", required=True, help="Username whose key to rotate"
+    )
+
     # list-users
     sub.add_parser("list-users", help="List all gateway users")
 
@@ -213,6 +259,8 @@ def main() -> None:
         asyncio.run(deactivate_user(args.username))
     elif args.command == "set-quota":
         asyncio.run(set_quota(args.username, args.daily_limit))
+    elif args.command == "rotate-key":
+        asyncio.run(rotate_key(args.username))
     elif args.command == "list-users":
         asyncio.run(list_users())
     else:

@@ -264,6 +264,11 @@ create-admin-user:  ## Create a gateway admin user: make create-admin-user USERN
 		--admin \
 		$(if $(DAILY_LIMIT),--daily-limit $(DAILY_LIMIT),)
 
+.PHONY: rotate-key
+rotate-key:  ## Reset a user's API key: make rotate-key USERNAME=<name>
+	@if [ -z "$(USERNAME)" ]; then echo "Usage: make rotate-key USERNAME=<name>"; exit 1; fi
+	@cd $(BASE) && $(PYTHON) -m src.cli.manage_users rotate-key --username "$(USERNAME)"
+
 .PHONY: promote-admin
 promote-admin:  ## Promote an existing user to admin: make promote-admin USERNAME=<name> (Phase 24)
 	@if [ -z "$(USERNAME)" ]; then echo "Usage: make promote-admin USERNAME=<name>"; exit 1; fi

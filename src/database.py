@@ -3792,7 +3792,7 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
         cur = await conn.execute(
             """
             UPDATE gateway_users
-            SET api_key_hash = %s, updated_at = now()
+            SET api_key_hash = %s
             WHERE user_id = %s
             """,
             (new_key_hash, user_id),
