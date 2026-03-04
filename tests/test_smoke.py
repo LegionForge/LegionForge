@@ -18342,3 +18342,13 @@ def test_ui_apiFetch_injects_bearer_token():
     idx = html.index("function apiFetch(")
     fn_body = html[idx : idx + 400]
     assert "Authorization" in fn_body and "Bearer" in fn_body
+
+
+# ── worker import guard ───────────────────────────────────────────────────────
+def test_worker_base_agent_uses_build_base_graph():
+    """worker.py must import build_base_graph, not the non-existent build_graph."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/worker.py").read_text()
+    assert "build_base_graph" in src
+    assert "import build_graph" not in src

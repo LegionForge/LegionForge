@@ -109,9 +109,9 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         uncompiled = build_orchestrator_graph()
         agent_id = "orchestrator"
     else:
-        from src.base_graph import build_graph
+        from src.base_graph import build_base_graph
 
-        uncompiled = build_graph()
+        uncompiled = build_base_graph()
         agent_id = "base_agent"
 
     # Seed all safeguard fields (step_count, action_history, token_count, …)
