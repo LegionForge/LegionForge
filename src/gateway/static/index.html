@@ -1240,6 +1240,53 @@
 
 
 
+
+  <!-- ── Task Dependency Info card (Phase 334) ───────────────── -->
+  <div class="card" id="task-dependency-info-card">
+    <details id="task-dependency-info-section">
+      <summary style="cursor:pointer">Task Dependency Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskDependencyInfo()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-dependency-info-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskDependencyInfo()">Load</button>
+        <div id="task-dependency-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Webhook Registry card (Phase 335) ───────────────── -->
+  <div class="card" id="webhook-registry-card">
+    <details id="webhook-registry-section">
+      <summary style="cursor:pointer">Webhook Registry <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadWebhookRegistry()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadWebhookRegistry()">Load</button>
+        <div id="webhook-registry-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Task Priority Info card (Phase 336) ───────────────── -->
+  <div class="card" id="task-priority-info-card">
+    <details id="task-priority-info-section">
+      <summary style="cursor:pointer">Task Priority Info <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadTaskPriorityInfo()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <label style="font-size:12px">Task ID <input id="task-priority-info-id" class="input" style="width:200px;margin-left:6px" placeholder="task-uuid"></label>
+        <button class="btn" style="margin-left:8px;font-size:12px" onclick="loadTaskPriorityInfo()">Load</button>
+        <div id="task-priority-info-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Active Sessions Overview card (Phase 337) ───────────────── -->
+  <div class="card" id="active-sessions-overview-card">
+    <details id="active-sessions-overview-section">
+      <summary style="cursor:pointer">Active Sessions Overview <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadActiveSessionsOverview()" title="Refresh">&#8635;</button></summary>
+      <div style="margin-top:8px">
+        <button class="btn" style="font-size:12px" onclick="loadActiveSessionsOverview()">Load</button>
+        <div id="active-sessions-overview-body" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+      </div>
+    </details>
+  </div>
+
   <!-- ── Task Result Summary card (Phase 330) ───────────────── -->
   <div class="card" id="task-result-summary-card">
     <details id="task-result-summary-section">
@@ -5663,6 +5710,98 @@ function analyzeInput() {
   bodyEl.innerHTML = fields.map(([k, v]) =>
     `<div class="td-field"><span class="td-label">${k}</span><span class="td-value">${v}</span></div>`
   ).join('');
+}
+
+// ── Phase 334: Task Dependency Info ──────────────────────────────────────────────
+async function loadTaskDependencyInfo() {
+  const body = document.getElementById('task-dependency-info-body');
+  const taskId = document.getElementById('task-dependency-info-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const dep = t.depends_on || t.dependency_id || null;
+    const rows = [
+      ['Task ID', taskId.slice(0, 12) + '…'],
+      ['Depends On', dep ? dep.slice(0, 12) + '…' : '(none)'],
+      ['Status', t.status || '—'],
+      ['Priority', t.priority ?? '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 335: Webhook Registry ──────────────────────────────────────────────
+async function loadWebhookRegistry() {
+  const body = document.getElementById('webhook-registry-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/webhooks');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const webhooks = Array.isArray(data) ? data : (data.webhooks || data.items || []);
+    if (!webhooks.length) { body.textContent = 'No webhooks registered.'; return; }
+    body.innerHTML = webhooks.map(w =>
+      '<div class="td-field"><span class="td-label">' + (w.event || w.event_type || '—') + '</span>' +
+      '<span class="td-value" style="max-width:250px;overflow:hidden;text-overflow:ellipsis">' +
+      (w.url || '—') + ' · ' + (w.active !== undefined ? (w.active ? 'active' : 'inactive') : '—') + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 336: Task Priority Info ──────────────────────────────────────────────
+async function loadTaskPriorityInfo() {
+  const body = document.getElementById('task-priority-info-body');
+  const taskId = document.getElementById('task-priority-info-id').value.trim();
+  if (!taskId) { body.textContent = 'Enter a task ID.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const t = await r.json();
+    const prio = t.priority ?? 5;
+    const label = prio <= 2 ? 'High' : prio <= 6 ? 'Normal' : 'Low';
+    const rows = [
+      ['Priority', String(prio) + ' (' + label + ')'],
+      ['Agent', t.agent_type || '—'],
+      ['Status', t.status || '—'],
+      ['Created', t.created_at ? t.created_at.slice(0, 19).replace('T', ' ') : '—'],
+    ];
+    body.innerHTML = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
+}
+
+// ── Phase 337: Active Sessions Overview ──────────────────────────────────────────────
+async function loadActiveSessionsOverview() {
+  const body = document.getElementById('active-sessions-overview-body');
+  body.textContent = 'Loading…';
+  try {
+    const r = await apiFetch('/sessions');
+    if (!r.ok) { body.textContent = 'HTTP ' + r.status; return; }
+    const data = await r.json();
+    const sessions = Array.isArray(data) ? data : (data.sessions || data.items || []);
+    const total = data.total ?? sessions.length;
+    const rows = [
+      ['Total Sessions', String(total)],
+      ['Shown', String(sessions.length)],
+    ];
+    let html = rows.map(([k, v]) =>
+      '<div class="td-field"><span class="td-label">' + k + '</span><span class="td-value">' + v + '</span></div>'
+    ).join('');
+    if (sessions.length) {
+      html += sessions.slice(0, 5).map(s =>
+        '<div class="td-field"><span class="td-label">' + (s.title || s.session_id || '—').slice(0, 20) + '</span>' +
+        '<span class="td-value">' + (s.task_count ?? '—') + ' tasks</span></div>'
+      ).join('');
+    }
+    body.innerHTML = html;
+  } catch (e) { body.textContent = 'Error: ' + e.message; }
 }
 
 // ── Phase 330: Task Result Summary ──────────────────────────────────────────────

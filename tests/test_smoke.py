@@ -19065,3 +19065,91 @@ def test_ui_phase333_loadThreatRuleSummary_calls_threats_summary():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "loadThreatRuleSummary" in html and "/admin/threats/summary" in html
+
+
+# ── Phase 334: Task Dependency Info ──────────────────────────────────────────
+def test_ui_phase334_task_dependency_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-dependency-info-card" in html
+
+
+def test_ui_phase334_loadTaskDependencyInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskDependencyInfo(" in html
+
+
+def test_ui_phase334_loadTaskDependencyInfo_shows_depends_on():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskDependencyInfo" in html and "depends_on" in html
+
+
+# ── Phase 335: Webhook Registry ───────────────────────────────────────────────
+def test_ui_phase335_webhook_registry_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "webhook-registry-card" in html
+
+
+def test_ui_phase335_loadWebhookRegistry_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadWebhookRegistry(" in html
+
+
+def test_ui_phase335_loadWebhookRegistry_calls_webhooks():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadWebhookRegistry" in html
+
+
+# ── Phase 336: Task Priority Info ─────────────────────────────────────────────
+def test_ui_phase336_task_priority_info_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "task-priority-info-card" in html
+
+
+def test_ui_phase336_loadTaskPriorityInfo_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadTaskPriorityInfo(" in html
+
+
+def test_ui_phase336_loadTaskPriorityInfo_shows_priority_label():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadTaskPriorityInfo" in html and "Normal" in html
+
+
+# ── Phase 337: Active Sessions Overview ───────────────────────────────────────
+def test_ui_phase337_active_sessions_overview_card_exists():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "active-sessions-overview-card" in html
+
+
+def test_ui_phase337_loadActiveSessionsOverview_defined():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "async function loadActiveSessionsOverview(" in html
+
+
+def test_ui_phase337_loadActiveSessionsOverview_calls_sessions():
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "loadActiveSessionsOverview" in html and "/sessions" in html
