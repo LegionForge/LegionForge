@@ -386,7 +386,9 @@ agent_memory:
 #
 search:
   provider: ddg           # primary provider (no key required)
-  fallback: ddg           # fallback if primary fails (same = no fallback)
+  fallback_chain:         # tried in order when primary fails
+    - brave               # Keychain: legionforge_brave_api_key
+    - tavily              # Keychain: legionforge_tavily_api_key
   max_results: 5
   timeout: 10.0
 

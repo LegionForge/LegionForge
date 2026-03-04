@@ -35,34 +35,38 @@ logger = logging.getLogger(__name__)
 
 def search_web(query: str, max_results: int = 5) -> list[SearchResult]:
     """
-    Search the web using the configured provider with automatic fallback.
+    Search the web using the configured provider with automatic fallback chain.
 
-    Returns a list of SearchResult TypedDicts.  On total failure returns a
+    Tries providers in order: primary → fallback_chain (or legacy fallback).
+    Returns the first successful result set.  On total failure returns a
     single-item list with an ``error`` key — never raises.
     """
     from config.settings import settings
 
     primary_name: str = settings.search.provider
-    fallback_name: str = settings.search.fallback
 
-    # ── Primary attempt ────────────────────────────────────────────────────────
-    primary_results = _try_provider(primary_name, query, max_results)
-    if _has_real_results(primary_results):
-        return primary_results
+    # Build ordered provider list (deduplicated, primary always first).
+    chain: list[str] = [primary_name]
+    if settings.search.fallback_chain:
+        for name in settings.search.fallback_chain:
+            if name not in chain:
+                chain.append(name)
+    elif settings.search.fallback and settings.search.fallback != primary_name:
+        chain.append(settings.search.fallback)
 
-    # ── Fallback attempt (only if different from primary) ──────────────────────
-    if fallback_name and fallback_name != primary_name:
-        logger.info(
-            "[search] Primary provider %r failed/empty — trying fallback %r",
-            primary_name,
-            fallback_name,
-        )
-        fallback_results = _try_provider(fallback_name, query, max_results)
-        if _has_real_results(fallback_results):
-            return fallback_results
+    primary_results: list[SearchResult] | None = None
+    for name in chain:
+        results = _try_provider(name, query, max_results)
+        if primary_results is None:
+            primary_results = results
+        if _has_real_results(results):
+            if name != primary_name:
+                logger.info("[search] Using fallback provider %r", name)
+            return results
+        logger.info("[search] Provider %r failed/empty — trying next in chain", name)
 
-    # Both failed — return whatever the primary gave us (structured error dict)
-    return primary_results
+    # All providers exhausted — return primary error result
+    return primary_results or []
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────

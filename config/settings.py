@@ -584,16 +584,21 @@ class SearchSettings(BaseModel):
     """
     Phase 56 — Configurable Search Providers.
 
-    ``provider`` names the primary search backend.  ``fallback`` is tried if
-    the primary is unavailable or returns only error results.  Both values must
-    be one of: ddg | tavily | brave | exa | perplexity | searxng.
+    ``provider`` names the primary search backend.  ``fallback_chain`` is an
+    ordered list of providers to try if the primary fails — tried in order,
+    first success wins.  Each value must be one of:
+    ddg | tavily | brave | exa | perplexity | searxng.
+
+    ``fallback`` (legacy single-fallback field) is still honoured when
+    ``fallback_chain`` is empty, for backwards compatibility.
 
     Per-provider sub-configs below carry defaults that work out of the box;
     override individual fields in your hardware YAML profile under ``search:``.
     """
 
     provider: str = "ddg"
-    fallback: str = "ddg"
+    fallback: str = "ddg"  # legacy — ignored when fallback_chain is set
+    fallback_chain: list[str] = []  # ordered fallback list; overrides fallback
     max_results: int = 5
     timeout: float = 10.0
 
