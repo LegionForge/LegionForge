@@ -3493,7 +3493,7 @@ def test_write_pgpass_entry_function_exists():
 
 
 def test_get_postgres_password_has_no_trust_fallback():
-    """_get_postgres_password() must not contain the trust-auth empty-string fallback."""
+    """_get_postgres_password() must not contain the unconditional trust-auth fallback."""
     import inspect
     from src.database import _get_postgres_password
 
@@ -3502,10 +3502,20 @@ def test_get_postgres_password_has_no_trust_fallback():
         "_get_postgres_password() still has the trust-auth fallback — "
         "it must raise RuntimeError when no password is found"
     )
-    assert 'return ""' not in src, (
-        "_get_postgres_password() must not return an empty password "
-        "as a fallback (trust auth is no longer supported)"
-    )
+    # The guarded POSTGRES_TRUST_AUTH escape hatch is allowed; a bare return "" is not.
+    assert "# trust auth assumed" not in src
+
+
+def test_get_postgres_password_trust_auth_escape_hatch():
+    """POSTGRES_TRUST_AUTH=true lets new devs with trust-auth Homebrew PG proceed."""
+    import inspect
+    from src.database import _get_postgres_password
+
+    src = inspect.getsource(_get_postgres_password)
+    assert (
+        "POSTGRES_TRUST_AUTH" in src
+    ), "_get_postgres_password() must support POSTGRES_TRUST_AUTH escape hatch"
+    assert "Do NOT use in production" in src
 
 
 def test_get_or_generate_app_password_has_process_cache():

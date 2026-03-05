@@ -123,6 +123,7 @@ def _get_postgres_password() -> str:
       2. macOS Keychain / security CLI via get_api_key("postgres")
       3. POSTGRES_PASSWORD environment variable
       4. ~/.pgpass (PostgreSQL standard credential file, chmod 0600)
+      5. POSTGRES_TRUST_AUTH=true — explicit opt-in for local trust auth (dev only)
 
     Raises RuntimeError if not found anywhere.
     Never embed this value in a connection URI — pass as a keyword argument only.
@@ -162,11 +163,20 @@ def _get_postgres_password() -> str:
     if pw:
         return pw
 
+    # ── 5. POSTGRES_TRUST_AUTH opt-in (development / trust-auth installs only) ─
+    if os.environ.get("POSTGRES_TRUST_AUTH", "").lower() in ("1", "true", "yes"):
+        logger.warning(
+            "POSTGRES_TRUST_AUTH=true — using empty password (trust auth). "
+            "Do NOT use in production."
+        )
+        return ""
+
     raise RuntimeError(
         "PostgreSQL admin password not found. Provide it via one of:\n"
         "  1. ~/.pgpass  (hostname:port:database:username:password, chmod 0600)\n"
         "  2. python -m keyring set postgres api_key\n"
-        "  3. export POSTGRES_PASSWORD=<value>"
+        "  3. export POSTGRES_PASSWORD=<value>\n"
+        "  4. export POSTGRES_TRUST_AUTH=true  (local trust auth only — not for production)"
     )
 
 
