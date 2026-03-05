@@ -15,6 +15,7 @@ jobs:
       AGENT_HARDWARE_PROFILE: mac_m4_mini_16gb
       LANGCHAIN_TRACING_V2: "false"
       LOG_LEVEL: INFO
+      POSTGRES_TRUST_AUTH: "true"
 
     steps:
       - name: Checkout

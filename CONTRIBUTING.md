@@ -98,12 +98,15 @@ The current passing count is the floor — it never goes down. If a refactor
 removes a function, remove its test AND add a replacement test for the new
 implementation. The count should trend upward over time.
 
-| Phase | Minimum test count |
+| Milestone | Minimum test count |
 |---|---|
 | Phase 0 complete | 23 ✅ |
-| Phase 1 complete | 35+ (tool registry, capability boundaries, output sanitization, cost estimation) |
-| Phase 2 complete | 45+ (Guardian checks, audit log, RAG provenance) |
-| Phase 3 complete | 55+ (ACL tokens, sub-agent spawning, privilege escalation blocks) |
+| Phase 1 complete | 35+ |
+| Phase 2 complete | 45+ |
+| Phase 3 complete | 55+ |
+| v1.0.0 (Phase 7) | 242 ✅ |
+| v1.0.1 (Phase 16) | 492 ✅ |
+| **Current baseline (v0.7.0-alpha, Phase 381)** | **1946 ✅** — floor; never goes down |
 
 ---
 
@@ -151,12 +154,18 @@ docs: update hardware profile comments
 
 ---
 
+## CI / Automated Testing
+
+`.github/workflows/smoke.yml` runs `pytest tests/test_smoke.py` on every push and every
+PR targeting `main`. The job uses `ubuntu-latest` and installs from `requirements.txt`.
+No external services are required — PostgreSQL, Ollama, and Guardian are not started.
+
 ## Setting Up Branch Protection (GitHub)
 
 Once you have regular workflow, enable in GitHub:
 - Settings → Branches → Add rule for `main`
 - ✅ Require pull request before merging
-- ✅ Require status checks to pass
+- ✅ Require status checks to pass (`Smoke Tests`)
 - ✅ Do not allow bypassing the above settings
 
 ---

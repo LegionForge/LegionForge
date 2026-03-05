@@ -7,6 +7,65 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.7.0-alpha] — 2026-03-05
+
+Post-v1.0.0 development sprint. All pre-v1.0 security blockers resolved. 1946/1946 smoke tests.
+
+### Added — v1.0.1 Patches (PRs #36–#42, 2026-03-01)
+
+- **Schema fix**: `gateway_users.user_id` changed from `UUID` to `TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text` — allows OAuth natural IDs (e.g. `github:12345`, `oidc:sub-claim`); idempotent `ALTER TABLE` migration
+- **`api_key_hash UNIQUE` constraint dropped** — multiple OAuth users share the `[OAUTH-NO-KEY]` sentinel; bcrypt hashes are cryptographically unique without a DB constraint
+- **`MODEL_INTEGRITY_STRICT` env var** — overrides YAML at deploy time; `/status` surfaces per-model integrity results under `components.model_integrity`
+- **Live Kerberos KDC** — MIT Kerberos 1.22.2 user-owned KDC on port 7088; `gssapi` built against MIT Kerberos (not macOS Heimdal); `make test-kerberos` target; `SCALING.md` KDC guide
+- **Loop protection checkpoint resume** — `resume_run_config(thread_id)` passes `None` as graph input so LangGraph hydrates safeguard counters from checkpoint rather than resetting
+- **All 38 integration tests real** — Ollama test stubs replaced with live tests; `asyncio_default_fixture_loop_scope=session` in `pytest.ini`
+- 492/492 smoke tests at v1.0.1
+
+### Added — Phases 8–16 (PRs #43–#116, 2026-03-01 – 2026-03-03)
+
+- **Phase 8**: FastAPI gateway (:8080), PostgreSQL task queue (`FOR UPDATE SKIP LOCKED`), `astream_events()` SSE streaming, minimal web UI, A2A Agent Card, MCP tools endpoint, Discord connector
+- **Phase 9**: langchain 1.x migration, 5-tool library, parallel agent fan-out, security hardening sprint
+- **Phase 10**: DB-backed stream tokens, per-user daily token budgets, `/usage/me`, user management CLI
+- **Phase 11**: `SecureToolNode` security fix, 38 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md`
+- **Phase 12**: `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` — multi-scheme `require_user` gate
+- **Phase 13**: Real GSSAPI Kerberos backend, Redis-backed stream token store, multi-instance `docker-compose.multi.yml` + Nginx
+- **Phase 14**: Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` trace middleware
+- **Phase 15**: Polished web UI — localStorage API key + history, task cancel, tool call blocks, live elapsed timer, copy button, `?` keyboard shortcut
+- **Phase 16**: Telegram polling connector, Slack Socket Mode connector, HMAC-SHA256 generic webhook connector (:8081), shared `src/connectors/base.py`
+- 846/846 smoke tests at Phase 16; 40/40 UI tests; 104/104 TestLab tests
+
+### Added — Agent Capability Phases 71–101 (PRs #110–#129, 2026-03-03)
+
+- Agent self-verification loop, light/dark mode toggle, task export to Markdown, browser notifications, scheduled tasks UI, task notes + share link, task timeline, pipeline runner, task retry + cost estimator, task stats card, agents directory, document ingestor, memory search, security threats summary, tool registry admin, health metrics dashboard, user management admin, audit log viewer, keyboard shortcuts modal, webhook management, user preferences, admin annotations viewer, identity badge, pipeline run history, audit verify, task attachments, API key rotation, batch submit, session tasks browser
+- 1049/1049 smoke tests at Phase 101
+
+### Added — UI Tool Library, Phases 102–381 (PRs #130–#201, 2026-03-03 – 2026-03-04)
+
+381 JavaScript UI functions over the gateway REST API — complete operator dashboard. Each function maps to one API endpoint; each gets 3 smoke tests. Groups:
+
+- **Task management**: detail, clone, pin/unpin, priority queue, label/tag/keyword/date filters, dependency chain, siblings, bulk ops, result download, live watcher, JSON inspector, annotation viewer/stats, draft save, live counter, pagination
+- **Usage & quota**: token budget bar, usage chart, cost history, my profile, top token users, admin quota
+- **Pipelines & schedules**: list/create/edit/detail/steps/runs/health (pipelines), list/detail/toggle/next-run/history (schedules)
+- **Security & audit**: threats monitor/summary/detail/by-type, audit log viewer/filter/verify, HITL event log
+- **Memory & documents**: memory stats/recall/ingest, document list/chunks/search, ingest status
+- **Admin**: admin stats/metrics/user-detail/user-tokens/schedules/annotations, gateway stats, connector status, agent run metrics, system health
+- **Sessions & webhooks**: session list/detail/delete, webhook list/history/detail/test
+- **Providers & models**: model list, model prefs, provider usage, Ollama status, search provider status
+- 1920/1920 smoke tests at Phase 381
+
+### Security — Hardening Sprint (PRs #208–#214, 2026-03-04 – 2026-03-05)
+
+- **PR #208**: `audit_anchors` table + anchor-aware `verify_audit_log_chain()` + `prune_audit_log()` + `run_db_maintenance()` scheduler heartbeat + `make db-maintenance` target
+- **PR #209**: Fixed `system_prompt_exfiltration` bypass (3 new detection patterns) + 5 pentest infrastructure bugs; 24/24 pentest PASS
+- **PR #210**: Extended exfiltration detection — 3 new patterns (leak/dump/expose verbs, system message synonyms, "what were you told/instructed") + NFKC normalization + zero-width character stripping in `detect_injection()`
+- **PR #211**: `check_hitl_required()` made `async`; DESTRUCTIVE_PATTERN events now written to `threat_events` — LOG tier (`confidence=0.6`) and HALT tier (`confidence=1.0`); `base_graph.py` updated to `await`
+- **PR #212**: PostgreSQL `trust` → `scram-sha-256` — `pg_hba.conf`: `local→peer`, `host→scram-sha-256`; `_read_pgpass()`/`_write_pgpass_entry()` helpers; trust fallback removed; `_cached_app_pw` cache; **pre-v1.0 security blocker closed**
+- **PR #213**: `POSTGRES_TRUST_AUTH=true` escape hatch — explicit opt-in for new-developer trust-auth installs
+- **PR #214**: Documentation sync — all status docs updated to v0.7.0-alpha / Phase 381 / 1946 tests
+- 1946/1946 smoke tests; 38/38 integration tests
+
+---
+
 ## [1.0.0] — 2026-02-26
 
 First stable release. All seven phases complete. 242/242 smoke tests passing.

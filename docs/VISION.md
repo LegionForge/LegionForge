@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Phases 0–16 complete — v1.0.1 released. All services operational. See [`docs/quick-start.md`](./quick-start.md) to connect.
+**Status:** Phases 0–381 complete — v0.7.0-alpha. All services operational. 1946/1946 smoke tests. See [`docs/quick-start.md`](./quick-start.md) to connect.
 **Source:** Architecture retrospective and requirements session
 
 ---
@@ -200,7 +200,11 @@ The moon is visible and the rocket exists. The fuel budget is tighter than it lo
 
 ## Phase Roadmap — From Here
 
-### Phase 8 — Gateway + Streaming + Task Queue
+> **As of v0.7.0-alpha:** Phases 8–16 and the UI tool library (Phases 60–381) are all
+> complete. The goals below were the original design targets; they are recorded here for
+> historical reference. The architecture described was implemented as specified.
+
+### Phase 8 — Gateway + Streaming + Task Queue ✅ COMPLETE
 **Goal:** A user can submit a task and watch it execute in real time.
 
 Steps (in order — each unblocks the next):
@@ -236,7 +240,7 @@ No framework. Prove the architecture before investing in polish.
 Discord (easiest). Thin service: listen for messages → POST /tasks → subscribe
 SSE → post updates back to channel. OpenClaw's UX model, LegionForge's security.
 
-### Phase 9 — General Worker Tools
+### Phase 9 — General Worker Tools ✅ COMPLETE
 **Goal:** Agents can do more than web research.
 
 Bootstrap tool inventory (in order of risk, low to high):
@@ -250,7 +254,7 @@ Each new tool class requires: ToolManifest, Guardian registration, sequence cont
 smoke tests, and a pentest variant. The crystallization pipeline is the long-term
 answer to capability growth — agents solve problems, patterns crystallize into tools.
 
-### Phase 10 — Multi-User, Auth, and Scale
+### Phase 10 — Multi-User, Auth, and Scale ✅ COMPLETE
 **Goal:** More than one person can safely use the same instance.
 
 - User accounts (simple username + API key to start; OAuth later)

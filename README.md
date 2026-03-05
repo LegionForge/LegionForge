@@ -114,8 +114,10 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, live timer, copy, keyboard shortcut | ✅ Complete |
 | **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC + async callback) | ✅ Complete |
 | **v1.0.1** | schema fix (user_id TEXT), live Kerberos KDC, all integration tests real, MODEL_INTEGRITY_STRICT env var | ✅ Complete |
+| **Phase 60–381** | 381-tool UI library (Phases 60–381, PRs #117–#201) — full operator dashboard built as JS functions over the gateway REST API | ✅ Complete |
+| **Security hardening** | Extended exfiltration detection + NFKC normalization; DESTRUCTIVE_PATTERN async DB logging; PostgreSQL scram-sha-256 migration (PRs #208–#214) | ✅ Complete |
 
-**492/492 smoke tests passing.** 38 integration tests passing. 5/5 Kerberos live-KDC tests. Runs in ~3 seconds (no external services required for smoke tests).
+**1946/1946 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. Smoke suite runs in ~16 seconds (no external services required).
 
 ---
 
@@ -138,7 +140,7 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 
 | Issue | Severity | Status |
 |---|---|---|
-| **PostgreSQL `trust` auth** — any local process can connect to the DB without a password | Medium (local dev) / High (shared/remote) | ⚠️ Accepted for local dev — **must fix before v1.0** |
+| ~~**PostgreSQL `trust` auth**~~ — any local process can connect to the DB without a password | Medium (local dev) / High (shared/remote) | ✅ **Closed — PR #212.** Now uses `peer` (Unix socket) + `scram-sha-256` (TCP). Passwords in `~/.pgpass`. |
 
 ---
 
@@ -156,8 +158,9 @@ pip install -r requirements.txt
 # 2. Set your hardware profile
 export AGENT_HARDWARE_PROFILE=mac_m4_mini_16gb
 
-# 3. Store your PostgreSQL password in Keychain (no .env files)
-security add-generic-password -s postgres -a api_key -w yourpassword
+# 3. Store your PostgreSQL admin password in ~/.pgpass
+#    (or set POSTGRES_TRUST_AUTH=true for a default Homebrew trust-auth install)
+echo "localhost:5432:*:$(whoami):yourpassword" >> ~/.pgpass && chmod 0600 ~/.pgpass
 
 # 4. Initialize the database and generate secrets
 make db-init
@@ -166,7 +169,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 492 passed in ~3s
+# Expected: 1946 passed in ~16s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -218,9 +221,10 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 492 smoke tests, ~3s, no services required
+make test-smoke      # 1946 smoke tests, ~16s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
+make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
 make health-server   # Start operator health API at :8765
 make gateway-start   # Start user-facing gateway at :8080
@@ -256,6 +260,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v1.0.1** — all 16 phases complete + post-release patches. 492/492 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests.
+**v0.7.0-alpha** — Phases 0–381 complete. 1946/1946 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
 
-This is the public release of LegionForge. Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
