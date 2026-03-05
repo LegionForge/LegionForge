@@ -1,7 +1,7 @@
 # LegionForge Architecture
 
-**Version:** 1.0.1 — Phases 0–16 complete
-**Last updated:** 2026-03-01
+**Version:** 0.7.0-alpha — Phases 0–381 complete
+**Last updated:** 2026-03-05
 
 ---
 

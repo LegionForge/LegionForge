@@ -29,15 +29,16 @@ LegionForge is an open-source framework for building hardened AI agent systems o
 ## Security Architecture
 
 ### Guardian Sidecar
-A standalone FastAPI process (`:9766`) that runs a **deterministic-only** 6-check pipeline — no LLM calls in the hot path. Fast, auditable, unpoisonable.
+A standalone FastAPI process (`:9766`) that runs a **deterministic-only** 7-check pipeline — no LLM calls in the hot path. Fast, auditable, unpoisonable.
 
 ```
-Check 0: Tool revocation (REVOKED status — immediate halt)
-Check 1: Tool registry + hash validation
+Check 0: Tool revocation  (REVOKED status — immediate halt)
+Check 1: Tool registry + SHA-256 hash validation
 Check 2: Capability boundary enforcement (negative capability list)
-Check 3: Destructive pattern detection
+Check 3: Destructive pattern detection in tool args
 Check 4: Agent sequence contract validation
-Check 5: Hash integrity (Ed25519 signed tools)
+Check 5: Ed25519 signature verification
+Check 6: Adaptive threat rules (hot-reloaded every 10s — no restart needed)
 ```
 
 ### Crystallization Pipeline
@@ -68,26 +69,27 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 
 | Phase | What Was Built | Status |
 |---|---|---|
-| **0** | PostgreSQL + pgvector, async LLM factory, health server, 23 smoke tests | ✅ Complete |
+| **0** | PostgreSQL + pgvector, async LLM factory, health server | ✅ Complete |
 | **1** | Researcher agent, tool registry + hash validation, capability boundaries, threat event logging | ✅ Complete |
 | **2** | Docker containerization, Guardian security sidecar, immutable audit log (SHA-256 hash chain), RAG provenance | ✅ Complete |
 | **3** | JWT task tokens + ACLs, sub-agent orchestrator, sandbox retry tier | ✅ Complete |
 | **4** | Threat Analyst agent, adaptive Guardian rules, AI Bill of Materials | ✅ Complete |
 | **5** | Crystallization Pipeline — Observer + Crystallizer agents, pre-HITL analyzer, Ed25519-signed tools | ✅ Complete |
-| **5.5** | Security hardening: DB RBAC, AST bypass guards (subscript/MRO/globals), tool revocation, TOCTOU mitigation, Ollama model integrity | ✅ Complete |
+| **5.5** | Security hardening: DB RBAC, AST bypass guards, tool revocation, TOCTOU mitigation, model integrity | ✅ Complete |
 | **6** | PentestAgent — air-gapped red-team bot, 8 attack classes × 3 variants, stop-at-proof | ✅ Complete |
-| **7** | Guardian feedback loop, SECURITY.md, v1.0 readiness | ✅ Complete |
+| **7** | Guardian feedback loop, SECURITY.md, v1.0 readiness hardening | ✅ Complete |
 | **8** | Gateway service (:8080), task queue, SSE streaming, web UI, A2A + MCP, Discord connector | ✅ Complete |
 | **9** | langchain 1.x migration, tool library (5 tools), parallel fan-out, Phase 9.5 hardening sprint | ✅ Complete |
 | **10** | Multi-user auth — DB-backed stream tokens, per-user daily budgets, `/usage/me`, user CLI | ✅ Complete |
-| **11** | SecureToolNode security fix, integration tests (35), `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
-| **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` scaffold | ✅ Complete |
-| **13** | Kerberos GSSAPI real impl, Redis-backed stream tokens, `KerberosConfig`, multi-instance docker-compose + Nginx | ✅ Complete |
-| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware, Redis health in `/status`, Kerberos integration skeleton | ✅ Complete |
-| **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, timer, copy, keyboard shortcut, SSE retry | ✅ Complete |
-| **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC+async callback) | ✅ Complete |
+| **11** | SecureToolNode security fix, 38 integration tests, `AuthBackend` protocol, `Dockerfile.gateway`, `docs/SCALING.md` | ✅ Complete |
+| **12** | Multi-provider auth registry — `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, `KerberosBackend` | ✅ Complete |
+| **13** | Kerberos GSSAPI real implementation, Redis-backed stream tokens, multi-instance docker-compose + Nginx | ✅ Complete |
+| **14** | Redis global budget counters, Prometheus `/metrics` endpoint, `X-Request-ID` middleware | ✅ Complete |
+| **15** | Polished web UI — localStorage key+history, cancel, tool call blocks, live timer, copy, keyboard shortcut | ✅ Complete |
+| **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC + async callback) | ✅ Complete |
+| **60–381** | 381-tool operator dashboard UI library — every gateway API endpoint surfaced as a JS function | ✅ Complete |
 
-**492/492 smoke tests passing.** 38 integration tests passing. 5/5 Kerberos tests passing. No running services required for smoke tests. Runs in ~3 seconds.
+**1946/1946 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. Runs in ~16 seconds (no external services required).
 
 ---
 
@@ -113,18 +115,30 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Set your hardware profile
-export AGENT_HARDWARE_PROFILE=mac_m4_mini_16gb  # or mac_m5_mini_32gb
+export AGENT_HARDWARE_PROFILE=mac_m4_mini_16gb
 
-# 3. Initialize the database
+# 3. Store your PostgreSQL admin password
+echo "localhost:5432:*:$(whoami):yourpassword" >> ~/.pgpass && chmod 0600 ~/.pgpass
+# New install with default Homebrew trust auth? Use:
+# export POSTGRES_TRUST_AUTH=true
+
+# 4. Initialize the database and generate security secrets
 make db-init
+make setup-task-token-secret
+make setup-signing-key
 
-# 4. Run smoke tests (no services required)
+# 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 492 passed in ~3s
+# Expected: 1946 passed in ~16s
 
-# 5. Start the health server
-make health-server
-# Verify: curl http://localhost:8765/health
+# 6. Start services (three terminals)
+make health-server   # Operator API :8765
+make gateway-start   # User API + Web UI :8080
+make guardian-start  # Security sidecar :9766 (requires Docker)
+
+# 7. Create a user and open the web UI
+make create-user USERNAME=myname
+open http://localhost:8080/ui
 ```
 
 ---
@@ -151,8 +165,9 @@ make health-server
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 492 smoke tests, ~3s, no services required
+make test-smoke      # 1946 smoke tests, ~16s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
+make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765
 make setup-db-roles  # Provision legionforge_app restricted PostgreSQL role (idempotent)
@@ -176,8 +191,7 @@ make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
 ## Known Gaps (Accepted Residual Risk)
 
 - **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
-- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. `pip-audit` reports no known CVEs as of v1.0.0; transitive hash pinning is accepted residual risk.
-- **Kerberos live KDC** — `KerberosBackend` has full GSSAPI code; graceful fallback when `gssapi` package is absent. Requires OS-level KDC + keytab to activate — see `docs/SCALING.md`.
+- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. Managed via Dependabot; transitive hash pinning is accepted residual risk.
 
 ---
 
@@ -191,6 +205,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v1.0.1** — all 16 phases complete. 492/492 smoke tests. 38 integration tests. 5/5 Kerberos live-KDC tests.
+**v0.7.0-alpha** — Phases 0–381 complete. 1946/1946 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
 
-This is the public release of LegionForge. Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).

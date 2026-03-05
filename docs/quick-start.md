@@ -1,7 +1,7 @@
 # LegionForge — Quick Start Guide
 
-**Version:** 1.0.1
-**Last updated:** 2026-03-01
+**Version:** 0.7.0-alpha
+**Last updated:** 2026-03-05
 
 This guide takes you from zero to a running LegionForge instance and your first agent task.
 It assumes a Mac Mini M4 running macOS 14+.
@@ -49,14 +49,26 @@ make check
 
 ## Step 2 — First-Time Setup (one-time only)
 
-### 2a. Store your PostgreSQL password in the Keychain
+### 2a. Store your PostgreSQL admin password
+
+LegionForge reads credentials from `~/.pgpass` (PostgreSQL standard, chmod 0600):
 
 ```bash
-# Replace 'yourpassword' with your actual PostgreSQL password
-security add-generic-password -s postgres -a api_key -w yourpassword
+# Replace 'yourpassword' with your actual PostgreSQL admin password
+echo "localhost:5432:*:$(whoami):yourpassword" >> ~/.pgpass
+chmod 0600 ~/.pgpass
 ```
 
-LegionForge reads this automatically — never from environment variables.
+**New install with default Homebrew trust auth (no password set)?** Set this env var instead:
+```bash
+export POSTGRES_TRUST_AUTH=true   # dev/trust-auth only — do not use in production
+```
+
+Optionally also store in macOS Keychain (best-effort — Keychain access from subprocesses
+requires an interactive session grant, so `~/.pgpass` is the reliable path):
+```bash
+security add-generic-password -s postgres -a api_key -w yourpassword
+```
 
 ### 2b. Pull Ollama models
 
@@ -106,7 +118,7 @@ make register-agent-sequences   # declare agent tool sequences
 
 ```bash
 make test-smoke
-# Expected: 492 passed in ~3s (no services required)
+# Expected: 1946 passed in ~16s (no services required)
 ```
 
 ---
@@ -378,9 +390,10 @@ make stop              # Graceful shutdown
 make install           # Install/update pip dependencies
 
 # Testing
-make test-smoke        # 492 smoke tests, ~3s, no services required
+make test-smoke        # 1946 smoke tests, ~16s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
+make test-ui           # 40 UI tests (Playwright)
 make test-fast         # All tests except slow ones
 make test              # Full test suite
 
@@ -462,12 +475,17 @@ make guardian-start  # Requires Docker Desktop to be running
 
 Without Guardian, agents run with local hash + registry checks only (Checks 0–1 in `SecureToolNode`). Checks 2–6 (capability boundary, destructive patterns, sequence contracts, Ed25519, adaptive rules) are bypassed. Suitable for development; not for production.
 
-### "Keychain access denied" in automated contexts
+### "Keychain access denied" or "PostgreSQL password not found"
 
 macOS Keychain requires user interaction to grant access on first use per application.
-Run the service manually once in a terminal to trigger the Keychain prompt and grant
-permanent access. CI/CD environments should use environment variables instead:
+The recommended approach is `~/.pgpass` (see Step 2a) — it works reliably in all contexts.
 
+For new Homebrew installs with trust auth (no password required):
+```bash
+export POSTGRES_TRUST_AUTH=true   # then re-run make db-init
+```
+
+For CI/CD environments, use environment variables:
 ```bash
 export POSTGRES_PASSWORD=yourpassword
 export TASK_TOKEN_SECRET=yoursecret
