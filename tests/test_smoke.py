@@ -3470,6 +3470,68 @@ def test_halt_on_injection_patterns_is_subset_of_injection_patterns():
     assert _HALT_ON_INJECTION_PATTERNS.issubset(set(_INJECTION_PATTERNS))
 
 
+# ── scram-sha-256 migration: pgpass helpers + trust fallback removal ──────────
+
+
+def test_read_pgpass_function_exists():
+    """_read_pgpass() is importable and returns None for non-existent host/user."""
+    from src.database import _read_pgpass
+
+    result = _read_pgpass(
+        host="nonexistent-host-xyz", port="9999", db="nodb", user="nouser"
+    )
+    assert result is None, "_read_pgpass must return None when no entry matches"
+
+
+def test_write_pgpass_entry_function_exists():
+    """_write_pgpass_entry() is importable and callable."""
+    import inspect
+    from src.database import _write_pgpass_entry
+
+    sig = inspect.signature(_write_pgpass_entry)
+    assert set(sig.parameters) == {"host", "port", "db", "user", "password"}
+
+
+def test_get_postgres_password_has_no_trust_fallback():
+    """_get_postgres_password() must not contain the trust-auth empty-string fallback."""
+    import inspect
+    from src.database import _get_postgres_password
+
+    src = inspect.getsource(_get_postgres_password)
+    assert "trust auth assumed" not in src, (
+        "_get_postgres_password() still has the trust-auth fallback — "
+        "it must raise RuntimeError when no password is found"
+    )
+    assert 'return ""' not in src, (
+        "_get_postgres_password() must not return an empty password "
+        "as a fallback (trust auth is no longer supported)"
+    )
+
+
+def test_get_or_generate_app_password_has_process_cache():
+    """_get_or_generate_app_password() must use a module-level cache to prevent
+    two-call password mismatch between _setup_db_roles and pool creation."""
+    import inspect
+    import src.database as _db
+
+    assert hasattr(
+        _db, "_cached_app_pw"
+    ), "src.database must have a _cached_app_pw module-level cache"
+    src = inspect.getsource(_db._get_or_generate_app_password)
+    assert "_cached_app_pw" in src
+
+
+def test_get_or_generate_app_password_writes_pgpass():
+    """_get_or_generate_app_password() must call _write_pgpass_entry on generation."""
+    import inspect
+    from src.database import _get_or_generate_app_password
+
+    src = inspect.getsource(_get_or_generate_app_password)
+    assert (
+        "_write_pgpass_entry" in src
+    ), "_get_or_generate_app_password must persist generated password to ~/.pgpass"
+
+
 # ── Extended exfiltration patterns + normalization ────────────────────────────
 
 

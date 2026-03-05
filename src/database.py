@@ -36,21 +36,98 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+
+# ── ~/.pgpass helpers ─────────────────────────────────────────────────────────
+
+
+def _read_pgpass(
+    host: str = "localhost",
+    port: str = "5432",
+    db: str = "*",
+    user: str = "",
+) -> str | None:
+    """
+    Parse ~/.pgpass and return the password for matching connection params.
+
+    Format: hostname:port:database:username:password  (fields may be * wildcards).
+    Returns None if the file doesn't exist, has unsafe permissions, or no match.
+    """
+    pgpassfile = os.path.expanduser("~/.pgpass")
+    if not os.path.exists(pgpassfile):
+        return None
+    mode = os.stat(pgpassfile).st_mode & 0o777
+    if mode & 0o077:  # group or world readable/writable
+        logger.warning(
+            "~/.pgpass has insecure permissions (%s) — file ignored", oct(mode)
+        )
+        return None
+    if not user:
+        user = os.environ.get("POSTGRES_USER", os.environ.get("USER", ""))
+    with open(pgpassfile) as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(":")
+            if len(parts) < 5:
+                continue
+            ph, pp, pd, pu = parts[0], parts[1], parts[2], parts[3]
+            pw = ":".join(
+                parts[4:]
+            )  # password may contain colons (escaped not required here)
+
+            def _m(field: str, value: str) -> bool:
+                return field == "*" or field == value
+
+            if _m(ph, host) and _m(pp, port) and _m(pd, db) and _m(pu, user):
+                return pw
+    return None
+
+
+def _write_pgpass_entry(
+    host: str,
+    port: str,
+    db: str,
+    user: str,
+    password: str,
+) -> None:
+    """
+    Upsert a line in ~/.pgpass for (host, port, db, user), then chmod 0600.
+
+    Existing lines matching the same (host, port, db, user) are replaced.
+    """
+    pgpassfile = os.path.expanduser("~/.pgpass")
+    prefix = f"{host}:{port}:{db}:{user}:"
+    lines: list[str] = []
+    if os.path.exists(pgpassfile):
+        with open(pgpassfile) as fh:
+            lines = fh.readlines()
+    # Remove any existing matching line
+    lines = [ln for ln in lines if not ln.startswith(prefix)]
+    lines.append(f"{prefix}{password}\n")
+    with open(pgpassfile, "w") as fh:
+        fh.writelines(lines)
+    os.chmod(pgpassfile, 0o600)
+    logger.info("[pgpass] Updated ~/.pgpass entry for user=%r db=%r", user, db)
+
+
 # ── Connection helpers ────────────────────────────────────────────────────────
 
 
 def _get_postgres_password() -> str:
     """
-    Return the PostgreSQL password.
+    Return the PostgreSQL admin password.
 
     Priority order:
-      1. CredentialStore in-memory cache (if initialized — no env access)
-      2. POSTGRES_PASSWORD environment variable (legacy / Docker)
+      1. CredentialStore in-memory cache (initialized at startup — zero Keychain calls)
+      2. macOS Keychain / security CLI via get_api_key("postgres")
+      3. POSTGRES_PASSWORD environment variable
+      4. ~/.pgpass (PostgreSQL standard credential file, chmod 0600)
 
-    Raises RuntimeError if not set anywhere.
+    Raises RuntimeError if not found anywhere.
     Never embed this value in a connection URI — pass as a keyword argument only.
     """
-    # ── CredentialStore fast path ──────────────────────────────────────────
+    # ── 1. CredentialStore fast path ──────────────────────────────────────
     try:
         from src.credentials import creds as _creds
 
@@ -61,35 +138,35 @@ def _get_postgres_password() -> str:
     except ImportError:
         pass
 
-    # ── Environment variable fallback ─────────────────────────────────────
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    if password:
-        return password
+    # ── 2. macOS Keychain via get_api_key (keyring → security CLI → env) ──
+    try:
+        from src.security.core import get_api_key as _get_api_key
 
-    # ── Local trust-auth fallback ──────────────────────────────────────────
-    # PostgreSQL's trust auth (pg_hba.conf: "local all all trust" /
-    # "host all all 127.0.0.1/32 trust") ignores the password entirely.
-    # When the host is localhost and no password is configured, returning ""
-    # lets the connection succeed without raising, avoiding a hard startup
-    # failure in dev environments where Keychain is inaccessible from subprocesses.
-    # Non-localhost hosts still raise so misconfigured production setups fail loudly.
-    pg_host = os.environ.get("POSTGRES_HOST", "localhost")
-    if pg_host in ("localhost", "127.0.0.1", "::1"):
-        import logging as _logging
+        pw = _get_api_key("postgres")
+        if pw:
+            return pw
+    except (RuntimeError, ImportError):
+        pass  # key absent or security module unavailable
 
-        _logging.getLogger(__name__).warning(
-            "POSTGRES_PASSWORD not found in CredentialStore or env — "
-            "falling back to empty string (trust auth assumed for host=%s). "
-            "Store with: python -m keyring set postgres api_key",
-            pg_host,
-        )
-        return ""
+    # ── 3. POSTGRES_PASSWORD environment variable ──────────────────────────
+    pw = os.environ.get("POSTGRES_PASSWORD", "")
+    if pw:
+        return pw
+
+    # ── 4. ~/.pgpass (PostgreSQL standard, chmod 0600) ─────────────────────
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
+    user = os.environ.get("POSTGRES_USER", os.environ.get("USER", ""))
+    pw = _read_pgpass(host, port, db, user)
+    if pw:
+        return pw
 
     raise RuntimeError(
-        "POSTGRES_PASSWORD not set. Store it with:\n"
-        "  python -m keyring set postgres api_key\n"
-        "Or: export POSTGRES_PASSWORD=<value>\n"
-        "Or: initialize CredentialStore before calling init_db()."
+        "PostgreSQL admin password not found. Provide it via one of:\n"
+        "  1. ~/.pgpass  (hostname:port:database:username:password, chmod 0600)\n"
+        "  2. python -m keyring set postgres api_key\n"
+        "  3. export POSTGRES_PASSWORD=<value>"
     )
 
 
@@ -125,24 +202,37 @@ def _build_app_user_conninfo() -> str:
     return f"host={host} port={port} dbname={db} user={user}"
 
 
+# Module-level cache: ensures the same password is returned within a single
+# process lifetime, preventing the two-call mismatch where _setup_db_roles()
+# sets one generated password in PG and the pool-creation call generates a
+# different one. Cleared on process restart; persistent across restarts via
+# ~/.pgpass written by _write_pgpass_entry().
+_cached_app_pw: str | None = None
+
+
 def _get_or_generate_app_password() -> str:
     """
-    Get the legionforge_app DB user password from CredentialStore / env,
-    or generate a fresh one and store it in the macOS Keychain.
+    Get the legionforge_app DB user password from cache / CredentialStore / env /
+    ~/.pgpass, or generate a fresh one, store in Keychain + ~/.pgpass, and cache.
 
     Priority:
+      0. In-process cache (prevents two-call mismatch within same startup)
       1. CredentialStore in-memory cache (service "legionforge_db_app")
       2. POSTGRES_APP_PASSWORD environment variable
-      3. Generate a random 32-char password, store in Keychain, log once
-
-    The generated password is stored via the macOS `security` CLI (same
-    pattern as _load_or_create_health_token in health.py). On non-macOS
-    or if the CLI fails, the password is printed once to stderr — store it
-    manually in your credentials YAML or Keychain.
+      3. ~/.pgpass (PostgreSQL standard credential file, chmod 0600)
+      4. Generate a random 32-char password; persist to ~/.pgpass and Keychain
     """
+    global _cached_app_pw
+    if _cached_app_pw:
+        return _cached_app_pw
+
     service = getattr(
         settings.security, "db_app_password_service", "legionforge_db_app"
     )
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
+    app_user = getattr(settings.security, "db_app_user", "legionforge_app")
 
     # 1. CredentialStore (only if initialized)
     try:
@@ -151,6 +241,7 @@ def _get_or_generate_app_password() -> str:
         if _creds._initialized:
             pw = _creds.get(service)
             if pw:
+                _cached_app_pw = pw
                 return pw
     except ImportError:
         pass
@@ -158,13 +249,27 @@ def _get_or_generate_app_password() -> str:
     # 2. Environment variable
     pw = os.environ.get("POSTGRES_APP_PASSWORD", "")
     if pw:
+        _cached_app_pw = pw
         return pw
 
-    # 3. Generate and persist
+    # 3. ~/.pgpass (survives process restarts without Keychain access)
+    pw = _read_pgpass(host, port, db, app_user)
+    if pw:
+        _cached_app_pw = pw
+        return pw
+
+    # 4. Generate and persist to ~/.pgpass (+ attempt Keychain)
     _safe = string.ascii_letters + string.digits + "_-+="
     pw = "".join(secrets.choice(_safe) for _ in range(32))
+    _cached_app_pw = pw
 
-    # Try to store in macOS Keychain
+    # Persist to ~/.pgpass so subsequent process restarts find the same password
+    try:
+        _write_pgpass_entry(host, port, db, app_user, pw)
+    except Exception as exc:
+        logger.warning("[db-rbac] Could not write ~/.pgpass for app user: %s", exc)
+
+    # Also attempt Keychain (may fail in subprocess context — non-fatal)
     try:
         result = subprocess.run(
             [
@@ -176,26 +281,24 @@ def _get_or_generate_app_password() -> str:
                 "api_key",
                 "-w",
                 pw,
-                "-U",  # Update if exists
+                "-U",
             ],
             capture_output=True,
             timeout=5,
         )
         if result.returncode == 0:
             logger.info(
-                f"[db-rbac] Generated legionforge_app password and stored in Keychain "
-                f"(service={service!r}). Retrieve with: make setup-db-roles"
+                "[db-rbac] legionforge_app password stored in Keychain (service=%r)",
+                service,
             )
         else:
-            logger.warning(
-                f"[db-rbac] Generated legionforge_app password but could not store in Keychain: "
-                f"{result.stderr.decode(errors='replace').strip()}\n"
-                f"  Store manually: security add-generic-password -s {service} -a api_key -w '<pw>' -U"
+            logger.debug(
+                "[db-rbac] Keychain write failed (non-fatal, ~/.pgpass used): %s",
+                result.stderr.decode(errors="replace").strip(),
             )
     except Exception as exc:
-        logger.warning(
-            f"[db-rbac] Generated legionforge_app password but could not store in Keychain: {exc}\n"
-            f"  Store manually: security add-generic-password -s {service} -a api_key -w '<pw>' -U"
+        logger.debug(
+            "[db-rbac] Keychain write failed (non-fatal, ~/.pgpass used): %s", exc
         )
 
     return pw
