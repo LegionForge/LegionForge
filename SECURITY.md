@@ -34,49 +34,29 @@ These are **accepted risks for local development** that must be resolved before 
 
 ---
 
-#### [OPEN] PostgreSQL using `trust` auth — no password enforcement on local connections
+#### [CLOSED — PR #212] PostgreSQL using `trust` auth — no password enforcement on local connections
 
 **Severity:** Medium (local dev) → High (any shared or internet-accessible deployment)
 
-**Status:** Accepted for local dev. **Must be resolved before v1.0 public release.**
+**Status:** ✅ **Resolved 2026-03-04 (PR #212 + PR #213).**
 
-**Description:**
-`pg_hba.conf` is currently configured with `trust` auth for all local connections:
+**Resolution:**
+`pg_hba.conf` updated — Unix socket connections use `peer` auth (OS username match, no
+password required for CLI `psql`); TCP connections use `scram-sha-256`:
 ```
-local all all trust
-host  all all 127.0.0.1/32 trust
+local   all  all              peer
+host    all  all  127.0.0.1/32  scram-sha-256
+host    all  all  ::1/128       scram-sha-256
 ```
-This means any process running on the machine can connect to PostgreSQL as any user —
-including `legionforge` (superuser-equivalent) — with zero credentials. No password is
-checked.
+Strong passwords generated for `jp` and `legionforge_app` roles; stored in `~/.pgpass`
+(chmod 0600). macOS Keychain is attempted but not required (subprocess ACL blocks
+programmatic reads/writes — `~/.pgpass` is the reliable credential path).
 
-**Practical risk on a developer's local machine:**
-- A malicious pip/npm/vscode-extension package with an install-time script can connect to
-  `127.0.0.1:5432` and read the full database (API keys, webhook secrets, user credentials,
-  audit log, threat events, session data)
-- Any local RCE vulnerability in any running service can pivot to the database with full
-  superuser access
-- Another user account on a shared Mac can reach the database over TCP
+`_get_postgres_password()` in `src/database.py` now raises `RuntimeError` if no credential
+is found, rather than silently returning an empty password. New-developer opt-in:
+`export POSTGRES_TRUST_AUTH=true` before `make db-init` (PR #213).
 
-**Why it's accepted for now:**
-`trust` for localhost is the near-universal convention for local development
-(Rails, Django, Hasura, PostgREST, Supabase local dev all default to it). The threat
-requires either malicious local software or a co-located attacker — both of which imply
-deeper system compromise. The risk is real but proportionate for a single-user dev machine.
-
-**Fix required before v1.0:**
-1. Generate strong passwords for `legionforge` and `legionforge_app` PostgreSQL users
-2. `ALTER USER legionforge WITH PASSWORD '<strong>';`
-3. `ALTER USER legionforge_app WITH PASSWORD '<strong>';`
-4. Store both in macOS Keychain: `security add-generic-password -s postgres -a api_key -w <pw>`
-5. Edit `pg_hba.conf`: change `trust` → `scram-sha-256` for both `local` and `host` lines
-6. `pg_ctl reload` (no restart needed)
-7. Remove `|| echo "trust"` fallback from `~/.zshrc` (a failing Keychain lookup should now be
-   a hard error, not a silent fallback)
-8. Verify gateway, health server, and db-init all connect successfully
-
-**See also:** `src/database.py:_get_postgres_password()` — the trust-auth fallback added in
-PR #97 is a dev-convenience workaround; it should be removed when this issue is resolved.
+**See also:** `src/database.py:_get_postgres_password()`, `~/.pgpass`.
 
 ---
 
@@ -343,3 +323,6 @@ is synthesized internally from a validated integer — not user-controlled text.
 | 2026-02-26 | Added §"Injection Detection Architecture" — pattern tiering, prompt_injection_guard, agent_id invariant, run_id ordering rule |
 | 2026-02-26 | Session 1 hardening: tool-result injection tiering (Fix 1); `document_summarize` content delimiter (Fix 2); `GUARDIAN_REQUIRE_AUTH` default → true (Fix 3); audit log tamper → RuntimeError halt (Fix 4) |
 | 2026-03-02 | Added §"Known Security Gaps — Pre-1.0 Blockers": PostgreSQL `trust` auth accepted for local dev, documented full remediation path, flagged as v1.0 release blocker |
+| 2026-03-04 | PR #210: extended exfiltration detection (3 new patterns: leak/dump/expose verbs, system message synonyms, "what were you told") + NFKC/zero-width normalization in `detect_injection()` |
+| 2026-03-04 | PR #211: `check_hitl_required()` made async; DESTRUCTIVE_PATTERN events now logged to `threat_events` table (LOG tier confidence=0.6, HALT tier confidence=1.0) |
+| 2026-03-04 | PR #212 + #213: PostgreSQL trust → scram-sha-256 migration complete; pre-v1.0 blocker closed |

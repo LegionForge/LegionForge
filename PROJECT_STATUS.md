@@ -1,11 +1,11 @@
 # PROJECT_STATUS.md
 # LegionForge
 
-**Version:** 1.0.1
-**Last updated:** 2026-03-01
-**Branch:** `main`
+**Version:** 0.7.0-alpha
+**Last updated:** 2026-03-05
+**Branch:** `dev`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
-**Status:** ✅ Phases 0–16 complete. No further phases planned.
+**Status:** ✅ Phases 0–381 complete. Bug-fix mode — no new phases until v1.0.
 
 > **Related docs:**
 > - [`TLDR.md`](./TLDR.md) — Quick summary and orientation
@@ -17,12 +17,13 @@
 
 ## Current State
 
-All phases through 16 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, and Telegram/Slack/Webhook channel connectors are operational.
+All phases through 381 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors, comprehensive UI tool library (381 tools), and PostgreSQL scram-sha-256 auth are operational.
 
 ```
-make test-smoke        → 492/492 passing (~3.0s, no external services required)
-make test-integration  → 38 passed (requires PostgreSQL)
+make test-smoke        → 1946/1946 passing (~16s, no external services required)
+make test-integration  → 38/38 passed (requires PostgreSQL)
 make test-kerberos     → 5/5 passed (requires live KDC + PostgreSQL)
+make test-ui           → 40/40 passed (Playwright)
 make health-server     → localhost:8765 all components green (Redis health when configured)
 make gateway-start     → localhost:8080 gateway API + streaming UI + /metrics endpoint
 make discord-start     → Discord bot connector

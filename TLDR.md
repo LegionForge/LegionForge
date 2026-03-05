@@ -16,16 +16,15 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–56 complete. v0.7.0-alpha — active development toward v1.0.0.**
+✅ **Phases 0–381 complete. v0.7.0-alpha — active development toward v1.0.0.**
 
 The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
 
-**818/818 smoke tests passing** (~16s, no external services required).
+**1946/1946 smoke tests passing** (~16s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
 **40/40 UI tests** (`make test-ui`).
 **29/29 tool accuracy tests** (`make test-tool-accuracy`).
-
-> **Pre-1.0 blocker:** PostgreSQL uses `trust` auth for local connections (industry-standard for local dev, but must switch to `scram-sha-256` before public release). See `SECURITY.md § Known Security Gaps`.
+**104/104 TestLab tests** · **5/5 Kerberos live-KDC tests**.
 
 ### Core Security Stack (Phases 0–16)
 ✅ Guardian sidecar (7 deterministic checks, hot-reload every 10s), immutable SHA-256 audit log (halt-on-tamper), crystallization pipeline (Observer→Crystallizer→Pre-HITL→Ed25519 signature), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, multi-user gateway (:8080), five production tools, `AuthBackend` protocol with 5 backends (ApiKey, OIDC, GitHub, LDAP, Kerberos), Redis-backed stream tokens, Prometheus /metrics, web UI, Discord/Telegram/Slack/Webhook connectors, multi-instance docker-compose + Nginx.
@@ -179,7 +178,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ## Known Gaps (as of v0.7.0-alpha)
 
-**PostgreSQL trust auth** — Local connections use `trust` (no password). Industry standard for local dev, but must switch to `scram-sha-256` before public release. Full remediation in `SECURITY.md § Known Security Gaps`.
+~~**PostgreSQL trust auth**~~ — **Closed (PR #212).** Local connections now use `peer` auth (Unix socket) and `scram-sha-256` (TCP). Passwords stored in `~/.pgpass`. New-developer installs: `export POSTGRES_TRUST_AUTH=true` before `make db-init` (PR #213).
 
 **Embedding-level RAG poisoning** is an open research problem. Provenance scoring and trust flagging exist; embedding-level anomaly detection is deferred.
 
