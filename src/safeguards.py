@@ -23,6 +23,7 @@ from typing import Annotated, Any
 import operator
 
 from src.security import HITL_HALT_CATEGORIES, HITL_LOG_CATEGORIES
+from src.database import log_threat_event
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -359,7 +360,7 @@ def check_safeguards(state: dict) -> str:
 # surface an approval request to the operator dashboard.
 
 
-def check_hitl_required(
+async def check_hitl_required(
     action: str,
     input_text: str,
     state: dict,
@@ -407,30 +408,37 @@ def check_hitl_required(
             f"[hitl] Suspicious pattern (log-and-continue) — "
             f"action='{action}' categories={log_cats} run={run_prefix}..."
         )
-        # TODO Phase 4: await log_threat_event(
-        #     agent_id="safeguards", run_id=run_id,
-        #     threat_type="DESTRUCTIVE_PATTERN", severity="LOW",
-        #     details={"action": action, "categories": log_cats, "excerpt": input_text},
-        # )
+        try:
+            await log_threat_event(
+                agent_id="safeguards",
+                run_id=run_id,
+                threat_type="DESTRUCTIVE_PATTERN",
+                action_taken="LOGGED",
+                confidence=0.6,
+                raw_input=input_text[:200],
+                metadata={"action": action, "categories": log_cats},
+            )
+        except Exception as exc:
+            logger.warning(f"[hitl] DB log_threat_event failed (log tier): {exc}")
 
     # HALT tier: unambiguously adversarial — force-end immediately
     if halt_cats:
         logger.warning(
             f"[hitl] HITL HALT — action='{action}' categories={halt_cats} "
-            f"run={run_prefix}... Forcing termination. "
-            f"Phase 2 will surface approval request instead."
+            f"run={run_prefix}... Forcing termination."
         )
-        # TODO Phase 4: make this function `async def`, replace the block below with:
-        #   await log_threat_event(agent_id="safeguards", run_id=run_id,
-        #       threat_type="DESTRUCTIVE_PATTERN", severity="HIGH",
-        #       details={"action": action, "categories": halt_cats})
-        # and update the call site in SecureToolNode to `await check_hitl_required(...)`.
-        #
-        # DB logging is intentionally omitted in Phase 1 because calling
-        # asyncio.get_event_loop().run_until_complete() from inside an already-running
-        # async event loop raises RuntimeError. logger.warning() is the Phase 1 audit
-        # record. Phase 4 wires the Threat Analyst, at which point reliable DB
-        # persistence of DESTRUCTIVE_PATTERN events is required.
+        try:
+            await log_threat_event(
+                agent_id="safeguards",
+                run_id=run_id,
+                threat_type="DESTRUCTIVE_PATTERN",
+                action_taken="HITL_REQUIRED",
+                confidence=1.0,
+                raw_input=input_text[:200],
+                metadata={"action": action, "categories": halt_cats},
+            )
+        except Exception as exc:
+            logger.warning(f"[hitl] DB log_threat_event failed (halt tier): {exc}")
         return {"force_end": True}
 
     # Only LOG-tier categories matched — run continues

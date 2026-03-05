@@ -714,6 +714,39 @@ def test_detect_destructive_pattern_safe_text():
         ), f"False positive HITL for safe text {text!r} — categories: {categories}"
 
 
+def test_check_hitl_required_is_coroutine():
+    """check_hitl_required must be an async function (DB logging requires await)."""
+    import asyncio
+    from src.safeguards import check_hitl_required
+
+    assert asyncio.iscoroutinefunction(
+        check_hitl_required
+    ), "check_hitl_required must be async so it can await log_threat_event()"
+
+
+def test_check_hitl_required_base_graph_uses_await():
+    """SecureToolNode must await check_hitl_required (not call it synchronously)."""
+    import inspect
+    from src.base_graph import SecureToolNode
+
+    src = inspect.getsource(SecureToolNode)
+    assert "await check_hitl_required(" in src, (
+        "base_graph.py SecureToolNode must await check_hitl_required() "
+        "to ensure DB threat event logging fires"
+    )
+
+
+def test_check_hitl_required_imports_log_threat_event():
+    """safeguards.py must import log_threat_event for DB persistence."""
+    import inspect
+    import src.safeguards as _safeguards
+
+    src = inspect.getsource(_safeguards)
+    assert (
+        "log_threat_event" in src
+    ), "safeguards.py must import and call log_threat_event for DESTRUCTIVE_PATTERN events"
+
+
 def test_sanitize_tool_input_strips_pii():
     """sanitize_tool_input redacts PII from outbound query before it reaches external API."""
     from src.security import sanitize_tool_input

@@ -840,7 +840,7 @@ class SecureToolNode:
                 # 4c. Destructive / HITL pattern detection
                 requires_hitl, categories = detect_destructive_pattern(clean_arg)
                 if requires_hitl:
-                    hitl_updates = check_hitl_required(
+                    hitl_updates = await check_hitl_required(
                         action=f"{tool_id}.{arg_name}",
                         input_text=clean_arg[:200],
                         state=state,
