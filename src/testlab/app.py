@@ -308,13 +308,14 @@ SUITES: dict[str, dict] = {
     },
     "tool_accuracy": {
         "label": "Tool Accuracy",
-        "description": "Tool unit tests — web_fetch/web_search accuracy (no LLM, self-contained)",
+        "description": "Tool unit tests — web_fetch/web_search/web_fetch_js accuracy (no LLM, self-contained)",
         "cmd": [
             "python",
             "-m",
             "pytest",
             "tests/tool_accuracy/test_web_fetch.py",
             "tests/tool_accuracy/test_web_search.py",
+            "tests/tool_accuracy/test_web_fetch_js.py",
             "-v",
             "-m",
             "tool_accuracy",

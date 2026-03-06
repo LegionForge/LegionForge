@@ -2042,7 +2042,7 @@ Added as compact addendum. See git log for full details.
 
 ## Upcoming Work — Next Session
 
-### A. Playwright Headless Browser Tool (`web_fetch_js`)
+### A. Playwright Headless Browser Tool (`web_fetch_js`) ✅ COMPLETED — PR #218
 
 **Problem discovered during UAT (2026-03-05):**
 The researcher agent's `web_fetch` tool uses plain `httpx.get()`, which returns
@@ -2109,39 +2109,18 @@ the DOM to settle after JS execution, and returns the rendered visible text.
 
 ---
 
-### B. Researcher Agent — Tool-Use Reliability (Problem 1)
+### B. Researcher Agent — Tool-Use Reliability ✅ COMPLETED — PR #218
 
-**Problem discovered during UAT (2026-03-05):**
-`llama3.1:8b` answered *"What are the latest CNN headlines right now?"* from
-training data (2023 fabrication) despite the system prompt saying
-`ALWAYS use your tools to look up current information`.
-
-8B models don't reliably trigger tool calls when they have training-data
-confidence in the answer. The fix must be at the graph level, not prompt level.
-
-**Proposed fix — step-gated tool forcing:**
-
-In `_build_researcher_agent_node()`, bind two LLM variants:
+Step-gated tool forcing implemented in `build_researcher_graph()`:
 - `llm_forced` — `bind_tools(tools, tool_choice="required")` — used on step 1
 - `llm_free`   — `bind_tools(tools)` — used on step 2+ (synthesis / follow-up)
 
-On step 1 the model MUST call a tool. It picks which one (guided by the system
-prompt and task). This eliminates silent hallucination on the first turn.
-On step 2+ the model can synthesize without forcing another tool call.
-
-**Consideration:** If no appropriate tool exists for the task, `tool_choice="required"`
-forces a call to the least-wrong tool, which fails visibly and informatively —
-this is preferable to silent hallucination. The right follow-up is to build the
-missing tool (e.g., `web_fetch_js` for JS-rendered sites) rather than allowing
-the model to fabricate.
-
-**Smoke tests to add:**
-- `test_researcher_llm_forced_on_step_1` — verify `tool_choice` in step-1 LLM binding
-- `test_researcher_llm_free_after_step_1` — verify step-2+ uses unforced binding
+Smoke tests `test_researcher_llm_forced_on_step_1` and
+`test_researcher_llm_free_after_step_1` added and passing.
 
 ---
 
-### C. UI — Operator Dashboard lazy-load (completed 2026-03-05, PR #217)
+### C. UI — Operator Dashboard lazy-load ✅ COMPLETED — PR #217
 
 296 operator dashboard tool cards moved from `#app` DOM into
 `<template id="op-dashboard-tmpl">`. Content cloned into DOM only on first
@@ -2149,6 +2128,26 @@ click of the "⚙ Operator Dashboard" accordion. Eliminates all render/layout
 work for 224KB of HTML at page load. `loadSchedules`, `loadPipelines`,
 `loadAgents` deferred to toggle listener.
 
-**Current state:** 1946/1946 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI
+---
 
-**Current state:** 1920/1920 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy
+### D. PII Redaction — URL Host Exemption ✅ COMPLETED — PR #218
+
+**Bug discovered during tool accuracy test suite development (2026-03-06):**
+`sanitize_tool_input()` applied PII redaction to private IP addresses before
+`validate_fetch_url()` ran. This corrupted URLs like `http://127.0.0.1:8080/`
+into `http://[PRIVATE_IP]:8080/` — producing an invalid-URL browser error
+instead of the intended SSRF-blocked message.
+
+**Fix:** Added `(?<!://)` negative lookbehind to the private IP regex in
+`_PII_PATTERNS`. IPs acting as URL hosts (immediately following `://`) are
+no longer redacted. IPs in plain text, query strings, and auth strings are
+still redacted. SSRF guard handles the URL host case correctly.
+
+**Tests added (smoke):**
+- `test_pii_redaction_does_not_corrupt_private_ip_url_hosts`
+- `test_pii_redaction_still_redacts_private_ips_in_plain_text`
+
+---
+
+**Current state (2026-03-06):** 1964/1964 smoke · 50/50 tool accuracy (web_fetch_js)
+· 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy (existing)

@@ -46,6 +46,11 @@ from src.security import (
     SecurityError,
 )
 from src.rate_limiter import preflight_budget_check, estimate_tokens
+from src.tools.browser_tools import (
+    web_fetch_js,
+    BROWSER_TOOL_MANIFESTS,
+    BROWSER_TOOL_SEQUENCES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +179,7 @@ async def document_summarize(text: str, focus: str = "") -> str:
     return response.content
 
 
-RESEARCHER_TOOLS = [web_search, web_fetch, document_summarize]
+RESEARCHER_TOOLS = [web_search, web_fetch, web_fetch_js, document_summarize]
 
 
 # ── Tool manifests ────────────────────────────────────────────────────────────
@@ -204,6 +209,7 @@ RESEARCHER_TOOL_MANIFESTS = [
         source="local",
         entrypoint_func=document_summarize,
     ),
+    *BROWSER_TOOL_MANIFESTS,
 ]
 
 
@@ -219,6 +225,7 @@ RESEARCHER_EXPECTED_SEQUENCES: list[list[str]] = [
     ["web_search"],
     ["web_fetch"],
     ["document_summarize"],
+    *BROWSER_TOOL_SEQUENCES,
 ]
 
 
@@ -227,31 +234,44 @@ async def register_researcher_tools() -> None:
     Register all researcher tools in the tool registry.
     Call once at startup or via: make register-researcher-tools
     """
+    from src.tools.browser_tools import register_browser_tools
+
     for manifest in RESEARCHER_TOOL_MANIFESTS:
         await register_tool(
             manifest,
             approved_by="operator",
             approval_notes="Phase 1 researcher agent tools",
         )
+    await register_browser_tools()
     logger.info("[researcher] All tools registered.")
 
 
 # ── Graph nodes ───────────────────────────────────────────────────────────────
 
 
-def _build_researcher_agent_node(llm_with_tools: Any):
+def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
     """
-    Build the researcher's agent_node with a pre-bound LLM.
-    The LLM is bound once at graph-build time, not per-invocation.
+    Build the researcher's agent_node with two pre-bound LLM variants.
+
+    llm_forced: bound with tool_choice="required" — used on step 1 to prevent
+                silent hallucination on current-events questions.
+    llm_free:   standard binding — used on step 2+ for synthesis / follow-up.
+
+    Both LLMs are bound once at graph-build time, not per-invocation.
     """
 
     async def agent_node(state: ResearcherState) -> dict:
         updates = increment_step(state)
 
+        # After increment_step, step_count reflects the current step number.
+        # Use the forced LLM on the first step only.
+        step = updates.get("step_count", state.get("step_count", 1))
+        llm_with_tools = llm_forced if step <= 1 else llm_free
+
         log_agent_event(
             "llm_call",
             "researcher",
-            {"step": state["step_count"], "task": state.get("task", "")},
+            {"step": step, "task": state.get("task", ""), "forced": step <= 1},
             run_id=state.get("run_id"),
         )
 
@@ -357,11 +377,20 @@ def route_after_researcher(state: ResearcherState) -> str:
 
 
 def build_researcher_graph() -> StateGraph:
-    """Build the researcher graph (uncompiled). Bind tools to LLM here."""
-    llm = get_primary_llm(temperature=0.1).bind_tools(RESEARCHER_TOOLS)
+    """Build the researcher graph (uncompiled). Bind tools to LLM here.
+
+    Step-gated tool forcing: on step 1 the LLM is bound with tool_choice="required"
+    so it MUST call a tool rather than fabricating an answer from training data.
+    On step 2+ it uses the standard binding (free to synthesize or call tools).
+    """
+    base_llm = get_primary_llm(temperature=0.1)
+    # Step 1: force a tool call — prevents silent hallucination on current-events queries.
+    llm_forced = base_llm.bind_tools(RESEARCHER_TOOLS, tool_choice="required")
+    # Step 2+: free synthesis — model can answer without calling another tool.
+    llm_free = base_llm.bind_tools(RESEARCHER_TOOLS)
     tool_node = SecureToolNode(RESEARCHER_TOOLS)
 
-    agent_node = _build_researcher_agent_node(llm)
+    agent_node = _build_researcher_agent_node(llm_forced, llm_free)
 
     graph = StateGraph(ResearcherState)
 

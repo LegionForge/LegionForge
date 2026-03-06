@@ -1417,7 +1417,7 @@ def test_researcher_tool_manifests_all_have_tool_ids():
     """All RESEARCHER_TOOL_MANIFESTS have non-empty tool_id strings."""
     from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
 
-    assert len(RESEARCHER_TOOL_MANIFESTS) == 3, "Expected exactly 3 researcher tools"
+    assert len(RESEARCHER_TOOL_MANIFESTS) >= 3, "Expected at least 3 researcher tools"
     for manifest in RESEARCHER_TOOL_MANIFESTS:
         assert (
             isinstance(manifest.tool_id, str) and manifest.tool_id
@@ -20444,3 +20444,230 @@ def test_scheduler_has_maintenance_heartbeat():
 
     assert hasattr(Scheduler, "_maybe_run_maintenance")
     assert asyncio.iscoroutinefunction(Scheduler._maybe_run_maintenance)
+
+
+# ── browser_tools ──────────────────────────────────────────────────────────────
+
+
+def test_browser_tools_importable():
+    """src.tools.browser_tools imports without error."""
+    import src.tools.browser_tools  # noqa: F401
+
+
+def test_web_fetch_js_is_tool():
+    """web_fetch_js is a LangChain tool with the correct .name."""
+    from src.tools.browser_tools import web_fetch_js
+
+    assert hasattr(web_fetch_js, "name")
+    assert web_fetch_js.name == "web_fetch_js"
+
+
+def test_web_fetch_js_tool_manifest_registered():
+    """BROWSER_TOOL_MANIFESTS contains a manifest for web_fetch_js."""
+    from src.tools.browser_tools import BROWSER_TOOL_MANIFESTS
+
+    ids = {m.tool_id for m in BROWSER_TOOL_MANIFESTS}
+    assert "web_fetch_js" in ids
+
+
+def test_web_fetch_js_manifest_side_effects():
+    """web_fetch_js manifest declares reads_web and runs_headless_browser."""
+    from src.tools.browser_tools import BROWSER_TOOL_MANIFESTS
+
+    manifest = next(m for m in BROWSER_TOOL_MANIFESTS if m.tool_id == "web_fetch_js")
+    assert "reads_web" in manifest.declared_side_effects
+    assert "runs_headless_browser" in manifest.declared_side_effects
+
+
+def test_browser_tool_sequences_defined():
+    """BROWSER_TOOL_SEQUENCES is a non-empty list of lists."""
+    from src.tools.browser_tools import BROWSER_TOOL_SEQUENCES
+
+    assert isinstance(BROWSER_TOOL_SEQUENCES, list)
+    assert len(BROWSER_TOOL_SEQUENCES) > 0
+    assert all(isinstance(seq, list) for seq in BROWSER_TOOL_SEQUENCES)
+
+
+def test_browser_tools_register_fn_is_coroutine():
+    """register_browser_tools is a coroutine function."""
+    import asyncio
+    from src.tools.browser_tools import register_browser_tools
+
+    assert asyncio.iscoroutinefunction(register_browser_tools)
+
+
+def test_web_fetch_js_ssrf_guard_blocks_localhost():
+    """web_fetch_js pre-launch SSRF guard blocks localhost via validate_fetch_url."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("http://localhost/admin")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_web_fetch_js_ssrf_guard_blocks_private_ip():
+    """web_fetch_js pre-launch SSRF guard blocks RFC-1918 private IPs."""
+    from src.security import validate_fetch_url, SecurityError
+
+    for url in [
+        "http://10.0.0.1/secret",
+        "http://172.16.0.1/internal",
+        "http://192.168.0.1/router",
+    ]:
+        try:
+            validate_fetch_url(url)
+            assert False, f"Should have blocked private IP in: {url}"
+        except (SecurityError, ValueError):
+            pass
+
+
+def test_web_fetch_js_ssrf_guard_blocks_metadata_endpoint():
+    """web_fetch_js pre-launch SSRF guard blocks cloud metadata endpoint."""
+    from src.security import validate_fetch_url, SecurityError
+
+    try:
+        validate_fetch_url("http://169.254.169.254/latest/meta-data/")
+        assert False, "Should have raised SecurityError or ValueError"
+    except (SecurityError, ValueError):
+        pass
+
+
+def test_web_fetch_js_private_url_regex():
+    """_PRIVATE_URL_RE matches private/reserved address patterns."""
+    from src.tools.browser_tools import _PRIVATE_URL_RE
+
+    should_match = [
+        "http://localhost/",
+        "http://127.0.0.1/",
+        "http://10.1.2.3/path",
+        "http://172.16.0.1/",
+        "http://172.31.255.255/",
+        "http://192.168.1.1/",
+        "http://169.254.169.254/latest",
+    ]
+    should_not_match = [
+        "https://example.com/",
+        "https://cnn.com/news",
+        "https://172.32.0.1/",  # 172.32 is not RFC-1918
+        "https://11.0.0.1/",  # 11.x is public
+    ]
+    for url in should_match:
+        assert _PRIVATE_URL_RE.match(url), f"Should match private URL: {url}"
+    for url in should_not_match:
+        assert not _PRIVATE_URL_RE.match(url), f"Should NOT match public URL: {url}"
+
+
+def test_web_fetch_js_in_researcher_tools():
+    """web_fetch_js is present in RESEARCHER_TOOLS."""
+    from src.agents.researcher import RESEARCHER_TOOLS
+
+    names = [t.name for t in RESEARCHER_TOOLS]
+    assert "web_fetch_js" in names
+
+
+def test_researcher_tools_include_browser_sequences():
+    """Researcher expected sequences include web_fetch_js sequences."""
+    from src.agents.researcher import RESEARCHER_EXPECTED_SEQUENCES
+
+    flat = [seq for seq in RESEARCHER_EXPECTED_SEQUENCES if "web_fetch_js" in seq]
+    assert len(flat) >= 1, "At least one sequence should include web_fetch_js"
+
+
+def test_researcher_llm_forced_on_step_1():
+    """build_researcher_graph uses tool_choice='required' binding for step-1 LLM."""
+    import inspect
+    from src.agents import researcher
+
+    src = inspect.getsource(researcher.build_researcher_graph)
+    assert (
+        "tool_choice" in src
+    ), "build_researcher_graph must bind llm_forced with tool_choice"
+    assert "required" in src, "tool_choice must be set to 'required' for step-1 LLM"
+
+
+def test_researcher_llm_free_after_step_1():
+    """_build_researcher_agent_node selects llm_free for steps > 1."""
+    import inspect
+    from src.agents import researcher
+
+    src = inspect.getsource(researcher._build_researcher_agent_node)
+    assert "llm_forced" in src
+    assert "llm_free" in src
+    assert "step" in src, "Step-based branching must reference step variable"
+
+
+def test_browser_tools_blocked_resource_types_defined():
+    """_BLOCKED_RESOURCE_TYPES covers high-risk non-text resource categories."""
+    from src.tools.browser_tools import _BLOCKED_RESOURCE_TYPES
+
+    # These must be blocked — they serve no purpose for text extraction and
+    # increase attack surface (media-parser CVEs, binary payload downloads).
+    for rt in ("image", "media", "font", "stylesheet", "websocket", "other"):
+        assert rt in _BLOCKED_RESOURCE_TYPES, f"Resource type '{rt}' must be blocked"
+
+    # script and document must NOT be blocked — JS-rendered pages need them.
+    assert "script" not in _BLOCKED_RESOURCE_TYPES, "script must not be blocked"
+    assert "document" not in _BLOCKED_RESOURCE_TYPES, "document must not be blocked"
+
+
+def test_browser_tools_route_handler_in_source():
+    """browser_tools uses a single _route_handler combining SSRF + resource-type checks."""
+    import inspect
+    from src.tools import browser_tools
+
+    src = inspect.getsource(browser_tools)
+    assert "_route_handler" in src
+    assert "_BLOCKED_RESOURCE_TYPES" in src
+    assert "resource_type" in src
+
+
+# ── PII redaction — URL host exemption ────────────────────────────────────────
+
+
+def test_pii_redaction_does_not_corrupt_private_ip_url_hosts():
+    """
+    sanitize_text must NOT redact private IPs that are URL hosts.
+
+    The SSRF guard (validate_fetch_url) handles those after sanitization.
+    Redacting the host would corrupt the URL and produce an invalid-URL error
+    instead of the intended 'URL blocked' SSRF message.
+    """
+    from src.security.core import sanitize_text
+
+    urls = [
+        "http://127.0.0.1:8080/path",
+        "http://192.168.1.1/admin",
+        "http://10.0.0.1/secret",
+        "http://172.16.0.1/internal",
+        "http://169.254.169.254/latest/meta-data/",
+    ]
+    for url in urls:
+        result, meta = sanitize_text(url, redact_pii=True, check_injection=False)
+        assert result == url, (
+            f"URL host must not be redacted — SSRF guard handles it. "
+            f"Input: {url!r}, got: {result!r}"
+        )
+
+
+def test_pii_redaction_still_redacts_private_ips_in_plain_text():
+    """
+    sanitize_text MUST still redact private IPs that appear in plain text
+    (e.g. log messages, tool outputs) — only URL hosts are exempted.
+    """
+    from src.security.core import sanitize_text
+
+    cases = [
+        "the server is at 192.168.1.1 on the LAN",
+        "connect to 10.0.0.1 via VPN",
+        "loopback is 127.0.0.1 on this host",
+    ]
+    for text in cases:
+        result, meta = sanitize_text(text, redact_pii=True, check_injection=False)
+        assert meta[
+            "pii_redacted"
+        ], f"Private IP in plain text must be redacted. Input: {text!r}"
+        assert (
+            "[PRIVATE_IP]" in result
+        ), f"Expected [PRIVATE_IP] placeholder in result. Got: {result!r}"

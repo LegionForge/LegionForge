@@ -346,9 +346,16 @@ _PII_PATTERNS = [
     # Private IPv4 addresses (RFC 1918 + loopback + link-local).
     # Internal infrastructure IPs must not appear in traces or external API calls.
     #   10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16
+    #
+    # (?<!://) negative lookbehind: skip IPs that are URL hosts (immediately
+    # following "://").  The SSRF guard (validate_fetch_url) already blocks
+    # those before any network activity; redacting the host here would corrupt
+    # the URL before the guard runs and produce an "invalid URL" error instead
+    # of the intended "URL blocked" SSRF message.
+    # IPs in plain text, query strings, and auth credentials ARE still redacted.
     (
         re.compile(
-            r"\b(?:"
+            r"(?<!://)\b(?:"
             r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
             r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
             r"|192\.168\.\d{1,3}\.\d{1,3}"
