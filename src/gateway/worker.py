@@ -82,6 +82,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     task_id = task["task_id"]
     input_text = task["input"]
     task_config = task.get("config") or {}
+    user_id = task.get("user_id")
 
     run_id = str(uuid.uuid4())
     await mark_task_running(task_id, run_id)
@@ -114,6 +115,12 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         uncompiled = build_base_graph()
         agent_id = "base_agent"
 
+    # Gap 3: set per-task memory context so memory_write/memory_recall tools
+    # resolve to the correct agent+user namespace via contextvars.
+    from src.tools.memory_tools import set_agent_memory_context
+
+    set_agent_memory_context(agent_id, user_id)
+
     # Seed all safeguard fields (step_count, action_history, token_count, …)
     # using the same run_id that was recorded in the tasks table for this run.
     # Mirror run_researcher(): seed messages with the task as the initial
@@ -124,6 +131,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         **SafeguardedState.initial(agent_id=agent_id),
         "task": input_text,
         "run_id": run_id,
+        "user_id": user_id,  # Memory bootstrap: persona context injection
         "messages": [HumanMessage(content=input_text)],
     }
 
@@ -312,6 +320,21 @@ async def run_task(task: dict) -> None:
                 await _inc_turn(session_id)
             except Exception as sess_err:
                 logger.warning(f"[worker] session turn increment failed: {sess_err}")
+
+        # Gap 2: episodic memory — fire-and-forget daily summary for cross-session
+        # continuity.  The coroutine gates on settings.agent_memory.enabled +
+        # episodic_memory itself, so no flag check needed here.
+        if user_id:
+            from src.memory import summarize_and_store_episodic
+
+            asyncio.create_task(
+                summarize_and_store_episodic(
+                    task=task.get("input", ""),
+                    result=result_text,
+                    user_id=user_id,
+                    run_id=task_id,
+                )
+            )
 
         # Build completion payload (shared by per-task + registry webhooks)
         _complete_payload = {

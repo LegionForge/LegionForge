@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Phases 0–381 complete — v0.7.0-alpha. All services operational. 1946/1946 smoke tests. See [`docs/quick-start.md`](./quick-start.md) to connect.
+**Status:** Phases 0–381 complete + browser tools + Guardian spinoff — v0.7.0-alpha. All services operational. 1995/1995 smoke tests. See [`docs/quick-start.md`](./quick-start.md) to connect.
 **Source:** Architecture retrospective and requirements session
 
 ---

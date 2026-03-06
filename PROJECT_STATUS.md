@@ -2,7 +2,7 @@
 # LegionForge
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-06
 **Branch:** `dev`
 **Hardware:** Mac Mini M4, 16GB, 1TB external drive (`/Volumes/MAC_MINI_1TB`)
 **Status:** ✅ Phases 0–381 complete. Bug-fix mode — no new phases until v1.0.
@@ -20,7 +20,7 @@
 All phases through 381 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors, comprehensive UI tool library (381 tools), and PostgreSQL scram-sha-256 auth are operational.
 
 ```
-make test-smoke        → 1946/1946 passing (~16s, no external services required)
+make test-smoke        → 1995/1995 passing (~22s, no external services required)
 make test-integration  → 38/38 passed (requires PostgreSQL)
 make test-kerberos     → 5/5 passed (requires live KDC + PostgreSQL)
 make test-ui           → 40/40 passed (Playwright)
@@ -44,7 +44,7 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 |---|---|---|
 | `database.py` | Async PostgreSQL (admin + restricted app pool), LangGraph checkpointer, pgvector, 14-table schema, audit log SHA-256 hash chain | 0–5.5 |
 | `security/core.py` | Keychain loader, CredentialStore, PII redaction, injection detection (29 patterns, Tier 1/2), `has_halt_worthy_injection()` | 1, hardening |
-| `security/guardian.py` | Guardian FastAPI sidecar (:9766) — 7-check deterministic pipeline (no LLM in hot path); 10s rule hot-reload | 2, 4, 7 |
+| `security/guardian.py` | Backward-compat shim — re-exports all names from `legionforge_guardian.app`; canonical source moved to `packages/guardian/` (G2) | 2, 4, 7, G2 |
 | `security/acl.py` | JWT task token issuance + validation; privilege escalation blocking | 3 |
 | `security/bom.py` | AI Bill of Materials assembly | 4 |
 | `safeguards.py` | Three-layer loop protection (step counter, action history, token budget); `SafeguardedState.initial(agent_id=...)` | 0, hardening |
@@ -114,7 +114,8 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 
 | Image | Purpose |
 |---|---|
-| `guardian/Dockerfile` | FastAPI sidecar (:9766), Python 3.11-slim, zero LLM dependencies |
+| `guardian/Dockerfile` | LegionForge-integrated Guardian deploy (uses `legionforge_guardian` package) |
+| `packages/guardian/Dockerfile` | Standalone Guardian deploy — no LegionForge source required |
 | `Dockerfile.analyzer` | Pre-HITL analyzer — deny-default (`--network none --read-only --pids-limit 20`) |
 | `Dockerfile.pentest` | PentestAgent — air-gapped (`--network none --read-only`) |
 | `Dockerfile.sandbox` | code_execute sandbox — Python 3.11-slim, non-root `sandbox` user, stdlib only |
@@ -123,7 +124,7 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 
 ### Tests
 
-- `tests/test_smoke.py` — **492 tests**, no running services required, ~3s
+- `tests/test_smoke.py` — **1995 tests**, no running services required, ~22s
 - `tests/test_integration.py` — **38 tests**, `@pytest.mark.integration`, requires PostgreSQL + Ollama (`make test-integration`)
 - `tests/test_kerberos_integration.py` — **5 tests**, requires live KDC + PostgreSQL (`make test-kerberos`); tests SPNEGO round-trip + DB user provisioning
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)

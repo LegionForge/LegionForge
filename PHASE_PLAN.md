@@ -2,7 +2,7 @@
 # LegionForge — Phased Roadmap
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-06
 **Status:** Phases 0–59 ✅ complete (846/846 smoke tests · 38/38 integration · 5/5 Kerberos · 40/40 UI)
 
 > **See bottom of this file** for Phases 17–59 compact history added 2026-03-03.
@@ -2151,3 +2151,33 @@ still redacted. SSRF guard handles the URL host case correctly.
 
 **Current state (2026-03-06):** 1964/1964 smoke · 50/50 tool accuracy (web_fetch_js)
 · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy (existing)
+
+---
+
+### E. Guardian Spinoff G1–G3 ✅ COMPLETED — PR #219
+
+Guardian sidecar decoupled from all `src.*` dependencies and packaged as a standalone Python package.
+
+- **G1**: All `src.*` module-level imports removed from `guardian.py`; `_GUARDIAN_DESTRUCTIVE_PATTERNS`, `_validate_task_token`, `_append_audit_log_direct` inlined. 13 drift-guard smoke tests.
+- **G1.5**: Last lazy `from src.database import append_audit_log` inside `/report` endpoint inlined. Fully standalone.
+- **G2 scaffold**: `packages/guardian/` — `pyproject.toml`, `init.sql` (5 tables, all IF NOT EXISTS), `Dockerfile`, `docker-compose.yml`, SDK client (`GuardianClient` + `guardian_check()`). Editable install.
+- **G2 code move**: `packages/guardian/src/legionforge_guardian/app.py` is canonical source. `src/security/guardian.py` → thin backward-compat shim.
+- **G3**: `init.sql` `threat_events` schema corrected to match LegionForge DB (`ts`, `run_id`, `action_taken NOT NULL`). Dockerfile CMD finalized. `python -m legionforge_guardian` entry point.
+
+---
+
+### F. Agent Memory — All 5 OpenClaw Gaps ✅ COMPLETED — PR #219
+
+Full OpenClaw memory parity. All implemented against existing `MemoryStore`/pgvector infrastructure — no new tables.
+
+**Message injection order (outermost → innermost):** persona → user prefs → recall → HumanMessage
+
+- **Gap 5 — User preference bootstrap**: `user_context_bootstrap(user_id)` reads `user_preferences` table, injects as SystemMessage. `bootstrap_user_prefs` flag. `AgentState.user_id` threaded from worker. 10 smoke tests.
+- **Gap 3 — Agent-driven memory writes**: `src/tools/memory_tools.py` — `memory_write` (scope=agent|user, 2000-char cap, PII-sanitized) + `memory_recall`. `set_agent_memory_context()` context var. Wired into `RESEARCHER_TOOLS`. Worker `user_id` NameError fixed. 17 smoke tests.
+- **Gap 2 — Daily episodic memory**: `summarize_and_store_episodic()` — router LLM summary stored under `user:<uid>/daily:<YYYY-MM-DD>` after each task. Fire-and-forget in `run_task()`. 7 smoke tests.
+- **Gap 4 — Pre-compaction flush**: `flush_key_facts()` — when `force_end=True`, router LLM extracts 3-5 facts from last 10 messages; stored in agent namespace. Wired in `finalizer_node()`. 6 smoke tests.
+- **Gap 1 — Persona namespace (SOUL.md equivalent)**: `MemoryStore.get_all(namespace)` for always-load retrieval. `persona_bootstrap(agent_id, user_id)` loads `persona:agent:<id>` + `persona:user:<uid>`; injected as outermost SystemMessage. DB-backed, API-editable. 10 smoke tests.
+
+**All 5 flags in `AgentMemoryConfig`:** `bootstrap_user_prefs`, `episodic_memory`, `flush_on_compaction`, `persona_bootstrap` (+ existing `recall_on_task`, `store_results`).
+
+**Current state (2026-03-06, post-PR #219):** 2045/2045 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy

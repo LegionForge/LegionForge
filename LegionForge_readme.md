@@ -4,6 +4,9 @@
 
 > Security is enforced in the execution path — not layered on afterward.
 
+> **Status: Active Development — v0.7.0-alpha**
+> This project is currently under active development. The core security stack, gateway, and tool library are complete and tested. APIs and configuration formats may change before v1.0.0. See the [Status](#status) section for details.
+
 [![Smoke Tests](https://github.com/jp-cruz/LegionForge/actions/workflows/smoke.yml/badge.svg)](https://github.com/jp-cruz/LegionForge/actions/workflows/smoke.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-brightgreen.svg)](https://www.python.org/)
@@ -24,10 +27,11 @@ LegionForge is an open-source framework for running hardened AI agent systems on
 
 | Metric | Value |
 |---|---|
-| Smoke tests (no services required) | **1946 / 1946 passing** (~16s) |
+| Smoke tests (no services required) | **2045 / 2045 passing** (~21s) |
 | Integration tests (PostgreSQL) | **38 / 38 passing** |
 | Kerberos live-KDC tests | **5 / 5 passing** |
 | UI tests (Playwright) | **40 / 40 passing** |
+| Tool accuracy tests | **79 / 79 passing** |
 | Guardian security checks per tool call | **7** (deterministic, 0 LLM calls) |
 | Threat classes covered | **11** |
 | Prompt injection detection patterns | **29** (2-tier: halt + log) |
@@ -147,6 +151,10 @@ All phases complete.
 | **16** | Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC-SHA256 + async callback) connectors |
 | **60–381** | 381-tool operator dashboard — every gateway API endpoint surfaced as a UI function with smoke tests |
 | **Security sprint** | Extended exfiltration detection, NFKC normalization, DESTRUCTIVE_PATTERN DB logging, PostgreSQL scram-sha-256 |
+| **Web + Browser tools** | `web_fetch_js` Playwright headless browser tool for JS-rendered sites; two-layer SSRF guard; private-IP PII regex fix |
+| **Lazy-load Dashboard** | 296 operator tool cards moved into `<template>` — injected on first click; eliminates startup parse cost |
+| **Guardian spinoff G1–G3** | `packages/legionforge_guardian` standalone package; `src/security/guardian.py` → backward-compat shim; `python -m legionforge_guardian` entry point |
+| **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) — OpenClaw parity |
 
 ---
 
@@ -193,7 +201,7 @@ make setup-signing-key
 
 # 6. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1946 passed in ~16s
+# Expected: 1995 passed in ~22s
 
 # 7. Start services (three terminals)
 make health-server   # Operator API at :8765
@@ -228,7 +236,8 @@ open http://localhost:8080/ui
 | File | Purpose |
 |---|---|
 | `src/base_graph.py` | LangGraph agent template — copy to create new agents |
-| `src/security/guardian.py` | Guardian sidecar — deterministic 7-check security pipeline |
+| `packages/guardian/src/legionforge_guardian/app.py` | Guardian sidecar — canonical source; deterministic 7-check security pipeline |
+| `src/security/guardian.py` | Backward-compat shim — re-exports everything from `legionforge_guardian.app` |
 | `src/security/core.py` | Keychain loader, PII redaction (8 patterns), injection detection (29 patterns), I/O sanitizer |
 | `src/database.py` | Async PostgreSQL pool, LangGraph checkpointer, pgvector, audit log hash chain |
 | `src/safeguards.py` | Three-layer loop protection (step counter, action history, token budget) |
@@ -251,7 +260,7 @@ make start             # Full startup (Ollama + PostgreSQL + model warmup)
 make stop              # Graceful shutdown
 
 # Testing
-make test-smoke        # 1946 smoke tests, ~16s, no services required
+make test-smoke        # 1995 smoke tests, ~22s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui           # 40 UI tests (Playwright)
@@ -292,6 +301,20 @@ make revoke-tool TOOL_ID=<id>   # Emergency tool revocation
 
 ---
 
+## Acknowledgements
+
+LegionForge exists in a space shaped by several projects worth calling out directly.
+
+**[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
+
+**[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The isolation patterns here were informed in part by seeing what Moltbot got right.
+
+**[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. Checkpoint-based state persistence, loop protection, and graph resumption are LangGraph primitives that LegionForge builds on heavily.
+
+The security-first design here is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source moves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
+
+---
+
 ## License
 
 AGPL-3.0 with Section 7(b) attribution requirement.
@@ -302,6 +325,16 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 complete. 1946/1946 smoke tests passing. 38/38 integration tests. All pre-v1.0 security blockers resolved. Active development toward v1.0.0 public release.
+**v0.7.0-alpha — Active Development.** This project is currently under active development and is not yet at a stable 1.0 release. The security stack, gateway, and tool library are functionally complete and well-tested, but the project is still evolving toward its v1.0.0 public release.
+
+| | |
+|---|---|
+| **Version** | v0.7.0-alpha |
+| **Smoke tests** | 1995/1995 passing |
+| **Integration tests** | 38/38 |
+| **Kerberos tests** | 5/5 |
+| **UI tests** | 40/40 |
+| **Pre-v1.0 security blockers** | All resolved |
+| **APIs / config formats** | May change before v1.0.0 |
 
 Contributions, issues, and commercial licensing inquiries welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).

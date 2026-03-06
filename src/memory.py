@@ -158,6 +158,38 @@ class MemoryStore:
         results = await similarity_search(embedding, namespace, _limit, _min_sim)
         return results
 
+    # ── Get all ───────────────────────────────────────────────────────────────
+
+    async def get_all(self, namespace: str, limit: int = 20) -> list[dict]:
+        """
+        Return all documents in ``namespace`` ordered by creation time (oldest first).
+
+        Used for always-relevant content (persona, standing instructions) where
+        similarity search is not appropriate — every document should always be loaded.
+
+        Returns:
+            List of ``{id, content, metadata}`` dicts.
+        """
+        from src.database import get_pool
+
+        pool = get_pool()
+        async with pool.connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, content, metadata
+                FROM documents
+                WHERE namespace = $1
+                ORDER BY created_at ASC
+                LIMIT $2
+                """,
+                namespace,
+                limit,
+            )
+        return [
+            {"id": row["id"], "content": row["content"], "metadata": row["metadata"]}
+            for row in rows
+        ]
+
     # ── Stats ─────────────────────────────────────────────────────────────────
 
     async def stats(self, namespace: str) -> dict:
@@ -337,6 +369,118 @@ async def recall_for_task(task: str, namespace: str) -> str:
         return ""
 
 
+async def user_context_bootstrap(user_id: str | None) -> str:
+    """
+    Return a formatted context string from the user's stored preferences.
+
+    Injected as a SystemMessage before every LLM call when both
+    ``settings.agent_memory.enabled`` and
+    ``settings.agent_memory.bootstrap_user_prefs`` are True.
+
+    This is the USER.md equivalent from file-based agent systems: the agent
+    always knows who it's talking to, how to address them, and what their
+    standing preferences are — without the user re-explaining every session.
+
+    Returns an empty string when:
+    - ``settings.agent_memory.enabled`` is False
+    - ``settings.agent_memory.bootstrap_user_prefs`` is False
+    - ``user_id`` is None or empty
+    - No preferences have been stored for this user yet
+    - Any error occurs (gracefully degraded — never breaks an agent run)
+    """
+    from config.settings import settings
+
+    if (
+        not settings.agent_memory.enabled
+        or not settings.agent_memory.bootstrap_user_prefs
+    ):
+        return ""
+    if not user_id:
+        return ""
+
+    try:
+        from src.database import get_user_preferences
+
+        result = await get_user_preferences(user_id)
+        prefs = result.get("prefs", {})
+        if not prefs:
+            return ""
+
+        lines = [f"{k}: {v}" for k, v in sorted(prefs.items()) if v is not None]
+        if not lines:
+            return ""
+
+        return "[User context — injected from stored preferences]\n" + "\n".join(lines)
+    except Exception as e:
+        logger.debug("User context bootstrap failed for user '%s': %s", user_id, e)
+        return ""
+
+
+async def persona_bootstrap(agent_id: str, user_id: str | None) -> str:
+    """
+    Gap 1 — Persona namespace bootstrap (SOUL.md equivalent).
+
+    Loads freeform persona text stored in the ``persona:`` namespaces and
+    returns it as a single formatted context string.  Injected as the
+    outermost ``SystemMessage`` before every LLM call — before user
+    preferences (Gap 5) and semantic recall (Phase 21).
+
+    Two namespace tiers are combined:
+        ``persona:agent:<agent_id>``    — operator-defined agent character,
+                                          tone, and operating boundaries
+                                          (SOUL.md equivalent, shared across users)
+        ``persona:user:<user_id>``      — per-user persona overrides and
+                                          standing instructions (USER.md equivalent)
+
+    Personas are stored as ordinary documents in the ``documents`` table via
+    ``POST /memory/ingest`` with the appropriate namespace.  All documents in
+    each namespace are always loaded (not similarity-searched) because persona
+    content is always relevant, not query-dependent.
+
+    Returns an empty string when:
+    - ``settings.agent_memory.enabled`` is False
+    - ``settings.agent_memory.persona_bootstrap`` is False
+    - No documents exist in either namespace
+    - Any error occurs (gracefully degraded — never breaks an agent run)
+    """
+    from config.settings import settings
+
+    if not settings.agent_memory.enabled or not settings.agent_memory.persona_bootstrap:
+        return ""
+
+    try:
+        store = get_memory_store()
+        sections: list[str] = []
+
+        # Agent-level persona (operator-defined — loaded for all users)
+        agent_ns = f"persona:agent:{agent_id}"
+        agent_docs = await store.get_all(agent_ns)
+        if agent_docs:
+            body = "\n\n".join(d["content"] for d in agent_docs)
+            sections.append(f"[Agent persona]\n{body}")
+
+        # Per-user persona (user-specific overrides and standing instructions)
+        if user_id:
+            user_ns = f"persona:user:{user_id}"
+            user_docs = await store.get_all(user_ns)
+            if user_docs:
+                body = "\n\n".join(d["content"] for d in user_docs)
+                sections.append(f"[User persona]\n{body}")
+
+        if not sections:
+            return ""
+
+        return "\n\n".join(sections)
+    except Exception as e:
+        logger.debug(
+            "Persona bootstrap failed for agent='%s' user='%s': %s",
+            agent_id,
+            user_id,
+            e,
+        )
+        return ""
+
+
 async def store_task_result(
     task: str,
     result: str,
@@ -361,3 +505,135 @@ async def store_task_result(
         await store.store(content, namespace, metadata)
     except Exception as e:
         logger.debug("Memory store_task_result failed: %s", e)
+
+
+async def summarize_and_store_episodic(
+    task: str,
+    result: str,
+    user_id: str,
+    run_id: str = "",
+) -> None:
+    """
+    Gap 2 — Daily episodic memory.
+
+    Summarize a completed task+result with the router LLM (qwen2.5:3b) and
+    store it under ``user:<uid>/daily:<YYYY-MM-DD>`` for cross-session
+    continuity.  Analogous to OpenClaw's daily log that agents read at
+    the start of each session.
+
+    Called as fire-and-forget (asyncio.create_task) from the gateway worker
+    after task completion.  Silently swallows all exceptions so it never
+    blocks a task response.
+    """
+    from config.settings import settings
+
+    if not settings.agent_memory.enabled or not settings.agent_memory.episodic_memory:
+        return
+    if not user_id:
+        return
+
+    try:
+        from datetime import date
+
+        from langchain_core.messages import HumanMessage
+
+        from src.llm_factory import get_router_llm
+
+        llm = get_router_llm(temperature=0.1)
+        prompt = (
+            "Summarize this completed AI agent task in 2-3 sentences for future memory recall.\n"
+            "Be specific — include key facts, findings, or decisions made.\n\n"
+            f"Task: {task[:500]}\n"
+            f"Result: {result[:500]}\n\n"
+            "Summary:"
+        )
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        summary = (
+            response.content.strip()
+            if hasattr(response, "content")
+            else str(response).strip()
+        )
+        if not summary:
+            return
+
+        store = get_memory_store()
+        today = date.today().isoformat()
+        namespace = f"user:{user_id}/daily:{today}"
+        await store.store(
+            summary,
+            namespace=namespace,
+            metadata={"type": "episodic_summary", "run_id": run_id, "date": today},
+        )
+        logger.debug(
+            "Episodic memory: stored summary for user '%s' on %s", user_id, today
+        )
+    except Exception as e:
+        logger.debug("Episodic memory store failed for user '%s': %s", user_id, e)
+
+
+async def flush_key_facts(
+    messages: list,
+    namespace: str,
+    run_id: str = "",
+) -> None:
+    """
+    Gap 4 — Pre-compaction flush.
+
+    When an agent run ends due to token budget exhaustion or loop detection
+    (force_end=True), extract 3-5 key facts from the recent message history
+    using the router LLM (qwen2.5:3b) and store them in the agent namespace
+    before the context is discarded.
+
+    Called as fire-and-forget from finalizer_node in base_graph.py.
+    Silently swallows all exceptions so it never blocks an agent run.
+    """
+    from config.settings import settings
+
+    if (
+        not settings.agent_memory.enabled
+        or not settings.agent_memory.flush_on_compaction
+    ):
+        return
+    if not messages:
+        return
+
+    try:
+        from langchain_core.messages import HumanMessage
+
+        from src.llm_factory import get_router_llm
+
+        # Use the last 10 messages to keep the prompt cheap
+        MAX_MSGS = 10
+        recent = messages[-MAX_MSGS:]
+        msg_text = "\n".join(
+            f"{type(m).__name__}: {str(m.content)[:300]}"
+            for m in recent
+            if hasattr(m, "content")
+        )
+        if not msg_text.strip():
+            return
+
+        llm = get_router_llm(temperature=0.1)
+        prompt = (
+            "Extract 3-5 key facts from this agent conversation worth remembering.\n"
+            "Format: one fact per line, starting with '- '.\n\n"
+            f"{msg_text}\n\nKey facts:"
+        )
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        facts_text = response.content.strip() if hasattr(response, "content") else ""
+        if not facts_text:
+            return
+
+        store = get_memory_store()
+        await store.store(
+            facts_text,
+            namespace=namespace,
+            metadata={"type": "compaction_flush", "run_id": run_id},
+        )
+        logger.debug(
+            "Pre-compaction flush: stored %d chars in namespace '%s'",
+            len(facts_text),
+            namespace,
+        )
+    except Exception as e:
+        logger.debug("Pre-compaction flush failed in namespace '%s': %s", namespace, e)

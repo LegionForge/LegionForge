@@ -64,6 +64,29 @@ Post-v1.0.0 development sprint. All pre-v1.0 security blockers resolved. 1946/19
 - **PR #214**: Documentation sync — all status docs updated to v0.7.0-alpha / Phase 381 / 1946 tests
 - 1946/1946 smoke tests; 38/38 integration tests
 
+### Added — Browser Tools + UI + Guardian Spinoff (PRs #215–#219, 2026-03-05 – 2026-03-06)
+
+- **PR #215**: Docs sync — README, CONTRIBUTING, CHANGELOG, VISION.md updated to 1946 baseline
+- **PR #216**: Public-facing docs — `LegionForge_readme.md`, `LegionForge_index.md`, `docs/quick-start.md`, `docs/architecture.md` updated for GitHub Pages
+- **PR #217**: Lazy-load Operator Dashboard — 296 tool cards moved into `<template id="op-dashboard-tmpl">`; injected on first click; eliminates ~296-card DOM parse on every page load; 3 smoke tests updated
+- **PR #218**: `web_fetch_js` Playwright headless browser tool — two-layer SSRF (URL validation + page route filter); resource type blocking (image/media/font/stylesheet/websocket aborted); Chromium sandbox intact; `src/agents/researcher.py` registers `web_fetch_js`; 50 tool-accuracy tests (Groups A–F); PII fix — `(?<!://)` lookbehind in private-IP regex prevents URL host redaction
+- **PR #219 / G1**: Decouple `guardian.py` from all `src.*` module-level imports; inline `_GUARDIAN_DESTRUCTIVE_PATTERNS`, `_validate_task_token`, `_append_audit_log_direct`; 13 drift-guard smoke tests; 1969→1982
+- **PR #219 / G1.5**: Remove last lazy `from src.database import append_audit_log` inside `/report` endpoint; fully standalone; 1982→1989
+- **PR #219 / G2 scaffold**: `packages/guardian/` — `pyproject.toml` (MIT, `legionforge-guardian` entry point), `init.sql` (5 tables, all `IF NOT EXISTS`), `Dockerfile`, `docker-compose.yml`, `legionforge_guardian/sdk/client.py` (`GuardianClient` + `guardian_check()` with fail-safe halt); editable install `-e packages/guardian`; 11 SDK tests + 7 smoke tests
+- **PR #219 / G2 code move**: `guardian.py` canonical source moved to `packages/guardian/src/legionforge_guardian/app.py`; `src/security/guardian.py` becomes thin backward-compat shim (`_sys.modules[__name__].__dict__.update(...)`)
+- **PR #219 / G3**: Fix `init.sql` `threat_events` schema (`ts`/`run_id` to match LegionForge DB); finalize Dockerfile CMD; 6 G3 smoke tests
+- 1989 → 1995 smoke tests
+
+### Added — Agent Memory Gaps (OpenClaw parity, 2026-03-06)
+
+Closing 4 of 5 agent memory gaps identified vs. the OpenClaw memory model:
+
+- **Gap 5 — User preference bootstrap**: `user_context_bootstrap(user_id)` in `src/memory.py` reads the `user_preferences` table and injects a `SystemMessage` before every LLM call — the USER.md equivalent. `bootstrap_user_prefs` flag in `AgentMemoryConfig`. `AgentState.user_id` threaded from gateway worker. 10 smoke tests; 1995 → 2005.
+- **Gap 3 — Agent-driven memory writes**: `src/tools/memory_tools.py` — `memory_write` (scope=agent|user, 2000-char cap, PII-sanitized, injection-guarded) + `memory_recall` (semantic search). `set_agent_memory_context(agent_id, user_id)` context var resolves namespace without state access. Wired into `RESEARCHER_TOOLS` and gateway worker. Fixed latent `NameError` in `worker._stream_agent` (`user_id` was referenced before assignment). 17 smoke tests; 2005 → 2022.
+- **Gap 2 — Daily episodic memory**: `summarize_and_store_episodic()` in `src/memory.py` — router LLM (qwen2.5:3b) produces a 2-3 sentence summary after each task completion; stored under `user:<uid>/daily:<YYYY-MM-DD>`. Fire-and-forget `asyncio.create_task()` in `run_task()`. Cross-session continuity without re-explanation.
+- **Gap 4 — Pre-compaction flush**: `flush_key_facts()` in `src/memory.py` — when `force_end=True` (token budget hit or loop detected), router LLM extracts 3-5 bullet-point facts from the last 10 messages before context is discarded; stored in agent namespace. Wired in `finalizer_node()` in `base_graph.py`. `episodic_memory` + `flush_on_compaction` flags in `AgentMemoryConfig`. 13 smoke tests; 2022 → 2035.
+- **Gap 1 — Persona namespace bootstrap (SOUL.md equivalent)**: `MemoryStore.get_all(namespace)` — always-load retrieval for non-query-dependent content; `persona_bootstrap(agent_id, user_id)` loads `persona:agent:<id>` (operator-defined agent character) and `persona:user:<uid>` (per-user standing instructions), formats as `[Agent persona]` / `[User persona]` SystemMessage blocks. Injected as the outermost SystemMessage in `agent_node` (before preferences, before recall). `persona_bootstrap` flag in `AgentMemoryConfig`. Stored via `POST /memory/ingest` — DB-backed, per-user + per-agent scoped, multi-instance safe. 10 smoke tests; 2035 → 2045. **All 5 memory gaps closed.**
+
 ---
 
 ## [1.0.0] — 2026-02-26

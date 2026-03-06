@@ -468,18 +468,28 @@ class AgentMemoryConfig(BaseModel):
     Ollama embeddings model (``nomic-embed-text`` by default).
 
     Fields:
-        enabled          — Master switch.  No DB calls are made when False.
-        recall_on_task   — Inject relevant past memory before each LLM call.
-        store_results    — Persist task+result pairs for future recall.
+        enabled              — Master switch.  No DB calls are made when False.
+        recall_on_task       — Inject relevant past memory before each LLM call.
+        store_results        — Persist task+result pairs for future recall.
+        bootstrap_user_prefs — Inject the submitting user's preferences as context
+                               before every LLM call (the USER.md equivalent).
         max_docs_per_namespace — Prune oldest docs when this limit is exceeded.
                                  0 = unlimited (not recommended in production).
-        search_limit     — Top-K documents returned by similarity search.
-        min_similarity   — Cosine similarity threshold (0–1; higher = stricter).
+        search_limit         — Top-K documents returned by similarity search.
+        min_similarity       — Cosine similarity threshold (0–1; higher = stricter).
     """
 
     enabled: bool = False
     recall_on_task: bool = True
     store_results: bool = True
+    bootstrap_user_prefs: bool = (
+        True  # Gap 5: inject user preferences before every LLM call
+    )
+    episodic_memory: bool = True  # Gap 2: store daily summary after each task
+    flush_on_compaction: bool = True  # Gap 4: extract key facts when context fills
+    persona_bootstrap: bool = (
+        True  # Gap 1: load persona: namespace before every LLM call
+    )
     max_docs_per_namespace: int = 1000
     search_limit: int = 5
     min_similarity: float = 0.7

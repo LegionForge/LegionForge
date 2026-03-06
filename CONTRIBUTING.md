@@ -106,7 +106,7 @@ implementation. The count should trend upward over time.
 | Phase 3 complete | 55+ |
 | v1.0.0 (Phase 7) | 242 ✅ |
 | v1.0.1 (Phase 16) | 492 ✅ |
-| **Current baseline (v0.7.0-alpha, Phase 381)** | **1946 ✅** — floor; never goes down |
+| **Current baseline (v0.7.0-alpha, all memory gaps)** | **2045 ✅** — floor; never goes down |
 
 ---
 

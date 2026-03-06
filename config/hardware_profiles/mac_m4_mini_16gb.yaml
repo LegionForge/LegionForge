@@ -361,9 +361,13 @@ ollama_cluster:
 #   make memory-search Q="query" — semantic search (requires Ollama + PostgreSQL)
 #
 agent_memory:
-  enabled: false          # set true to activate (requires PostgreSQL + Ollama)
-  recall_on_task: true    # inject relevant past context before LLM call
-  store_results: true     # persist task+result pairs for future recall
+  enabled: false              # set true to activate (requires PostgreSQL + Ollama)
+  recall_on_task: true        # inject relevant past context before LLM call
+  store_results: true         # persist task+result pairs for future recall
+  bootstrap_user_prefs: true  # inject user preferences before every LLM call (USER.md equivalent)
+  episodic_memory: true       # Gap 2: store daily summary after each task completion
+  flush_on_compaction: true   # Gap 4: extract key facts when context window fills
+  persona_bootstrap: true     # Gap 1: inject persona: namespace before every LLM call (SOUL.md equivalent)
   max_docs_per_namespace: 1000  # 0 = unlimited
   search_limit: 5
   min_similarity: 0.7

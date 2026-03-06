@@ -116,6 +116,12 @@ class AgentState(TypedDict):
     task: str  # The current task description
     result: str | None  # Final output
 
+    # ── Memory: submitting user identity ──────────────────────────────────────
+    # Set by the gateway worker from the authenticated task request.
+    # Used to inject per-user preferences (bootstrap_user_prefs) and to scope
+    # per-user memory namespaces. None for headless/internal runs.
+    user_id: str | None
+
 
 # ── Node functions ────────────────────────────────────────────────────────────
 
@@ -137,6 +143,40 @@ async def agent_node(state: AgentState) -> dict:
 
     try:
         llm = get_primary_llm(temperature=0.1)
+
+        # ── Memory: persona bootstrap (Gap 1) ────────────────────────────────
+        # Inject freeform persona text from persona:agent:<id> and
+        # persona:user:<uid> namespaces — the SOUL.md equivalent.
+        # Outermost SystemMessage: persona → prefs → recall → HumanMessage.
+        if settings.agent_memory.enabled and settings.agent_memory.persona_bootstrap:
+            from src.memory import persona_bootstrap as _persona_bootstrap
+            from langchain_core.messages import SystemMessage as _SM
+
+            _persona = await _persona_bootstrap(
+                agent_id=state.get("agent_id", "base_agent"),
+                user_id=state.get("user_id"),
+            )
+            if _persona:
+                state = {
+                    **state,
+                    "messages": [_SM(content=_persona)] + list(state["messages"]),
+                }
+
+        # ── Memory: user preference bootstrap (Gap 5) ────────────────────────
+        # Inject the submitting user's stored preferences as a SystemMessage so
+        # the agent knows who it's talking to without re-explanation each run.
+        if settings.agent_memory.enabled and settings.agent_memory.bootstrap_user_prefs:
+            _uid = state.get("user_id")
+            if _uid:
+                from src.memory import user_context_bootstrap
+                from langchain_core.messages import SystemMessage as _SM
+
+                _bootstrap = await user_context_bootstrap(_uid)
+                if _bootstrap:
+                    state = {
+                        **state,
+                        "messages": [_SM(content=_bootstrap)] + list(state["messages"]),
+                    }
 
         # ── Phase 21: Memory recall ───────────────────────────────────────────
         # Inject relevant past context before LLM call (no-op when disabled).
@@ -236,6 +276,20 @@ async def finalizer_node(state: AgentState) -> dict:
 
             ns = f"agent:{state.get('agent_id', 'base_agent')}"
             await store_task_result(task, result, ns, run_id=state.get("run_id", ""))
+
+    # ── Gap 4: Pre-compaction flush ───────────────────────────────────────────
+    # When force_end=True (token budget hit or loop detected), extract key facts
+    # from the message history before the context is discarded.
+    if state.get("force_end") and settings.agent_memory.enabled:
+        from src.memory import flush_key_facts
+
+        asyncio.create_task(
+            flush_key_facts(
+                messages=state.get("messages", []),
+                namespace=f"agent:{state.get('agent_id', 'base_agent')}",
+                run_id=state.get("run_id", ""),
+            )
+        )
 
     return {"result": result}
 

@@ -1826,8 +1826,10 @@ def test_guardian_check_6_passes_with_no_rules():
 
 def test_guardian_check_6_capability_block():
     """CAPABILITY_BLOCK adaptive rule halts the matched tool."""
-    import sys
-    from src.security import guardian as g
+    # Phase G2: mutate legionforge_guardian.app directly — the shim copies values
+    # at import time so setting g._adaptive_rules on the shim would not affect the
+    # function which reads from legionforge_guardian.app._adaptive_rules.
+    import legionforge_guardian.app as g
     from src.security.guardian import _check_6_adaptive_rules, GuardianCheckResponse
 
     original = g._adaptive_rules
@@ -1850,8 +1852,8 @@ def test_guardian_check_6_capability_block():
 
 def test_guardian_check_6_injection_pattern():
     """INJECTION_PATTERN adaptive rule halts when regex matches tool args."""
-    import sys
-    from src.security import guardian as g
+    # Phase G2: mutate legionforge_guardian.app directly (see test above for why).
+    import legionforge_guardian.app as g
     from src.security.guardian import _check_6_adaptive_rules
 
     original = g._adaptive_rules
@@ -2424,10 +2426,12 @@ def test_guardian_bearer_auth_function_importable():
 
 def test_guardian_bearer_auth_disabled_when_require_auth_false(monkeypatch):
     """_check_bearer_auth passes any request when GUARDIAN_REQUIRE_AUTH=false."""
-    import src.security.guardian as guardian_module
+    # Phase G2: target legionforge_guardian.app for module-global mutation.
+    # The function reads _GUARDIAN_REQUIRE_AUTH from its defining module (app.py),
+    # not from the src.security.guardian shim.
+    import legionforge_guardian.app as guardian_module
     from unittest.mock import MagicMock
 
-    # Ensure auth is disabled
     monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", False)
 
     mock_request = MagicMock()
@@ -2438,7 +2442,7 @@ def test_guardian_bearer_auth_disabled_when_require_auth_false(monkeypatch):
 
 def test_guardian_bearer_auth_blocks_wrong_token(monkeypatch):
     """_check_bearer_auth rejects wrong Bearer token."""
-    import src.security.guardian as guardian_module
+    import legionforge_guardian.app as guardian_module
     from unittest.mock import MagicMock
 
     monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
@@ -2452,7 +2456,7 @@ def test_guardian_bearer_auth_blocks_wrong_token(monkeypatch):
 
 def test_guardian_bearer_auth_passes_correct_token(monkeypatch):
     """_check_bearer_auth passes correct Bearer token."""
-    import src.security.guardian as guardian_module
+    import legionforge_guardian.app as guardian_module
     from unittest.mock import MagicMock
 
     monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
@@ -3680,10 +3684,17 @@ def test_document_summarize_wraps_content_in_external_content_tags():
 
 
 def test_guardian_require_auth_env_default_is_true():
-    """guardian.py _GUARDIAN_REQUIRE_AUTH defaults to 'true' when env var is unset (Fix 3)."""
+    """_GUARDIAN_REQUIRE_AUTH defaults to 'true' when env var is unset (Fix 3).
+
+    Phase G2: canonical source moved to legionforge_guardian/app.py.
+    """
     from pathlib import Path
 
-    src = (Path(__file__).parent.parent / "src/security/guardian.py").read_text()
+    # Check the canonical source (app.py after G2)
+    src = (
+        Path(__file__).parent.parent
+        / "packages/guardian/src/legionforge_guardian/app.py"
+    ).read_text()
     assert 'os.environ.get("GUARDIAN_REQUIRE_AUTH", "true")' in src
 
 
@@ -7212,6 +7223,139 @@ def test_p21_memory_store_has_async_interface():
         assert inspect.iscoroutinefunction(
             getattr(store, method)
         ), f"MemoryStore.{method} must be async"
+
+
+# ── Gap 5: User preference bootstrap (USER.md equivalent) ────────────────────
+
+
+def test_memory_bootstrap_importable():
+    """user_context_bootstrap is exported from src.memory."""
+    import inspect
+    from src.memory import user_context_bootstrap
+
+    assert inspect.iscoroutinefunction(user_context_bootstrap)
+
+
+def test_memory_bootstrap_disabled_returns_empty():
+    """user_context_bootstrap returns '' when agent_memory.enabled=False (default)."""
+    import asyncio
+    from src.memory import user_context_bootstrap
+
+    result = asyncio.run(user_context_bootstrap("alice"))
+    assert result == ""
+
+
+def test_memory_bootstrap_no_user_id_returns_empty():
+    """user_context_bootstrap returns '' when user_id is None or empty."""
+    import asyncio
+    from unittest.mock import patch
+    from src.memory import user_context_bootstrap
+    from config.settings import settings
+
+    with patch.object(settings.agent_memory, "enabled", True), patch.object(
+        settings.agent_memory, "bootstrap_user_prefs", True
+    ):
+        assert asyncio.run(user_context_bootstrap(None)) == ""
+        assert asyncio.run(user_context_bootstrap("")) == ""
+
+
+def test_memory_bootstrap_bootstrap_flag_false_returns_empty():
+    """user_context_bootstrap returns '' when bootstrap_user_prefs=False even if enabled."""
+    import asyncio
+    from unittest.mock import patch
+    from src.memory import user_context_bootstrap
+    from config.settings import settings
+
+    with patch.object(settings.agent_memory, "enabled", True), patch.object(
+        settings.agent_memory, "bootstrap_user_prefs", False
+    ):
+        assert asyncio.run(user_context_bootstrap("alice")) == ""
+
+
+def test_memory_bootstrap_formats_prefs():
+    """user_context_bootstrap formats non-empty preferences into a SystemMessage body."""
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from src.memory import user_context_bootstrap
+    from config.settings import settings
+
+    fake_prefs = {"name": "Jp", "preferred_language": "English", "tone": "concise"}
+
+    with patch.object(settings.agent_memory, "enabled", True), patch.object(
+        settings.agent_memory, "bootstrap_user_prefs", True
+    ), patch(
+        "src.database.get_user_preferences",
+        new=AsyncMock(return_value={"prefs": fake_prefs}),
+    ):
+        result = asyncio.run(user_context_bootstrap("jp"))
+
+    assert "[User context" in result
+    assert "name: Jp" in result
+    assert "tone: concise" in result
+
+
+def test_memory_bootstrap_empty_prefs_returns_empty():
+    """user_context_bootstrap returns '' when the user has no preferences stored."""
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from src.memory import user_context_bootstrap
+    from config.settings import settings
+
+    with patch.object(settings.agent_memory, "enabled", True), patch.object(
+        settings.agent_memory, "bootstrap_user_prefs", True
+    ), patch(
+        "src.database.get_user_preferences",
+        new=AsyncMock(return_value={"prefs": {}}),
+    ):
+        result = asyncio.run(user_context_bootstrap("jp"))
+
+    assert result == ""
+
+
+def test_memory_bootstrap_db_error_returns_empty():
+    """user_context_bootstrap degrades gracefully on any DB error."""
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from src.memory import user_context_bootstrap
+    from config.settings import settings
+
+    with patch.object(settings.agent_memory, "enabled", True), patch.object(
+        settings.agent_memory, "bootstrap_user_prefs", True
+    ), patch(
+        "src.database.get_user_preferences",
+        new=AsyncMock(side_effect=RuntimeError("DB unreachable")),
+    ):
+        result = asyncio.run(user_context_bootstrap("jp"))
+
+    assert result == ""
+
+
+def test_agent_memory_config_has_bootstrap_field():
+    """AgentMemoryConfig exposes bootstrap_user_prefs with default True."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert hasattr(cfg, "bootstrap_user_prefs")
+    assert cfg.bootstrap_user_prefs is True
+
+
+def test_agent_state_has_user_id_field():
+    """AgentState declares a user_id field for memory bootstrap scoping."""
+    from src.base_graph import AgentState
+    import typing
+
+    hints = typing.get_type_hints(AgentState)
+    assert "user_id" in hints
+
+
+def test_worker_passes_user_id_to_initial_state():
+    """worker.py initial_state dict includes user_id from the task record."""
+    import ast
+    import pathlib
+
+    src = pathlib.Path("src/gateway/worker.py").read_text()
+    # The initial_state dict must include "user_id": user_id
+    assert '"user_id": user_id' in src or "'user_id': user_id" in src
 
 
 # ── Phase 22: Document Ingestion Pipeline ─────────────────────────────────────
@@ -20671,3 +20815,830 @@ def test_pii_redaction_still_redacts_private_ips_in_plain_text():
         assert (
             "[PRIVATE_IP]" in result
         ), f"Expected [PRIVATE_IP] placeholder in result. Got: {result!r}"
+
+
+# ── Finding 4: DESTRUCTIVE_PATTERN logged to threat_events DB ─────────────────
+
+
+def test_guardian_write_threat_event_direct_is_coroutine():
+    """_write_threat_event_direct is an async coroutine — safe to create_task."""
+    import inspect
+
+    from src.security.guardian import _write_threat_event_direct
+
+    assert inspect.iscoroutinefunction(
+        _write_threat_event_direct
+    ), "_write_threat_event_direct must be async for asyncio.create_task"
+
+
+def test_guardian_write_threat_event_direct_has_required_params():
+    """_write_threat_event_direct accepts agent_id, run_id, threat_type, action_taken."""
+    import inspect
+
+    from src.security.guardian import _write_threat_event_direct
+
+    params = set(inspect.signature(_write_threat_event_direct).parameters.keys())
+    for required in ("agent_id", "run_id", "threat_type", "action_taken"):
+        assert (
+            required in params
+        ), f"_write_threat_event_direct missing required param: {required}"
+
+
+def test_guardian_write_threat_event_direct_uses_guardian_db_conninfo():
+    """_write_threat_event_direct uses _guardian_db_conninfo — no src.database import."""
+    import inspect
+
+    from src.security.guardian import _write_threat_event_direct
+
+    src = inspect.getsource(_write_threat_event_direct)
+    assert (
+        "_guardian_db_conninfo" in src
+    ), "_write_threat_event_direct must use _guardian_db_conninfo for self-contained DB access"
+    assert (
+        "src.database" not in src
+    ), "_write_threat_event_direct must not import from src.database (Phase G1 coupling)"
+
+
+def test_guardian_check3_halt_fires_blocked_threat_write():
+    """guardian check() HALT path for check 3 creates a BLOCKED threat_events write."""
+    import inspect
+
+    from src.security.guardian import check
+
+    src = inspect.getsource(check)
+    assert (
+        "_write_threat_event_direct" in src
+    ), "check() must call _write_threat_event_direct for DESTRUCTIVE_PATTERN HALT events"
+    assert (
+        'action_taken="BLOCKED"' in src
+    ), "HALT tier must use action_taken='BLOCKED' in threat_events write"
+
+
+def test_guardian_check3_log_tier_fires_logged_threat_write():
+    """guardian check() LOG tier for check 3 creates a LOGGED threat_events write."""
+    import inspect
+
+    from src.security.guardian import check
+
+    src = inspect.getsource(check)
+    assert (
+        "create_task" in src
+    ), "check() must use asyncio.create_task for non-blocking threat_events writes"
+    assert (
+        'action_taken="LOGGED"' in src
+    ), "LOG tier must use action_taken='LOGGED' in threat_events write"
+
+
+# ── Phase G1: Guardian standalone decoupling smoke tests ─────────────────────
+
+
+def test_guardian_has_no_module_level_src_imports():
+    """Phase G1: guardian.py must have no module-level 'from src.' or 'import src.' lines.
+
+    This is the G1 test gate — verifies guardian.py can start without LegionForge
+    source on PYTHONPATH (prerequisite for publishing as a standalone package).
+    Lazy imports inside function bodies (like /report endpoint) are allowed.
+    """
+    import pathlib
+    import ast
+
+    guardian_path = pathlib.Path("src/security/guardian.py")
+    source = guardian_path.read_text()
+    tree = ast.parse(source)
+
+    violations = []
+    for node in ast.walk(tree):
+        # Only flag top-level import statements (not those inside functions/classes)
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        # Check if it's a module-level node (parent is Module)
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module.startswith("src.") or module == "src":
+                # Check it's at module level (col_offset == 0 means not indented)
+                if node.col_offset == 0:
+                    violations.append(f"  line {node.lineno}: from {module} import ...")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("src.") or alias.name == "src":
+                    if node.col_offset == 0:
+                        violations.append(f"  line {node.lineno}: import {alias.name}")
+
+    assert not violations, (
+        "guardian.py has module-level src.* imports (G1 violation):\n"
+        + "\n".join(violations)
+        + "\nPhase G1 requires these to be inlined or lazy-imported."
+    )
+
+
+def test_guardian_has_no_module_level_config_imports():
+    """Phase G1: guardian.py must not import from config.settings at module level."""
+    import pathlib
+    import ast
+
+    guardian_path = pathlib.Path("src/security/guardian.py")
+    source = guardian_path.read_text()
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.col_offset == 0:
+            module = node.module or ""
+            assert not module.startswith("config"), (
+                f"guardian.py has module-level config import at line {node.lineno}: "
+                f"from {module} import ... (G1 violation)"
+            )
+
+
+def test_guardian_destructive_patterns_count_matches_core():
+    """Phase G1 drift guard: _GUARDIAN_DESTRUCTIVE_PATTERNS must have same count as core.py.
+
+    When a new pattern is added to src.security.core._DESTRUCTIVE_PATTERNS, it MUST
+    also be added to src.security.guardian._GUARDIAN_DESTRUCTIVE_PATTERNS.
+    This test enforces that parity.
+    """
+    from src.security.guardian import _GUARDIAN_DESTRUCTIVE_PATTERNS
+    from src.security.core import _DESTRUCTIVE_PATTERNS
+
+    assert len(_GUARDIAN_DESTRUCTIVE_PATTERNS) == len(_DESTRUCTIVE_PATTERNS), (
+        f"Pattern count mismatch: guardian has {len(_GUARDIAN_DESTRUCTIVE_PATTERNS)} patterns, "
+        f"core has {len(_DESTRUCTIVE_PATTERNS)} patterns. "
+        f"Add the missing patterns to _GUARDIAN_DESTRUCTIVE_PATTERNS in guardian.py."
+    )
+
+
+def test_guardian_inlined_forbidden_capabilities_match_core():
+    """Phase G1 drift guard: guardian's FORBIDDEN_CAPABILITIES must match core.py."""
+    from src.security.guardian import FORBIDDEN_CAPABILITIES as guardian_fc
+    from src.security.core import FORBIDDEN_CAPABILITIES as core_fc
+
+    assert guardian_fc == core_fc, (
+        f"FORBIDDEN_CAPABILITIES mismatch:\n"
+        f"  guardian only: {guardian_fc - core_fc}\n"
+        f"  core only: {core_fc - guardian_fc}"
+    )
+
+
+def test_guardian_inlined_hitl_halt_categories_match_core():
+    """Phase G1 drift guard: guardian's HITL_HALT_CATEGORIES must match core.py."""
+    from src.security.guardian import HITL_HALT_CATEGORIES as guardian_hc
+    from src.security.core import HITL_HALT_CATEGORIES as core_hc
+
+    assert guardian_hc == core_hc, (
+        f"HITL_HALT_CATEGORIES mismatch:\n"
+        f"  guardian only: {guardian_hc - core_hc}\n"
+        f"  core only: {core_hc - guardian_hc}"
+    )
+
+
+def test_guardian_validate_task_token_is_internal():
+    """Phase G1/G2: _validate_task_token is defined internally (not imported from acl).
+
+    After Phase G2 the canonical location is legionforge_guardian/app.py.
+    The src.security.guardian shim re-exports it, so hasattr still works.
+    Source file check accepts either guardian.py (pre-G2) or app.py (post-G2).
+    """
+    import inspect
+    from src.security import guardian
+
+    assert hasattr(
+        guardian, "_validate_task_token"
+    ), "_validate_task_token must be accessible via src.security.guardian"
+    assert callable(guardian._validate_task_token)
+    # Phase G2: canonical location is app.py (legionforge_guardian package)
+    try:
+        src_file = inspect.getfile(guardian._validate_task_token)
+        assert "guardian" in src_file, (
+            f"_validate_task_token is defined in {src_file} — "
+            f"expected guardian.py (pre-G2) or app.py (post-G2)"
+        )
+    except TypeError:
+        pass  # built-in — won't happen for a regular function
+
+
+def test_guardian_check0_uses_internal_validate():
+    """Phase G1: _check_0_task_token uses _validate_task_token (not validate_task_token)."""
+    import inspect
+    from src.security.guardian import _check_0_task_token
+
+    src = inspect.getsource(_check_0_task_token)
+    assert (
+        "_validate_task_token" in src
+    ), "_check_0_task_token must call _validate_task_token (guardian-internal)"
+    assert "validate_task_token(" not in src.replace(
+        "_validate_task_token(", ""
+    ), "_check_0_task_token must NOT call the framework's validate_task_token"
+
+
+# ── Phase G1.5: /report endpoint fully decoupled ─────────────────────────────
+
+
+def test_guardian_report_endpoint_no_src_database_import():
+    """Phase G1.5: /report endpoint must not import from src.database.
+
+    The /report endpoint previously had a lazy 'from src.database import append_audit_log'
+    inside the function body. After G1.5 this is replaced by _append_audit_log_direct().
+    """
+    import inspect
+    from src.security.guardian import report
+
+    src = inspect.getsource(report)
+    assert (
+        "src.database" not in src
+    ), "/report endpoint still imports from src.database — replace with _append_audit_log_direct()"
+    assert (
+        "_append_audit_log_direct" in src
+    ), "/report endpoint must use _append_audit_log_direct() for audit log writes"
+
+
+def test_guardian_append_audit_log_direct_is_coroutine():
+    """_append_audit_log_direct must be an async function."""
+    import inspect
+    from src.security.guardian import _append_audit_log_direct
+
+    assert inspect.iscoroutinefunction(_append_audit_log_direct)
+
+
+def test_guardian_append_audit_log_direct_has_required_params():
+    """_append_audit_log_direct must accept event_type, agent_id, payload."""
+    import inspect
+    from src.security.guardian import _append_audit_log_direct
+
+    sig = inspect.signature(_append_audit_log_direct)
+    params = list(sig.parameters.keys())
+    assert "event_type" in params
+    assert "agent_id" in params
+    assert "payload" in params
+
+
+def test_guardian_audit_log_genesis_matches_database():
+    """_AUDIT_LOG_GENESIS in guardian must match _AUDIT_LOG_GENESIS in database.py.
+
+    Both must produce the same hash or the audit chain will break when guardian
+    writes the first row of a new log (or any row where prev_hash is genesis).
+    """
+    import hashlib
+    from src.security.guardian import _AUDIT_LOG_GENESIS
+
+    expected = hashlib.sha256(b"LEGIONFORGE_AUDIT_LOG_GENESIS").hexdigest()
+    assert _AUDIT_LOG_GENESIS == expected, (
+        f"Guardian's _AUDIT_LOG_GENESIS {_AUDIT_LOG_GENESIS!r} "
+        f"does not match expected {expected!r}"
+    )
+
+
+def test_guardian_compute_audit_row_hash_direct_matches_database():
+    """_compute_audit_row_hash_direct must produce same output as database._compute_audit_row_hash."""
+    from src.security.guardian import _compute_audit_row_hash_direct
+    from src.database import _compute_audit_row_hash
+
+    # Use fixed test inputs
+    seq = 42
+    ts = "2026-03-06T10:00:00+00:00"
+    event_type = "GUARDIAN_REPORT"
+    agent_id = "researcher"
+    payload = {"action": "test", "value": 123}
+    prev_hash = "abc123def456" * 5  # 60-char fake hash
+
+    guardian_hash = _compute_audit_row_hash_direct(
+        seq, ts, event_type, agent_id, payload, prev_hash
+    )
+    database_hash = _compute_audit_row_hash(
+        seq, ts, event_type, agent_id, payload, prev_hash
+    )
+
+    assert guardian_hash == database_hash, (
+        f"Hash mismatch: guardian={guardian_hash!r}, database={database_hash!r}\n"
+        "The audit chain will break if these diverge."
+    )
+
+
+def test_guardian_has_no_src_imports_anywhere():
+    """Comprehensive G1 completion check: no 'from src.' or 'import src.' anywhere in guardian.py.
+
+    Catches both module-level and lazy (function-body) imports.
+    This is the definitive G1 done gate.
+    """
+    import pathlib
+
+    guardian_source = pathlib.Path("src/security/guardian.py").read_text()
+    lines = guardian_source.splitlines()
+
+    violations = []
+    for i, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("from src.") or stripped.startswith("import src."):
+            violations.append(f"  line {i}: {stripped}")
+
+    assert (
+        not violations
+    ), "guardian.py still has src.* imports (G1 not complete):\n" + "\n".join(
+        violations
+    )
+
+
+# ── Phase G2: legionforge-guardian package scaffold smoke tests ───────────────
+
+
+def test_legionforge_guardian_package_importable():
+    """Phase G2: legionforge_guardian package installs and imports cleanly."""
+    import legionforge_guardian
+
+    assert hasattr(legionforge_guardian, "GuardianClient")
+    assert hasattr(legionforge_guardian, "guardian_check")
+    assert legionforge_guardian.__version__ == "0.1.0"
+
+
+def test_legionforge_guardian_client_importable():
+    """Phase G2: GuardianClient is importable from the sdk subpackage."""
+    from legionforge_guardian.sdk.client import GuardianClient, guardian_check
+
+    assert callable(guardian_check)
+    assert GuardianClient.__module__ == "legionforge_guardian.sdk.client"
+
+
+def test_legionforge_guardian_client_default_url():
+    """Phase G2: GuardianClient defaults to localhost:9766."""
+    from legionforge_guardian.sdk.client import GuardianClient
+
+    client = GuardianClient()
+    assert "9766" in client.url
+    assert "localhost" in client.url
+
+
+def test_legionforge_guardian_check_is_coroutine():
+    """Phase G2: guardian_check() is an async function."""
+    import inspect
+    from legionforge_guardian.sdk.client import guardian_check
+
+    assert inspect.iscoroutinefunction(guardian_check)
+
+
+def test_legionforge_guardian_init_sql_exists():
+    """Phase G2: packages/guardian/init.sql exists and contains required table definitions."""
+    import pathlib
+
+    init_sql = pathlib.Path("packages/guardian/init.sql")
+    assert init_sql.exists(), "packages/guardian/init.sql not found"
+    content = init_sql.read_text()
+    for table in (
+        "tool_registry",
+        "threat_rules",
+        "threat_events",
+        "audit_log",
+        "agent_profiles",
+    ):
+        assert (
+            f"CREATE TABLE IF NOT EXISTS {table}" in content
+        ), f"init.sql missing CREATE TABLE IF NOT EXISTS {table}"
+
+
+def test_legionforge_guardian_pyproject_toml_exists():
+    """Phase G2: packages/guardian/pyproject.toml exists with correct package name."""
+    import pathlib
+
+    toml_path = pathlib.Path("packages/guardian/pyproject.toml")
+    assert toml_path.exists()
+    content = toml_path.read_text()
+    assert 'name = "legionforge-guardian"' in content
+    assert 'requires-python = ">=3.11"' in content
+
+
+def test_legionforge_guardian_client_network_error_returns_halt():
+    """Phase G2: GuardianClient.check() returns synthetic halt on network error (fail-safe)."""
+    import asyncio
+    from legionforge_guardian.sdk.client import GuardianClient
+
+    client = GuardianClient(url="http://192.0.2.1:9766", timeout=0.01)
+    result = asyncio.run(client.check("tool", "invoke", {}, "agent", "run-x", []))
+    assert result["allowed"] is False
+    assert result["tier"] == "halt"
+    assert result["threat_type"] == "GUARDIAN_UNREACHABLE"
+
+
+# ---------------------------------------------------------------------------
+# Phase G3 — Standalone deployment
+# ---------------------------------------------------------------------------
+
+
+def test_legionforge_guardian_main_entry_point():
+    """Phase G3: python -m legionforge_guardian resolves to main() in app.py."""
+    from legionforge_guardian.app import main
+
+    assert callable(main)
+
+
+def test_legionforge_guardian_main_module_exists():
+    """Phase G3: __main__.py exists and imports main from app."""
+    import pathlib
+
+    main_py = pathlib.Path("packages/guardian/src/legionforge_guardian/__main__.py")
+    assert main_py.exists(), "legionforge_guardian/__main__.py not found"
+    content = main_py.read_text()
+    assert "from legionforge_guardian.app import main" in content
+    assert "main()" in content
+
+
+def test_legionforge_guardian_app_is_fastapi():
+    """Phase G3: legionforge_guardian.app:app is a FastAPI instance (uvicorn entry point)."""
+    from legionforge_guardian.app import app
+
+    assert app.__class__.__name__ == "FastAPI"
+    assert app.title == "LegionForge Guardian"
+
+
+def test_legionforge_guardian_dockerfile_cmd():
+    """Phase G3: packages/guardian/Dockerfile uses python -m legionforge_guardian as CMD."""
+    import pathlib
+
+    dockerfile = pathlib.Path("packages/guardian/Dockerfile")
+    assert dockerfile.exists(), "packages/guardian/Dockerfile not found"
+    content = dockerfile.read_text()
+    assert 'CMD ["python", "-m", "legionforge_guardian"]' in content
+
+
+def test_legionforge_guardian_init_sql_threat_events_uses_ts_column():
+    """Phase G3: init.sql threat_events uses 'ts' column (not 'created_at') to match LegionForge schema."""
+    import pathlib
+    import re
+
+    content = pathlib.Path("packages/guardian/init.sql").read_text()
+    # Extract the threat_events CREATE TABLE block
+    match = re.search(
+        r"CREATE TABLE IF NOT EXISTS threat_events\s*\((.+?)\);",
+        content,
+        re.DOTALL,
+    )
+    assert match, "threat_events table not found in init.sql"
+    block = match.group(1)
+    assert "ts " in block or "ts\t" in block, "threat_events must use 'ts' column"
+    assert (
+        "created_at" not in block
+    ), "threat_events must not use 'created_at' (incompatible with LegionForge schema)"
+
+
+def test_legionforge_guardian_init_sql_idempotent_table_names():
+    """Phase G3: every CREATE TABLE in init.sql uses IF NOT EXISTS (safe against existing DB)."""
+    import pathlib
+    import re
+
+    content = pathlib.Path("packages/guardian/init.sql").read_text()
+    # Find bare CREATE TABLE not preceded by a comment marker on the same line
+    unsafe = re.findall(
+        r"^CREATE TABLE\s+(?!IF NOT EXISTS)(\w+)", content, re.MULTILINE
+    )
+    assert not unsafe, f"init.sql has CREATE TABLE without IF NOT EXISTS: {unsafe}"
+
+
+# ── Gap 3: memory_write / memory_recall tools ─────────────────────────────────
+
+
+def test_memory_write_tool_importable():
+    """Gap 3: memory_write tool can be imported from src.tools.memory_tools."""
+    from src.tools.memory_tools import memory_write
+
+    assert memory_write is not None
+
+
+def test_memory_recall_tool_importable():
+    """Gap 3: memory_recall tool can be imported from src.tools.memory_tools."""
+    from src.tools.memory_tools import memory_recall
+
+    assert memory_recall is not None
+
+
+def test_memory_write_tool_name():
+    """Gap 3: memory_write has correct LangChain tool name."""
+    from src.tools.memory_tools import memory_write
+
+    assert memory_write.name == "memory_write"
+
+
+def test_memory_recall_tool_name():
+    """Gap 3: memory_recall has correct LangChain tool name."""
+    from src.tools.memory_tools import memory_recall
+
+    assert memory_recall.name == "memory_recall"
+
+
+def test_set_agent_memory_context_importable():
+    """Gap 3: set_agent_memory_context is importable and callable."""
+    from src.tools.memory_tools import set_agent_memory_context
+
+    assert callable(set_agent_memory_context)
+
+
+def test_get_agent_memory_context_importable():
+    """Gap 3: get_agent_memory_context is importable and returns a dict."""
+    from src.tools.memory_tools import get_agent_memory_context
+
+    result = get_agent_memory_context()
+    assert isinstance(result, dict)
+
+
+def test_set_agent_memory_context_sets_values():
+    """Gap 3: set_agent_memory_context stores agent_id and user_id."""
+    from src.tools.memory_tools import (
+        set_agent_memory_context,
+        get_agent_memory_context,
+    )
+
+    set_agent_memory_context("researcher", "user_test_42")
+    ctx = get_agent_memory_context()
+    assert ctx["agent_id"] == "researcher"
+    assert ctx["user_id"] == "user_test_42"
+
+
+def test_memory_write_manifest_has_writes_memory_side_effect():
+    """Gap 3: memory_write manifest declares writes_memory side effect."""
+    from src.tools.memory_tools import MEMORY_TOOL_MANIFESTS
+
+    mw = next(m for m in MEMORY_TOOL_MANIFESTS if m.tool_id == "memory_write")
+    assert "writes_memory" in mw.declared_side_effects
+
+
+def test_memory_recall_manifest_has_no_side_effects():
+    """Gap 3: memory_recall manifest declares no side effects (read-only)."""
+    from src.tools.memory_tools import MEMORY_TOOL_MANIFESTS
+
+    mr = next(m for m in MEMORY_TOOL_MANIFESTS if m.tool_id == "memory_recall")
+    assert mr.declared_side_effects == []
+
+
+def test_memory_tool_manifests_length():
+    """Gap 3: MEMORY_TOOL_MANIFESTS contains exactly 2 entries."""
+    from src.tools.memory_tools import MEMORY_TOOL_MANIFESTS
+
+    assert len(MEMORY_TOOL_MANIFESTS) == 2
+
+
+def test_memory_write_max_chars_constant():
+    """Gap 3: MEMORY_WRITE_MAX_CHARS is 2000."""
+    from src.tools.memory_tools import MEMORY_WRITE_MAX_CHARS
+
+    assert MEMORY_WRITE_MAX_CHARS == 2000
+
+
+def test_memory_tool_sequences_non_empty():
+    """Gap 3: MEMORY_TOOL_SEQUENCES contains approved sequences."""
+    from src.tools.memory_tools import MEMORY_TOOL_SEQUENCES
+
+    assert len(MEMORY_TOOL_SEQUENCES) >= 3
+    assert ["memory_write"] in MEMORY_TOOL_SEQUENCES
+    assert ["memory_recall"] in MEMORY_TOOL_SEQUENCES
+
+
+def test_register_memory_tools_is_coroutine():
+    """Gap 3: register_memory_tools is an async function."""
+    import inspect
+    from src.tools.memory_tools import register_memory_tools
+
+    assert inspect.iscoroutinefunction(register_memory_tools)
+
+
+def test_researcher_tools_includes_memory_write():
+    """Gap 3: RESEARCHER_TOOLS includes memory_write."""
+    from src.agents.researcher import RESEARCHER_TOOLS
+    from src.tools.memory_tools import memory_write
+
+    assert memory_write in RESEARCHER_TOOLS
+
+
+def test_researcher_tools_includes_memory_recall():
+    """Gap 3: RESEARCHER_TOOLS includes memory_recall."""
+    from src.agents.researcher import RESEARCHER_TOOLS
+    from src.tools.memory_tools import memory_recall
+
+    assert memory_recall in RESEARCHER_TOOLS
+
+
+def test_worker_extracts_user_id_in_stream_agent():
+    """Gap 3 fix: _stream_agent extracts user_id from task dict (was NameError bug)."""
+    import pathlib
+
+    content = pathlib.Path("src/gateway/worker.py").read_text()
+    # user_id must be extracted from task before it's used in initial_state
+    lines = content.splitlines()
+    extract_line = next(
+        (i for i, l in enumerate(lines) if "user_id = task.get(" in l), None
+    )
+    use_line = next((i for i, l in enumerate(lines) if '"user_id": user_id' in l), None)
+    assert extract_line is not None, "worker.py must extract user_id from task"
+    assert use_line is not None, "worker.py must pass user_id into initial_state"
+    assert extract_line < use_line, "user_id must be extracted before it is used"
+
+
+def test_worker_calls_set_agent_memory_context():
+    """Gap 3: worker._stream_agent calls set_agent_memory_context after agent_id is known."""
+    import pathlib
+
+    content = pathlib.Path("src/gateway/worker.py").read_text()
+    assert "set_agent_memory_context" in content
+    assert "set_agent_memory_context(agent_id, user_id)" in content
+
+
+# ── Gap 2: Daily episodic memory ──────────────────────────────────────────────
+
+
+def test_summarize_and_store_episodic_importable():
+    """Gap 2: summarize_and_store_episodic is importable from src.memory."""
+    from src.memory import summarize_and_store_episodic
+
+    assert callable(summarize_and_store_episodic)
+
+
+def test_summarize_and_store_episodic_is_coroutine():
+    """Gap 2: summarize_and_store_episodic is an async function."""
+    import inspect
+
+    from src.memory import summarize_and_store_episodic
+
+    assert inspect.iscoroutinefunction(summarize_and_store_episodic)
+
+
+def test_agent_memory_config_has_episodic_memory_field():
+    """Gap 2: AgentMemoryConfig has episodic_memory bool field."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert hasattr(cfg, "episodic_memory")
+    assert isinstance(cfg.episodic_memory, bool)
+
+
+def test_episodic_memory_default_true():
+    """Gap 2: episodic_memory defaults to True in AgentMemoryConfig."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert cfg.episodic_memory is True
+
+
+def test_episodic_namespace_format():
+    """Gap 2: episodic memory is stored under user:<uid>/daily:<date> namespace."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert 'f"user:{user_id}/daily:{today}"' in content
+
+
+def test_worker_fires_episodic_summary():
+    """Gap 2: run_task fires summarize_and_store_episodic as an asyncio task."""
+    import pathlib
+
+    content = pathlib.Path("src/gateway/worker.py").read_text()
+    assert "summarize_and_store_episodic" in content
+    assert "asyncio.create_task" in content
+
+
+def test_episodic_summary_uses_episodic_summary_type():
+    """Gap 2: summarize_and_store_episodic stores metadata type='episodic_summary'."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert '"episodic_summary"' in content
+
+
+# ── Gap 4: Pre-compaction flush ───────────────────────────────────────────────
+
+
+def test_flush_key_facts_importable():
+    """Gap 4: flush_key_facts is importable from src.memory."""
+    from src.memory import flush_key_facts
+
+    assert callable(flush_key_facts)
+
+
+def test_flush_key_facts_is_coroutine():
+    """Gap 4: flush_key_facts is an async function."""
+    import inspect
+
+    from src.memory import flush_key_facts
+
+    assert inspect.iscoroutinefunction(flush_key_facts)
+
+
+def test_agent_memory_config_has_flush_on_compaction_field():
+    """Gap 4: AgentMemoryConfig has flush_on_compaction bool field."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert hasattr(cfg, "flush_on_compaction")
+    assert isinstance(cfg.flush_on_compaction, bool)
+
+
+def test_flush_on_compaction_default_true():
+    """Gap 4: flush_on_compaction defaults to True in AgentMemoryConfig."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert cfg.flush_on_compaction is True
+
+
+def test_finalizer_node_fires_flush_on_force_end():
+    """Gap 4: base_graph.finalizer_node fires flush_key_facts when force_end=True."""
+    import pathlib
+
+    content = pathlib.Path("src/base_graph.py").read_text()
+    assert "flush_key_facts" in content
+    assert 'state.get("force_end")' in content
+
+
+def test_flush_key_facts_uses_compaction_flush_type():
+    """Gap 4: flush_key_facts stores metadata type='compaction_flush'."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert '"compaction_flush"' in content
+
+
+# ── Gap 1: Persona namespace bootstrap (SOUL.md equivalent) ──────────────────
+
+
+def test_persona_bootstrap_importable():
+    """Gap 1: persona_bootstrap is importable from src.memory."""
+    from src.memory import persona_bootstrap
+
+    assert callable(persona_bootstrap)
+
+
+def test_persona_bootstrap_is_coroutine():
+    """Gap 1: persona_bootstrap is an async function."""
+    import inspect
+
+    from src.memory import persona_bootstrap
+
+    assert inspect.iscoroutinefunction(persona_bootstrap)
+
+
+def test_agent_memory_config_has_persona_bootstrap_field():
+    """Gap 1: AgentMemoryConfig has persona_bootstrap bool field."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert hasattr(cfg, "persona_bootstrap")
+    assert isinstance(cfg.persona_bootstrap, bool)
+
+
+def test_persona_bootstrap_default_true():
+    """Gap 1: persona_bootstrap defaults to True in AgentMemoryConfig."""
+    from config.settings import AgentMemoryConfig
+
+    cfg = AgentMemoryConfig()
+    assert cfg.persona_bootstrap is True
+
+
+def test_memory_store_has_get_all_method():
+    """Gap 1: MemoryStore has get_all(namespace) method for always-loaded content."""
+    from src.memory import MemoryStore
+    import inspect
+
+    assert hasattr(MemoryStore, "get_all")
+    assert inspect.iscoroutinefunction(MemoryStore.get_all)
+
+
+def test_persona_namespace_format_agent():
+    """Gap 1: agent persona stored under persona:agent:<agent_id> namespace."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert 'f"persona:agent:{agent_id}"' in content
+
+
+def test_persona_namespace_format_user():
+    """Gap 1: user persona stored under persona:user:<user_id> namespace."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert 'f"persona:user:{user_id}"' in content
+
+
+def test_base_graph_wires_persona_bootstrap():
+    """Gap 1: base_graph.agent_node injects persona before user prefs (outermost)."""
+    import pathlib
+
+    content = pathlib.Path("src/base_graph.py").read_text()
+    assert "persona_bootstrap" in content
+    # The Gap 1 comment must appear before the Gap 5 comment in agent_node
+    assert "Gap 1" in content and "Gap 5" in content
+    assert content.index("Gap 1") < content.index(
+        "Gap 5"
+    ), "persona (Gap 1) must be injected before user prefs (Gap 5)"
+
+
+def test_persona_bootstrap_agent_section_label():
+    """Gap 1: persona_bootstrap formats agent section with [Agent persona] label."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert (
+        '"[Agent persona]' in content
+        or "'[Agent persona]'" in content
+        or "[Agent persona]" in content
+    )
+
+
+def test_persona_bootstrap_user_section_label():
+    """Gap 1: persona_bootstrap formats user section with [User persona] label."""
+    import pathlib
+
+    content = pathlib.Path("src/memory.py").read_text()
+    assert "[User persona]" in content

@@ -51,6 +51,12 @@ from src.tools.browser_tools import (
     BROWSER_TOOL_MANIFESTS,
     BROWSER_TOOL_SEQUENCES,
 )
+from src.tools.memory_tools import (
+    memory_write,
+    memory_recall,
+    MEMORY_TOOL_MANIFESTS,
+    MEMORY_TOOL_SEQUENCES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +185,14 @@ async def document_summarize(text: str, focus: str = "") -> str:
     return response.content
 
 
-RESEARCHER_TOOLS = [web_search, web_fetch, web_fetch_js, document_summarize]
+RESEARCHER_TOOLS = [
+    web_search,
+    web_fetch,
+    web_fetch_js,
+    document_summarize,
+    memory_write,
+    memory_recall,
+]
 
 
 # ── Tool manifests ────────────────────────────────────────────────────────────
@@ -210,6 +223,7 @@ RESEARCHER_TOOL_MANIFESTS = [
         entrypoint_func=document_summarize,
     ),
     *BROWSER_TOOL_MANIFESTS,
+    *MEMORY_TOOL_MANIFESTS,
 ]
 
 
@@ -226,6 +240,7 @@ RESEARCHER_EXPECTED_SEQUENCES: list[list[str]] = [
     ["web_fetch"],
     ["document_summarize"],
     *BROWSER_TOOL_SEQUENCES,
+    *MEMORY_TOOL_SEQUENCES,
 ]
 
 
@@ -235,6 +250,7 @@ async def register_researcher_tools() -> None:
     Call once at startup or via: make register-researcher-tools
     """
     from src.tools.browser_tools import register_browser_tools
+    from src.tools.memory_tools import register_memory_tools
 
     for manifest in RESEARCHER_TOOL_MANIFESTS:
         await register_tool(
@@ -243,6 +259,7 @@ async def register_researcher_tools() -> None:
             approval_notes="Phase 1 researcher agent tools",
         )
     await register_browser_tools()
+    await register_memory_tools()
     logger.info("[researcher] All tools registered.")
 
 

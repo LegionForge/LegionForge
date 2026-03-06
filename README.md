@@ -116,8 +116,12 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **v1.0.1** | schema fix (user_id TEXT), live Kerberos KDC, all integration tests real, MODEL_INTEGRITY_STRICT env var | ✅ Complete |
 | **Phase 60–381** | 381-tool UI library (Phases 60–381, PRs #117–#201) — full operator dashboard built as JS functions over the gateway REST API | ✅ Complete |
 | **Security hardening** | Extended exfiltration detection + NFKC normalization; DESTRUCTIVE_PATTERN async DB logging; PostgreSQL scram-sha-256 migration (PRs #208–#214) | ✅ Complete |
+| **Web + Browser tools** | `web_fetch_js` Playwright headless browser (PR #218); two-layer SSRF guard; private-IP PII regex fix; 50 tool-accuracy tests | ✅ Complete |
+| **Lazy-load Dashboard** | 296 operator tool cards in `<template>` — injected on first click; eliminates startup parse cost (PR #217) | ✅ Complete |
+| **Guardian G1–G3** | `packages/legionforge_guardian` standalone package; backward-compat shim in `src/security/guardian.py`; `python -m legionforge_guardian` entry point (PR #219) | ✅ Complete |
+| **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) | ✅ Complete |
 
-**1946/1946 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. Smoke suite runs in ~16 seconds (no external services required).
+**2045/2045 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -169,7 +173,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1946 passed in ~16s
+# Expected: 2045 passed in ~21s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -202,7 +206,8 @@ open http://localhost:8080/ui
 | File | Purpose |
 |---|---|
 | `src/base_graph.py` | LangGraph agent template — copy to create new agents |
-| `src/security/guardian.py` | Guardian sidecar — deterministic 7-check security pipeline |
+| `packages/guardian/src/legionforge_guardian/app.py` | Guardian sidecar — canonical source; deterministic 7-check security pipeline |
+| `src/security/guardian.py` | Backward-compat shim — re-exports all names from `legionforge_guardian.app` |
 | `src/security/core.py` | Keychain loader, PII redaction (8 patterns), injection detection, I/O sanitizer |
 | `src/database.py` | Async PostgreSQL pool, LangGraph checkpointer, pgvector, audit log hash chain |
 | `src/safeguards.py` | Three-layer loop protection (step counter, action history, token budget) |
@@ -221,7 +226,7 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 1946 smoke tests, ~16s, no services required
+make test-smoke      # 2045 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui         # 40 UI tests (Playwright)
@@ -250,6 +255,22 @@ make revoke-tool TOOL_ID=<id>  # Emergency tool revocation
 
 ---
 
+## Acknowledgements
+
+LegionForge exists in a space shaped by several projects worth calling out directly.
+
+**[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture (Gateway, Agent, Tools, Workspace, Sessions, Nodes) and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
+
+**[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The multi-agent isolation patterns here were informed in part by seeing what Moltbot got right (and where it left security as an exercise for the operator).
+
+**[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. The checkpoint-based state persistence and the recursion-limit loop protection are LangGraph primitives that LegionForge builds on heavily.
+
+**[LangChain](https://github.com/langchain-ai/langchain)** and the broader open-source LLM tooling ecosystem — without the ecosystem of open weights models, open inference runtimes (Ollama), and open tooling, a project like this on consumer hardware wouldn't be possible.
+
+The security-first design of LegionForge is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source evolves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
+
+---
+
 ## License
 
 AGPL-3.0 with Section 7(b) attribution requirement.
@@ -260,6 +281,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 complete. 1946/1946 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
+**v0.7.0-alpha** — Phases 0–381 + all 5 agent memory gaps complete. 2045/2045 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).

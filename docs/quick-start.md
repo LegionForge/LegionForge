@@ -1,7 +1,7 @@
 # LegionForge — Quick Start Guide
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-06
 
 This guide takes you from zero to a running LegionForge instance and your first agent task.
 It assumes a Mac Mini M4 running macOS 14+.
@@ -118,7 +118,7 @@ make register-agent-sequences   # declare agent tool sequences
 
 ```bash
 make test-smoke
-# Expected: 1946 passed in ~16s (no services required)
+# Expected: 1995 passed in ~22s (no services required)
 ```
 
 ---
@@ -390,7 +390,7 @@ make stop              # Graceful shutdown
 make install           # Install/update pip dependencies
 
 # Testing
-make test-smoke        # 1946 smoke tests, ~16s, no services required
+make test-smoke        # 1995 smoke tests, ~22s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui           # 40 UI tests (Playwright)

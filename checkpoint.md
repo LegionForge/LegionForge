@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 262
-BRANCH: feature/headless-browser
-COMMIT: (pending PR #218)
-TIMESTAMP: 2026-03-06T02:45Z
-LAST_OP: PII URL-host exemption fix ((?<!://) lookbehind) + 50-test web_fetch_js tool accuracy suite + testlab registration; 1962→1964 smoke
-SMOKE_TESTS: 1964/1964
+UPDATE: 275
+BRANCH: dev
+COMMIT: 10a0623
+TIMESTAMP: 2026-03-06T16:30Z
+LAST_OP: Gap 1 — DB-backed persona namespace (SOUL.md equivalent); MemoryStore.get_all(); persona_bootstrap(); all 5 memory gaps complete; docs synced; 2045/2045
+SMOKE_TESTS: 2045/2045
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

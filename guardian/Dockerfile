@@ -16,16 +16,14 @@ WORKDIR /app
 COPY guardian/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only what Guardian needs — minimise attack surface
-COPY config/ /app/config/
+# Copy only what Guardian needs — minimise attack surface.
+# Phase G1 note: config/ no longer copied — guardian.py uses env vars only.
+# Phase G2 note: this Dockerfile will be superseded by packages/guardian/Dockerfile.
 COPY src/security/ /app/src/security/
 COPY src/__init__.py /app/src/__init__.py
 
-# Create runtime directories that settings.py will try to use, then hand ownership
-# to the non-root user. Must be done before USER switch.
-RUN mkdir -p /app/models/ollama /app/models/lmstudio /app/models/hf \
-             /app/logs /app/checkpoints /app/data /app/vector_store \
-    && chown -R guardian:guardian /app
+# Create runtime directories, hand ownership to non-root user.
+RUN mkdir -p /app/logs && chown -R guardian:guardian /app
 
 # Make the src package importable without the full project installed
 ENV PYTHONPATH=/app

@@ -319,9 +319,10 @@ permalink: /
 
 <header class="hero">
   <div class="badge">Open Source · AGPL-3.0 · Local-First · Apple Silicon</div>
+  <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.0-alpha · Active Development · Not Yet Stable</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 1946/1946 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2045/2045 tests passing</p>
   <div class="cta-group">
     <a class="btn btn-primary" href="https://github.com/jp-cruz/LegionForge">
       View on GitHub →
@@ -341,7 +342,7 @@ permalink: /
 <div class="container">
   <div class="stats">
     <div class="stat">
-      <span class="stat-value">1946</span>
+      <span class="stat-value">2045</span>
       <span class="stat-label">Tests Passing</span>
     </div>
     <div class="stat">
@@ -652,6 +653,21 @@ permalink: /
       <div class="phase-desc">Extended exfiltration detection, NFKC normalization, DESTRUCTIVE_PATTERN DB logging, PostgreSQL scram-sha-256</div>
       <div class="status-done">✓ complete</div>
     </div>
+    <div class="phase-row">
+      <div class="phase-num">Web tools</div>
+      <div class="phase-desc">web_fetch_js — Playwright headless browser for JS-rendered pages; two-layer SSRF guard; private-IP PII fix</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">Guardian G1–G3</div>
+      <div class="phase-desc">legionforge_guardian standalone package; src/security/guardian.py is now a backward-compat shim; python -m legionforge_guardian entry point</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">Memory — all 5 gaps</div>
+      <div class="phase-desc">DB-backed SOUL.md persona (Gap 1), user prefs bootstrap (Gap 5), memory_write/memory_recall tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) — full OpenClaw parity</div>
+      <div class="status-done">✓ complete</div>
+    </div>
   </div>
 </div>
 </section>
@@ -677,7 +693,7 @@ permalink: /
 <br>
 <span class="comment"># Run smoke tests (no services needed)</span><br>
 <span class="cmd">make</span> test-smoke<br>
-<span class="comment"># ✓ 1946 passed in ~16s</span><br>
+<span class="comment"># ✓ 2045 passed in ~21s</span><br>
 <br>
 <span class="comment"># Start services + create your first user</span><br>
 <span class="cmd">make</span> health-server  <span class="comment"># :8765</span><br>
@@ -696,10 +712,14 @@ permalink: /
 <section>
 <div class="container">
   <h2><span class="icon">📬</span> Status</h2>
+  <p style="color: #f9c74f; font-family: var(--mono); font-size: 0.85rem; margin-bottom: 1rem;">
+    ⚠ v0.7.0-alpha — Active Development. This project is not yet at a stable 1.0 release.
+    APIs and configuration formats may change before v1.0.0.
+  </p>
   <p style="color: var(--dim);">
-    LegionForge is available now.
-    <strong style="color: var(--text);">1946/1946 tests passing.</strong>
-    All pre-v1.0 security blockers resolved. Phases 0–381 complete.
+    The security stack, gateway, and operator dashboard are functionally complete and tested.
+    <strong style="color: var(--text);">2045/2045 tests passing.</strong>
+    All pre-v1.0 security blockers resolved. Phases 0–381 complete, plus web browser tools, Guardian package spinoff, and full agent memory model (all 5 gaps — OpenClaw parity).
     Active development toward v1.0.0 public release.
   </p>
   <p style="color: var(--dim);">

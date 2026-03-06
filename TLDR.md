@@ -2,7 +2,7 @@
 # LegionForge — What Is This and What Are We Building?
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-02
+**Last updated:** 2026-03-06
 
 ---
 
@@ -20,10 +20,10 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
 
-**1946/1946 smoke tests passing** (~16s, no external services required).
+**1995/1995 smoke tests passing** (~22s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
 **40/40 UI tests** (`make test-ui`).
-**29/29 tool accuracy tests** (`make test-tool-accuracy`).
+**79/79 tool accuracy tests** (`make test-tool-accuracy`).
 **104/104 TestLab tests** · **5/5 Kerberos live-KDC tests**.
 
 ### Core Security Stack (Phases 0–16)
@@ -206,7 +206,7 @@ If someone wanted to attack this framework right now, here is the attack plan in
 
 ## Open Technical Debt
 
-**Finding 4 — DESTRUCTIVE_PATTERN not logged to DB:** Guardian Check 3 (destructive pattern detection) halts tool execution but the threat event is not written to `threat_events`. Low priority; logged to stderr only. Tracked for a future hardening sprint.
+~~**Finding 4 — DESTRUCTIVE_PATTERN not logged to DB:**~~ **Closed (PR #219).** Guardian Check 3 now writes HALT + LOG tier events to `threat_events` via `_write_threat_event_direct()` (Guardian's own psycopg — no `src.database` dependency).
 
 **Kerberos live KDC** is fully operational: MIT Kerberos 1.22.2 KDC running locally, `gssapi` built against MIT Kerberos (not Heimdal), SPNEGO round-trip verified end-to-end, `make test-kerberos` passes **5/5**. Full setup guide in `docs/SCALING.md`.
 
@@ -230,3 +230,4 @@ If someone wanted to attack this framework right now, here is the attack plan in
 | [`docs/PHASE_8_GATEWAY_SPEC.md`](./docs/PHASE_8_GATEWAY_SPEC.md) | Phase 8 gateway API contract, schema, and implementation plan |
 | [`docs/A2A_CONFORMANCE.md`](./docs/A2A_CONFORMANCE.md) | A2A protocol conformance checklist and gap analysis |
 | [`docs/architecture.md`](./docs/architecture.md) | Implementation-level technical reference (modules, patterns, data flow) |
+| [`docs/GUARDIAN_SPINOFF.md`](./docs/GUARDIAN_SPINOFF.md) | Plan to publish Guardian as a standalone PyPI package + GitHub org strategy |
