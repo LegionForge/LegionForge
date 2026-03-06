@@ -161,6 +161,14 @@
     .doc-row { display:grid; grid-template-columns:1fr 80px 40px; gap:6px; align-items:baseline; padding:4px 0; border-bottom:1px solid var(--border2); font-size:11px; }
     .doc-row:last-child { border-bottom:none; }
     .doc-preview { color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* ── Operator Dashboard accordion ───────────────────────────── */
+    #op-dashboard > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:8px; padding:10px 16px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); font-weight:600; font-size:13px; user-select:none; }
+    #op-dashboard > summary::-webkit-details-marker { display:none; }
+    #op-dashboard > summary::marker { display:none; }
+    #op-dashboard-arrow { transition:transform 0.2s; display:inline-block; font-size:10px; color:var(--text-dim); }
+    #op-dashboard[open] #op-dashboard-arrow { transform:rotate(90deg); }
+    #op-dashboard[open] > summary { border-radius:var(--radius) var(--radius) 0 0; border-bottom:1px solid var(--border2); }
+    #op-dashboard-body { display:flex; flex-direction:column; gap:16px; padding-top:16px; }
         /* ── Light mode override (Phase 72) ─────────────────────────── */
     body.light-mode {
       --bg:        #f6f8fa;
@@ -784,6 +792,15 @@
     </details>
   </div>
 
+  <!-- ── Operator Dashboard (lazy-loaded — click to expand) ──────────── -->
+  <details id="op-dashboard">
+    <summary><span id="op-dashboard-arrow">▶</span> ⚙ Operator Dashboard <span style="font-size:11px;font-weight:400;color:var(--text-dim);margin-left:6px">296 tools — click to expand</span></summary>
+    <div id="op-dashboard-body"></div>
+  </details>
+
+
+</div><!-- #app -->
+<template id="op-dashboard-tmpl">
   <!-- ── Scheduled Tasks card (Phase 75) ──────────────────── -->
   <div class="card" id="schedules-card">
     <details id="sched-section">
@@ -4211,7 +4228,8 @@
     </details>
   </div>
 
-</div><!-- #app -->
+</template>
+
 
 <div id="version-footer">LegionForge <span id="footer-version">…</span> · <span id="footer-usage" style="display:none">Today: <span id="footer-usage-today">—</span> tok</span></div>
 
@@ -4275,9 +4293,8 @@ const el = {
 (function init() {
   initTheme();  // Phase 72: apply saved/system light-dark preference
   initNotifButton();  // Phase 74: init notification bell
-  loadSchedules().catch(() => {});  // Phase 75
-  loadPipelines().catch(() => {});  // Phase 79
-  loadAgents().catch(() => {});     // Phase 83
+  // Phase 75/79/83: deferred — cards live inside the lazy-loaded Operator Dashboard.
+  // Initialized when the user first opens it (see #op-dashboard toggle listener below).
 
   // Restore API key
   const saved = localStorage.getItem(APIKEY_KEY);
@@ -4323,6 +4340,19 @@ const el = {
     }
   });
 })();
+
+// ── Operator Dashboard: lazy-inject on first open ──────────────────────────
+document.getElementById('op-dashboard').addEventListener('toggle', function() {
+  if (!this.open) return;
+  var body = document.getElementById('op-dashboard-body');
+  if (body.hasChildNodes()) return;  // already injected
+  var tmpl = document.getElementById('op-dashboard-tmpl');
+  body.appendChild(tmpl.content.cloneNode(true));
+  // Re-run init-time loads now that card elements exist in the DOM
+  loadSchedules().catch(function() {});
+  loadPipelines().catch(function() {});
+  loadAgents().catch(function() {});
+});
 
 // ── API key helpers ───────────────────────────────────────────────
 

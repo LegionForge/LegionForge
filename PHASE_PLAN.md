@@ -2038,4 +2038,117 @@ Added as compact addendum. See git log for full details.
 
 **HALTED — bug-fix focus required before continuing. See jp.md for lessons learned.**
 
+---
+
+## Upcoming Work — Next Session
+
+### A. Playwright Headless Browser Tool (`web_fetch_js`)
+
+**Problem discovered during UAT (2026-03-05):**
+The researcher agent's `web_fetch` tool uses plain `httpx.get()`, which returns
+the raw HTML of a page. Major news and content sites (CNN, NYT, most modern
+web apps) are **JavaScript-rendered** — the HTML shell contains no article
+content, only `<div id="app"></div>` scaffolding. A plain HTTP fetch on
+`https://cnn.com` returns nothing useful.
+
+**Solution:** Add a `web_fetch_js` tool backed by Playwright (MIT license,
+developed by Microsoft) that launches a headless Chromium browser, waits for
+the DOM to settle after JS execution, and returns the rendered visible text.
+
+**Implementation plan:**
+
+1. **Add dependency** — `playwright` to `requirements.txt`; run
+   `playwright install chromium` (downloads ~130MB Chromium binary).
+
+2. **Create `src/tools/browser_tools.py`** with:
+   - `web_fetch_js(url, timeout=15.0)` — async Playwright tool
+   - Same `validate_fetch_url()` SSRF guard as `web_fetch` applied before
+     browser launches (private IPs, file://, bad schemes all blocked)
+   - Network-level block of internal IP ranges at Playwright context level
+     (`page.route()`) as belt-and-suspenders SSRF defence
+   - `wait_until="domcontentloaded"` with hard timeout
+   - Output truncated to 10,000 chars (same as `web_fetch`)
+   - Browser process killed after every request (no reuse — prevents state leakage)
+   - `ToolManifest` registration with `declared_side_effects: ["reads_web", "runs_headless_browser"]`
+
+3. **Security surface (addressed in implementation):**
+
+   | Risk | Mitigation |
+   |---|---|
+   | SSRF via browser | `validate_fetch_url()` pre-launch + `page.route()` block of RFC-1918 ranges |
+   | Malicious JS in browser | Isolated context per request; no file:// access; no extensions |
+   | Resource bomb | Hard `timeout` kills browser process; no browser reuse |
+   | Data exfiltration via JS | Service workers disabled; navigation blocked after initial load |
+   | Content size explosion | 10,000 char truncation on `body.inner_text()` |
+
+4. **Register with Guardian** — same `register_tool()` / `approve_tool()` flow
+   as `web_fetch`. Add to `RESEARCHER_TOOLS` list and agent tool sequences.
+
+5. **Add to researcher** — `RESEARCHER_TOOLS = [web_search, web_fetch, web_fetch_js, document_summarize]`
+   The agent will prefer `web_fetch_js` for URLs likely to be JS-rendered and
+   fall back to `web_fetch` for feeds, APIs, and plain HTML pages.
+
+6. **Smoke tests** — at minimum:
+   - `test_web_fetch_js_tool_importable`
+   - `test_web_fetch_js_ssrf_guard_blocks_localhost`
+   - `test_web_fetch_js_ssrf_guard_blocks_private_ip`
+   - `test_web_fetch_js_tool_manifest_registered`
+   - `test_web_fetch_js_in_researcher_tools`
+
+7. **Crystallization path** — once `web_fetch_js` proves reliable (consistent
+   inputs/outputs, no LLM needed to execute), it is a candidate for
+   crystallization into a signed, containerized tool per the Phase 5 pipeline.
+   A containerized Playwright with a pinned Chromium version and Ed25519
+   signature eliminates the runtime Chromium download dependency.
+
+**Legal / licensing:**
+- Playwright: MIT license — no commercial restrictions, no telemetry by default.
+- Fetching pages: personal/research-scale access is outside CFAA/DSA scope.
+  `robots.txt` compliance is optional good practice. CNN-scale ToS restrictions
+  target commercial data harvesting, not single-user household agents.
+
+---
+
+### B. Researcher Agent — Tool-Use Reliability (Problem 1)
+
+**Problem discovered during UAT (2026-03-05):**
+`llama3.1:8b` answered *"What are the latest CNN headlines right now?"* from
+training data (2023 fabrication) despite the system prompt saying
+`ALWAYS use your tools to look up current information`.
+
+8B models don't reliably trigger tool calls when they have training-data
+confidence in the answer. The fix must be at the graph level, not prompt level.
+
+**Proposed fix — step-gated tool forcing:**
+
+In `_build_researcher_agent_node()`, bind two LLM variants:
+- `llm_forced` — `bind_tools(tools, tool_choice="required")` — used on step 1
+- `llm_free`   — `bind_tools(tools)` — used on step 2+ (synthesis / follow-up)
+
+On step 1 the model MUST call a tool. It picks which one (guided by the system
+prompt and task). This eliminates silent hallucination on the first turn.
+On step 2+ the model can synthesize without forcing another tool call.
+
+**Consideration:** If no appropriate tool exists for the task, `tool_choice="required"`
+forces a call to the least-wrong tool, which fails visibly and informatively —
+this is preferable to silent hallucination. The right follow-up is to build the
+missing tool (e.g., `web_fetch_js` for JS-rendered sites) rather than allowing
+the model to fabricate.
+
+**Smoke tests to add:**
+- `test_researcher_llm_forced_on_step_1` — verify `tool_choice` in step-1 LLM binding
+- `test_researcher_llm_free_after_step_1` — verify step-2+ uses unforced binding
+
+---
+
+### C. UI — Operator Dashboard lazy-load (completed 2026-03-05, PR #217)
+
+296 operator dashboard tool cards moved from `#app` DOM into
+`<template id="op-dashboard-tmpl">`. Content cloned into DOM only on first
+click of the "⚙ Operator Dashboard" accordion. Eliminates all render/layout
+work for 224KB of HTML at page load. `loadSchedules`, `loadPipelines`,
+`loadAgents` deferred to toggle listener.
+
+**Current state:** 1946/1946 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI
+
 **Current state:** 1920/1920 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy

@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 258
+UPDATE: 259
 BRANCH: dev
-COMMIT: 296c1de
-TIMESTAMP: 2026-03-05T15:00Z
-LAST_OP: PR #215 — comprehensive doc sync (README/CHANGELOG/CONTRIBUTING/VISION/CI) for v0.7.0-alpha
+COMMIT: 25ce450
+TIMESTAMP: 2026-03-05T16:00Z
+LAST_OP: PR #216 — update all public-facing docs + create LegionForge_readme.md + LegionForge_index.md for public website
 SMOKE_TESTS: 1946/1946
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5

@@ -11425,14 +11425,21 @@ def test_p75_ui_delete_schedule_function_defined():
     assert "DELETE" in fn_body
 
 
-def test_p75_ui_load_schedules_called_in_init():
-    """loadSchedules() is called in init() so schedules load on page start."""
+def test_p75_ui_load_schedules_called_in_op_dashboard_toggle():
+    """loadSchedules() is called in the Operator Dashboard toggle listener (lazy-load)."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    init_start = html.find("function init()")
-    init_body = html[init_start : init_start + 500]
-    assert "loadSchedules" in init_body
+    toggle_start = html.find("op-dashboard-tmpl")
+    assert toggle_start != -1, "op-dashboard-tmpl template not found"
+    # loadSchedules must appear in the toggle listener block
+    toggle_block = html[
+        html.find("op-dashboard').addEventListener") : html.find(
+            "op-dashboard').addEventListener"
+        )
+        + 600
+    ]
+    assert "loadSchedules" in toggle_block
 
 
 def test_p75_ui_schedules_form_has_cron_input():
@@ -11637,14 +11644,18 @@ def test_p79_ui_delete_pipeline_function_defined():
     assert "function deletePipeline(" in html
 
 
-def test_p79_ui_load_pipelines_called_in_init():
-    """loadPipelines() is called in init() so pipelines load on page start."""
+def test_p79_ui_load_pipelines_called_in_op_dashboard_toggle():
+    """loadPipelines() is called in the Operator Dashboard toggle listener (lazy-load)."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    init_start = html.find("function init()")
-    init_body = html[init_start : init_start + 600]
-    assert "loadPipelines" in init_body
+    toggle_block = html[
+        html.find("op-dashboard').addEventListener") : html.find(
+            "op-dashboard').addEventListener"
+        )
+        + 600
+    ]
+    assert "loadPipelines" in toggle_block
 
 
 def test_p79_ui_run_pipeline_calls_api():
@@ -11801,14 +11812,18 @@ def test_p83_ui_load_agents_function_defined():
     assert "function loadAgents(" in html
 
 
-def test_p83_ui_load_agents_called_in_init():
-    """loadAgents() is called in init() so agents load on page start."""
+def test_p83_ui_load_agents_called_in_op_dashboard_toggle():
+    """loadAgents() is called in the Operator Dashboard toggle listener (lazy-load)."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    init_start = html.find("function init()")
-    init_body = html[init_start : init_start + 700]
-    assert "loadAgents" in init_body
+    toggle_block = html[
+        html.find("op-dashboard').addEventListener") : html.find(
+            "op-dashboard').addEventListener"
+        )
+        + 600
+    ]
+    assert "loadAgents" in toggle_block
 
 
 def test_p83_ui_agents_calls_get_agents():
