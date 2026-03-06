@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 275
+UPDATE: 276
 BRANCH: dev
-COMMIT: 10a0623
-TIMESTAMP: 2026-03-06T16:30Z
-LAST_OP: Gap 1 — DB-backed persona namespace (SOUL.md equivalent); MemoryStore.get_all(); persona_bootstrap(); all 5 memory gaps complete; docs synced; 2045/2045
+COMMIT: fbd3fb2
+TIMESTAMP: 2026-03-06T22:20Z
+LAST_OP: PR #219 merged to main — Guardian G1-G3 spinoff + all 5 memory gaps (persona_bootstrap, episodic, memory_write/recall, flush_on_compaction, bootstrap_user_prefs) + web_fetch_js + lazy-load dashboard; 2045/2045
 SMOKE_TESTS: 2045/2045
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
