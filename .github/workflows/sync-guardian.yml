@@ -1,0 +1,42 @@
+name: Sync legionforge-guardian
+
+# Automatically pushes packages/guardian/ to the public guardian repo
+# every time a change to that subtree lands on main.
+#
+# Prerequisites (one-time setup):
+#   1. Create repo: github.com/LegionForge/legionforge-guardian (empty, no auto-README)
+#   2. Create a PAT with `repo` scope on that repo
+#   3. Store it as GUARDIAN_REPO_PAT in LegionForge/LegionForge repo secrets
+#
+# Note: git subtree push rewrites history to contain only commits that
+# touched packages/guardian/. The guardian repo's main branch must start
+# empty — if GitHub auto-created a README, delete it before the first run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/guardian/**"
+
+jobs:
+  sync:
+    name: Subtree push to legionforge-guardian
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history required for git subtree
+
+      - name: Configure git identity
+        run: |
+          git config user.email "noreply@github.com"
+          git config user.name "LegionForge Sync Bot"
+
+      - name: Add guardian public remote
+        run: |
+          git remote add guardian-public \
+            https://x-access-token:${{ secrets.GUARDIAN_REPO_PAT }}@github.com/LegionForge/legionforge-guardian.git
+
+      - name: Push guardian subtree to public repo
+        run: |
+          git subtree push --prefix=packages/guardian guardian-public main

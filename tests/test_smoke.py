@@ -21642,3 +21642,94 @@ def test_persona_bootstrap_user_section_label():
 
     content = pathlib.Path("src/memory.py").read_text()
     assert "[User persona]" in content
+
+
+# ── Guardian publication readiness ────────────────────────────────────────────
+
+
+def test_guardian_package_has_readme():
+    """packages/guardian/README.md exists (required for pip install / PyPI)."""
+    import pathlib
+
+    assert pathlib.Path("packages/guardian/README.md").exists()
+
+
+def test_guardian_package_has_license():
+    """packages/guardian/LICENSE exists (required for PyPI publication)."""
+    import pathlib
+
+    assert pathlib.Path("packages/guardian/LICENSE").exists()
+
+
+def test_guardian_package_has_security_md():
+    """packages/guardian/SECURITY.md exists — threat model and disclosure policy."""
+    import pathlib
+
+    assert pathlib.Path("packages/guardian/SECURITY.md").exists()
+
+
+def test_guardian_package_has_changelog():
+    """packages/guardian/CHANGELOG.md exists."""
+    import pathlib
+
+    assert pathlib.Path("packages/guardian/CHANGELOG.md").exists()
+
+
+def test_guardian_auth_misconfigured_when_token_missing(monkeypatch):
+    """Auth fail-closed: GUARDIAN_REQUIRE_AUTH=true + empty TASK_TOKEN_SECRET → 'misconfigured'."""
+    import legionforge_guardian.app as guardian_module
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_AUTH_TOKEN", "")
+
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = ""
+    result = guardian_module._check_bearer_auth(mock_request)
+    assert (
+        result == "misconfigured"
+    ), "Misconfigured Guardian must return 'misconfigured', not True (fail-open)"
+
+
+def test_guardian_auth_not_fail_open(monkeypatch):
+    """Auth fail-closed: misconfigured Guardian never returns True (never fail-open)."""
+    import legionforge_guardian.app as guardian_module
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_REQUIRE_AUTH", True)
+    monkeypatch.setattr(guardian_module, "_GUARDIAN_AUTH_TOKEN", "")
+
+    mock_request = MagicMock()
+    mock_request.headers.get.return_value = ""
+    result = guardian_module._check_bearer_auth(mock_request)
+    assert result is not True, "Misconfigured Guardian must never return True"
+
+
+def test_guardian_check_tests_exist():
+    """packages/guardian/tests/test_checks.py covers all seven enforcement checks."""
+    import pathlib
+
+    content = pathlib.Path("packages/guardian/tests/test_checks.py").read_text()
+    for check_num in range(7):  # checks 0-6
+        assert (
+            f"_check_{check_num}_" in content
+        ), f"test_checks.py missing coverage for _check_{check_num}_"
+
+
+def test_guardian_readme_has_seven_checks():
+    """Guardian README documents all seven checks."""
+    import pathlib
+
+    content = pathlib.Path("packages/guardian/README.md").read_text()
+    assert "Seven Checks" in content or "seven checks" in content.lower()
+    # Verify all 7 check rows are present
+    for check_num in range(7):
+        assert f"| {check_num} |" in content, f"README missing Check {check_num}"
+
+
+def test_guardian_security_md_has_disclosure_email():
+    """SECURITY.md includes security@legionforge.org for vulnerability reports."""
+    import pathlib
+
+    content = pathlib.Path("packages/guardian/SECURITY.md").read_text()
+    assert "security@legionforge.org" in content
