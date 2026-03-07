@@ -2223,8 +2223,13 @@ async def run_db_maintenance(
             results["health_metrics"] = cur.rowcount
 
     # threat_events: legionforge_app only has INSERT (append-only audit trail).
-    # Use a short-lived admin connection for the maintenance delete.
+    # Scheduled retention pruning is a legitimate admin operation — not tampering.
+    # Admin credentials come from the same source used by init_db() at startup.
     if threat_events_days > 0:
+        logger.debug(
+            "[db-maintenance] threat_events pruning requires admin role "
+            "(legionforge_app is append-only on this table — by design)"
+        )
         try:
             admin_conn = await psycopg.AsyncConnection.connect(
                 _build_conninfo_no_password(),
