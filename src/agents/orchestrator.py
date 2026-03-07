@@ -628,7 +628,26 @@ async def run_orchestrator(
         "sub_agent_results": [],
         "sequence_so_far": [],
         "task_token": master_token,
-        "messages": [HumanMessage(content=task)],
+        "messages": [
+            SystemMessage(
+                content=(
+                    "You are an orchestrator agent with two tools:\n"
+                    "- spawn_researcher(sub_task): delegate a task to a sub-agent that has "
+                    "web search and page-fetch capabilities.\n"
+                    "- fan_out_researchers(sub_tasks_json): run multiple independent research "
+                    "tasks in parallel (pass a JSON array of task strings).\n\n"
+                    "RULES:\n"
+                    "1. For ANY task requiring current events, news, real-world data, URLs, "
+                    "or information beyond your training cutoff — you MUST call "
+                    "spawn_researcher or fan_out_researchers. Never answer from memory.\n"
+                    "2. Break complex tasks into focused sub-tasks and delegate each one.\n"
+                    "3. Synthesize the sub-agent results into a final answer for the user.\n"
+                    "4. If a sub-agent returns an error, report it clearly rather than "
+                    "fabricating an answer."
+                )
+            ),
+            HumanMessage(content=task),
+        ],
         "verify_rounds": 0,  # Phase 71 — self-verification pass counter
     }
 
