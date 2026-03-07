@@ -42,6 +42,9 @@ jobs:
 
       - name: Add guardian public remote
         run: |
+          # Unset the GITHUB_TOKEN extraheader injected by actions/checkout.
+          # Without this, the GITHUB_TOKEN overrides our PAT for all GitHub requests.
+          git config --local --unset-all http.https://github.com/.extraheader || true
           git remote add guardian-public \
             https://x-access-token:${{ secrets.GUARDIAN_REPO_PAT }}@github.com/LegionForge/LegionForge-Guardian.git
 
