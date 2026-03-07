@@ -2183,4 +2183,27 @@ Full OpenClaw memory parity. All implemented against existing `MemoryStore`/pgve
 
 **All 5 flags in `AgentMemoryConfig`:** `bootstrap_user_prefs`, `episodic_memory`, `flush_on_compaction`, `persona_bootstrap` (+ existing `recall_on_task`, `store_results`).
 
-**Current state (2026-03-07, post-PRs #227–#232):** 2054/2054 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) · `pip install legionforge-guardian` on PyPI · Dual license AGPLv3 + commercial · `COMMERCIAL_LICENSE.md` + `CLA.md` added
+**Current state (2026-03-07, post-PRs #227–#235):** 2055/2055 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) · `pip install legionforge-guardian` on PyPI · Dual license AGPLv3 + commercial · `COMMERCIAL_LICENSE.md` + `CLA.md` added
+
+---
+
+### G. LegionForge-Anneal — Sub-Product (PLANNED — post v1.0)
+
+The Observer → Crystallizer → Analyzer → HITL crystallization pipeline,
+spun off as a standalone sub-product under the LegionForge org.
+
+**Name:** LegionForge-Anneal (annealing = removing defects from metal by
+controlled heating/cooling; metaphor for hardening LLM behavior into
+deterministic code).
+
+**Closest academic work:** LATM (Cai et al., ICLR 2024), Voyager (Wang et al.,
+NVIDIA 2023). Anneal's differentiator: production-hardening — sandboxed
+execution, adversarial test suite, Ed25519 signing, BOM, HITL approval gate.
+
+**Status:** Do not extract until after v1.0. Pipeline is currently tightly
+coupled to LegionForge's DB schema, LangGraph, and Guardian. Interface design
+must precede extraction. See `jp_todo.md` for full pre-extraction checklist.
+
+**Branding:** Icon + marketing blurb needed. See `jp_todo.md → LEGIONFORGE-ANNEAL`.
+
+**License:** AGPLv3 + commercial dual license (same as main framework).

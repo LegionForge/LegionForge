@@ -18,7 +18,8 @@ All commands assume the venv is active: `source venv/bin/activate`
 |--------|-------------|-----------|
 | `check` | Verify drive, venv, models, config, and Guardian before starting | — |
 | `start` | Full startup: check → ollama-start → db-start → ollama-warm → guardian-start → servers-start | — |
-| `stop` | Graceful shutdown of servers, Guardian, PostgreSQL, and Ollama | — |
+| `stop` | Full shutdown — stops app servers, Guardian, PostgreSQL, and Ollama. **Prompts for confirmation.** Data is safe (clean shutdown). To resume without a full restart: `make db-start && make servers-start` | — |
+| `restart` | Full stop + start — stops all services then runs `make start`. **Prompts for confirmation.** In-flight requests lost; data safe. | — |
 
 ---
 

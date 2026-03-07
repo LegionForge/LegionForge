@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 279
+UPDATE: 281
 BRANCH: dev
-COMMIT: ff1cebd
-TIMESTAMP: 2026-03-07T09:00Z
-LAST_OP: PRs #227–#232 merged — Guardian CI Black fix, dual license (AGPLv3+commercial+CLA), guardian LICENSE copyright year+name corrected, dev re-synced; 2054/2054
-SMOKE_TESTS: 2054/2054
+COMMIT: 415e0ec
+TIMESTAMP: 2026-03-07T18:00Z
+LAST_OP: Tavily fallback chain installed, researcher system prompt hardened (no code gen, web_fetch_js for JS sites), make stop/restart confirmation prompts added, Guardian docker-compose fixes (POSTGRES_USER, port binding)
+SMOKE_TESTS: 2055/2055
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
