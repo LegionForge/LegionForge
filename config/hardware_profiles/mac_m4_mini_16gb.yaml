@@ -380,10 +380,10 @@ agent_memory:
 # Both must be one of: ddg | tavily | brave | exa | perplexity | searxng
 #
 # API keys go in macOS Keychain (never in this file):
-#   Tavily:     security add-generic-password -s legionforge_tavily_api_key -a jp -w <key>
-#   Brave:      security add-generic-password -s legionforge_brave_api_key -a jp -w <key>
-#   Exa:        security add-generic-password -s legionforge_exa_api_key -a jp -w <key>
-#   Perplexity: security add-generic-password -s legionforge_perplexity_api_key -a jp -w <key>
+#   Tavily:     security add-generic-password -s legionforge_tavily_api_key -a api_key -w <key>
+#   Brave:      security add-generic-password -s legionforge_brave_api_key -a api_key -w <key>
+#   Exa:        security add-generic-password -s legionforge_exa_api_key -a api_key -w <key>
+#   Perplexity: security add-generic-password -s legionforge_perplexity_api_key -a api_key -w <key>
 #
 # SearXNG (self-hosted, no key required):
 #   docker run -d -p 8888:8080 --name searxng searxng/searxng
