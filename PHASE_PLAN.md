@@ -2154,7 +2154,7 @@ still redacted. SSRF guard handles the URL host case correctly.
 
 ---
 
-### E. Guardian Spinoff G1–G3 ✅ COMPLETED — PR #219
+### E. Guardian Spinoff G1–G4 ✅ COMPLETED — PRs #219, #221–#226
 
 Guardian sidecar decoupled from all `src.*` dependencies and packaged as a standalone Python package.
 
@@ -2163,6 +2163,7 @@ Guardian sidecar decoupled from all `src.*` dependencies and packaged as a stand
 - **G2 scaffold**: `packages/guardian/` — `pyproject.toml`, `init.sql` (5 tables, all IF NOT EXISTS), `Dockerfile`, `docker-compose.yml`, SDK client (`GuardianClient` + `guardian_check()`). Editable install.
 - **G2 code move**: `packages/guardian/src/legionforge_guardian/app.py` is canonical source. `src/security/guardian.py` → thin backward-compat shim.
 - **G3**: `init.sql` `threat_events` schema corrected to match LegionForge DB (`ts`, `run_id`, `action_taken NOT NULL`). Dockerfile CMD finalized. `python -m legionforge_guardian` entry point.
+- **G4 — Publication**: `README.md`, `LICENSE` (MIT), `SECURITY.md`, `CHANGELOG.md` written. Auth fail-closed fix (`_check_bearer_auth` returns `"misconfigured"` → 503/halt). 34-test standalone suite (`packages/guardian/tests/test_checks.py`). Docker binding fixed (`0.0.0.0`, `GUARDIAN_HOST`/`GUARDIAN_PORT` env vars). CI: `test.yml` (Python 3.11+3.12), `publish.yml` (PyPI on `v*` tag). `Makefile` (install-dev/test/lint/build). Auto-sync Action (`sync-guardian.yml`) with GITHUB_TOKEN extraheader fix + subtree split force push. Public repo: `LegionForge/LegionForge-Guardian` — live, auto-syncing, Docker smoke PASSED `{"status":"ok"}`. 9 smoke tests added → 2054 total.
 
 ---
 
@@ -2180,4 +2181,4 @@ Full OpenClaw memory parity. All implemented against existing `MemoryStore`/pgve
 
 **All 5 flags in `AgentMemoryConfig`:** `bootstrap_user_prefs`, `episodic_memory`, `flush_on_compaction`, `persona_bootstrap` (+ existing `recall_on_task`, `store_results`).
 
-**Current state (2026-03-06, post-PR #219):** 2045/2045 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy
+**Current state (2026-03-07, post-PR #226):** 2054/2054 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at LegionForge/LegionForge-Guardian
