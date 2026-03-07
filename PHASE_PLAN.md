@@ -2152,6 +2152,8 @@ still redacted. SSRF guard handles the URL host case correctly.
 **Current state (2026-03-06):** 1964/1964 smoke · 50/50 tool accuracy (web_fetch_js)
 · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 29/29 tool accuracy (existing)
 
+> Superseded — see current state below.
+
 ---
 
 ### E. Guardian Spinoff G1–G4 ✅ COMPLETED — PRs #219, #221–#226
@@ -2181,4 +2183,4 @@ Full OpenClaw memory parity. All implemented against existing `MemoryStore`/pgve
 
 **All 5 flags in `AgentMemoryConfig`:** `bootstrap_user_prefs`, `episodic_memory`, `flush_on_compaction`, `persona_bootstrap` (+ existing `recall_on_task`, `store_results`).
 
-**Current state (2026-03-07, post-PR #226):** 2054/2054 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at LegionForge/LegionForge-Guardian
+**Current state (2026-03-07, post-PRs #227–#232):** 2054/2054 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) · `pip install legionforge-guardian` on PyPI · Dual license AGPLv3 + commercial · `COMMERCIAL_LICENSE.md` + `CLA.md` added

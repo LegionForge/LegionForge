@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Effective:** 2026-02-26
-**Maintained by:** [jp-cruz/LegionForge](https://github.com/jp-cruz/LegionForge)
+**Maintained by:** [LegionForge/LegionForge](https://github.com/LegionForge/LegionForge)
 
 ---
 
@@ -161,7 +161,7 @@ enforcement pipeline via `promote_pentest_rule_to_threat_rule()` and takes effec
 If you discover a security vulnerability in LegionForge:
 
 1. **DO NOT** open a public GitHub Issue with exploit details.
-2. Open a GitHub Issue at [jp-cruz/LegionForge](https://github.com/jp-cruz/LegionForge/issues)
+2. Open a GitHub Issue at [LegionForge/LegionForge](https://github.com/LegionForge/LegionForge/issues)
    with the title prefix `[SECURITY]` and a brief, non-exploitable description.
 3. We will acknowledge within **72 hours** and open a private channel for details.
 4. **Disclosure window:** 90 days from acknowledgment, or sooner if a fix is released.
@@ -186,7 +186,7 @@ If you discover a security vulnerability in LegionForge:
 
 ## Security Contacts
 
-- **Primary:** GitHub Issues — [jp-cruz/LegionForge](https://github.com/jp-cruz/LegionForge/issues)
+- **Primary:** GitHub Issues — [LegionForge/LegionForge](https://github.com/LegionForge/LegionForge/issues)
 - **Owner:** John Paul "Jp" Cruz ([@jp-cruz](https://github.com/jp-cruz))
 
 ---

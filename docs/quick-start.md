@@ -24,7 +24,7 @@ It assumes a Mac Mini M4 running macOS 14+.
 ## Step 1 — Clone and Install
 
 ```bash
-git clone https://github.com/jp-cruz/LegionForge.git
+git clone https://github.com/LegionForge/LegionForge.git
 cd LegionForge
 python -m venv venv
 source venv/bin/activate

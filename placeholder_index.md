@@ -331,10 +331,10 @@ permalink: /
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
   <p class="subtagline">// local-first · deterministic controls · human gates · 1946/1946 tests passing</p>
   <div class="cta-group">
-    <a class="btn btn-primary" href="https://github.com/jp-cruz/LegionForge">
+    <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
     </a>
-    <a class="btn btn-secondary" href="https://github.com/jp-cruz/LegionForge#quick-start">
+    <a class="btn btn-secondary" href="https://github.com/LegionForge/LegionForge#quick-start">
       Quick Start
     </a>
   </div>
@@ -541,7 +541,7 @@ permalink: /
   <h2><span class="icon">⚡</span> Quick Start</h2>
   <div class="code-block">
 <span class="comment"># Clone and bootstrap</span><br>
-<span class="cmd">git clone</span> https://github.com/jp-cruz/LegionForge.git<br>
+<span class="cmd">git clone</span> https://github.com/LegionForge/LegionForge.git<br>
 <span class="cmd">cd</span> LegionForge<br>
 <span class="cmd">python -m venv</span> venv <span class="cmd">&amp;&amp; source</span> venv/bin/activate<br>
 <span class="cmd">pip install -r</span> requirements.txt<br>
@@ -571,11 +571,11 @@ permalink: /
   </p>
   <p style="color: var(--dim);">
     Clone from
-    <a href="https://github.com/jp-cruz/LegionForge" style="color: var(--accent2);">github.com/jp-cruz/LegionForge</a>,
+    <a href="https://github.com/LegionForge/LegionForge" style="color: var(--accent2);">github.com/LegionForge/LegionForge</a>,
     or browse the docs at
     <a href="https://legionforge.org" style="color: var(--accent2);">legionforge.org</a>.
     Bugs, questions, and commercial licensing inquiries via
-    <a href="https://github.com/jp-cruz/LegionForge/issues" style="color: var(--accent2);">GitHub Issues</a>.
+    <a href="https://github.com/LegionForge/LegionForge/issues" style="color: var(--accent2);">GitHub Issues</a>.
   </p>
 </div>
 </section>
