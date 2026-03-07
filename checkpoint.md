@@ -1,11 +1,12 @@
 VERSION: 0.7.0-alpha
-UPDATE: 284
+
+UPDATE: 281
 BRANCH: dev
-COMMIT: (pending)
-TIMESTAMP: 2026-03-07T22:00Z
-LAST_OP: DOS protection P1 — SSE stream slot tracking, memory endpoint rate limiting, path-scoped rate-limit keys; 9 new smoke tests
-SMOKE_TESTS: 2089/2089
-INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
+COMMIT: 415e0ec
+TIMESTAMP: 2026-03-07T18:00Z
+LAST_OP: Tavily fallback chain installed, researcher system prompt hardened (no code gen, web_fetch_js for JS sites), make stop/restart confirmation prompts added, Guardian docker-compose fixes (POSTGRES_USER, port binding)
+SMOKE_TESTS: 2055/2055
+INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
 TESTLAB_SUITE: 104/104
