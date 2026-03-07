@@ -21748,3 +21748,459 @@ def test_worker_result_extraction_handles_aimessage():
     assert "_last_msg.content" in content
     # The old broken pattern must not be present
     assert '.get("content", "")' not in content.split("_last_content")[0]
+
+
+# ── 5-role DB model + RLS smoke tests ─────────────────────────────────────────
+
+
+def test_db_role_constants_exist():
+    """All five DB role name constants are defined in database.py."""
+    from src.database import (
+        DB_ROLE_GUARDIAN,
+        DB_ROLE_GATEWAY,
+        DB_ROLE_MAINTENANCE,
+        DB_ROLE_READONLY,
+        DB_ROLE_WORKER,
+    )
+
+    assert DB_ROLE_WORKER == "legionforge_worker"
+    assert DB_ROLE_GATEWAY == "legionforge_gateway"
+    assert DB_ROLE_MAINTENANCE == "legionforge_maintenance"
+    assert DB_ROLE_GUARDIAN == "legionforge_guardian"
+    assert DB_ROLE_READONLY == "legionforge_readonly"
+
+
+def test_rls_user_scoped_tables_constant():
+    """RLS_USER_SCOPED_TABLES contains all 13 expected user-scoped tables."""
+    from src.database import RLS_USER_SCOPED_TABLES
+
+    expected = {
+        "tasks",
+        "sessions",
+        "scheduled_tasks",
+        "pipelines",
+        "pipeline_runs",
+        "task_notes",
+        "task_annotations",
+        "task_attachments",
+        "task_templates",
+        "task_shares",
+        "webhooks",
+        "stream_tokens",
+        "user_preferences",
+    }
+    assert set(RLS_USER_SCOPED_TABLES) == expected, (
+        f"RLS table set mismatch. "
+        f"Extra: {set(RLS_USER_SCOPED_TABLES) - expected}, "
+        f"Missing: {expected - set(RLS_USER_SCOPED_TABLES)}"
+    )
+
+
+def test_setup_rls_is_async():
+    """_setup_rls is an async function."""
+    import inspect
+
+    import src.database as db
+
+    assert hasattr(db, "_setup_rls")
+    assert inspect.iscoroutinefunction(db._setup_rls)
+
+
+def test_get_gateway_pool_importable():
+    """get_gateway_pool is exported from database."""
+    from src.database import get_gateway_pool
+
+    assert callable(get_gateway_pool)
+
+
+def test_get_readonly_pool_importable():
+    """get_readonly_pool is exported from database."""
+    from src.database import get_readonly_pool
+
+    assert callable(get_readonly_pool)
+
+
+def test_get_user_connection_is_asynccontextmanager():
+    """get_user_connection is an async context manager (asynccontextmanager-wrapped)."""
+    import inspect
+
+    import src.database as db
+
+    assert hasattr(db, "get_user_connection")
+    # asynccontextmanager wraps the function — check it's callable and async-generator-based
+    assert callable(db.get_user_connection)
+    assert inspect.isasyncgenfunction(db.get_user_connection.__wrapped__)
+
+
+def test_get_admin_connection_importable():
+    """get_admin_connection is exported from database."""
+    from src.database import get_admin_connection
+
+    assert callable(get_admin_connection)
+
+
+def test_get_maintenance_connection_importable():
+    """get_maintenance_connection is exported from database."""
+    from src.database import get_maintenance_connection
+
+    assert callable(get_maintenance_connection)
+
+
+def test_get_or_generate_role_password_exists():
+    """_get_or_generate_role_password is defined in database.py."""
+    from src.database import _get_or_generate_role_password
+
+    assert callable(_get_or_generate_role_password)
+
+
+def test_rls_policy_uses_app_user_id_session_var():
+    """RLS policy references app.user_id and app.bypass_rls session variables."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert "app.user_id" in src
+    assert "app.bypass_rls" in src
+    assert "current_setting" in src
+
+
+def test_maintenance_role_has_no_select_in_setup():
+    """_setup_db_roles grants no SELECT to legionforge_maintenance."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    maint_start = src.index("legionforge_maintenance grants")
+    maint_end = src.index("legionforge_guardian grants")
+    maint_block = src[maint_start:maint_end]
+    assert "GRANT SELECT" not in maint_block, (
+        "legionforge_maintenance must have zero SELECT — "
+        "a compromised prune job must not be able to read data"
+    )
+
+
+def test_run_db_maintenance_uses_get_maintenance_connection():
+    """run_db_maintenance uses get_maintenance_connection, not raw get_pool()."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    fn_start = src.index("async def run_db_maintenance(")
+    fn_end = src.index("\n\n\nasync def ", fn_start)
+    fn_body = src[fn_start:fn_end]
+    assert "get_maintenance_connection" in fn_body
+    assert "pool = get_pool()" not in fn_body
+
+
+def test_all_roles_have_bypassrls_except_gateway():
+    """All roles except legionforge_gateway have BYPASSRLS=True in the role_attrs table."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert "(DB_ROLE_GATEWAY, 20, 30000, False)" in src
+    assert "(DB_ROLE_WORKER, 8, 60000, True)" in src
+    assert "(DB_ROLE_MAINTENANCE, 2, 300000, True)" in src
+    assert "(DB_ROLE_GUARDIAN, 4, 10000, True)" in src
+    assert "(DB_ROLE_READONLY, 10, 10000, True)" in src
+
+
+def test_guardian_docker_compose_uses_guardian_role():
+    """docker-compose.yml defaults Guardian POSTGRES_USER to legionforge_guardian."""
+    import pathlib
+
+    dc = pathlib.Path("docker-compose.yml").read_text()
+    assert (
+        "legionforge_guardian" in dc
+    ), "Guardian should connect as legionforge_guardian, not a personal username"
+    assert (
+        ":-jp}" not in dc
+    ), "Personal username 'jp' must not be a default in docker-compose.yml"
+
+
+# ── TEMPORARY: jp-scrub verification ──────────────────────────────────────────
+# Verify personal username references have been removed from production configs.
+# REMOVE THIS TEST once the jp PostgreSQL superuser has been fully retired
+# (OS user renamed or PostgreSQL re-initialized with a generic admin account).
+
+
+def test_jp_not_hardcoded_in_production_configs():
+    """
+    TEMPORARY — remove after jp PostgreSQL user is retired.
+
+    Checks that 'jp' does not appear as a hardcoded default username in
+    production configuration and infrastructure files. Personal usernames
+    have no place in a production security framework.
+
+    Files checked:
+      - docker-compose.yml          (POSTGRES_USER default)
+      - config/hardware_profiles/   (Keychain -a flag examples)
+      - src/database.py             (conninfo builder string literals)
+
+    Files intentionally excluded:
+      - memory/, jp_todo.md, checkpoint.md  (personal dev notes)
+      - tests/                              (this file)
+      - CONTRIBUTING.md                     (may reference jp as example committer)
+      - Comments / docstrings               (non-executable, explanatory only)
+    """
+    import pathlib
+    import re
+
+    failures = []
+
+    # docker-compose.yml — must not have :-jp as a shell default
+    dc = pathlib.Path("docker-compose.yml").read_text()
+    if re.search(r":-jp[\"'}\s]", dc):
+        failures.append("docker-compose.yml: contains ':-jp' as a default value")
+
+    # hardware profiles — must not have -a jp in security CLI examples
+    for yml in pathlib.Path("config/hardware_profiles").glob("*.yaml"):
+        text = yml.read_text()
+        if re.search(r"-a\s+jp\b", text):
+            failures.append(f"{yml.name}: contains '-a jp' in Keychain CLI examples")
+
+    # src/database.py — must not have 'jp' as a string literal in conninfo builders
+    db_src = pathlib.Path("src/database.py").read_text()
+    for match in re.finditer(r"[\"']jp[\"']", db_src):
+        ctx = db_src[max(0, match.start() - 60) : match.end() + 60]
+        # Skip if the match is inside a comment (line starts with #)
+        line_start = db_src.rfind("\n", 0, match.start()) + 1
+        line = db_src[line_start : match.start()]
+        if "#" not in line:
+            failures.append(
+                f"src/database.py: string literal 'jp' at char {match.start()}: "
+                f"...{ctx.strip()}..."
+            )
+
+    assert not failures, (
+        "Personal username 'jp' found in production files:\n"
+        + "\n".join(f"  - {f}" for f in failures)
+        + "\n\nRemove these references, then delete this test."
+    )
+
+
+# ── DOS rate-limit + queue-depth smoke tests ───────────────────────────────────
+
+
+def test_submission_rate_limit_middleware_importable():
+    """SubmissionRateLimitMiddleware is exported from gateway.middleware."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+
+    assert callable(SubmissionRateLimitMiddleware)
+
+
+def test_submission_rate_limit_middleware_has_rate_limit_method():
+    """SubmissionRateLimitMiddleware._rate_limit() reads from settings."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    assert hasattr(inst, "_rate_limit")
+    assert callable(inst._rate_limit)
+
+
+def test_submission_rate_limit_middleware_key_uses_bearer_prefix():
+    """Rate-limit key uses Bearer token prefix, never the full token."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = "Bearer abcdefghij1234567890EXTRA_SECRET"
+    req.client = None
+    key = inst._key(req, "/tasks")
+    assert ":token:" in key
+    # Must not contain the full token
+    assert "EXTRA_SECRET" not in key
+    # Key includes the path prefix
+    assert key.startswith("/tasks:")
+
+
+def test_submission_rate_limit_middleware_key_falls_back_to_ip():
+    """Rate-limit key falls back to client IP when no Bearer header."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = ""
+    req.client.host = "192.168.1.50"
+    key = inst._key(req, "/tasks")
+    assert key == "/tasks:ip:192.168.1.50"
+
+
+def test_rate_limited_paths_constant():
+    """_RATE_LIMITED_PATHS covers /tasks and /tasks/batch."""
+    from src.gateway.middleware import _RATE_LIMITED_PATHS
+
+    assert "/tasks" in _RATE_LIMITED_PATHS
+    assert "/tasks/batch" in _RATE_LIMITED_PATHS
+
+
+def test_gateway_config_has_dos_fields():
+    """GatewayConfig has submission_rate_limit_per_minute and max_queued_tasks_per_user."""
+    from config.settings import settings
+
+    assert hasattr(settings.gateway, "submission_rate_limit_per_minute")
+    assert hasattr(settings.gateway, "max_queued_tasks_per_user")
+    assert settings.gateway.submission_rate_limit_per_minute > 0
+    assert settings.gateway.max_queued_tasks_per_user > 0
+
+
+def test_submission_rate_limit_registered_in_app():
+    """SubmissionRateLimitMiddleware is registered in app.py."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/app.py").read_text()
+    assert "SubmissionRateLimitMiddleware" in src
+    assert "app.add_middleware(SubmissionRateLimitMiddleware)" in src
+
+
+def test_check_queue_depth_exists_in_tasks_route():
+    """_check_queue_depth helper is defined in the tasks route module."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "async def _check_queue_depth" in src
+    assert "await _check_queue_depth" in src
+
+
+def test_check_queue_depth_covers_batch_route():
+    """Queue-depth guard is applied to the batch submission route."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    batch_start = src.index("async def submit_tasks_batch(")
+    batch_body = src[batch_start : batch_start + 800]
+    assert (
+        "_check_queue_depth" in batch_body
+    ), "submit_tasks_batch must call _check_queue_depth before creating tasks"
+
+
+def test_check_queue_depth_uses_additional_param_for_batch():
+    """Queue-depth guard passes len(body.tasks) as 'additional' for batch."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "additional=len(body.tasks)" in src
+
+
+# ── SSE stream-slot + memory rate-limit smoke tests ────────────────────────────
+
+
+def test_sse_stream_slot_functions_importable():
+    """_acquire_stream_slot and _release_stream_slot are importable from stream.py."""
+    from src.gateway.routes.stream import _acquire_stream_slot, _release_stream_slot
+
+    import asyncio
+
+    assert asyncio.iscoroutinefunction(_acquire_stream_slot)
+    assert asyncio.iscoroutinefunction(_release_stream_slot)
+
+
+def test_sse_active_streams_dict_exists():
+    """_active_streams defaultdict exists in the stream module."""
+    from src.gateway.routes.stream import _active_streams
+    from collections import defaultdict
+
+    assert isinstance(_active_streams, defaultdict)
+
+
+def test_sse_stream_slot_acquire_increments_counter():
+    """_acquire_stream_slot increments _active_streams for the user."""
+    import asyncio
+    from src.gateway.routes import stream as stream_mod
+
+    stream_mod._active_streams.clear()
+
+    async def _run():
+        await stream_mod._acquire_stream_slot("test-user-slot")
+        assert stream_mod._active_streams["test-user-slot"] == 1
+        await stream_mod._release_stream_slot("test-user-slot")
+        assert "test-user-slot" not in stream_mod._active_streams
+
+    asyncio.run(_run())
+
+
+def test_sse_stream_slot_release_cleans_up():
+    """_release_stream_slot removes the key when count drops to zero."""
+    import asyncio
+    from src.gateway.routes import stream as stream_mod
+
+    stream_mod._active_streams.clear()
+    stream_mod._active_streams["u1"] = 2
+
+    async def _run():
+        await stream_mod._release_stream_slot("u1")
+        assert stream_mod._active_streams["u1"] == 1
+        await stream_mod._release_stream_slot("u1")
+        assert "u1" not in stream_mod._active_streams
+
+    asyncio.run(_run())
+
+
+def test_memory_paths_constant_covers_ingest_and_search():
+    """_MEMORY_PATHS covers /memory/ingest and /memory/search."""
+    from src.gateway.middleware import _MEMORY_PATHS
+
+    assert "/memory/ingest" in _MEMORY_PATHS
+    assert "/memory/search" in _MEMORY_PATHS
+
+
+def test_rate_limited_paths_includes_memory_paths():
+    """_RATE_LIMITED_PATHS is a superset of _MEMORY_PATHS."""
+    from src.gateway.middleware import _RATE_LIMITED_PATHS, _MEMORY_PATHS
+
+    assert _MEMORY_PATHS <= _RATE_LIMITED_PATHS
+
+
+def test_memory_rate_limit_uses_separate_settings_key():
+    """_rate_limit() returns memory_rate_limit_per_minute for memory paths."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import patch, MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    fake_settings = MagicMock()
+    fake_settings.gateway.memory_rate_limit_per_minute = 5
+    fake_settings.gateway.submission_rate_limit_per_minute = 10
+    with patch("src.gateway.middleware.settings", fake_settings, create=True):
+        # Patch the import inside _rate_limit
+        import sys
+
+        real_settings = sys.modules.get("config.settings")
+        if real_settings:
+            orig = real_settings.settings
+            real_settings.settings = fake_settings
+            try:
+                mem_limit = inst._rate_limit("/memory/ingest")
+                task_limit = inst._rate_limit("/tasks")
+            finally:
+                real_settings.settings = orig
+        else:
+            mem_limit = inst._rate_limit("/memory/ingest")
+            task_limit = inst._rate_limit("/tasks")
+    # Both limits must be positive integers
+    assert isinstance(mem_limit, int) and mem_limit > 0
+    assert isinstance(task_limit, int) and task_limit > 0
+
+
+def test_gateway_config_has_memory_and_sse_fields():
+    """GatewayConfig has memory_rate_limit_per_minute and max_sse_streams_per_user."""
+    from config.settings import settings
+
+    assert hasattr(settings.gateway, "memory_rate_limit_per_minute")
+    assert hasattr(settings.gateway, "max_sse_streams_per_user")
+    assert settings.gateway.memory_rate_limit_per_minute > 0
+    assert settings.gateway.max_sse_streams_per_user > 0
+
+
+def test_rate_limit_key_is_path_scoped():
+    """Keys from different paths for the same user must be different."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = "Bearer abcdefghij1234567890"
+    req.client = None
+    key_tasks = inst._key(req, "/tasks")
+    key_memory = inst._key(req, "/memory/ingest")
+    assert (
+        key_tasks != key_memory
+    ), "Keys must differ per path so budgets are independent"

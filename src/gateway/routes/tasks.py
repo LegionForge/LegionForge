@@ -35,6 +35,7 @@ from src.database import (
     bulk_tag_tasks,
     create_task,
     delete_task_note,
+    get_pool,
     get_task,
     get_task_stats,
     get_task_timeline,
@@ -79,6 +80,42 @@ _UUID_RE = _re.compile(
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _check_queue_depth(user_id: str, additional: int = 1) -> None:
+    """
+    Raise HTTP 429 if the user already has too many tasks pending.
+
+    Counts tasks in 'queued' or 'running' state.  ``additional`` is the number
+    of new tasks about to be added (1 for single submit, N for batch).
+
+    Reads the limit from ``settings.gateway.max_queued_tasks_per_user``.
+    Set to 0 to disable.  Uses the worker pool (BYPASSRLS) so the count is
+    across all of the user's tasks regardless of RLS context.
+    """
+    from config.settings import settings
+
+    limit = settings.gateway.max_queued_tasks_per_user
+    if limit <= 0:
+        return
+    pool = get_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT count(*) FROM tasks WHERE user_id = %s AND status IN ('queued', 'running')",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        current = row[0] if row else 0
+    if current + additional > limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Queue depth limit reached — you already have {current} pending "
+                f"task(s). Max {limit} queued+running at once. "
+                "Wait for existing tasks to complete before submitting more."
+            ),
+            headers={"Retry-After": "60"},
+        )
 
 
 # ── Request / response models ──────────────────────────────────────────────────
@@ -323,6 +360,9 @@ async def submit_task(
             detail="Daily token budget exceeded. Try again tomorrow.",
         ) from budget_err
 
+    # DOS guard: reject if user already has too many pending tasks
+    await _check_queue_depth(user["user_id"], additional=1)
+
     # Phase 54: validate session_id ownership before creating task
     if body.session_id:
         from src.database import get_session as db_get_session
@@ -408,6 +448,10 @@ async def submit_tasks_batch(
     """
     results = []
     daily_limit = user.get("daily_token_limit", 100000)
+
+    # DOS guard: check the whole batch at once before processing any task.
+    # additional=len(body.tasks) ensures a batch of 20 doesn't bypass the cap.
+    await _check_queue_depth(user["user_id"], additional=len(body.tasks))
 
     for idx, req in enumerate(body.tasks):
         # Sanitize + injection check

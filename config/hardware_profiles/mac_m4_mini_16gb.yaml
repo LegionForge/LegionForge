@@ -227,6 +227,12 @@ gateway:
   # Auth backend: "api_key" (default) | "oidc" | "github" | "ldap" | "kerberos"
   # Switch by changing this value and restarting the gateway.
   auth_provider: api_key
+  # DOS protection — HTTP-layer rate limits (all per-user per 60-second window).
+  #   Set any limit to 0 to disable it entirely.
+  submission_rate_limit_per_minute: 10   # POST /tasks and /tasks/batch
+  memory_rate_limit_per_minute: 10       # POST /memory/ingest and /memory/search (Ollama calls)
+  max_queued_tasks_per_user: 20          # reject if user has this many queued+running tasks
+  max_sse_streams_per_user: 10           # reject new SSE connections above this count
 
   # ── OIDC (Phase 12) ────────────────────────────────────────────────────────
   # Required when auth_provider: oidc.  Covers Google, Okta, Auth0, Keycloak,
@@ -380,10 +386,10 @@ agent_memory:
 # Both must be one of: ddg | tavily | brave | exa | perplexity | searxng
 #
 # API keys go in macOS Keychain (never in this file):
-#   Tavily:     security add-generic-password -s legionforge_tavily_api_key -a jp -w <key>
-#   Brave:      security add-generic-password -s legionforge_brave_api_key -a jp -w <key>
-#   Exa:        security add-generic-password -s legionforge_exa_api_key -a jp -w <key>
-#   Perplexity: security add-generic-password -s legionforge_perplexity_api_key -a jp -w <key>
+#   Tavily:     security add-generic-password -s legionforge_tavily_api_key -a api_key -w <key>
+#   Brave:      security add-generic-password -s legionforge_brave_api_key -a api_key -w <key>
+#   Exa:        security add-generic-password -s legionforge_exa_api_key -a api_key -w <key>
+#   Perplexity: security add-generic-password -s legionforge_perplexity_api_key -a api_key -w <key>
 #
 # SearXNG (self-hosted, no key required):
 #   docker run -d -p 8888:8080 --name searxng searxng/searxng

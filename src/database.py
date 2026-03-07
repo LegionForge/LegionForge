@@ -36,6 +36,30 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# ── Database role names (framework constants — not user-configurable) ─────────
+DB_ROLE_WORKER = "legionforge_worker"  # Task worker — BYPASSRLS, no DDL
+DB_ROLE_GATEWAY = "legionforge_gateway"  # API gateway — RLS enforced, user-scoped
+DB_ROLE_MAINTENANCE = "legionforge_maintenance"  # Prune-only — DELETE but ZERO SELECT
+DB_ROLE_GUARDIAN = "legionforge_guardian"  # Security sidecar — read security tables
+DB_ROLE_READONLY = "legionforge_readonly"  # Health/metrics — SELECT summary tables
+
+# Tables with user_id — standard RLS user-isolation policy applied on gateway role.
+RLS_USER_SCOPED_TABLES = [
+    "tasks",
+    "sessions",
+    "scheduled_tasks",
+    "pipelines",
+    "pipeline_runs",
+    "task_notes",
+    "task_annotations",
+    "task_attachments",
+    "task_templates",
+    "task_shares",
+    "webhooks",
+    "stream_tokens",
+    "user_preferences",
+]
+
 
 # ── ~/.pgpass helpers ─────────────────────────────────────────────────────────
 
@@ -212,6 +236,84 @@ def _build_app_user_conninfo() -> str:
     return f"host={host} port={port} dbname={db} user={user}"
 
 
+# Per-role password cache — keyed by role name.
+# Prevents two-call mismatch within the same process lifetime.
+_role_pw_cache: dict[str, str] = {}
+
+
+def _get_or_generate_role_password(role: str) -> str:
+    """
+    Get or generate a password for a named legionforge_* DB role.
+
+    Priority:
+      0. In-process cache (same process, same password)
+      1. CredentialStore (service = role name, loaded at startup)
+      2. POSTGRES_<ROLE_UPPER>_PASSWORD environment variable
+      3. ~/.pgpass (PostgreSQL standard, chmod 0600)
+      4. Generate 32-char random password, persist to ~/.pgpass + Keychain
+    """
+    global _role_pw_cache
+    if role in _role_pw_cache:
+        return _role_pw_cache[role]
+
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "legionforge")
+
+    # 1. CredentialStore (service name = role name)
+    try:
+        from src.credentials import creds as _creds
+
+        if _creds._initialized:
+            pw = _creds.get(role)
+            if pw:
+                _role_pw_cache[role] = pw
+                return pw
+    except ImportError:
+        pass
+
+    # 2. Environment variable POSTGRES_LEGIONFORGE_WORKER_PASSWORD etc.
+    env_key = "POSTGRES_" + role.upper().replace("-", "_") + "_PASSWORD"
+    pw = os.environ.get(env_key, "")
+    if pw:
+        _role_pw_cache[role] = pw
+        return pw
+
+    # 3. ~/.pgpass
+    pw = _read_pgpass(host, port, db, role)
+    if pw:
+        _role_pw_cache[role] = pw
+        return pw
+
+    # 4. Generate + persist
+    _safe = string.ascii_letters + string.digits + "_-+="
+    pw = "".join(secrets.choice(_safe) for _ in range(32))
+    _role_pw_cache[role] = pw
+    try:
+        _write_pgpass_entry(host, port, db, role, pw)
+    except Exception as exc:
+        logger.warning("[db-roles] Could not write ~/.pgpass for %r: %s", role, exc)
+    try:
+        subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-s",
+                role,
+                "-a",
+                "api_key",
+                "-w",
+                pw,
+                "-U",
+            ],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass
+    return pw
+
+
 # Module-level cache: ensures the same password is returned within a single
 # process lifetime, preventing the two-call mismatch where _setup_db_roles()
 # sets one generated password in PG and the pool-creation call generates a
@@ -314,133 +416,206 @@ def _get_or_generate_app_password() -> str:
     return pw
 
 
+async def _setup_rls(admin_conn: psycopg.AsyncConnection) -> None:
+    """
+    Enable Row-Level Security on user-scoped tables and create isolation policies.
+
+    Policy design — 3-tier USING clause (applies to legionforge_gateway only;
+    all other roles have BYPASSRLS and are exempt by role attribute):
+
+      1. app.bypass_rls = 'on'  → full access (explicit admin override)
+      2. app.user_id = ''       → full access (no context set — internal/admin callers)
+      3. user_id = app.user_id  → row isolation (authenticated gateway requests)
+
+    api_usage has nullable user_id (system calls); its policy also passes NULL rows.
+
+    Idempotent — safe to run on every startup.
+    """
+    _policy = (
+        "current_setting('app.bypass_rls', true) = 'on' "
+        "OR current_setting('app.user_id', true) = '' "
+        "OR user_id = current_setting('app.user_id', true)"
+    )
+    for tbl in RLS_USER_SCOPED_TABLES:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("ALTER TABLE {t} ENABLE ROW LEVEL SECURITY").format(
+                    t=pgsql.Identifier(tbl)
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL("DROP POLICY IF EXISTS user_isolation ON {t}").format(
+                    t=pgsql.Identifier(tbl)
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL(
+                    "CREATE POLICY user_isolation ON {t} FOR ALL TO {uid} "
+                    "USING ({u}) WITH CHECK ({u})"
+                ).format(
+                    t=pgsql.Identifier(tbl),
+                    uid=pgsql.Identifier(DB_ROLE_GATEWAY),
+                    u=pgsql.SQL(_policy),
+                )
+            )
+            logger.debug("[db-rls] Policy set on %r", tbl)
+        except Exception as exc:
+            logger.debug("[db-rls] Skipped %r: %s", tbl, exc)
+
+    # api_usage: nullable user_id — also pass NULL rows (system records)
+    _api_policy = (
+        "current_setting('app.bypass_rls', true) = 'on' "
+        "OR current_setting('app.user_id', true) = '' "
+        "OR user_id IS NULL "
+        "OR user_id = current_setting('app.user_id', true)"
+    )
+    try:
+        await admin_conn.execute("ALTER TABLE api_usage ENABLE ROW LEVEL SECURITY")
+        await admin_conn.execute("DROP POLICY IF EXISTS user_isolation ON api_usage")
+        await admin_conn.execute(
+            pgsql.SQL(
+                "CREATE POLICY user_isolation ON api_usage FOR ALL TO {uid} "
+                "USING ({u}) WITH CHECK ({u})"
+            ).format(
+                uid=pgsql.Identifier(DB_ROLE_GATEWAY),
+                u=pgsql.SQL(_api_policy),
+            )
+        )
+    except Exception as exc:
+        logger.debug("[db-rls] api_usage policy skipped: %s", exc)
+
+    logger.info(
+        "[db-rls] RLS enabled on %d user-scoped tables", len(RLS_USER_SCOPED_TABLES) + 1
+    )
+
+
 async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
     """
-    Create the legionforge_app restricted PostgreSQL user and grant minimal privileges.
+    Create all LegionForge PostgreSQL roles with least-privilege grants.
 
-    Idempotent — safe to run on every startup. Runs as the admin user (POSTGRES_USER).
+    Five roles, each with a distinct trust boundary:
 
-    Privilege model:
-      - CONNECT on database legionforge
-      - SELECT on ALL tables (read access for agents)
-      - INSERT only on audit_log and threat_events (append-only audit trail)
-      - INSERT + UPDATE on mutable app tables (no DELETE, no DDL)
-      - Full CRUD on LangGraph checkpoint tables (required by LangGraph internals)
-      - USAGE on all sequences (for BIGSERIAL PKs)
+      legionforge_worker      — Task execution. BYPASSRLS. SELECT on tasks/
+                                checkpoints/agent tables; INSERT on api_usage,
+                                audit_log, threat_events; UPDATE tasks. No DDL.
+      legionforge_gateway     — API request handler. Subject to RLS (NOBYPASSRLS).
+                                SELECT/INSERT/UPDATE on user-scoped tables;
+                                DELETE only on stream_tokens (expiry). No DDL.
+      legionforge_maintenance — Retention pruning ONLY. BYPASSRLS. DELETE on
+                                prunable tables. ZERO SELECT — cannot exfiltrate
+                                data while running a retention job.
+      legionforge_guardian    — Security sidecar. BYPASSRLS. SELECT on
+                                tool_registry, threat_rules, agent_profiles,
+                                checkpoints. INSERT on threat_events. Nothing else.
+      legionforge_readonly    — Health server + monitoring. BYPASSRLS. SELECT
+                                on summary/metrics tables only. Zero writes.
+
+    All roles: NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER.
+    Per-role CONNECTION LIMIT and statement_timeout prevent pool starvation
+    and runaway query DOS across components.
+
+    Idempotent — safe to run on every startup.
     """
-    app_user = getattr(settings.security, "db_app_user", "legionforge_app")
-    app_pw = _get_or_generate_app_password()
     db_name = os.environ.get("POSTGRES_DB", "legionforge")
 
-    # Create user if not exists (idempotent via DO block)
-    # We use psycopg sql module to safely format identifiers and literals.
-    await admin_conn.execute(
-        pgsql.SQL(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = {user}) THEN
-                    CREATE USER {user_id} WITH LOGIN NOINHERIT;
-                END IF;
-            END
-            $$;
-            """
-        ).format(
-            user=pgsql.Literal(app_user),
-            user_id=pgsql.Identifier(app_user),
-        )
-    )
+    # (role, conn_limit, statement_timeout_ms, bypassrls)
+    role_attrs = [
+        (DB_ROLE_WORKER, 8, 60000, True),
+        (DB_ROLE_GATEWAY, 20, 30000, False),
+        (DB_ROLE_MAINTENANCE, 2, 300000, True),
+        (DB_ROLE_GUARDIAN, 4, 10000, True),
+        (DB_ROLE_READONLY, 10, 10000, True),
+    ]
 
-    # Always update the password (idempotent, ensures rotation works)
-    await admin_conn.execute(
-        pgsql.SQL("ALTER USER {user_id} WITH PASSWORD {pw}").format(
-            user_id=pgsql.Identifier(app_user),
-            pw=pgsql.Literal(app_pw),
-        )
-    )
-
-    # CONNECT on the database
-    await admin_conn.execute(
-        pgsql.SQL("GRANT CONNECT ON DATABASE {db} TO {user_id}").format(
-            db=pgsql.Identifier(db_name),
-            user_id=pgsql.Identifier(app_user),
-        )
-    )
-
-    # USAGE on schema
-    await admin_conn.execute(
-        pgsql.SQL("GRANT USAGE ON SCHEMA public TO {user_id}").format(
-            user_id=pgsql.Identifier(app_user),
-        )
-    )
-
-    # SELECT on all tables
-    await admin_conn.execute(
-        pgsql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {user_id}").format(
-            user_id=pgsql.Identifier(app_user),
-        )
-    )
-
-    # Append-only audit tables — INSERT only, no UPDATE/DELETE
-    await admin_conn.execute(
-        pgsql.SQL("GRANT INSERT ON audit_log, threat_events TO {user_id}").format(
-            user_id=pgsql.Identifier(app_user),
-        )
-    )
-
-    # Mutable app tables — INSERT + UPDATE + DELETE, no DDL
-    # Keep this list in sync with every new table added in _create_app_tables.
-    for tbl in [
-        "api_usage",
-        "health_metrics",
-        "documents",
-        "crystallization_candidates",
-        "crystallization_packages",
-        "crystallization_analyses",
-        "threat_rules",
-        "agent_profiles",
-        "tool_registry",
-        "tasks",  # Phase 8: gateway task queue
-        "gateway_users",  # Phase 8: gateway users
-        "stream_tokens",  # Phase 10: DB-backed SSE stream tokens (also needs DELETE)
-        "scheduled_tasks",  # Phase 23: cron-scheduled tasks
-        "pipelines",  # Phase 27: task pipelines
-        "pipeline_runs",  # Phase 27: pipeline run log
-        "task_notes",  # Phase 32: task annotations
-        "task_events",  # Phase 39: task timeline events
-        "webhooks",  # Phase 48: webhook registry
-        "task_attachments",  # Phase 49: task text attachments
-        "task_templates",  # Phase 50: reusable task templates
-        "task_shares",  # Phase 51: read-only share tokens
-        "user_preferences",  # Phase 52: per-user task defaults
-        "sessions",  # Phase 54: multi-turn conversation sessions
-        "task_annotations",  # Phase 59: task rating & feedback
-    ]:
+    for role, conn_limit, stmt_timeout_ms, bypassrls in role_attrs:
+        pw = _get_or_generate_role_password(role)
+        bypassrls_sql = "BYPASSRLS" if bypassrls else "NOBYPASSRLS"
         try:
             await admin_conn.execute(
                 pgsql.SQL(
-                    "GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO {user_id}"
+                    "DO $$ BEGIN"
+                    " IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = {name}) THEN"
+                    "  CREATE USER {uid} WITH LOGIN NOINHERIT"
+                    "  NOCREATEDB NOCREATEROLE NOSUPERUSER"
+                    "  CONNECTION LIMIT {lim};"
+                    " END IF; END $$"
                 ).format(
-                    tbl=pgsql.Identifier(tbl),
-                    user_id=pgsql.Identifier(app_user),
+                    name=pgsql.Literal(role),
+                    uid=pgsql.Identifier(role),
+                    lim=pgsql.SQL(str(conn_limit)),
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL(
+                    "ALTER USER {uid} WITH PASSWORD {pw} CONNECTION LIMIT {lim}"
+                ).format(
+                    uid=pgsql.Identifier(role),
+                    pw=pgsql.Literal(pw),
+                    lim=pgsql.SQL(str(conn_limit)),
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL(f"ALTER ROLE {{uid}} {bypassrls_sql}").format(
+                    uid=pgsql.Identifier(role)
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL("ALTER ROLE {uid} SET statement_timeout = {ms}").format(
+                    uid=pgsql.Identifier(role),
+                    ms=pgsql.Literal(f"{stmt_timeout_ms}ms"),
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL("GRANT CONNECT ON DATABASE {db} TO {uid}").format(
+                    db=pgsql.Identifier(db_name), uid=pgsql.Identifier(role)
+                )
+            )
+            await admin_conn.execute(
+                pgsql.SQL("GRANT USAGE ON SCHEMA public TO {uid}").format(
+                    uid=pgsql.Identifier(role)
+                )
+            )
+            logger.debug("[db-roles] Created/updated role %r", role)
+        except Exception as exc:
+            logger.warning("[db-roles] Role setup failed for %r: %s", role, exc)
+
+    # ── legionforge_worker grants ─────────────────────────────────────────────
+    # Broad read access + INSERT on audit tables + CRUD on checkpoints.
+    _worker_select = [
+        "tasks",
+        "sessions",
+        "scheduled_tasks",
+        "pipelines",
+        "pipeline_runs",
+        "task_notes",
+        "task_annotations",
+        "task_attachments",
+        "task_templates",
+        "task_shares",
+        "webhooks",
+        "stream_tokens",
+        "user_preferences",
+        "gateway_users",
+        "tool_registry",
+        "agent_profiles",
+        "threat_rules",
+        "crystallization_candidates",
+        "crystallization_packages",
+        "crystallization_analyses",
+        "task_events",
+        "health_metrics",
+        "api_usage",
+        "documents",
+    ]
+    for tbl in _worker_select:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT SELECT ON {t} TO {uid}").format(
+                    t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_WORKER)
                 )
             )
         except Exception as e:
-            # Table might not exist yet on very first run — non-fatal
-            logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
-
-    # Ensure future tables automatically inherit grants (ALTER DEFAULT PRIVILEGES)
-    try:
-        await admin_conn.execute(
-            pgsql.SQL(
-                "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-                "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {user_id}"
-            ).format(user_id=pgsql.Identifier(app_user))
-        )
-    except Exception as e:
-        logger.debug(f"[db-rbac] ALTER DEFAULT PRIVILEGES skipped: {e}")
-
-    # LangGraph checkpoint tables — full CRUD required by LangGraph internals
+            logger.debug("[db-roles] worker SELECT on %r skipped: %s", tbl, e)
     for tbl in [
         "checkpoint_migrations",
         "checkpoints",
@@ -450,32 +625,184 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         try:
             await admin_conn.execute(
                 pgsql.SQL(
-                    "GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO {user_id}"
-                ).format(
-                    tbl=pgsql.Identifier(tbl),
-                    user_id=pgsql.Identifier(app_user),
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON {t} TO {uid}"
+                ).format(t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_WORKER))
+            )
+        except Exception as e:
+            logger.debug("[db-roles] worker checkpoint CRUD on %r skipped: %s", tbl, e)
+    try:
+        await admin_conn.execute(
+            pgsql.SQL("GRANT INSERT ON audit_log, threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON tasks TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL(
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON stream_tokens TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_WORKER))
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON api_usage TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
+    except Exception as e:
+        logger.debug("[db-roles] worker extra grants skipped: %s", e)
+
+    # ── legionforge_gateway grants ────────────────────────────────────────────
+    # SELECT + INSERT + UPDATE on user-facing tables; DELETE only on stream_tokens.
+    _gateway_tables = [
+        "tasks",
+        "sessions",
+        "scheduled_tasks",
+        "pipelines",
+        "pipeline_runs",
+        "task_notes",
+        "task_annotations",
+        "task_attachments",
+        "task_templates",
+        "task_shares",
+        "webhooks",
+        "user_preferences",
+        "gateway_users",
+    ]
+    for tbl in _gateway_tables:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON {t} TO {uid}").format(
+                    t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_GATEWAY)
                 )
             )
         except Exception as e:
-            logger.debug(f"[db-rbac] GRANT on {tbl!r} skipped: {e}")
-
-    # USAGE on all sequences (for BIGSERIAL primary keys)
-    await admin_conn.execute(
-        pgsql.SQL("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {user_id}").format(
-            user_id=pgsql.Identifier(app_user),
+            logger.debug("[db-roles] gateway grant on %r skipped: %s", tbl, e)
+    try:
+        await admin_conn.execute(
+            pgsql.SQL(
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON stream_tokens TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_GATEWAY))
         )
-    )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT ON tool_registry TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_GATEWAY)
+            )
+        )
+    except Exception as e:
+        logger.debug(
+            "[db-roles] gateway stream_tokens/tool_registry grant skipped: %s", e
+        )
+
+    # ── legionforge_maintenance grants ────────────────────────────────────────
+    # DELETE on prunable tables + INSERT on audit_anchors. ZERO SELECT.
+    # A compromised maintenance job can burn rows but cannot read them.
+    for tbl in ["tasks", "api_usage", "health_metrics", "threat_events"]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT DELETE ON {t} TO {uid}").format(
+                    t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+                )
+            )
+        except Exception as e:
+            logger.debug("[db-roles] maintenance DELETE on %r skipped: %s", tbl, e)
+    try:
+        await admin_conn.execute(
+            pgsql.SQL("GRANT INSERT ON audit_anchors TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+    except Exception as e:
+        logger.debug("[db-roles] maintenance audit_anchors grant skipped: %s", e)
+
+    # ── legionforge_guardian grants ───────────────────────────────────────────
+    # SELECT on security config tables; INSERT on threat_events only.
+    # Guardian must NOT see tasks, sessions, or any user data.
+    for tbl in [
+        "tool_registry",
+        "threat_rules",
+        "agent_profiles",
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
+    ]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT SELECT ON {t} TO {uid}").format(
+                    t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_GUARDIAN)
+                )
+            )
+        except Exception as e:
+            logger.debug("[db-roles] guardian SELECT on %r skipped: %s", tbl, e)
+    try:
+        await admin_conn.execute(
+            pgsql.SQL("GRANT INSERT ON threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_GUARDIAN)
+            )
+        )
+    except Exception as e:
+        logger.debug("[db-roles] guardian threat_events INSERT skipped: %s", e)
+
+    # ── legionforge_readonly grants ───────────────────────────────────────────
+    # SELECT only on summary/metrics tables — health server and monitoring.
+    for tbl in [
+        "health_metrics",
+        "api_usage",
+        "tool_registry",
+        "gateway_users",
+        "threat_events",
+    ]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL("GRANT SELECT ON {t} TO {uid}").format(
+                    t=pgsql.Identifier(tbl), uid=pgsql.Identifier(DB_ROLE_READONLY)
+                )
+            )
+        except Exception as e:
+            logger.debug("[db-roles] readonly SELECT on %r skipped: %s", tbl, e)
+
+    # ── Sequences — all roles need USAGE for BIGSERIAL PKs ───────────────────
+    for role in [
+        DB_ROLE_WORKER,
+        DB_ROLE_GATEWAY,
+        DB_ROLE_MAINTENANCE,
+        DB_ROLE_GUARDIAN,
+        DB_ROLE_READONLY,
+    ]:
+        try:
+            await admin_conn.execute(
+                pgsql.SQL(
+                    "GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {uid}"
+                ).format(uid=pgsql.Identifier(role))
+            )
+        except Exception as e:
+            logger.debug("[db-roles] SEQUENCES grant for %r skipped: %s", role, e)
+
+    # ── Enable RLS on user-scoped tables ─────────────────────────────────────
+    await _setup_rls(admin_conn)
 
     logger.info(
-        f"[db-rbac] Role setup complete for '{app_user}': "
-        "SELECT all, INSERT on audit/threat, INSERT+UPDATE on app tables, "
-        "full CRUD on checkpoint tables"
+        "[db-roles] 5-role privilege model applied: "
+        "worker/gateway/maintenance/guardian/readonly — RLS enabled on %d tables",
+        len(RLS_USER_SCOPED_TABLES) + 1,
     )
 
 
-# ── Connection pool (module-level singleton) ──────────────────────────────────
+# ── Connection pools (one per DB role) ───────────────────────────────────────
 
-_pool: Optional[AsyncConnectionPool] = None
+_pool: Optional[AsyncConnectionPool] = None  # worker pool (backward-compat alias)
+_gateway_pool: Optional[AsyncConnectionPool] = (
+    None  # legionforge_gateway (RLS enforced)
+)
+_maintenance_pool: Optional[AsyncConnectionPool] = (
+    None  # legionforge_maintenance (DELETE-only)
+)
+_readonly_pool: Optional[AsyncConnectionPool] = (
+    None  # legionforge_readonly (SELECT only)
+)
 
 
 async def init_db() -> None:
@@ -490,7 +817,7 @@ async def init_db() -> None:
     This ensures all runtime agent operations run under the least-privilege DB user.
     Admin credentials are only held during startup schema setup, then discarded.
     """
-    global _pool
+    global _pool, _gateway_pool, _maintenance_pool, _readonly_pool
 
     # ── Initialize CredentialStore before first secret access ──────────────
     # This loads all credentials into memory once. After this point, no code
@@ -549,34 +876,43 @@ async def init_db() -> None:
         await admin_pool.close()
         logger.info("[db-init] Phase 1 complete — admin pool closed")
 
-    # ── Phase 2: Restricted app pool ────────────────────────────────────────
-    # From this point on, ALL database access uses the legionforge_app user:
-    # no DDL, no DELETE on audit/threat tables, no superuser privileges.
-    logger.info("[db-init] Phase 2: Initializing restricted app user pool...")
-    try:
-        app_conninfo = _build_app_user_conninfo()
-        app_password = _get_or_generate_app_password()
-        _pool = AsyncConnectionPool(
-            conninfo=app_conninfo,
-            min_size=1,
-            max_size=10,
-            kwargs={
-                "password": app_password,
-                "row_factory": dict_row,
-                "autocommit": True,
-            },
-            open=False,
-        )
-        await _pool.open(wait=True)
-        logger.info(
-            f"[db-init] App pool initialized (user={getattr(settings.security, 'db_app_user', 'legionforge_app')!r})"
-        )
-    except Exception as pool_err:
-        # If app user pool fails (e.g., legionforge_app doesn't exist on this DB),
-        # fall back to the admin pool for backward compatibility.
+    # ── Phase 2: Named role pools ────────────────────────────────────────────
+    # Each LegionForge component gets its own connection pool backed by its
+    # dedicated least-privilege role. get_pool() returns the worker pool for
+    # backward compatibility. Specialised callers use get_gateway_pool(),
+    # get_readonly_pool(), or get_maintenance_connection().
+    logger.info("[db-init] Phase 2: Initializing role-based connection pools...")
+
+    async def _open_role_pool(
+        role: str, min_size: int = 1, max_size: int = 5
+    ) -> Optional[AsyncConnectionPool]:
+        """Open a pool for a named role; return None on failure (non-fatal)."""
+        host = os.environ.get("POSTGRES_HOST", "localhost")
+        port = os.environ.get("POSTGRES_PORT", "5432")
+        db = os.environ.get("POSTGRES_DB", "legionforge")
+        conninfo = f"host={host} port={port} dbname={db} user={role}"
+        pw = _get_or_generate_role_password(role)
+        try:
+            p = AsyncConnectionPool(
+                conninfo=conninfo,
+                min_size=min_size,
+                max_size=max_size,
+                kwargs={"password": pw, "row_factory": dict_row, "autocommit": True},
+                open=False,
+            )
+            await p.open(wait=True)
+            logger.info("[db-init] Pool ready: %r (max=%d)", role, max_size)
+            return p
+        except Exception as exc:
+            logger.warning("[db-init] Pool failed for %r: %s", role, exc)
+            return None
+
+    # Worker pool — primary runtime pool (BYPASSRLS, broad read/write access)
+    _pool = await _open_role_pool(DB_ROLE_WORKER, min_size=1, max_size=8)
+    if _pool is None:
         logger.warning(
-            f"[db-init] Could not connect as restricted app user: {pool_err}. "
-            "Falling back to admin user — run 'make setup-db-roles' to create the role."
+            "[db-init] Worker pool unavailable — falling back to admin pool. "
+            "Run 'make setup-db-roles' to create the legionforge_* roles."
         )
         _pool = AsyncConnectionPool(
             conninfo=admin_conninfo,
@@ -590,6 +926,29 @@ async def init_db() -> None:
             open=False,
         )
         await _pool.open(wait=True)
+
+    # Gateway pool — RLS-enforced, user-scoped (legionforge_gateway)
+    _gateway_pool = await _open_role_pool(DB_ROLE_GATEWAY, min_size=1, max_size=20)
+    if _gateway_pool is None:
+        logger.warning(
+            "[db-init] Gateway pool unavailable — RLS will not be enforced for gateway routes"
+        )
+
+    # Maintenance pool — DELETE-only, zero SELECT (legionforge_maintenance)
+    _maintenance_pool = await _open_role_pool(
+        DB_ROLE_MAINTENANCE, min_size=1, max_size=2
+    )
+    if _maintenance_pool is None:
+        logger.warning(
+            "[db-init] Maintenance pool unavailable — run_db_maintenance will use worker pool"
+        )
+
+    # Readonly pool — health server + monitoring (legionforge_readonly)
+    _readonly_pool = await _open_role_pool(DB_ROLE_READONLY, min_size=1, max_size=10)
+    if _readonly_pool is None:
+        logger.warning(
+            "[db-init] Readonly pool unavailable — health server will use worker pool"
+        )
 
     # Verify audit log chain integrity. An empty chain is valid on first run.
     # A broken chain (verified_rows > 0 + hash mismatch) means tamper — halt.
@@ -1545,19 +1904,106 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
 
 
 async def close_db() -> None:
-    """Close the connection pool. Call at application shutdown."""
-    global _pool
-    if _pool:
-        await _pool.close()
-        _pool = None
-        logger.info("PostgreSQL connection pool closed")
+    """Close all connection pools. Call at application shutdown."""
+    global _pool, _gateway_pool, _maintenance_pool, _readonly_pool
+    for name, pool in [
+        ("worker", _pool),
+        ("gateway", _gateway_pool),
+        ("maintenance", _maintenance_pool),
+        ("readonly", _readonly_pool),
+    ]:
+        if pool:
+            try:
+                await pool.close()
+            except Exception as exc:
+                logger.debug("[db-close] %s pool close error: %s", name, exc)
+    _pool = _gateway_pool = _maintenance_pool = _readonly_pool = None
+    logger.info("PostgreSQL connection pools closed")
 
 
 def get_pool() -> AsyncConnectionPool:
-    """Get the active connection pool. Raises if init_db() hasn't been called."""
+    """Return the worker pool (backward-compat). Raises if init_db() not called."""
     if _pool is None:
         raise RuntimeError("Database not initialized. Call await init_db() first.")
     return _pool
+
+
+def get_gateway_pool() -> AsyncConnectionPool:
+    """Return the legionforge_gateway pool (RLS-enforced, user-scoped).
+    Falls back to worker pool if gateway pool is unavailable.
+    """
+    return _gateway_pool or get_pool()
+
+
+def get_readonly_pool() -> AsyncConnectionPool:
+    """Return the legionforge_readonly pool (SELECT-only, health/metrics).
+    Falls back to worker pool if readonly pool is unavailable.
+    """
+    return _readonly_pool or get_pool()
+
+
+@asynccontextmanager
+async def get_user_connection(
+    user_id: str,
+) -> AsyncGenerator[psycopg.AsyncConnection, None]:
+    """Yield a gateway pool connection scoped to one user via RLS.
+
+    Sets the session-level parameter ``app.user_id`` so that the
+    ``user_isolation`` policy on the gateway role restricts all queries
+    to rows belonging to ``user_id``. Always resets to '' on release.
+
+    Usage::
+
+        async with get_user_connection(user_id) as conn:
+            cur = await conn.execute("SELECT * FROM tasks")
+            # returns only rows where tasks.user_id = user_id
+    """
+    pool = get_gateway_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "SELECT set_config('app.user_id', $1, false),"
+            " set_config('app.bypass_rls', 'off', false)",
+            [user_id],
+        )
+        try:
+            yield conn
+        finally:
+            try:
+                await conn.execute(
+                    "SELECT set_config('app.user_id', '', false),"
+                    " set_config('app.bypass_rls', 'off', false)"
+                )
+            except Exception:
+                pass
+
+
+@asynccontextmanager
+async def get_admin_connection() -> AsyncGenerator[psycopg.AsyncConnection, None]:
+    """Yield a worker pool connection (BYPASSRLS by role attribute).
+
+    Backward-compatible name; now backed by the legionforge_worker role
+    which has BYPASSRLS and broad read/write access across all users.
+    Use this when you need to operate across user boundaries without
+    needing DELETE on prunable tables (use get_maintenance_connection for that).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def get_maintenance_connection() -> AsyncGenerator[psycopg.AsyncConnection, None]:
+    """Yield a maintenance pool connection (DELETE-only, zero SELECT).
+
+    legionforge_maintenance has DELETE on prunable tables and INSERT on
+    audit_anchors, but ZERO SELECT — a compromised maintenance process
+    cannot read data while running retention jobs.
+
+    Falls back to the worker pool if the maintenance pool is unavailable.
+    """
+    pool = _maintenance_pool or get_pool()
+    async with pool.connection() as conn:
+        yield conn
 
 
 # ── Checkpointer factory ──────────────────────────────────────────────────────
@@ -2194,9 +2640,10 @@ async def run_db_maintenance(
         Dict mapping table name to number of rows deleted.
     """
     results: dict[str, int] = {}
-    pool = get_pool()
 
-    async with pool.connection() as conn:
+    # get_maintenance_connection uses legionforge_maintenance: DELETE-only, zero SELECT.
+    # A compromised maintenance process cannot read data while running retention jobs.
+    async with get_maintenance_connection() as conn:
         if tasks_days > 0:
             cur = await conn.execute(
                 """

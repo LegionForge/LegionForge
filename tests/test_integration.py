@@ -950,3 +950,137 @@ async def test_api_usage_row_written_with_user_id_after_completion(
         assert user_id_value == test_user["user_id"]
     finally:
         await _stop_worker(worker)
+
+
+# ── RLS integration tests ──────────────────────────────────────────────────────
+
+
+@pytest.mark.integration
+async def test_rls_user_isolation_on_tasks(db):
+    """
+    RLS policy enforces per-user row isolation on the tasks table.
+
+    With app.user_id set to user_a, a SELECT on tasks via the gateway pool
+    must return only user_a's rows — user_b's rows must be invisible.
+    """
+    import uuid
+
+    from src.database import get_gateway_pool, get_pool
+
+    user_a = f"rls_test_a_{uuid.uuid4().hex[:8]}"
+    user_b = f"rls_test_b_{uuid.uuid4().hex[:8]}"
+
+    # Insert one task for each user via the worker pool (BYPASSRLS)
+    worker_pool = get_pool()
+    async with worker_pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+            " VALUES (gen_random_uuid(), %s, %s, %s, %s)",
+            (user_a, "task for user_a", "orchestrator", "complete"),
+        )
+        await conn.execute(
+            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+            " VALUES (gen_random_uuid(), %s, %s, %s, %s)",
+            (user_b, "task for user_b", "orchestrator", "complete"),
+        )
+
+    gateway_pool = get_gateway_pool()
+    if gateway_pool is get_pool():
+        pytest.skip("Gateway pool unavailable — RLS not active (roles not created yet)")
+
+    try:
+        async with gateway_pool.connection() as conn:
+            await conn.execute("SELECT set_config('app.user_id', %s, false)", [user_a])
+            cur = await conn.execute(
+                "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)",
+                (user_a, user_b),
+            )
+            rows = await cur.fetchall()
+            visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
+            assert user_a in visible, "user_a must see their own tasks"
+            assert user_b not in visible, "RLS VIOLATION: user_a can see user_b's tasks"
+            await conn.execute("SELECT set_config('app.user_id', '', false)")
+    finally:
+        async with worker_pool.connection() as conn:
+            await conn.execute(
+                "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+            )
+
+
+@pytest.mark.integration
+async def test_rls_worker_pool_sees_all_users(db):
+    """Worker pool (BYPASSRLS) can SELECT tasks across all users."""
+    import uuid
+
+    from src.database import get_pool
+
+    user_a = f"rls_bypass_a_{uuid.uuid4().hex[:8]}"
+    user_b = f"rls_bypass_b_{uuid.uuid4().hex[:8]}"
+
+    pool = get_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+            " VALUES (gen_random_uuid(), %s, 'bypass A', 'orchestrator', 'complete')",
+            (user_a,),
+        )
+        await conn.execute(
+            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+            " VALUES (gen_random_uuid(), %s, 'bypass B', 'orchestrator', 'complete')",
+            (user_b,),
+        )
+        cur = await conn.execute(
+            "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+        )
+        rows = await cur.fetchall()
+        visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
+        assert (
+            user_a in visible and user_b in visible
+        ), "Worker pool must see all users' tasks (BYPASSRLS)"
+        await conn.execute(
+            "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+        )
+
+
+@pytest.mark.integration
+async def test_maintenance_role_cannot_select_tasks(db):
+    """
+    legionforge_maintenance has zero SELECT on tasks.
+
+    A SELECT via the maintenance pool must return 0 rows (not an error —
+    the role can connect, but the grant means it sees nothing).
+    """
+    import uuid
+
+    from src.database import _maintenance_pool, get_pool
+
+    if _maintenance_pool is None:
+        pytest.skip("Maintenance pool not initialized — role may not exist yet")
+
+    user = f"maint_test_{uuid.uuid4().hex[:8]}"
+    async with get_pool().connection() as conn:
+        await conn.execute(
+            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+            " VALUES (gen_random_uuid(), %s, 'maint test', 'orchestrator', 'complete')",
+            (user,),
+        )
+
+    try:
+        async with _maintenance_pool.connection() as conn:
+            try:
+                cur = await conn.execute(
+                    "SELECT count(*) FROM tasks WHERE user_id = %s", (user,)
+                )
+                row = await cur.fetchone()
+                count = row[0] if row else 0
+                assert count == 0, (
+                    f"legionforge_maintenance must have ZERO SELECT on tasks — "
+                    f"saw {count} row(s). Grant or RLS misconfigured."
+                )
+            except Exception as exc:
+                # permission denied is also acceptable (stricter than expected)
+                if "permission denied" not in str(exc).lower():
+                    raise
+    finally:
+        async with get_pool().connection() as conn:
+            await conn.execute("DELETE FROM tasks WHERE user_id = %s", (user,))
