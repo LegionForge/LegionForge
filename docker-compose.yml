@@ -44,9 +44,9 @@ services:
       POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: "5432"
       POSTGRES_DB: legionforge
-
-      POSTGRES_USER: ${POSTGRES_USER:-jp}
-
+      # Guardian connects as its dedicated least-privilege role (legionforge_guardian).
+      # Override POSTGRES_USER env var if your superuser name differs from the default.
+      POSTGRES_USER: ${POSTGRES_USER:-legionforge_guardian}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # JWT task token signing secret — must match the value in the host Keychain.
       # Add to ~/.zshrc:
