@@ -748,12 +748,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
 
     # ── legionforge_readonly grants ───────────────────────────────────────────
     # SELECT only on summary/metrics tables — health server and monitoring.
+    # audit_log + audit_anchors included so verify_audit_log_chain() can use
+    # this role at startup without needing a live admin connection.
     for tbl in [
         "health_metrics",
         "api_usage",
         "tool_registry",
         "gateway_users",
         "threat_events",
+        "audit_log",
+        "audit_anchors",
     ]:
         try:
             await admin_conn.execute(
@@ -2455,7 +2459,10 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
         - chain_ok=True, verified_rows=0, error_message=None  — empty/fully-pruned log
         - chain_ok=False, verified_rows=N, error_message=str  — tamper detected at row N+1
     """
-    pool = get_pool()
+    # Use the readonly pool (SELECT on audit_log + audit_anchors granted to
+    # legionforge_readonly). Fall back to worker pool if readonly is unavailable
+    # (e.g. role doesn't exist yet on a fresh install before first startup).
+    pool = get_readonly_pool() or get_pool()
     async with pool.connection() as conn:
         # Load latest anchor to determine starting boundary
         cur_anc = await conn.execute(
