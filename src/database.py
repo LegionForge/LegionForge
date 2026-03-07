@@ -2222,12 +2222,23 @@ async def run_db_maintenance(
             )
             results["health_metrics"] = cur.rowcount
 
-        if threat_events_days > 0:
-            cur = await conn.execute(
-                "DELETE FROM threat_events WHERE ts < now() - make_interval(days := %s)",
-                (threat_events_days,),
+    # threat_events: legionforge_app only has INSERT (append-only audit trail).
+    # Use a short-lived admin connection for the maintenance delete.
+    if threat_events_days > 0:
+        try:
+            admin_conn = await psycopg.AsyncConnection.connect(
+                _build_conninfo_no_password(),
+                password=_get_postgres_password(),
+                autocommit=True,
             )
-            results["threat_events"] = cur.rowcount
+            async with admin_conn:
+                cur = await admin_conn.execute(
+                    "DELETE FROM threat_events WHERE ts < now() - make_interval(days := %s)",
+                    (threat_events_days,),
+                )
+                results["threat_events"] = cur.rowcount
+        except Exception as _te_exc:
+            logger.warning("[db-maintenance] threat_events pruning failed: %s", _te_exc)
 
     if audit_log_days > 0:
         deleted = await prune_audit_log(retention_days=audit_log_days)
