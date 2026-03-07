@@ -273,9 +273,16 @@ The security-first design of LegionForge is a direct response to watching these 
 
 ## License
 
-AGPL-3.0 with Section 7(b) attribution requirement.
+**Dual License:**
 
-Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact via GitHub Issues.
+- **Open Source** — [AGPLv3](LICENSE) with Section 7(b) attribution requirement. Free for open-source use.
+- **Commercial** — proprietary license for organizations that cannot comply with AGPLv3. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+
+The `legionforge-guardian` sidecar package is licensed separately under MIT.
+
+Contributors must agree to the [Contributor License Agreement](CLA.md) (agreement implied by submitting a PR).
+
+Copyright 2026 John Paul "Jp" Cruz.
 
 ---
 

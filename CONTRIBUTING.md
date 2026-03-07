@@ -110,6 +110,18 @@ implementation. The count should trend upward over time.
 
 ---
 
+## Licensing & Contributor Agreement
+
+LegionForge is dual-licensed — AGPLv3 (open source) and a commercial license
+for proprietary use. See `COMMERCIAL_LICENSE.md` for details.
+
+By submitting a pull request you agree to the Contributor License Agreement
+in `CLA.md`. This is required for your contribution to be included in both
+the open-source and commercial versions of LegionForge. No separate signature
+is needed — your PR submission constitutes agreement.
+
+---
+
 ## Starting a New Feature
 
 ```bash
