@@ -119,9 +119,11 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **Web + Browser tools** | `web_fetch_js` Playwright headless browser (PR #218); two-layer SSRF guard; private-IP PII regex fix; 50 tool-accuracy tests | ✅ Complete |
 | **Lazy-load Dashboard** | 296 operator tool cards in `<template>` — injected on first click; eliminates startup parse cost (PR #217) | ✅ Complete |
 | **Guardian G1–G3** | `packages/legionforge_guardian` standalone package; backward-compat shim in `src/security/guardian.py`; `python -m legionforge_guardian` entry point (PR #219) | ✅ Complete |
+| **Guardian G4** | Public repo [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) live; `pip install legionforge-guardian` on PyPI; auto-sync Action; Docker smoke verified (PRs #221–#232) | ✅ Complete |
 | **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) | ✅ Complete |
+| **Dual License** | AGPLv3 open source + commercial license; `COMMERCIAL_LICENSE.md` + `CLA.md` added (PR #229) | ✅ Complete |
 
-**2045/2045 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. Smoke suite runs in ~21 seconds (no external services required).
+**2054/2054 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -154,7 +156,7 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 
 ```bash
 # 1. Clone and set up the virtual environment
-git clone https://github.com/jp-cruz/LegionForge.git
+git clone https://github.com/LegionForge/LegionForge.git
 cd LegionForge
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -173,7 +175,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 2045 passed in ~21s
+# Expected: 2054 passed in ~21s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -226,7 +228,7 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 2045 smoke tests, ~21s, no services required
+make test-smoke      # 2054 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui         # 40 UI tests (Playwright)
@@ -288,6 +290,6 @@ Copyright 2026 John Paul "Jp" Cruz.
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 + all 5 agent memory gaps complete. 2045/2045 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
+**v0.7.0-alpha** — Phases 0–381 + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2054/2054 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
 
-Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

@@ -322,15 +322,15 @@ permalink: /
   <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.0-alpha · Active Development · Not Yet Stable</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 2045/2045 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2054/2054 tests passing</p>
   <div class="cta-group">
-    <a class="btn btn-primary" href="https://github.com/jp-cruz/LegionForge">
+    <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
     </a>
-    <a class="btn btn-secondary" href="https://github.com/jp-cruz/LegionForge/blob/main/docs/quick-start.md">
+    <a class="btn btn-secondary" href="https://github.com/LegionForge/LegionForge/blob/main/docs/quick-start.md">
       Quick Start
     </a>
-    <a class="btn btn-secondary" href="https://github.com/jp-cruz/LegionForge/blob/main/SECURITY.md">
+    <a class="btn btn-secondary" href="https://github.com/LegionForge/LegionForge/blob/main/SECURITY.md">
       Security Model
     </a>
   </div>
@@ -342,7 +342,7 @@ permalink: /
 <div class="container">
   <div class="stats">
     <div class="stat">
-      <span class="stat-value">2045</span>
+      <span class="stat-value">2054</span>
       <span class="stat-label">Tests Passing</span>
     </div>
     <div class="stat">
@@ -677,7 +677,7 @@ permalink: /
   <h2><span class="icon">⚡</span> Quick Start</h2>
   <div class="code-block">
 <span class="comment"># Clone and bootstrap</span><br>
-<span class="cmd">git clone</span> https://github.com/jp-cruz/LegionForge.git<br>
+<span class="cmd">git clone</span> https://github.com/LegionForge/LegionForge.git<br>
 <span class="cmd">cd</span> LegionForge<br>
 <span class="cmd">python -m venv</span> venv <span class="cmd">&amp;&amp; source</span> venv/bin/activate<br>
 <span class="cmd">pip install -r</span> requirements.txt<br>
@@ -693,7 +693,7 @@ permalink: /
 <br>
 <span class="comment"># Run smoke tests (no services needed)</span><br>
 <span class="cmd">make</span> test-smoke<br>
-<span class="comment"># ✓ 2045 passed in ~21s</span><br>
+<span class="comment"># ✓ 2054 passed in ~21s</span><br>
 <br>
 <span class="comment"># Start services + create your first user</span><br>
 <span class="cmd">make</span> health-server  <span class="comment"># :8765</span><br>
@@ -704,7 +704,7 @@ permalink: /
   </div>
   <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--dim);">
     Full setup guide including channel connectors, Kerberos, and horizontal scaling:
-    <a href="https://github.com/jp-cruz/LegionForge/blob/main/docs/quick-start.md" style="color: var(--accent2);">docs/quick-start.md →</a>
+    <a href="https://github.com/LegionForge/LegionForge/blob/main/docs/quick-start.md" style="color: var(--accent2);">docs/quick-start.md →</a>
   </p>
 </div>
 </section>
@@ -718,17 +718,17 @@ permalink: /
   </p>
   <p style="color: var(--dim);">
     The security stack, gateway, and operator dashboard are functionally complete and tested.
-    <strong style="color: var(--text);">2045/2045 tests passing.</strong>
+    <strong style="color: var(--text);">2054/2054 tests passing.</strong>
     All pre-v1.0 security blockers resolved. Phases 0–381 complete, plus web browser tools, Guardian package spinoff, and full agent memory model (all 5 gaps — OpenClaw parity).
     Active development toward v1.0.0 public release.
   </p>
   <p style="color: var(--dim);">
     Clone from
-    <a href="https://github.com/jp-cruz/LegionForge" style="color: var(--accent2);">github.com/jp-cruz/LegionForge</a>.
+    <a href="https://github.com/LegionForge/LegionForge" style="color: var(--accent2);">github.com/LegionForge/LegionForge</a>.
     Bugs, questions, and commercial licensing inquiries via
-    <a href="https://github.com/jp-cruz/LegionForge/issues" style="color: var(--accent2);">GitHub Issues</a>.
+    <a href="https://github.com/LegionForge/LegionForge/issues" style="color: var(--accent2);">GitHub Issues</a>.
     Security vulnerabilities: see
-    <a href="https://github.com/jp-cruz/LegionForge/blob/main/SECURITY.md#responsible-disclosure" style="color: var(--accent2);">SECURITY.md § Responsible Disclosure</a>
+    <a href="https://github.com/LegionForge/LegionForge/blob/main/SECURITY.md#responsible-disclosure" style="color: var(--accent2);">SECURITY.md § Responsible Disclosure</a>
     (90-day coordinated disclosure window).
   </p>
 </div>
@@ -741,6 +741,6 @@ permalink: /
     LegionForge · AGPL-3.0 · Copyright 2026 <a href="https://github.com/jp-cruz">John Paul "Jp" Cruz</a><br>
     Built on <a href="https://github.com/langchain-ai/langgraph">LangGraph</a> ·
     Runs on Apple Silicon via <a href="https://ollama.com">Ollama</a> ·
-    <a href="https://github.com/jp-cruz/LegionForge">GitHub</a>
+    <a href="https://github.com/LegionForge/LegionForge">GitHub</a>
   </p>
 </footer>

@@ -7,7 +7,7 @@
 > **Status: Active Development — v0.7.0-alpha**
 > This project is currently under active development. The core security stack, gateway, and tool library are complete and tested. APIs and configuration formats may change before v1.0.0. See the [Status](#status) section for details.
 
-[![Smoke Tests](https://github.com/jp-cruz/LegionForge/actions/workflows/smoke.yml/badge.svg)](https://github.com/jp-cruz/LegionForge/actions/workflows/smoke.yml)
+[![Smoke Tests](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml/badge.svg)](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-brightgreen.svg)](https://www.python.org/)
 
@@ -27,7 +27,7 @@ LegionForge is an open-source framework for running hardened AI agent systems on
 
 | Metric | Value |
 |---|---|
-| Smoke tests (no services required) | **2045 / 2045 passing** (~21s) |
+| Smoke tests (no services required) | **2054 / 2054 passing** (~21s) |
 | Integration tests (PostgreSQL) | **38 / 38 passing** |
 | Kerberos live-KDC tests | **5 / 5 passing** |
 | UI tests (Playwright) | **40 / 40 passing** |
@@ -176,7 +176,7 @@ All phases complete.
 
 ```bash
 # 1. Clone and set up
-git clone https://github.com/jp-cruz/LegionForge.git
+git clone https://github.com/LegionForge/LegionForge.git
 cd LegionForge
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -319,7 +319,7 @@ The security-first design here is a direct response to watching these ecosystems
 
 AGPL-3.0 with Section 7(b) attribution requirement.
 
-Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).
 
 ---
 
@@ -337,4 +337,4 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 | **Pre-v1.0 security blockers** | All resolved |
 | **APIs / config formats** | May change before v1.0.0 |
 
-Contributions, issues, and commercial licensing inquiries welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Contributions, issues, and commercial licensing inquiries welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

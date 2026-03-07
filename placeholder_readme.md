@@ -111,7 +111,7 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 
 ```bash
 # 1. Clone and set up the virtual environment
-git clone https://github.com/jp-cruz/LegionForge.git
+git clone https://github.com/LegionForge/LegionForge.git
 cd LegionForge
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -209,4 +209,4 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 **v0.7.0-alpha** — Phases 0–381 complete + web browser tools + Guardian package spinoff. 1995/1995 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
 
-Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/jp-cruz/LegionForge/issues).
+Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).
