@@ -36,14 +36,15 @@ services:
     container_name: legionforge-guardian
     restart: unless-stopped
     ports:
-      # Localhost-only binding — Guardian must not be reachable from the network
-      - "127.0.0.1:9766:9766"
+      # Note: 127.0.0.1 binding is unreliable on macOS Docker Desktop with custom networks.
+      # Use 0.0.0.0 and rely on firewall/network isolation instead.
+      - "9766:9766"
     environment:
       # Guardian connects to native Homebrew Postgres via host.docker.internal
       POSTGRES_HOST: host.docker.internal
       POSTGRES_PORT: "5432"
       POSTGRES_DB: legionforge
-      POSTGRES_USER: ${POSTGRES_USER:-jpc}
+      POSTGRES_USER: ${POSTGRES_USER:-jp}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # JWT task token signing secret — must match the value in the host Keychain.
       # Add to ~/.zshrc:

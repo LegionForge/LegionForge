@@ -44,6 +44,7 @@ aiolimiter~=1.1                  # Async rate limiter for API calls
 
 # ── Web Search (Researcher agent) ────────────────────────────
 duckduckgo-search~=6.0
+tavily-python~=0.7          # Tavily search provider (primary)
 
 # ── HTTP / Async ─────────────────────────────────────────────
 httpx~=0.27

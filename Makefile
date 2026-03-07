@@ -84,7 +84,8 @@ help:
 	@echo "  ─────────────────────────────────────────────────"
 	@echo "  make check        — verify drive, venv, models, config, Guardian"
 	@echo "  make start        — full startup sequence (includes Guardian)"
-	@echo "  make stop         — graceful shutdown"
+	@echo "  make stop         — full shutdown: servers + Guardian + PostgreSQL + Ollama (prompts)"
+	@echo "  make restart      — full stop then start (prompts — stops and restarts DB + Ollama)"
 	@echo "  make status       — print system status (curl /status, needs token)"
 	@echo "  make health       — quick liveness check (curl /health)"
 	@echo "  make health-server — start health server in foreground"
@@ -186,12 +187,49 @@ start: check ollama-start db-start ollama-warm guardian-start servers-start
 	@echo "   Run 'make test' to verify everything is working."
 
 .PHONY: stop
-stop: servers-stop
+stop:
+	@printf "\n⚠️  FULL SHUTDOWN\n"
+	@printf "   Stops: app servers, Guardian, PostgreSQL 17, Ollama\n"
+	@printf "   In-flight requests will be lost. Data is safe (clean shutdown).\n"
+	@printf "   To resume without a full restart: make db-start && make servers-start\n\n"
+	@printf "Proceed? [y/N] "; \
+	  read _ans; \
+	  [ "$$_ans" = "y" ] || [ "$$_ans" = "Y" ] || { echo "Aborted."; exit 1; }
+	@echo ""
+	@$(MAKE) --no-print-directory servers-stop
 	@echo "Stopping infrastructure services..."
 	@docker-compose stop guardian 2>/dev/null || true
+	@echo "   Guardian stopped."
 	@brew services stop postgresql@17 2>/dev/null || true
+	@echo "   PostgreSQL stopped."
 	@brew services stop ollama 2>/dev/null || true
-	@echo "✅ All services stopped"
+	@echo "   Ollama stopped."
+	@echo ""
+	@echo "✅ All services stopped."
+	@echo "   → Full restart:               make start"
+	@echo "   → App servers only:           make db-start && make servers-start"
+
+.PHONY: restart
+restart:  ## Full stop + start with confirmation prompt (stops and restarts DB + Ollama)
+	@printf "\n⚠️  FULL RESTART\n"
+	@printf "   All services (PostgreSQL 17, Ollama, Guardian, app servers) will be\n"
+	@printf "   stopped then started fresh. In-flight requests will be lost.\n"
+	@printf "   Data is safe — PostgreSQL shuts down cleanly before restart.\n\n"
+	@printf "Proceed? [y/N] "; \
+	  read _ans; \
+	  [ "$$_ans" = "y" ] || [ "$$_ans" = "Y" ] || { echo "Aborted."; exit 1; }
+	@echo ""
+	@echo "── Stopping all services ──────────────────────────────────────────"
+	@$(MAKE) --no-print-directory servers-stop
+	@docker-compose stop guardian 2>/dev/null || true
+	@echo "   Guardian stopped."
+	@brew services stop postgresql@17 2>/dev/null || true
+	@echo "   PostgreSQL stopped."
+	@brew services stop ollama 2>/dev/null || true
+	@echo "   Ollama stopped."
+	@echo ""
+	@echo "── Starting all services ──────────────────────────────────────────"
+	@$(MAKE) --no-print-directory start
 
 ## ── Server management (health + gateway + testlab) ────────────
 .PHONY: servers-start
