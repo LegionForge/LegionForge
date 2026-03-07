@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 280
+UPDATE: 281
 BRANCH: dev
-COMMIT: 8f41eb7
-TIMESTAMP: 2026-03-07T17:00Z
-LAST_OP: PR #234 merged (AIMessage fix); PR #235 open — orchestrator system prompt (stops hallucination) + threat_events maintenance uses admin connection; v1.0.x tags deleted, v0.7.0-alpha tag created; Anneal sub-product planned
+COMMIT: 415e0ec
+TIMESTAMP: 2026-03-07T18:00Z
+LAST_OP: Tavily fallback chain installed, researcher system prompt hardened (no code gen, web_fetch_js for JS sites), make stop/restart confirmation prompts added, Guardian docker-compose fixes (POSTGRES_USER, port binding)
 SMOKE_TESTS: 2055/2055
 INTEGRATION_TESTS: 38/38
 KERBEROS_TESTS: 5/5
