@@ -645,8 +645,8 @@ class ModelPreferencesConfig(BaseModel):
     """
 
     fast: str = "qwen2.5:3b"
-    balanced: str = "llama3.1:8b"
-    powerful: str = "llama3.1:8b"
+    balanced: str = "qwen2.5:7b"
+    powerful: str = "qwen2.5:7b"
 
     def get(self, pref: str) -> str | None:
         """Return the model_id for a named preference, or None if unknown."""
