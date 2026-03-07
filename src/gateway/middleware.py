@@ -59,11 +59,15 @@ from src.gateway.metrics import inc_counter
 
 logger = logging.getLogger(__name__)
 
-# Paths covered by the submission rate limiter (exact match after stripping
-# trailing slashes).  Batch submissions count as one request against the window,
-# not one per task — the per-user queue-depth guard in the route handler is the
-# second line of defence for large batches.
-_RATE_LIMITED_PATHS = frozenset({"/tasks", "/tasks/batch"})
+# Rate-limited paths and the settings key that provides their per-minute limit.
+# Each path uses its own per-user sliding window (key is "path:user_bucket")
+# so task submissions and memory ingests don't share a budget.
+#
+# _TASK_PATHS   — reads submission_rate_limit_per_minute
+# _MEMORY_PATHS — reads memory_rate_limit_per_minute (Ollama embedding calls)
+_TASK_PATHS = frozenset({"/tasks", "/tasks/batch"})
+_MEMORY_PATHS = frozenset({"/memory/ingest", "/memory/search"})
+_RATE_LIMITED_PATHS = _TASK_PATHS | _MEMORY_PATHS
 
 # Paths that are SSE streams — we skip timing these since the connection
 # can stay open for minutes and the duration is not meaningful as a latency.
@@ -146,30 +150,36 @@ class SubmissionRateLimitMiddleware(BaseHTTPMiddleware):
         self._windows: dict[str, list[float]] = defaultdict(list)
         self._lock = asyncio.Lock()
 
-    def _rate_limit(self) -> int:
-        """Return the configured limit (live read so YAML reload takes effect)."""
+    def _rate_limit(self, path: str) -> int:
+        """Return the configured limit for this path (live read — YAML reload takes effect)."""
         try:
             from config.settings import settings
 
+            if path in _MEMORY_PATHS:
+                return settings.gateway.memory_rate_limit_per_minute
             return settings.gateway.submission_rate_limit_per_minute
         except Exception:
             return 10  # safe default if settings unavailable
 
-    def _key(self, request: Request) -> str:
-        """Derive a rate-limit bucket key from the request."""
+    def _key(self, request: Request, path: str) -> str:
+        """Derive a rate-limit bucket key scoped to (path, user).
+
+        Including the path in the key gives each endpoint its own per-user
+        window so task submissions and memory ingests don't share a budget.
+        """
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             # Use a fixed-length prefix — enough to distinguish users, never
             # long enough to reconstruct the full token.
-            return f"token:{auth[7:27]}"
-        return f"ip:{request.client.host if request.client else 'unknown'}"
+            return f"{path}:token:{auth[7:27]}"
+        return f"{path}:ip:{request.client.host if request.client else 'unknown'}"
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path.rstrip("/")
         if request.method == "POST" and path in _RATE_LIMITED_PATHS:
-            limit = self._rate_limit()
+            limit = self._rate_limit(path)
             if limit > 0:
-                key = self._key(request)
+                key = self._key(request, path)
                 now = time.monotonic()
                 async with self._lock:
                     # Evict timestamps outside the sliding window

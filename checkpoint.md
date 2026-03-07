@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 283
+UPDATE: 284
 BRANCH: dev
 COMMIT: (pending)
-TIMESTAMP: 2026-03-07T21:00Z
-LAST_OP: DOS protection — HTTP sliding-window rate limiter (SubmissionRateLimitMiddleware), per-user queue depth cap (_check_queue_depth), GatewayConfig dos fields, YAML defaults
-SMOKE_TESTS: 2080/2080
+TIMESTAMP: 2026-03-07T22:00Z
+LAST_OP: DOS protection P1 — SSE stream slot tracking, memory endpoint rate limiting, path-scoped rate-limit keys; 9 new smoke tests
+SMOKE_TESTS: 2089/2089
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

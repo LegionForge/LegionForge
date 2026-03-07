@@ -11,8 +11,10 @@ set headers).  API clients can use either the Bearer token or stream_token.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sse_starlette.sse import EventSourceResponse
@@ -29,6 +31,57 @@ from src.gateway.events import subscribe_task_events
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Per-user SSE stream slot tracking ─────────────────────────────────────────
+# Tracks the number of open SSE connections per user_id. Prevents a single
+# user from holding an unlimited number of open asyncio queues.
+# asyncio is single-threaded so dict operations are safe without a lock;
+# the Lock is kept for clarity and future thread-safety if the model changes.
+
+_active_streams: dict[str, int] = defaultdict(int)
+_streams_lock = asyncio.Lock()
+
+
+async def _acquire_stream_slot(user_id: str) -> None:
+    """
+    Reserve an SSE stream slot for user_id, or raise HTTP 429 if the limit is reached.
+
+    Reads ``settings.gateway.max_sse_streams_per_user`` live so YAML changes
+    take effect on gateway restart. Set to 0 to disable the cap entirely.
+    """
+    try:
+        from config.settings import settings
+
+        limit = settings.gateway.max_sse_streams_per_user
+    except Exception:
+        limit = 10  # safe default
+
+    if limit <= 0:
+        return
+
+    async with _streams_lock:
+        current = _active_streams.get(user_id, 0)
+        if current >= limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Too many open streams — you already have {current} SSE "
+                    f"connection(s) open (max {limit}). "
+                    "Close an existing stream before opening a new one."
+                ),
+                headers={"Retry-After": "30"},
+            )
+        _active_streams[user_id] = current + 1
+
+
+async def _release_stream_slot(user_id: str) -> None:
+    """Decrement the open-stream counter for user_id."""
+    async with _streams_lock:
+        count = _active_streams.get(user_id, 0)
+        if count <= 1:
+            _active_streams.pop(user_id, None)
+        else:
+            _active_streams[user_id] = count - 1
 
 
 async def _resolve_user_for_stream(
@@ -91,61 +144,75 @@ async def stream_task(
     The stream closes on task_complete, task_error, or task_cancelled.
     """
     user = await _resolve_user_for_stream(task_id, request, stream_token)
+    user_id = user.get("user_id", "")
+
+    # DOS guard: reject if the user already has too many open SSE connections.
+    # Must happen before EventSourceResponse so the 429 is sent as a normal
+    # HTTP response, not wrapped in the SSE stream.
+    await _acquire_stream_slot(user_id)
 
     # Verify the task belongs to this user (404 semantics)
-    task_row = await get_task(task_id, user_id=user.get("user_id"))
+    task_row = await get_task(task_id, user_id=user_id)
     if task_row is None:
+        await _release_stream_slot(user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
         )
 
     async def event_generator():
-        # Fast-path: if the task already completed before the browser connected
-        # (common for short tasks — the agent finishes before EventSource handshake),
-        # emit the terminal event immediately so the UI doesn't hang waiting for a
-        # queue that was already deleted when the task finished.
-        status = task_row.get("status", "")
-        if status == "complete":
-            yield {
-                "event": "task_complete",
-                "data": json.dumps(
-                    {
-                        "task_id": task_id,
-                        "status": "complete",
-                        "result_url": f"/tasks/{task_id}",
-                        "result": task_row.get("result", ""),
-                        "tokens": task_row.get("tokens"),
-                    }
-                ),
-            }
-            return
-        if status == "failed":
-            yield {
-                "event": "task_error",
-                "data": json.dumps(
-                    {
-                        "task_id": task_id,
-                        "status": "failed",
-                        "error": task_row.get("error", "Unknown error"),
-                    }
-                ),
-            }
-            return
-        if status == "cancelled":
-            yield {
-                "event": "task_cancelled",
-                "data": json.dumps({"task_id": task_id, "status": "cancelled"}),
-            }
-            return
+        try:
+            # Fast-path: if the task already completed before the browser connected
+            # (common for short tasks — the agent finishes before EventSource handshake),
+            # emit the terminal event immediately so the UI doesn't hang waiting for a
+            # queue that was already deleted when the task finished.
+            task_status = task_row.get("status", "")
+            if task_status == "complete":
+                yield {
+                    "event": "task_complete",
+                    "data": json.dumps(
+                        {
+                            "task_id": task_id,
+                            "status": "complete",
+                            "result_url": f"/tasks/{task_id}",
+                            "result": task_row.get("result", ""),
+                            "tokens": task_row.get("tokens"),
+                        }
+                    ),
+                }
+                return
+            if task_status == "failed":
+                yield {
+                    "event": "task_error",
+                    "data": json.dumps(
+                        {
+                            "task_id": task_id,
+                            "status": "failed",
+                            "error": task_row.get("error", "Unknown error"),
+                        }
+                    ),
+                }
+                return
+            if task_status == "cancelled":
+                yield {
+                    "event": "task_cancelled",
+                    "data": json.dumps({"task_id": task_id, "status": "cancelled"}),
+                }
+                return
 
-        # Task still running — subscribe to the live event queue.
-        async for event in subscribe_task_events(task_id):
-            if await request.is_disconnected():
-                logger.debug(f"[gateway/stream] Client disconnected task_id={task_id}")
-                break
-            yield {
-                "event": event["event"],
-                "data": json.dumps(event["data"]),
-            }
+            # Task still running — subscribe to the live event queue.
+            async for event in subscribe_task_events(task_id):
+                if await request.is_disconnected():
+                    logger.debug(
+                        "[gateway/stream] Client disconnected task_id=%s", task_id
+                    )
+                    break
+                yield {
+                    "event": event["event"],
+                    "data": json.dumps(event["data"]),
+                }
+        finally:
+            # Always release the stream slot — fired on normal completion,
+            # client disconnect, or generator garbage collection.
+            await _release_stream_slot(user_id)
 
     return EventSourceResponse(event_generator())

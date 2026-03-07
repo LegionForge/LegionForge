@@ -415,10 +415,17 @@ class GatewayConfig(BaseModel):
     # DOS protection — HTTP submission rate limiting.
     # submission_rate_limit_per_minute: max POST /tasks (and /tasks/batch) calls
     #   per authenticated user per 60-second sliding window. 0 = disabled.
+    # memory_rate_limit_per_minute: max POST /memory/ingest and /memory/search
+    #   calls per user per 60-second window. Separate bucket from task submissions.
+    #   Each ingest triggers an Ollama embedding — keep lower than task limit.
     # max_queued_tasks_per_user: reject new submissions if the user already has
     #   this many tasks in queued/running state. 0 = disabled.
+    # max_sse_streams_per_user: reject new SSE stream connections if the user
+    #   already has this many open. 0 = disabled.
     submission_rate_limit_per_minute: int = 10
+    memory_rate_limit_per_minute: int = 10
     max_queued_tasks_per_user: int = 20
+    max_sse_streams_per_user: int = 10
 
 
 class TelegramConfig(BaseModel):

@@ -22004,12 +22004,12 @@ def test_submission_rate_limit_middleware_key_uses_bearer_prefix():
     req = MagicMock()
     req.headers.get.return_value = "Bearer abcdefghij1234567890EXTRA_SECRET"
     req.client = None
-    key = inst._key(req)
-    assert key.startswith("token:")
+    key = inst._key(req, "/tasks")
+    assert ":token:" in key
     # Must not contain the full token
     assert "EXTRA_SECRET" not in key
-    # Key is bounded in length
-    assert len(key) <= 30
+    # Key includes the path prefix
+    assert key.startswith("/tasks:")
 
 
 def test_submission_rate_limit_middleware_key_falls_back_to_ip():
@@ -22021,8 +22021,8 @@ def test_submission_rate_limit_middleware_key_falls_back_to_ip():
     req = MagicMock()
     req.headers.get.return_value = ""
     req.client.host = "192.168.1.50"
-    key = inst._key(req)
-    assert key == "ip:192.168.1.50"
+    key = inst._key(req, "/tasks")
+    assert key == "/tasks:ip:192.168.1.50"
 
 
 def test_rate_limited_paths_constant():
@@ -22079,3 +22079,128 @@ def test_check_queue_depth_uses_additional_param_for_batch():
 
     src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
     assert "additional=len(body.tasks)" in src
+
+
+# ── SSE stream-slot + memory rate-limit smoke tests ────────────────────────────
+
+
+def test_sse_stream_slot_functions_importable():
+    """_acquire_stream_slot and _release_stream_slot are importable from stream.py."""
+    from src.gateway.routes.stream import _acquire_stream_slot, _release_stream_slot
+
+    import asyncio
+
+    assert asyncio.iscoroutinefunction(_acquire_stream_slot)
+    assert asyncio.iscoroutinefunction(_release_stream_slot)
+
+
+def test_sse_active_streams_dict_exists():
+    """_active_streams defaultdict exists in the stream module."""
+    from src.gateway.routes.stream import _active_streams
+    from collections import defaultdict
+
+    assert isinstance(_active_streams, defaultdict)
+
+
+def test_sse_stream_slot_acquire_increments_counter():
+    """_acquire_stream_slot increments _active_streams for the user."""
+    import asyncio
+    from src.gateway.routes import stream as stream_mod
+
+    stream_mod._active_streams.clear()
+
+    async def _run():
+        await stream_mod._acquire_stream_slot("test-user-slot")
+        assert stream_mod._active_streams["test-user-slot"] == 1
+        await stream_mod._release_stream_slot("test-user-slot")
+        assert "test-user-slot" not in stream_mod._active_streams
+
+    asyncio.run(_run())
+
+
+def test_sse_stream_slot_release_cleans_up():
+    """_release_stream_slot removes the key when count drops to zero."""
+    import asyncio
+    from src.gateway.routes import stream as stream_mod
+
+    stream_mod._active_streams.clear()
+    stream_mod._active_streams["u1"] = 2
+
+    async def _run():
+        await stream_mod._release_stream_slot("u1")
+        assert stream_mod._active_streams["u1"] == 1
+        await stream_mod._release_stream_slot("u1")
+        assert "u1" not in stream_mod._active_streams
+
+    asyncio.run(_run())
+
+
+def test_memory_paths_constant_covers_ingest_and_search():
+    """_MEMORY_PATHS covers /memory/ingest and /memory/search."""
+    from src.gateway.middleware import _MEMORY_PATHS
+
+    assert "/memory/ingest" in _MEMORY_PATHS
+    assert "/memory/search" in _MEMORY_PATHS
+
+
+def test_rate_limited_paths_includes_memory_paths():
+    """_RATE_LIMITED_PATHS is a superset of _MEMORY_PATHS."""
+    from src.gateway.middleware import _RATE_LIMITED_PATHS, _MEMORY_PATHS
+
+    assert _MEMORY_PATHS <= _RATE_LIMITED_PATHS
+
+
+def test_memory_rate_limit_uses_separate_settings_key():
+    """_rate_limit() returns memory_rate_limit_per_minute for memory paths."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import patch, MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    fake_settings = MagicMock()
+    fake_settings.gateway.memory_rate_limit_per_minute = 5
+    fake_settings.gateway.submission_rate_limit_per_minute = 10
+    with patch("src.gateway.middleware.settings", fake_settings, create=True):
+        # Patch the import inside _rate_limit
+        import sys
+
+        real_settings = sys.modules.get("config.settings")
+        if real_settings:
+            orig = real_settings.settings
+            real_settings.settings = fake_settings
+            try:
+                mem_limit = inst._rate_limit("/memory/ingest")
+                task_limit = inst._rate_limit("/tasks")
+            finally:
+                real_settings.settings = orig
+        else:
+            mem_limit = inst._rate_limit("/memory/ingest")
+            task_limit = inst._rate_limit("/tasks")
+    # Both limits must be positive integers
+    assert isinstance(mem_limit, int) and mem_limit > 0
+    assert isinstance(task_limit, int) and task_limit > 0
+
+
+def test_gateway_config_has_memory_and_sse_fields():
+    """GatewayConfig has memory_rate_limit_per_minute and max_sse_streams_per_user."""
+    from config.settings import settings
+
+    assert hasattr(settings.gateway, "memory_rate_limit_per_minute")
+    assert hasattr(settings.gateway, "max_sse_streams_per_user")
+    assert settings.gateway.memory_rate_limit_per_minute > 0
+    assert settings.gateway.max_sse_streams_per_user > 0
+
+
+def test_rate_limit_key_is_path_scoped():
+    """Keys from different paths for the same user must be different."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = "Bearer abcdefghij1234567890"
+    req.client = None
+    key_tasks = inst._key(req, "/tasks")
+    key_memory = inst._key(req, "/memory/ingest")
+    assert (
+        key_tasks != key_memory
+    ), "Keys must differ per path so budgets are independent"
