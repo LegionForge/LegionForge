@@ -389,10 +389,10 @@ agent_memory:
 #   docker run -d -p 8888:8080 --name searxng searxng/searxng
 #
 search:
-  provider: ddg           # primary provider (no key required)
+  provider: tavily        # primary provider (Keychain: legionforge_tavily_api_key)
   fallback_chain:         # tried in order when primary fails
     - brave               # Keychain: legionforge_brave_api_key
-    - tavily              # Keychain: legionforge_tavily_api_key
+    - ddg                 # no key required — last resort
   max_results: 5
   timeout: 10.0
 
