@@ -21733,3 +21733,18 @@ def test_guardian_security_md_has_disclosure_email():
 
     content = pathlib.Path("packages/guardian/SECURITY.md").read_text()
     assert "security@legionforge.org" in content
+
+
+# ── worker.py AIMessage compat fix ────────────────────────────────────────────
+
+
+def test_worker_result_extraction_handles_aimessage():
+    """worker.py result extraction uses .content attr, not .get(), on BaseMessage objects."""
+    import pathlib
+
+    content = pathlib.Path("src/gateway/worker.py").read_text()
+    # The fix: use hasattr/.content instead of .get("content")
+    assert 'hasattr(_last_msg, "content")' in content
+    assert "_last_msg.content" in content
+    # The old broken pattern must not be present
+    assert '.get("content", "")' not in content.split("_last_content")[0]
