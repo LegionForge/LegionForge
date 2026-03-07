@@ -192,9 +192,11 @@ class TaskRequest(BaseModel):
     model_preference: str | None = Field(
         default=None,
         description=(
-            "Named model speed preset: 'fast' (qwen2.5:3b — quick, lower quality), "
-            "'balanced' (llama3.1:8b — default), or 'powerful' (best available model).  "
-            "Maps to models defined in hardware profile model_preferences.  "
+            "Model to use for this task.  Accepts a named speed preset "
+            "('fast', 'balanced', 'powerful') or any Ollama model ID installed "
+            "on the server (e.g. 'qwen2.5:7b', 'llama3.1:8b').  "
+            "Null uses the hardware profile's primary model.  "
+            "GET /models returns the list of available model IDs.  "
             "Phase 58 — Model Selection per Task."
         ),
     )
@@ -217,9 +219,17 @@ class TaskRequest(BaseModel):
     @field_validator("model_preference")
     @classmethod
     def model_preference_must_be_valid(cls, v: str | None) -> str | None:
-        if v is not None and v not in ("fast", "balanced", "powerful"):
+        if v is None:
+            return v
+        # Accept named presets or any Ollama model ID (name:tag or bare name).
+        # Reject strings with whitespace or shell-unsafe characters — the value
+        # is passed to the Ollama API, not a shell, but we still gate obvious garbage.
+        import re
+
+        if not re.fullmatch(r"[a-zA-Z0-9_.:\-/]+", v):
             raise ValueError(
-                "model_preference must be 'fast', 'balanced', 'powerful', or null"
+                "model_preference must be a named preset ('fast', 'balanced', "
+                "'powerful') or a valid Ollama model ID (e.g. 'qwen2.5:7b')"
             )
         return v
 

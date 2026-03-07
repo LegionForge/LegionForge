@@ -57,6 +57,7 @@ from src.gateway.routes import (
     templates as templates_route,
     sessions as sessions_route,
     annotations as annotations_route,
+    models as models_route,
 )
 from src.gateway.worker import task_worker
 
@@ -211,6 +212,7 @@ app.include_router(webhooks_route.router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(templates_route.router, prefix="/templates", tags=["templates"])
 app.include_router(sessions_route.router, prefix="/sessions", tags=["sessions"])
 app.include_router(annotations_route.router, prefix="/tasks", tags=["annotations"])
+app.include_router(models_route.router, tags=["models"])
 app.include_router(
     annotations_route.admin_router, prefix="/admin", tags=["annotations"]
 )

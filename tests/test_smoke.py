@@ -10519,14 +10519,21 @@ def test_p58_task_request_has_model_preference_field():
 
 
 def test_p58_task_request_rejects_invalid_model_preference():
-    """TaskRequest raises ValidationError for unknown model_preference values."""
+    """TaskRequest rejects model_preference values with spaces or unsafe chars."""
     import pytest
     from pydantic import ValidationError
 
     from src.gateway.routes.tasks import TaskRequest
 
+    # Shell-unsafe / whitespace values must be rejected
     with pytest.raises(ValidationError):
-        TaskRequest(task="hello", model_preference="turbo")
+        TaskRequest(task="hello", model_preference="bad model!")
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", model_preference="rm -rf /")
+    # Valid Ollama model IDs and preset names must be accepted
+    assert TaskRequest(task="hello", model_preference="qwen2.5:7b")
+    assert TaskRequest(task="hello", model_preference="fast")
+    assert TaskRequest(task="hello", model_preference="balanced")
 
 
 def test_p58_create_task_accepts_model_preference():
@@ -10539,14 +10546,13 @@ def test_p58_create_task_accepts_model_preference():
     assert "model_preference" in sig.parameters
 
 
-def test_p58_ui_has_model_pref_buttons():
-    """Web UI includes Fast/Balanced/Powerful model preference toggle buttons."""
+def test_p58_ui_has_model_selector():
+    """Web UI has a dynamic model selector dropdown populated from GET /models."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    assert "mp-fast" in html
-    assert "mp-balanced" in html
-    assert "mp-powerful" in html
+    assert 'id="model-select"' in html
+    assert "loadModels" in html
     assert "setModelPref" in html
 
 

@@ -331,12 +331,6 @@
     .btn.ghost:hover { border-color: var(--border); color: var(--text); }
     .btn.icon    { padding: 5px 8px; font-size: 14px; }
 
-    /* ── Model preference toggle buttons (Phase 58) ─────────────── */
-    .model-pref.active-pref {
-      background: #1a3a5c;
-      border-color: var(--blue);
-      color: var(--blue);
-    }
 
     /* ── Task rating buttons (Phase 59) ─────────────────────────── */
     .rating-bar { display:flex; align-items:center; gap:8px; margin-top:6px; }
@@ -699,12 +693,10 @@
     </div>
 
     <div class="field-row">
-      <label>Model</label>
-      <div id="model-pref-btns" style="display:flex;gap:6px;flex:1;">
-        <button class="btn ghost model-pref" id="mp-fast" onclick="setModelPref('fast')" title="qwen2.5:3b — fast, lower quality">Fast</button>
-        <button class="btn ghost model-pref active-pref" id="mp-balanced" onclick="setModelPref('balanced')" title="llama3.1:8b — default balance">Balanced</button>
-        <button class="btn ghost model-pref" id="mp-powerful" onclick="setModelPref('powerful')" title="Best available model">Powerful</button>
-      </div>
+      <label for="model-select">Model</label>
+      <select id="model-select" onchange="setModelPref(this.value)" style="flex:1;" title="Select a model installed in Ollama">
+        <option value="">Loading models…</option>
+      </select>
     </div>
 
     <div class="field-row">
@@ -4307,11 +4299,11 @@ const el = {
     else   localStorage.removeItem(APIKEY_KEY);
   });
   el.apiKey().addEventListener('blur', () => {
-    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); loadUsage(); }
+    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); loadUsage(); loadModels(); }
   });
 
-  // Load sessions + templates on startup if key is already saved
-  if (saved) { loadSessions(); loadTemplates(); }
+  // Load sessions + templates + models on startup if key is already saved
+  if (saved) { loadSessions(); loadTemplates(); loadModels(); }
 
   // Restore history
   try {
@@ -4455,12 +4447,31 @@ function clearAttachment() {
   if (nameEl) nameEl.textContent = '';
 }
 
-// ── Model preference selector (Phase 58) ─────────────────────────
-function setModelPref(pref) {
-  S.modelPref = pref;
-  document.querySelectorAll('.model-pref').forEach(b => b.classList.remove('active-pref'));
-  const btn = $('mp-' + pref);
-  if (btn) btn.classList.add('active-pref');
+// ── Model selector (Phase 58, updated) ───────────────────────────
+function setModelPref(value) {
+  S.modelPref = value;
+}
+
+async function loadModels() {
+  const sel = $('model-select');
+  if (!sel) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) {
+    sel.innerHTML = '<option value="">Enter API key to load models</option>';
+    return;
+  }
+  try {
+    const data = await apiFetch('/models');
+    const models = data.models || [];
+    const defaultModel = data.default || '';
+    sel.innerHTML = models.map(m =>
+      `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${m}</option>`
+    ).join('');
+    // Set state to current selection
+    S.modelPref = sel.value;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Could not load models</option>';
+  }
 }
 
 // ── Task rating (Phase 59) ────────────────────────────────────────

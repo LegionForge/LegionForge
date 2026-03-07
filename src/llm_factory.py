@@ -104,14 +104,16 @@ def get_primary_llm(**kwargs) -> BaseChatModel:
         model_id = settings.model_preferences.get(pref)
         if model_id:
             logger.info(
-                f"Loading model by preference '{pref}': "
+                f"Loading model by preset '{pref}': "
                 f"{settings.models.primary.provider}/{model_id}"
             )
             return get_llm(settings.models.primary.provider, model_id, **kwargs)
-        else:
-            logger.warning(
-                f"Unknown model preference '{pref}' — falling back to primary model"
-            )
+        # Not a named preset — treat as a direct Ollama model ID
+        logger.info(
+            f"Loading model by direct ID '{pref}': "
+            f"{settings.models.primary.provider}/{pref}"
+        )
+        return get_llm(settings.models.primary.provider, pref, **kwargs)
     m = settings.models.primary
     logger.info(f"Loading primary model: {m.provider}/{m.model_id}")
     return get_llm(m.provider, m.model_id, **kwargs)
