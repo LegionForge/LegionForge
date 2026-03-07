@@ -213,10 +213,16 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
         # Extract final result from terminal state
         final_state = lg_event.get("data", {}).get("output", {}) if lg_event else {}
+        _last_msg = final_state.get("messages", [None])[-1]
+        _last_content = (
+            _last_msg.content
+            if hasattr(_last_msg, "content")
+            else (_last_msg.get("content", "") if isinstance(_last_msg, dict) else "")
+        )
         result_text = (
             final_state.get("final_answer")
             or final_state.get("result")
-            or final_state.get("messages", [{}])[-1].get("content", "")
+            or _last_content
             or "[No result]"
         )
         if not isinstance(result_text, str):
