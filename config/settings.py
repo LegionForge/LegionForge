@@ -412,6 +412,14 @@ class GatewayConfig(BaseModel):
     # Set to "redis://localhost:6379/0" (or REDIS_URL env var) to enable Redis mode.
     redis_url: str = ""
 
+    # DOS protection — HTTP submission rate limiting.
+    # submission_rate_limit_per_minute: max POST /tasks (and /tasks/batch) calls
+    #   per authenticated user per 60-second sliding window. 0 = disabled.
+    # max_queued_tasks_per_user: reject new submissions if the user already has
+    #   this many tasks in queued/running state. 0 = disabled.
+    submission_rate_limit_per_minute: int = 10
+    max_queued_tasks_per_user: int = 20
+
 
 class TelegramConfig(BaseModel):
     """

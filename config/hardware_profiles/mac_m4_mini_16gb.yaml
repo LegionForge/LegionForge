@@ -227,6 +227,13 @@ gateway:
   # Auth backend: "api_key" (default) | "oidc" | "github" | "ldap" | "kerberos"
   # Switch by changing this value and restarting the gateway.
   auth_provider: api_key
+  # DOS protection — HTTP-layer rate limits.
+  # submission_rate_limit_per_minute: max POST /tasks calls per user per 60s window.
+  #   Set 0 to disable. Keyed on Bearer token prefix or client IP.
+  # max_queued_tasks_per_user: reject submissions if user has this many pending tasks.
+  #   Set 0 to disable. Counts tasks in 'queued' or 'running' state.
+  submission_rate_limit_per_minute: 10
+  max_queued_tasks_per_user: 20
 
   # ── OIDC (Phase 12) ────────────────────────────────────────────────────────
   # Required when auth_provider: oidc.  Covers Google, Okta, Auth0, Keycloak,

@@ -19,28 +19,51 @@ Phase 14 adds two middlewares:
     are counted on first response (when the 200 header is sent) — the long-
     lived connection does not distort duration measurements.
 
-Both middlewares are registered in ``src/gateway/app.py``.
+  SubmissionRateLimitMiddleware
+    Sliding-window rate limit on POST /tasks and POST /tasks/batch.
+    Per authenticated user (keyed on Bearer token prefix) or per IP for
+    unauthenticated requests.  Limit and window are read from
+    ``settings.gateway.submission_rate_limit_per_minute``.  Set to 0 to
+    disable.  In-memory only — resets on gateway restart; suitable for
+    single-instance deployments.  For multi-instance, replace ``_windows``
+    with a Redis ZADD/ZCOUNT counter.
+
+All middlewares are registered in ``src/gateway/app.py``.
 
 Usage (app.py)::
 
-    from src.gateway.middleware import RequestIDMiddleware, MetricsMiddleware
+    from src.gateway.middleware import (
+        MetricsMiddleware,
+        RequestIDMiddleware,
+        SubmissionRateLimitMiddleware,
+    )
+    app.add_middleware(SubmissionRateLimitMiddleware)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestIDMiddleware)
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+from collections import defaultdict
 from uuid import uuid4
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from src.gateway.metrics import inc_counter
 
 logger = logging.getLogger(__name__)
+
+# Paths covered by the submission rate limiter (exact match after stripping
+# trailing slashes).  Batch submissions count as one request against the window,
+# not one per task — the per-user queue-depth guard in the route handler is the
+# second line of defence for large batches.
+_RATE_LIMITED_PATHS = frozenset({"/tasks", "/tasks/batch"})
 
 # Paths that are SSE streams — we skip timing these since the connection
 # can stay open for minutes and the duration is not meaningful as a latency.
@@ -95,3 +118,88 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             },
         )
         return response
+
+
+class SubmissionRateLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Sliding-window rate limit for POST /tasks and POST /tasks/batch.
+
+    Each authenticated user gets at most ``limit`` submissions per
+    ``_WINDOW_SECONDS`` seconds.  The key is the first 20 characters of the
+    Bearer token (never logged or stored in full).  Unauthenticated requests
+    (no Bearer header) are keyed by client IP.
+
+    Limits are read from ``settings.gateway.submission_rate_limit_per_minute``
+    at dispatch time so a settings reload takes effect without restarting.
+    Set the value to 0 to disable the limiter entirely.
+
+    The in-memory ``_windows`` dict never grows unboundedly: entries older than
+    the sliding window are evicted on each check, and the dict key disappears
+    once the list empties.
+    """
+
+    _WINDOW_SECONDS = 60
+
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(app)
+        # {key: [monotonic timestamps of recent requests within the window]}
+        self._windows: dict[str, list[float]] = defaultdict(list)
+        self._lock = asyncio.Lock()
+
+    def _rate_limit(self) -> int:
+        """Return the configured limit (live read so YAML reload takes effect)."""
+        try:
+            from config.settings import settings
+
+            return settings.gateway.submission_rate_limit_per_minute
+        except Exception:
+            return 10  # safe default if settings unavailable
+
+    def _key(self, request: Request) -> str:
+        """Derive a rate-limit bucket key from the request."""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            # Use a fixed-length prefix — enough to distinguish users, never
+            # long enough to reconstruct the full token.
+            return f"token:{auth[7:27]}"
+        return f"ip:{request.client.host if request.client else 'unknown'}"
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path.rstrip("/")
+        if request.method == "POST" and path in _RATE_LIMITED_PATHS:
+            limit = self._rate_limit()
+            if limit > 0:
+                key = self._key(request)
+                now = time.monotonic()
+                async with self._lock:
+                    # Evict timestamps outside the sliding window
+                    self._windows[key] = [
+                        t for t in self._windows[key] if now - t < self._WINDOW_SECONDS
+                    ]
+                    if len(self._windows[key]) >= limit:
+                        logger.warning(
+                            "[rate-limit] Submission rate limit hit key=%s path=%s",
+                            key[:20],
+                            path,
+                        )
+                        inc_counter(
+                            "legionforge_rate_limit_rejections_total",
+                            {"path": path},
+                        )
+                        return JSONResponse(
+                            {
+                                "detail": (
+                                    f"Rate limit exceeded — max {limit} task "
+                                    f"submissions per {self._WINDOW_SECONDS}s. "
+                                    "Retry after the window resets."
+                                )
+                            },
+                            status_code=429,
+                            headers={"Retry-After": str(self._WINDOW_SECONDS)},
+                        )
+                    self._windows[key].append(now)
+                    # Clean up empty buckets to prevent unbounded dict growth
+                    if not self._windows[key]:
+                        del self._windows[key]
+
+        return await call_next(request)

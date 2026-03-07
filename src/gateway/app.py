@@ -180,12 +180,19 @@ app.add_middleware(
 )
 
 # Phase 14: request trace IDs + Prometheus request counters.
-# MetricsMiddleware must be added before RequestIDMiddleware so that the
-# request_id is already set on request.state when metrics are recorded.
-from src.gateway.middleware import MetricsMiddleware, RequestIDMiddleware
+# Middleware execution order (last-added = outermost = runs first):
+#   SubmissionRateLimitMiddleware → MetricsMiddleware → RequestIDMiddleware
+# The rate limiter must run first so rejected requests are counted but never
+# reach route handlers. MetricsMiddleware records 429s as normal responses.
+from src.gateway.middleware import (
+    MetricsMiddleware,
+    RequestIDMiddleware,
+    SubmissionRateLimitMiddleware,
+)
 
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SubmissionRateLimitMiddleware)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 

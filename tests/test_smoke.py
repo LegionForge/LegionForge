@@ -21973,3 +21973,109 @@ def test_jp_not_hardcoded_in_production_configs():
         + "\n".join(f"  - {f}" for f in failures)
         + "\n\nRemove these references, then delete this test."
     )
+
+
+# ── DOS rate-limit + queue-depth smoke tests ───────────────────────────────────
+
+
+def test_submission_rate_limit_middleware_importable():
+    """SubmissionRateLimitMiddleware is exported from gateway.middleware."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+
+    assert callable(SubmissionRateLimitMiddleware)
+
+
+def test_submission_rate_limit_middleware_has_rate_limit_method():
+    """SubmissionRateLimitMiddleware._rate_limit() reads from settings."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    assert hasattr(inst, "_rate_limit")
+    assert callable(inst._rate_limit)
+
+
+def test_submission_rate_limit_middleware_key_uses_bearer_prefix():
+    """Rate-limit key uses Bearer token prefix, never the full token."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = "Bearer abcdefghij1234567890EXTRA_SECRET"
+    req.client = None
+    key = inst._key(req)
+    assert key.startswith("token:")
+    # Must not contain the full token
+    assert "EXTRA_SECRET" not in key
+    # Key is bounded in length
+    assert len(key) <= 30
+
+
+def test_submission_rate_limit_middleware_key_falls_back_to_ip():
+    """Rate-limit key falls back to client IP when no Bearer header."""
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+    from unittest.mock import MagicMock
+
+    inst = SubmissionRateLimitMiddleware.__new__(SubmissionRateLimitMiddleware)
+    req = MagicMock()
+    req.headers.get.return_value = ""
+    req.client.host = "192.168.1.50"
+    key = inst._key(req)
+    assert key == "ip:192.168.1.50"
+
+
+def test_rate_limited_paths_constant():
+    """_RATE_LIMITED_PATHS covers /tasks and /tasks/batch."""
+    from src.gateway.middleware import _RATE_LIMITED_PATHS
+
+    assert "/tasks" in _RATE_LIMITED_PATHS
+    assert "/tasks/batch" in _RATE_LIMITED_PATHS
+
+
+def test_gateway_config_has_dos_fields():
+    """GatewayConfig has submission_rate_limit_per_minute and max_queued_tasks_per_user."""
+    from config.settings import settings
+
+    assert hasattr(settings.gateway, "submission_rate_limit_per_minute")
+    assert hasattr(settings.gateway, "max_queued_tasks_per_user")
+    assert settings.gateway.submission_rate_limit_per_minute > 0
+    assert settings.gateway.max_queued_tasks_per_user > 0
+
+
+def test_submission_rate_limit_registered_in_app():
+    """SubmissionRateLimitMiddleware is registered in app.py."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/app.py").read_text()
+    assert "SubmissionRateLimitMiddleware" in src
+    assert "app.add_middleware(SubmissionRateLimitMiddleware)" in src
+
+
+def test_check_queue_depth_exists_in_tasks_route():
+    """_check_queue_depth helper is defined in the tasks route module."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "async def _check_queue_depth" in src
+    assert "await _check_queue_depth" in src
+
+
+def test_check_queue_depth_covers_batch_route():
+    """Queue-depth guard is applied to the batch submission route."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    batch_start = src.index("async def submit_tasks_batch(")
+    batch_body = src[batch_start : batch_start + 800]
+    assert (
+        "_check_queue_depth" in batch_body
+    ), "submit_tasks_batch must call _check_queue_depth before creating tasks"
+
+
+def test_check_queue_depth_uses_additional_param_for_batch():
+    """Queue-depth guard passes len(body.tasks) as 'additional' for batch."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/routes/tasks.py").read_text()
+    assert "additional=len(body.tasks)" in src
