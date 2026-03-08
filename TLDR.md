@@ -2,7 +2,7 @@
 # LegionForge — What Is This and What Are We Building?
 
 **Version:** 0.7.0-alpha
-**Last updated:** 2026-03-06
+**Last updated:** 2026-03-08
 
 ---
 
@@ -20,7 +20,7 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
 
-**1995/1995 smoke tests passing** (~22s, no external services required).
+**2106/2106 smoke tests passing** (~17s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
 **40/40 UI tests** (`make test-ui`).
 **79/79 tool accuracy tests** (`make test-tool-accuracy`).
