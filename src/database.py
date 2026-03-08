@@ -651,6 +651,11 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 uid=pgsql.Identifier(DB_ROLE_WORKER)
             )
         )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON tool_registry TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
     except Exception as e:
         logger.debug("[db-roles] worker extra grants skipped: %s", e)
 
