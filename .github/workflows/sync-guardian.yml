@@ -56,8 +56,9 @@ jobs:
           # repo; filter-repo rewrites them so jp-cruz never appears publicly.
           pip install --quiet git-filter-repo
           git checkout guardian-split
-          printf 'Jp Cruz <115298310+jp-cruz@users.noreply.github.com> jp-cruz <115298310+jp-cruz@users.noreply.github.com>\n' > /tmp/mailmap.txt
-          git filter-repo --force --mailmap /tmp/mailmap.txt
+          git filter-repo --force \
+            --email-callback 'return email.replace(b"115298310+jp-cruz@users.noreply.github.com", b"115298310+jp-cruz@users.noreply.github.com")' \
+            --name-callback 'return name.replace(b"jp-cruz", b"Jp Cruz")'
 
           # filter-repo clears all remotes; re-add PAT remote before push
           git remote add guardian-public \
