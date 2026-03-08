@@ -1052,18 +1052,21 @@ asyncio.run(run())"
 .PHONY: setup-task-token-secret
 setup-task-token-secret:
 	@echo "Setting up JWT task token signing secret..."
-	@echo "Generating a 32-byte hex secret..."
-	@SECRET=$$($(PYTHON) -c "import secrets; print(secrets.token_hex(32))") && \
-	security add-generic-password \
-		-s legionforge_task_tokens \
-		-a api_key \
-		-w "$$SECRET" \
-		-U 2>/dev/null && \
+	@echo "Generating a 32-byte hex secret and storing via Python keyring (correct ACL)..."
+	@$(PYTHON) -c "\
+import secrets, keyring; \
+secret = secrets.token_hex(32); \
+keyring.set_password('legionforge_task_tokens', 'api_key', secret); \
+print('Secret stored. Fingerprint (first 8 chars):', secret[:8] + '...'); \
+" && \
 	echo "✅ Task token secret stored in Keychain (service=legionforge_task_tokens)" && \
-	echo "   Verify with: security find-generic-password -s legionforge_task_tokens -a api_key -w" \
-	|| echo "❌ Could not store secret in Keychain — store manually:"
-	@echo "   python3 -c \"import secrets; print(secrets.token_hex(32))\""
-	@echo "   security add-generic-password -s legionforge_task_tokens -a api_key -w '<secret>' -U"
+	echo "   Verify: python -c \"import keyring; print(keyring.get_password('legionforge_task_tokens', 'api_key')[:8], '...')\"" && \
+	echo "" && \
+	echo "   To start Guardian with the token secret:" && \
+	echo "   export TASK_TOKEN_SECRET=\$$(security find-generic-password -s legionforge_task_tokens -a api_key -w)" && \
+	echo "   TASK_TOKEN_SECRET=\$$TASK_TOKEN_SECRET docker-compose up -d guardian" \
+	|| echo "❌ Could not store secret — run manually:" && \
+	echo "   python -c \"import secrets, keyring; keyring.set_password('legionforge_task_tokens', 'api_key', secrets.token_hex(32))\""
 
 # ── Phase 3: Orchestrator tool registration ───────────────────
 .PHONY: register-orchestrator-tools

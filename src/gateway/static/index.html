@@ -5090,37 +5090,49 @@ function appendResult(text) {
   );
 }
 
+function _copyText(text, btn, fallbackEl) {
+  function showFeedback(ok) {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = ok ? '✓' : '⎘✓sel';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  }
+  function execFallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); showFeedback(true); }
+    catch (_) {
+      if (fallbackEl) {
+        const r = document.createRange();
+        r.selectNodeContents(fallbackEl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(r);
+      }
+      showFeedback(false);
+    }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => showFeedback(true)).catch(execFallback);
+  } else {
+    execFallback();
+  }
+}
+
 function copyResultEl(btn) {
   const span = btn.nextElementSibling;
-  const text = span ? (span.innerText || span.textContent) : '';
-  navigator.clipboard.writeText(text).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  }).catch(() => {
-    // Fallback: select the result span
-    const range = document.createRange();
-    range.selectNodeContents(span);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-  });
+  _copyText(span ? (span.innerText || span.textContent) : '', btn, span);
 }
 
 // ── Copy output ───────────────────────────────────────────────────
 function copyOutput() {
+  const btn = document.querySelector('[onclick="copyOutput()"]');
   const text = S.outputBuffer || el.output().textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('[onclick="copyOutput()"]');
-    const orig = btn.textContent;
-    btn.textContent = '✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  }).catch(() => {
-    // Fallback: select all text in output
-    const range = document.createRange();
-    range.selectNodeContents(el.output());
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-  });
+  _copyText(text, btn, el.output());
 }
 
 // ── Submit task ───────────────────────────────────────────────────

@@ -10972,14 +10972,13 @@ def test_p65_ui_copy_btn_css_hover_reveal():
 
 
 def test_p65_ui_copy_result_uses_clipboard_api():
-    """copyResultEl uses navigator.clipboard.writeText."""
+    """Copy helpers use navigator.clipboard.writeText."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    fn_start = html.find("function copyResultEl(")
-    fn_end = html.find("function copyOutput(")
-    body = html[fn_start:fn_end]
-    assert "clipboard.writeText" in body
+    # clipboard.writeText lives in _copyText (shared helper) used by copyResultEl + copyOutput
+    assert "clipboard.writeText" in html
+    assert "function _copyText(" in html
 
 
 # ── Phase 66 — Keyboard Shortcuts ─────────────────────────────────
