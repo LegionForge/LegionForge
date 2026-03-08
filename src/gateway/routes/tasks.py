@@ -101,11 +101,11 @@ async def _check_queue_depth(user_id: str, additional: int = 1) -> None:
     pool = get_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
-            "SELECT count(*) FROM tasks WHERE user_id = %s AND status IN ('queued', 'running')",
+            "SELECT count(*)::int AS cnt FROM tasks WHERE user_id = %s AND status IN ('queued', 'running')",
             (user_id,),
         )
         row = await cur.fetchone()
-        current = row[0] if row else 0
+        current = (row["cnt"] if isinstance(row, dict) else row[0]) if row else 0
     if current + additional > limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

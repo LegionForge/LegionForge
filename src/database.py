@@ -702,8 +702,10 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
 
     # ── legionforge_maintenance grants ────────────────────────────────────────
-    # DELETE on prunable tables + INSERT on audit_anchors. ZERO SELECT.
-    # A compromised maintenance job can burn rows but cannot read them.
+    # DELETE on prunable tables + INSERT on audit_anchors.
+    # Column-level SELECT only on filter columns (status, created_at, ts) so
+    # DELETE ... WHERE clauses work — PostgreSQL requires SELECT on referenced
+    # columns. Full-row SELECT is still denied; sensitive data stays unreadable.
     for tbl in ["tasks", "api_usage", "health_metrics", "threat_events"]:
         try:
             await admin_conn.execute(
@@ -719,8 +721,30 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
             )
         )
+        # Column-level SELECT on filter columns only — enough for WHERE clauses
+        # in DELETE statements; full-row reads remain denied.
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (status, created_at) ON tasks TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON api_usage TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON health_metrics TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
     except Exception as e:
-        logger.debug("[db-roles] maintenance audit_anchors grant skipped: %s", e)
+        logger.debug("[db-roles] maintenance extra grants skipped: %s", e)
 
     # ── legionforge_guardian grants ───────────────────────────────────────────
     # SELECT on security config tables; INSERT on threat_events only.

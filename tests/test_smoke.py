@@ -21869,18 +21869,28 @@ def test_rls_policy_uses_app_user_id_session_var():
     assert "current_setting" in src
 
 
-def test_maintenance_role_has_no_select_in_setup():
-    """_setup_db_roles grants no SELECT to legionforge_maintenance."""
+def test_maintenance_role_has_no_full_table_select_in_setup():
+    """_setup_db_roles grants only column-level SELECT to legionforge_maintenance.
+
+    Column-level SELECT on filter columns (status, created_at, ts) is required
+    so DELETE ... WHERE clauses work in PostgreSQL. Full-row SELECT must not be
+    granted — a compromised prune job must not be able to read sensitive data.
+    """
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
     maint_start = src.index("legionforge_maintenance grants")
     maint_end = src.index("legionforge_guardian grants")
     maint_block = src[maint_start:maint_end]
-    assert "GRANT SELECT" not in maint_block, (
-        "legionforge_maintenance must have zero SELECT — "
-        "a compromised prune job must not be able to read data"
-    )
+    # Column-level grants are permitted (required for WHERE clause filters)
+    assert (
+        "GRANT SELECT (" in maint_block
+    ), "legionforge_maintenance must have column-level SELECT on filter columns"
+    # But table-level SELECT (GRANT SELECT ON <table>) must not appear
+    lines = [l.strip() for l in maint_block.splitlines() if "GRANT SELECT" in l]
+    assert all(
+        "(" in l for l in lines
+    ), "legionforge_maintenance must only have column-level SELECT, not table-level SELECT"
 
 
 def test_run_db_maintenance_uses_get_maintenance_connection():
