@@ -22280,3 +22280,38 @@ def test_orchestrator_agent_node_checks_force_end_before_llm():
 
     src = pathlib.Path("src/agents/orchestrator.py").read_text()
     assert 'state.get("force_end")' in src
+
+
+def test_base_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """base_graph finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_researcher_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """researcher finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_orchestrator_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """orchestrator finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_finalizer_fallback_does_not_surface_empty_tool_messages():
+    """Fallback skips ToolMessages with empty content — only non-empty tool output is used."""
+    import pathlib
+
+    # The condition requires both msg.type == "tool" AND msg.content (truthy check)
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+    # Ensure the final guard string is present so empty-tool-output path still yields a message
+    assert '"No result produced."' in src

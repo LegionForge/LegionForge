@@ -254,10 +254,17 @@ async def finalizer_node(state: AgentState) -> dict:
     Always runs before END.
     """
     messages = state.get("messages", [])
+    result = ""
     if messages:
         last = messages[-1]
         result = last.content if isinstance(last.content, str) else str(last.content)
-    else:
+    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+    if not result.strip():
+        for msg in reversed(messages):
+            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                result = str(msg.content)
+                break
+    if not result.strip():
         result = "No result produced."
 
     log_agent_event(

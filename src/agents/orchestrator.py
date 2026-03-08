@@ -355,10 +355,17 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
 async def finalizer_node(state: OrchestratorState) -> dict:
     """Extract final result from last message."""
     messages = state.get("messages", [])
+    result = ""
     if messages:
         last = messages[-1]
         result = last.content if isinstance(last.content, str) else str(last.content)
-    else:
+    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+    if not result.strip():
+        for msg in reversed(messages):
+            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                result = str(msg.content)
+                break
+    if not result.strip():
         result = "No result produced."
 
     log_agent_event(
