@@ -22315,3 +22315,15 @@ def test_finalizer_fallback_does_not_surface_empty_tool_messages():
     assert 'msg.type == "tool" and msg.content' in src
     # Ensure the final guard string is present so empty-tool-output path still yields a message
     assert '"No result produced."' in src
+
+
+def test_prune_audit_log_uses_admin_connection():
+    """prune_audit_log must use an admin connection (DELETE on audit_log requires admin)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Find the prune_audit_log function and confirm it uses admin credentials, not get_pool()
+    func_start = src.index("async def prune_audit_log(")
+    func_body = src[func_start : func_start + 1200]
+    assert "_build_conninfo_no_password()" in func_body
+    assert "get_pool()" not in func_body

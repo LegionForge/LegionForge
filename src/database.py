@@ -2577,9 +2577,16 @@ async def prune_audit_log(retention_days: int = 90) -> int:
 
     Atomic: anchor write + row deletion occur in one transaction. If deletion
     fails the anchor is rolled back too.
+
+    Note: audit_log DELETE is a privileged operation (append-only by design).
+    This function uses an admin connection, matching the threat_events pattern.
     """
-    pool = get_pool()
-    async with pool.connection() as conn:
+    admin_conn = await psycopg.AsyncConnection.connect(
+        _build_conninfo_no_password(),
+        password=_get_postgres_password(),
+        autocommit=False,
+    )
+    async with admin_conn as conn:
         async with conn.transaction():
             # Find the most recent row outside the retention window
             cur = await conn.execute(
