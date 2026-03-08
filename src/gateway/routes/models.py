@@ -51,7 +51,19 @@ async def list_models(user: dict = Depends(require_user)) -> dict:
             detail="Ollama is not reachable — is it running?",
         )
 
-    names = sorted(m["name"] for m in data.get("models", []))
+    # Exclude embedding models — they can't do chat/instruction following.
+    # Ollama reports family as "bert" or "nomic-bert" for embedding models;
+    # fall back to name-pattern matching for any family not yet recognised.
+    _EMBED_FAMILIES = {"bert", "nomic-bert"}
+
+    def _is_chat_model(m: dict) -> bool:
+        family = (m.get("details") or {}).get("family", "").lower()
+        if family in _EMBED_FAMILIES:
+            return False
+        name = m.get("name", "").lower()
+        return "embed" not in name
+
+    names = sorted(m["name"] for m in data.get("models", []) if _is_chat_model(m))
     return {
         "models": names,
         "default": settings.models.primary.model_id,
