@@ -632,9 +632,9 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             logger.debug("[db-roles] worker checkpoint CRUD on %r skipped: %s", tbl, e)
     try:
         await admin_conn.execute(
-            pgsql.SQL("GRANT INSERT ON audit_log, threat_events TO {uid}").format(
-                uid=pgsql.Identifier(DB_ROLE_WORKER)
-            )
+            pgsql.SQL(
+                "GRANT INSERT ON audit_log, threat_events, task_events TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_WORKER))
         )
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON tasks TO {uid}").format(
@@ -740,6 +740,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT (ts) ON threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT DELETE ON audit_log TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (seq, ts) ON audit_log TO {uid}").format(
                 uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
             )
         )
