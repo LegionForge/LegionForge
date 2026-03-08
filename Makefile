@@ -987,11 +987,17 @@ print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 .PHONY: guardian-start
 guardian-start:
 	@echo "Starting Guardian sidecar..."
-	@# Load TASK_TOKEN_SECRET from Keychain so Guardian can validate JWT task tokens.
-	@# Falls back to empty string if not found — Guardian will reject all task tokens.
+	@# Load secrets from Keychain into the shell so docker-compose substitutes them
+	@# into docker-compose.yml before creating the container.
+	@# If the container exists but was started outside docker-compose (e.g. via
+	@# `docker run`), compose cannot --force-recreate it.  Remove it first so
+	@# compose always creates a fresh container with the current env vars.
+	@docker rm -f legionforge-guardian 2>/dev/null || true
 	@export TASK_TOKEN_SECRET=$$(security find-generic-password \
 		-s legionforge_task_tokens -a api_key -w 2>/dev/null || echo "") && \
-	docker-compose up -d guardian 2>/dev/null && \
+	export POSTGRES_PASSWORD=$$(security find-generic-password \
+		-s legionforge_guardian -a api_key -w 2>/dev/null || echo "") && \
+	docker-compose up -d guardian && \
 	sleep 2 && \
 	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
 	echo "✅ Guardian healthy at http://localhost:9766" || \
@@ -1052,18 +1058,21 @@ asyncio.run(run())"
 .PHONY: setup-task-token-secret
 setup-task-token-secret:
 	@echo "Setting up JWT task token signing secret..."
-	@echo "Generating a 32-byte hex secret..."
-	@SECRET=$$($(PYTHON) -c "import secrets; print(secrets.token_hex(32))") && \
-	security add-generic-password \
-		-s legionforge_task_tokens \
-		-a api_key \
-		-w "$$SECRET" \
-		-U 2>/dev/null && \
+	@echo "Generating a 32-byte hex secret and storing via Python keyring (correct ACL)..."
+	@$(PYTHON) -c "\
+import secrets, keyring; \
+secret = secrets.token_hex(32); \
+keyring.set_password('legionforge_task_tokens', 'api_key', secret); \
+print('Secret stored. Fingerprint (first 8 chars):', secret[:8] + '...'); \
+" && \
 	echo "✅ Task token secret stored in Keychain (service=legionforge_task_tokens)" && \
-	echo "   Verify with: security find-generic-password -s legionforge_task_tokens -a api_key -w" \
-	|| echo "❌ Could not store secret in Keychain — store manually:"
-	@echo "   python3 -c \"import secrets; print(secrets.token_hex(32))\""
-	@echo "   security add-generic-password -s legionforge_task_tokens -a api_key -w '<secret>' -U"
+	echo "   Verify: python -c \"import keyring; print(keyring.get_password('legionforge_task_tokens', 'api_key')[:8], '...')\"" && \
+	echo "" && \
+	echo "   To start Guardian with the token secret:" && \
+	echo "   export TASK_TOKEN_SECRET=\$$(security find-generic-password -s legionforge_task_tokens -a api_key -w)" && \
+	echo "   TASK_TOKEN_SECRET=\$$TASK_TOKEN_SECRET docker-compose up -d guardian" \
+	|| echo "❌ Could not store secret — run manually:" && \
+	echo "   python -c \"import secrets, keyring; keyring.set_password('legionforge_task_tokens', 'api_key', secrets.token_hex(32))\""
 
 # ── Phase 3: Orchestrator tool registration ───────────────────
 .PHONY: register-orchestrator-tools

@@ -280,6 +280,11 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
     async def agent_node(state: ResearcherState) -> dict:
         updates = increment_step(state)
 
+        # If a security halt already set force_end, skip the LLM call.
+        # Calling the LLM with dangling tool_calls produces empty content → [No result].
+        if state.get("force_end"):
+            return updates
+
         # After increment_step, step_count reflects the current step number.
         # Use the forced LLM on the first step only.
         step = updates.get("step_count", state.get("step_count", 1))
@@ -353,10 +358,17 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
 async def finalizer_node(state: ResearcherState) -> dict:
     """Extract final result from last message."""
     messages = state.get("messages", [])
+    result = ""
     if messages:
         last = messages[-1]
         result = last.content if isinstance(last.content, str) else str(last.content)
-    else:
+    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+    if not result.strip():
+        for msg in reversed(messages):
+            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                result = str(msg.content)
+                break
+    if not result.strip():
         result = "No result produced."
 
     log_agent_event(

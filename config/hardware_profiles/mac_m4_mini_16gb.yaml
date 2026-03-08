@@ -92,14 +92,15 @@ local_services:
 models:
   primary:
     provider: "ollama"
-    model_id: "llama3.1:8b"
+    model_id: "qwen2.5:7b"
     estimated_size_gb: 4.7
     use_cases:
       - general_reasoning
       - writing
       - analysis
+      - tool_calling
     quantization: "q4_K_M"
-    gguf_sha256: "667b0c1932bc6ffc593ed1d03f895bf2dc8dc6df21db3042284a6f4416b06a29"
+    gguf_sha256: "2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730"
 
   router:
     provider: "ollama"
@@ -114,13 +115,13 @@ models:
 
   embeddings:
     provider: "ollama"
-    model_id: "nomic-embed-text:latest"
-    estimated_size_gb: 0.3
+    model_id: "mxbai-embed-large:latest"
+    estimated_size_gb: 0.7
     use_cases:
       - embeddings
       - rag
       - semantic_search
-    gguf_sha256: "970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6"
+    gguf_sha256: "819c2adf5ce6df2b6bd2ae4ca90d2a69f060afeb438d0c171db57daa02e39c3d"
 
   cloud_fallback:
     # Used when local model is insufficient for the task
@@ -431,8 +432,8 @@ search:
 # Upgrade "powerful" to a 70b+ quantized model when hardware allows.
 model_preferences:
   fast:     "qwen2.5:3b"      # Router model — much faster, less capable
-  balanced: "llama3.1:8b"     # Primary model — default for all agents
-  powerful: "llama3.1:8b"     # Same as balanced on M4 Mini (no 70b+ loaded)
+  balanced: "qwen2.5:7b"     # Primary model — default for all agents
+  powerful: "qwen2.5:7b"     # Same as balanced on M4 Mini (no 70b+ loaded)
 
 # ── DB Maintenance — nightly pruning with per-table retention ─────────────────
 # Runs once per 24h via the gateway scheduler (src/scheduler.py).

@@ -10519,14 +10519,21 @@ def test_p58_task_request_has_model_preference_field():
 
 
 def test_p58_task_request_rejects_invalid_model_preference():
-    """TaskRequest raises ValidationError for unknown model_preference values."""
+    """TaskRequest rejects model_preference values with spaces or unsafe chars."""
     import pytest
     from pydantic import ValidationError
 
     from src.gateway.routes.tasks import TaskRequest
 
+    # Shell-unsafe / whitespace values must be rejected
     with pytest.raises(ValidationError):
-        TaskRequest(task="hello", model_preference="turbo")
+        TaskRequest(task="hello", model_preference="bad model!")
+    with pytest.raises(ValidationError):
+        TaskRequest(task="hello", model_preference="rm -rf /")
+    # Valid Ollama model IDs and preset names must be accepted
+    assert TaskRequest(task="hello", model_preference="qwen2.5:7b")
+    assert TaskRequest(task="hello", model_preference="fast")
+    assert TaskRequest(task="hello", model_preference="balanced")
 
 
 def test_p58_create_task_accepts_model_preference():
@@ -10539,14 +10546,13 @@ def test_p58_create_task_accepts_model_preference():
     assert "model_preference" in sig.parameters
 
 
-def test_p58_ui_has_model_pref_buttons():
-    """Web UI includes Fast/Balanced/Powerful model preference toggle buttons."""
+def test_p58_ui_has_model_selector():
+    """Web UI has a dynamic model selector dropdown populated from GET /models."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    assert "mp-fast" in html
-    assert "mp-balanced" in html
-    assert "mp-powerful" in html
+    assert 'id="model-select"' in html
+    assert "loadModels" in html
     assert "setModelPref" in html
 
 
@@ -10966,14 +10972,13 @@ def test_p65_ui_copy_btn_css_hover_reveal():
 
 
 def test_p65_ui_copy_result_uses_clipboard_api():
-    """copyResultEl uses navigator.clipboard.writeText."""
+    """Copy helpers use navigator.clipboard.writeText."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    fn_start = html.find("function copyResultEl(")
-    fn_end = html.find("function copyOutput(")
-    body = html[fn_start:fn_end]
-    assert "clipboard.writeText" in body
+    # clipboard.writeText lives in _copyText (shared helper) used by copyResultEl + copyOutput
+    assert "clipboard.writeText" in html
+    assert "function _copyText(" in html
 
 
 # ── Phase 66 — Keyboard Shortcuts ─────────────────────────────────
@@ -21863,18 +21868,28 @@ def test_rls_policy_uses_app_user_id_session_var():
     assert "current_setting" in src
 
 
-def test_maintenance_role_has_no_select_in_setup():
-    """_setup_db_roles grants no SELECT to legionforge_maintenance."""
+def test_maintenance_role_has_no_full_table_select_in_setup():
+    """_setup_db_roles grants only column-level SELECT to legionforge_maintenance.
+
+    Column-level SELECT on filter columns (status, created_at, ts) is required
+    so DELETE ... WHERE clauses work in PostgreSQL. Full-row SELECT must not be
+    granted — a compromised prune job must not be able to read sensitive data.
+    """
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
     maint_start = src.index("legionforge_maintenance grants")
     maint_end = src.index("legionforge_guardian grants")
     maint_block = src[maint_start:maint_end]
-    assert "GRANT SELECT" not in maint_block, (
-        "legionforge_maintenance must have zero SELECT — "
-        "a compromised prune job must not be able to read data"
-    )
+    # Column-level grants are permitted (required for WHERE clause filters)
+    assert (
+        "GRANT SELECT (" in maint_block
+    ), "legionforge_maintenance must have column-level SELECT on filter columns"
+    # But table-level SELECT (GRANT SELECT ON <table>) must not appear
+    lines = [l.strip() for l in maint_block.splitlines() if "GRANT SELECT" in l]
+    assert all(
+        "(" in l for l in lines
+    ), "legionforge_maintenance must only have column-level SELECT, not table-level SELECT"
 
 
 def test_run_db_maintenance_uses_get_maintenance_connection():
@@ -21912,6 +21927,35 @@ def test_guardian_docker_compose_uses_guardian_role():
     assert (
         ":-jp}" not in dc
     ), "Personal username 'jp' must not be a default in docker-compose.yml"
+
+
+def test_guardian_start_makefile_removes_stale_container():
+    """guardian-start Makefile target removes any existing container before docker-compose.
+
+    Without first removing the container, `docker-compose up -d` reuses a stopped (or
+    externally-started) container with its original stale env vars.  TASK_TOKEN_SECRET
+    loaded from Keychain is exported into the shell but ignored by the old container.
+    The fix is `docker rm -f legionforge-guardian` before docker-compose so the new
+    container always receives the current Keychain secrets.
+    """
+    import pathlib
+
+    makefile = pathlib.Path("Makefile").read_text()
+    # Find the guardian-start target block
+    assert "guardian-start:" in makefile
+    start_idx = makefile.index("guardian-start:")
+    # Grab the next 700 chars (covers the entire target body)
+    snippet = makefile[start_idx : start_idx + 700]
+    assert "docker rm -f legionforge-guardian" in snippet, (
+        "guardian-start must `docker rm -f legionforge-guardian` before docker-compose "
+        "so that externally-started containers are replaced with a fresh one"
+    )
+    assert (
+        "TASK_TOKEN_SECRET" in snippet
+    ), "guardian-start must export TASK_TOKEN_SECRET from Keychain before docker-compose"
+    assert (
+        "POSTGRES_PASSWORD" in snippet
+    ), "guardian-start must export POSTGRES_PASSWORD from Keychain as a safety net"
 
 
 # ── TEMPORARY: jp-scrub verification ──────────────────────────────────────────
@@ -22204,3 +22248,146 @@ def test_rate_limit_key_is_path_scoped():
     assert (
         key_tasks != key_memory
     ), "Keys must differ per path so budgets are independent"
+
+
+# -- SecureToolNode halt path / force_end bug fix ------------------------------
+
+
+def test_securetoolnode_acl_halt_returns_messages():
+    """ACL halt path returns synthetic ToolMessages, not bare force_end dict."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_acl_halt_msgs" in src
+    assert "[SECURITY HALT]" in src
+
+
+def test_securetoolnode_guardian_halt_returns_messages():
+    """Guardian halt path returns synthetic ToolMessages, not bare force_end dict."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_guardian_halt_msgs" in src
+
+
+def test_securetoolnode_tier1_halt_no_state_spread():
+    """Tier 1 injection halt uses synthetic ToolMessages, not **state spread."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_t1_halt_msgs" in src
+    assert "Content redacted" in src
+
+
+def test_securetoolnode_halt_paths_count():
+    """All three [SECURITY HALT] labels are present -- one per halt path."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert src.count("[SECURITY HALT]") >= 3
+
+
+def test_base_agent_node_checks_force_end_before_llm():
+    """base_graph agent_node returns early when force_end is True (no LLM call)."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'state.get("force_end")' in src
+
+
+def test_researcher_agent_node_checks_force_end_before_llm():
+    """Researcher agent_node returns early when force_end is True."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert 'state.get("force_end")' in src
+
+
+def test_orchestrator_agent_node_checks_force_end_before_llm():
+    """Orchestrator agent_node returns early when force_end is True."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'state.get("force_end")' in src
+
+
+def test_base_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """base_graph finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_researcher_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """researcher finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_orchestrator_finalizer_falls_back_to_tool_message_on_empty_synthesis():
+    """orchestrator finalizer_node falls back to last ToolMessage when LLM returns empty content."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+
+
+def test_finalizer_fallback_does_not_surface_empty_tool_messages():
+    """Fallback skips ToolMessages with empty content — only non-empty tool output is used."""
+    import pathlib
+
+    # The condition requires both msg.type == "tool" AND msg.content (truthy check)
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'msg.type == "tool" and msg.content' in src
+    # Ensure the final guard string is present so empty-tool-output path still yields a message
+    assert '"No result produced."' in src
+
+
+def test_prune_audit_log_uses_admin_connection():
+    """prune_audit_log must use an admin connection (DELETE on audit_log requires admin)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Find the prune_audit_log function and confirm it uses admin credentials, not get_pool()
+    func_start = src.index("async def prune_audit_log(")
+    func_body = src[func_start : func_start + 1200]
+    assert "_build_conninfo_no_password()" in func_body
+    assert "get_pool()" not in func_body
+
+
+def test_gateway_health_includes_llm_status():
+    """Gateway /health endpoint returns an 'llm' field for UI health polling."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/app.py").read_text()
+    assert '"llm": "ok" if _llm_status["ok"] else "unavailable"' in src
+
+
+def test_ui_service_banner_present():
+    """index.html contains the service-banner element for Ollama down notification."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="service-banner"' in src
+    assert "service-banner.visible" in src
+
+
+def test_ui_health_poll_checks_llm_field():
+    """UI health poller checks d.llm field and shows banner when unavailable."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "d.llm !== 'ok'" in src
+    assert "setInterval(_pollHealth" in src
+
+
+def test_ui_stream_token_null_guard():
+    """submitTask falls back to polling when stream_token is absent (cache-hit tasks)."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "data.stream_token || null" in src
+    assert "pollTaskUntilComplete(taskId" in src

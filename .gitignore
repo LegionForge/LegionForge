@@ -104,3 +104,32 @@ checkpoint.md
 tests/testlab_suite/_novel_general_tmp.py
 tests/testlab_suite/_novel_security_tmp.py
 tests/testlab_suite/novel_findings.json
+
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/
+
+# TaskMaster AI tool
+.taskmaster/
+.env.example
+
+# Pentest / generated reports
+reports/

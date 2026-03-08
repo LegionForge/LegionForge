@@ -242,6 +242,18 @@
       color: var(--text-dim);
       font-size: 12px;
     }
+    #service-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      background: rgba(210,105,30,0.15);
+      border: 1px solid rgba(210,105,30,0.4);
+      border-radius: var(--radius);
+      color: #e8a060;
+      font-size: 12px;
+    }
+    #service-banner.visible { display: flex; }
     #conn-dot {
       width: 8px;
       height: 8px;
@@ -331,12 +343,6 @@
     .btn.ghost:hover { border-color: var(--border); color: var(--text); }
     .btn.icon    { padding: 5px 8px; font-size: 14px; }
 
-    /* ── Model preference toggle buttons (Phase 58) ─────────────── */
-    .model-pref.active-pref {
-      background: #1a3a5c;
-      border-color: var(--blue);
-      color: var(--blue);
-    }
 
     /* ── Task rating buttons (Phase 59) ─────────────────────────── */
     .rating-bar { display:flex; align-items:center; gap:8px; margin-top:6px; }
@@ -678,6 +684,12 @@
     <div id="conn-dot" title="Stream connection status"></div>
   </div>
 
+  <!-- ── Service health banner ──────────────────────────────── -->
+  <div id="service-banner" role="alert">
+    <span>⚠</span>
+    <span id="service-banner-msg">AI service not responding — tasks will fail until Ollama is running.</span>
+  </div>
+
   <!-- ── Config card ────────────────────────────────────── -->
   <div class="card" id="config">
     <div class="card-title">Configuration</div>
@@ -699,12 +711,10 @@
     </div>
 
     <div class="field-row">
-      <label>Model</label>
-      <div id="model-pref-btns" style="display:flex;gap:6px;flex:1;">
-        <button class="btn ghost model-pref" id="mp-fast" onclick="setModelPref('fast')" title="qwen2.5:3b — fast, lower quality">Fast</button>
-        <button class="btn ghost model-pref active-pref" id="mp-balanced" onclick="setModelPref('balanced')" title="llama3.1:8b — default balance">Balanced</button>
-        <button class="btn ghost model-pref" id="mp-powerful" onclick="setModelPref('powerful')" title="Best available model">Powerful</button>
-      </div>
+      <label for="model-select">Model</label>
+      <select id="model-select" onchange="setModelPref(this.value)" style="flex:1;" title="Select a model installed in Ollama">
+        <option value="">Loading models…</option>
+      </select>
     </div>
 
     <div class="field-row">
@@ -4307,11 +4317,11 @@ const el = {
     else   localStorage.removeItem(APIKEY_KEY);
   });
   el.apiKey().addEventListener('blur', () => {
-    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); loadUsage(); }
+    if (el.apiKey().value.trim()) { loadSessions(); loadTemplates(); loadUsage(); loadModels(); }
   });
 
-  // Load sessions + templates on startup if key is already saved
-  if (saved) { loadSessions(); loadTemplates(); }
+  // Load sessions + templates + models on startup if key is already saved
+  if (saved) { loadSessions(); loadTemplates(); loadModels(); }
 
   // Restore history
   try {
@@ -4320,11 +4330,24 @@ const el = {
   } catch (_) { S.history = []; }
   renderHistory();
 
-  // Fetch version from /health and display in footer
-  fetch('/health').then(r => r.json()).then(d => {
-    const v = d.version || '';
-    if (v) document.getElementById('footer-version').textContent = 'v' + v;
-  }).catch(() => {});
+  // Fetch version from /health and start LLM health polling
+  function _pollHealth() {
+    fetch('/health').then(r => r.json()).then(d => {
+      const v = d.version || '';
+      if (v) document.getElementById('footer-version').textContent = 'v' + v;
+      const banner = document.getElementById('service-banner');
+      const dot    = el.connDot();
+      if (d.llm && d.llm !== 'ok') {
+        if (banner) banner.classList.add('visible');
+        if (dot && !dot.classList.contains('live')) dot.style.background = '#d2691e';
+      } else {
+        if (banner) banner.classList.remove('visible');
+        if (dot && dot.style.background === 'rgb(210, 105, 30)') dot.style.background = '';
+      }
+    }).catch(() => {});
+  }
+  _pollHealth();
+  setInterval(_pollHealth, 30000);
 
   // Phase 63: load today's usage counter if API key is available
   if (saved) loadUsage();
@@ -4455,12 +4478,33 @@ function clearAttachment() {
   if (nameEl) nameEl.textContent = '';
 }
 
-// ── Model preference selector (Phase 58) ─────────────────────────
-function setModelPref(pref) {
-  S.modelPref = pref;
-  document.querySelectorAll('.model-pref').forEach(b => b.classList.remove('active-pref'));
-  const btn = $('mp-' + pref);
-  if (btn) btn.classList.add('active-pref');
+// ── Model selector (Phase 58, updated) ───────────────────────────
+function setModelPref(value) {
+  S.modelPref = value;
+}
+
+async function loadModels() {
+  const sel = $('model-select');
+  if (!sel) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) {
+    sel.innerHTML = '<option value="">Enter API key to load models</option>';
+    return;
+  }
+  try {
+    const resp = await apiFetch('/models');
+    if (!resp.ok) throw new Error(resp.status);
+    const data = await resp.json();
+    const models = data.models || [];
+    const defaultModel = data.default || '';
+    sel.innerHTML = models.map(m =>
+      `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${m}</option>`
+    ).join('');
+    // Set state to current selection
+    S.modelPref = sel.value;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Could not load models</option>';
+  }
 }
 
 // ── Task rating (Phase 59) ────────────────────────────────────────
@@ -5077,37 +5121,49 @@ function appendResult(text) {
   );
 }
 
+function _copyText(text, btn, fallbackEl) {
+  function showFeedback(ok) {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = ok ? '✓' : '⎘✓sel';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  }
+  function execFallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); showFeedback(true); }
+    catch (_) {
+      if (fallbackEl) {
+        const r = document.createRange();
+        r.selectNodeContents(fallbackEl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(r);
+      }
+      showFeedback(false);
+    }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => showFeedback(true)).catch(execFallback);
+  } else {
+    execFallback();
+  }
+}
+
 function copyResultEl(btn) {
   const span = btn.nextElementSibling;
-  const text = span ? (span.innerText || span.textContent) : '';
-  navigator.clipboard.writeText(text).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  }).catch(() => {
-    // Fallback: select the result span
-    const range = document.createRange();
-    range.selectNodeContents(span);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-  });
+  _copyText(span ? (span.innerText || span.textContent) : '', btn, span);
 }
 
 // ── Copy output ───────────────────────────────────────────────────
 function copyOutput() {
+  const btn = document.querySelector('[onclick="copyOutput()"]');
   const text = S.outputBuffer || el.output().textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('[onclick="copyOutput()"]');
-    const orig = btn.textContent;
-    btn.textContent = '✓';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
-  }).catch(() => {
-    // Fallback: select all text in output
-    const range = document.createRange();
-    range.selectNodeContents(el.output());
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-  });
+  _copyText(text, btn, el.output());
 }
 
 // ── Submit task ───────────────────────────────────────────────────
@@ -5164,7 +5220,7 @@ async function submitTask() {
 
     const data = await res.json();
     taskId      = data.task_id;
-    streamToken = data.stream_token;
+    streamToken = data.stream_token || null;
     S.activeTaskId  = taskId;
     S.streamToken   = streamToken;
 
@@ -5175,8 +5231,12 @@ async function submitTask() {
     return;
   }
 
-  // Subscribe to SSE
-  openStream(taskId, streamToken, apiKey, agent, task);
+  // Subscribe to SSE — fall back to polling if no stream token (e.g. cache-hit response)
+  if (streamToken) {
+    openStream(taskId, streamToken, apiKey, agent, task);
+  } else {
+    pollTaskUntilComplete(taskId, apiKey, agent, task);
+  }
 }
 
 // ── SSE stream ────────────────────────────────────────────────────

@@ -632,9 +632,9 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             logger.debug("[db-roles] worker checkpoint CRUD on %r skipped: %s", tbl, e)
     try:
         await admin_conn.execute(
-            pgsql.SQL("GRANT INSERT ON audit_log, threat_events TO {uid}").format(
-                uid=pgsql.Identifier(DB_ROLE_WORKER)
-            )
+            pgsql.SQL(
+                "GRANT INSERT ON audit_log, threat_events, task_events TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_WORKER))
         )
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON tasks TO {uid}").format(
@@ -648,6 +648,11 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON api_usage TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON tool_registry TO {uid}").format(
                 uid=pgsql.Identifier(DB_ROLE_WORKER)
             )
         )
@@ -697,8 +702,10 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
 
     # ── legionforge_maintenance grants ────────────────────────────────────────
-    # DELETE on prunable tables + INSERT on audit_anchors. ZERO SELECT.
-    # A compromised maintenance job can burn rows but cannot read them.
+    # DELETE on prunable tables + INSERT on audit_anchors.
+    # Column-level SELECT only on filter columns (status, created_at, ts) so
+    # DELETE ... WHERE clauses work — PostgreSQL requires SELECT on referenced
+    # columns. Full-row SELECT is still denied; sensitive data stays unreadable.
     for tbl in ["tasks", "api_usage", "health_metrics", "threat_events"]:
         try:
             await admin_conn.execute(
@@ -714,8 +721,40 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
             )
         )
+        # Column-level SELECT on filter columns only — enough for WHERE clauses
+        # in DELETE statements; full-row reads remain denied.
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (status, created_at) ON tasks TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON api_usage TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON health_metrics TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT DELETE ON audit_log TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (seq, ts) ON audit_log TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
     except Exception as e:
-        logger.debug("[db-roles] maintenance audit_anchors grant skipped: %s", e)
+        logger.debug("[db-roles] maintenance extra grants skipped: %s", e)
 
     # ── legionforge_guardian grants ───────────────────────────────────────────
     # SELECT on security config tables; INSERT on threat_events only.
@@ -748,12 +787,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
 
     # ── legionforge_readonly grants ───────────────────────────────────────────
     # SELECT only on summary/metrics tables — health server and monitoring.
+    # audit_log + audit_anchors included so verify_audit_log_chain() can use
+    # this role at startup without needing a live admin connection.
     for tbl in [
         "health_metrics",
         "api_usage",
         "tool_registry",
         "gateway_users",
         "threat_events",
+        "audit_log",
+        "audit_anchors",
     ]:
         try:
             await admin_conn.execute(
@@ -2455,7 +2498,10 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
         - chain_ok=True, verified_rows=0, error_message=None  — empty/fully-pruned log
         - chain_ok=False, verified_rows=N, error_message=str  — tamper detected at row N+1
     """
-    pool = get_pool()
+    # Use the readonly pool (SELECT on audit_log + audit_anchors granted to
+    # legionforge_readonly). Fall back to worker pool if readonly is unavailable
+    # (e.g. role doesn't exist yet on a fresh install before first startup).
+    pool = get_readonly_pool() or get_pool()
     async with pool.connection() as conn:
         # Load latest anchor to determine starting boundary
         cur_anc = await conn.execute(
@@ -2531,9 +2577,16 @@ async def prune_audit_log(retention_days: int = 90) -> int:
 
     Atomic: anchor write + row deletion occur in one transaction. If deletion
     fails the anchor is rolled back too.
+
+    Note: audit_log DELETE is a privileged operation (append-only by design).
+    This function uses an admin connection, matching the threat_events pattern.
     """
-    pool = get_pool()
-    async with pool.connection() as conn:
+    admin_conn = await psycopg.AsyncConnection.connect(
+        _build_conninfo_no_password(),
+        password=_get_postgres_password(),
+        autocommit=False,
+    )
+    async with admin_conn as conn:
         async with conn.transaction():
             # Find the most recent row outside the retention window
             cur = await conn.execute(
