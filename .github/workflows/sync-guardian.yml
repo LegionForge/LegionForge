@@ -8,6 +8,10 @@ name: Sync LegionForge-Guardian
 #   2. Create a classic PAT with `repo` + `workflow` scope on that repo (as jp-cruz)
 #   3. Store it as GUARDIAN_REPO_PAT in LegionForge/LegionForge repo secrets
 #
+# Author rewriting: git subtree split preserves original commit authorship from
+# the private repo. filter-repo remaps the private account email → jp-cruz so
+# the public Guardian repo never exposes the private account identity.
+#
 # Note: git subtree push rewrites history to contain only commits that
 # touched packages/guardian/. The guardian repo's main branch must start
 # empty — if GitHub auto-created a README, delete it before the first run.
@@ -40,16 +44,23 @@ jobs:
           echo "PAT length: ${#PAT}"
           if [ -z "$PAT" ]; then echo "ERROR: GUARDIAN_REPO_PAT secret is empty"; exit 1; fi
 
-      - name: Add guardian public remote
-        run: |
-          # Unset the GITHUB_TOKEN extraheader injected by actions/checkout.
-          # Without this, the GITHUB_TOKEN overrides our PAT for all GitHub requests.
-          git config --local --unset-all http.https://github.com/.extraheader || true
-          git remote add guardian-public \
-            https://x-access-token:${{ secrets.GUARDIAN_REPO_PAT }}@github.com/LegionForge/LegionForge-Guardian.git
-
       - name: Push guardian subtree to public repo
         run: |
+          # Unset GITHUB_TOKEN extraheader so our PAT is used for all pushes
+          git config --local --unset-all http.https://github.com/.extraheader || true
+
           git subtree split --prefix=packages/guardian -b guardian-split
-          git push guardian-public guardian-split:main --force
-          git branch -D guardian-split
+
+          # Remap private account authorship → jp-cruz before the public push.
+          # git subtree split preserves original commit authors from the private
+          # repo; filter-repo rewrites them so jp-cruz never appears publicly.
+          pip install --quiet git-filter-repo
+          git checkout guardian-split
+          printf 'Jp Cruz <115298310+jp-cruz@users.noreply.github.com> jp-cruz <115298310+jp-cruz@users.noreply.github.com>\n' > /tmp/mailmap.txt
+          git filter-repo --force --mailmap /tmp/mailmap.txt
+
+          # filter-repo clears all remotes; re-add PAT remote before push
+          git remote add guardian-public \
+            https://x-access-token:${{ secrets.GUARDIAN_REPO_PAT }}@github.com/LegionForge/LegionForge-Guardian.git
+          git push guardian-public HEAD:main --force
+          git checkout main
