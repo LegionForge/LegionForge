@@ -987,11 +987,17 @@ print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 .PHONY: guardian-start
 guardian-start:
 	@echo "Starting Guardian sidecar..."
-	@# Load TASK_TOKEN_SECRET from Keychain so Guardian can validate JWT task tokens.
-	@# Falls back to empty string if not found — Guardian will reject all task tokens.
+	@# Load secrets from Keychain into the shell so docker-compose substitutes them
+	@# into docker-compose.yml before creating the container.
+	@# If the container exists but was started outside docker-compose (e.g. via
+	@# `docker run`), compose cannot --force-recreate it.  Remove it first so
+	@# compose always creates a fresh container with the current env vars.
+	@docker rm -f legionforge-guardian 2>/dev/null || true
 	@export TASK_TOKEN_SECRET=$$(security find-generic-password \
 		-s legionforge_task_tokens -a api_key -w 2>/dev/null || echo "") && \
-	docker-compose up -d guardian 2>/dev/null && \
+	export POSTGRES_PASSWORD=$$(security find-generic-password \
+		-s legionforge_guardian -a api_key -w 2>/dev/null || echo "") && \
+	docker-compose up -d guardian && \
 	sleep 2 && \
 	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
 	echo "✅ Guardian healthy at http://localhost:9766" || \

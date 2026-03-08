@@ -21929,6 +21929,35 @@ def test_guardian_docker_compose_uses_guardian_role():
     ), "Personal username 'jp' must not be a default in docker-compose.yml"
 
 
+def test_guardian_start_makefile_removes_stale_container():
+    """guardian-start Makefile target removes any existing container before docker-compose.
+
+    Without first removing the container, `docker-compose up -d` reuses a stopped (or
+    externally-started) container with its original stale env vars.  TASK_TOKEN_SECRET
+    loaded from Keychain is exported into the shell but ignored by the old container.
+    The fix is `docker rm -f legionforge-guardian` before docker-compose so the new
+    container always receives the current Keychain secrets.
+    """
+    import pathlib
+
+    makefile = pathlib.Path("Makefile").read_text()
+    # Find the guardian-start target block
+    assert "guardian-start:" in makefile
+    start_idx = makefile.index("guardian-start:")
+    # Grab the next 700 chars (covers the entire target body)
+    snippet = makefile[start_idx : start_idx + 700]
+    assert "docker rm -f legionforge-guardian" in snippet, (
+        "guardian-start must `docker rm -f legionforge-guardian` before docker-compose "
+        "so that externally-started containers are replaced with a fresh one"
+    )
+    assert (
+        "TASK_TOKEN_SECRET" in snippet
+    ), "guardian-start must export TASK_TOKEN_SECRET from Keychain before docker-compose"
+    assert (
+        "POSTGRES_PASSWORD" in snippet
+    ), "guardian-start must export POSTGRES_PASSWORD from Keychain as a safety net"
+
+
 # ── TEMPORARY: jp-scrub verification ──────────────────────────────────────────
 # Verify personal username references have been removed from production configs.
 # REMOVE THIS TEST once the jp PostgreSQL superuser has been fully retired
