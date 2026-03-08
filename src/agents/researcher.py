@@ -280,6 +280,11 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
     async def agent_node(state: ResearcherState) -> dict:
         updates = increment_step(state)
 
+        # If a security halt already set force_end, skip the LLM call.
+        # Calling the LLM with dangling tool_calls produces empty content → [No result].
+        if state.get("force_end"):
+            return updates
+
         # After increment_step, step_count reflects the current step number.
         # Use the forced LLM on the first step only.
         step = updates.get("step_count", state.get("step_count", 1))

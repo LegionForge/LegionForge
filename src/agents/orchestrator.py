@@ -302,6 +302,11 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
     async def agent_node(state: OrchestratorState) -> dict:
         updates = increment_step(state)
 
+        # If a security halt already set force_end, skip the LLM call.
+        # Calling the LLM with dangling tool_calls produces empty content → [No result].
+        if state.get("force_end"):
+            return updates
+
         log_agent_event(
             "llm_call",
             "orchestrator",

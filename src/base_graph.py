@@ -134,6 +134,12 @@ async def agent_node(state: AgentState) -> dict:
     # 1. Increment step counter
     updates = increment_step(state)
 
+    # If a security halt already set force_end (e.g., Guardian unavailable,
+    # ACL violation, Tier 1 injection), skip the LLM call. Calling the LLM
+    # with dangling tool_calls (no ToolMessage) produces empty content → [No result].
+    if state.get("force_end"):
+        return updates
+
     log_agent_event(
         "llm_call",
         "base_agent",
@@ -699,7 +705,32 @@ class SecureToolNode:
                     )
                 except Exception:
                     pass
-                return {"force_end": True, "loop_detected": False}
+                # Add synthetic ToolMessages for every pending tool_call so the
+                # conversation state stays valid (no dangling tool_calls without a
+                # ToolMessage response). Without this the next agent_node gets
+                # confused messages and the LLM produces empty content → [No result].
+                _acl_halt_msgs = [
+                    ToolMessage(
+                        content=(
+                            f"[SECURITY HALT] Tool"
+                            f" '{_tc['name'] if isinstance(_tc, dict) else _tc.name}'"
+                            " blocked: task token does not grant access to this tool."
+                        ),
+                        tool_call_id=(
+                            _tc.get("id", "")
+                            if isinstance(_tc, dict)
+                            else getattr(_tc, "id", "")
+                        ),
+                        name=_tc["name"] if isinstance(_tc, dict) else _tc.name,
+                    )
+                    for _tc in tool_calls
+                ]
+                return {
+                    "messages": _acl_halt_msgs,
+                    "force_end": True,
+                    "loop_detected": False,
+                    "result": "Halted: task token does not grant access to this tool.",
+                }
 
             # 2b. Guardian capability boundary + sequence check (Phase 3)
             # Now returns GuardianCheckResponse so we can branch on tier.
@@ -773,7 +804,29 @@ class SecureToolNode:
                         )
                     except Exception:
                         pass
-                    return {"force_end": True, "loop_detected": False}
+                    # Add synthetic ToolMessages to close dangling tool_calls.
+                    _guardian_halt_msgs = [
+                        ToolMessage(
+                            content=(
+                                f"[SECURITY HALT] Tool"
+                                f" '{_tc['name'] if isinstance(_tc, dict) else _tc.name}'"
+                                f" blocked by security policy: {guardian_resp.reason}"
+                            ),
+                            tool_call_id=(
+                                _tc.get("id", "")
+                                if isinstance(_tc, dict)
+                                else getattr(_tc, "id", "")
+                            ),
+                            name=_tc["name"] if isinstance(_tc, dict) else _tc.name,
+                        )
+                        for _tc in tool_calls
+                    ]
+                    return {
+                        "messages": _guardian_halt_msgs,
+                        "force_end": True,
+                        "loop_detected": False,
+                        "result": f"Halted: {guardian_resp.reason}",
+                    }
 
             # 3. Action loop detection
             loop_updates = detect_action_loop(state, tool_id, tool_input)
@@ -1082,8 +1135,32 @@ class SecureToolNode:
                                 f"in result from '{_tool_id_for_msg}' "
                                 "(halt_on_tool_result_injection=True)"
                             )
+                            # Replace **state spread with synthetic ToolMessages.
+                            # The injected content is intentionally excluded; synthetic
+                            # messages close the dangling tool_calls cleanly.
+                            _t1_halt_msgs = [
+                                ToolMessage(
+                                    content=(
+                                        f"[SECURITY HALT] Tool result from"
+                                        f" '{_tc['name'] if isinstance(_tc, dict) else _tc.name}'"
+                                        " blocked: Tier 1 injection pattern detected in"
+                                        " tool output. Content redacted."
+                                    ),
+                                    tool_call_id=(
+                                        _tc.get("id", "")
+                                        if isinstance(_tc, dict)
+                                        else getattr(_tc, "id", "")
+                                    ),
+                                    name=(
+                                        _tc["name"]
+                                        if isinstance(_tc, dict)
+                                        else _tc.name
+                                    ),
+                                )
+                                for _tc in tool_calls
+                            ]
                             return {
-                                **state,
+                                "messages": _t1_halt_msgs,
                                 "force_end": True,
                                 "result": "Halted: Tier 1 injection detected in tool result",
                             }

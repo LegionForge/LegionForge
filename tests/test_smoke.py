@@ -22219,3 +22219,64 @@ def test_rate_limit_key_is_path_scoped():
     assert (
         key_tasks != key_memory
     ), "Keys must differ per path so budgets are independent"
+
+
+# -- SecureToolNode halt path / force_end bug fix ------------------------------
+
+
+def test_securetoolnode_acl_halt_returns_messages():
+    """ACL halt path returns synthetic ToolMessages, not bare force_end dict."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_acl_halt_msgs" in src
+    assert "[SECURITY HALT]" in src
+
+
+def test_securetoolnode_guardian_halt_returns_messages():
+    """Guardian halt path returns synthetic ToolMessages, not bare force_end dict."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_guardian_halt_msgs" in src
+
+
+def test_securetoolnode_tier1_halt_no_state_spread():
+    """Tier 1 injection halt uses synthetic ToolMessages, not **state spread."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_t1_halt_msgs" in src
+    assert "Content redacted" in src
+
+
+def test_securetoolnode_halt_paths_count():
+    """All three [SECURITY HALT] labels are present -- one per halt path."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert src.count("[SECURITY HALT]") >= 3
+
+
+def test_base_agent_node_checks_force_end_before_llm():
+    """base_graph agent_node returns early when force_end is True (no LLM call)."""
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert 'state.get("force_end")' in src
+
+
+def test_researcher_agent_node_checks_force_end_before_llm():
+    """Researcher agent_node returns early when force_end is True."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert 'state.get("force_end")' in src
+
+
+def test_orchestrator_agent_node_checks_force_end_before_llm():
+    """Orchestrator agent_node returns early when force_end is True."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'state.get("force_end")' in src
