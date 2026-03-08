@@ -1,9 +1,9 @@
 VERSION: 0.7.0-alpha
-UPDATE: 286
+UPDATE: 287
 BRANCH: dev
-COMMIT: 9fc792e
-TIMESTAMP: 2026-03-08T18:20Z
-LAST_OP: dev ready for PR — Guardian TASK_TOKEN_SECRET fix, Ollama status banner, stream_token null guard, DB grants for task_events/audit_log, finalizer [No result] fix, SecureToolNode halt fix
+COMMIT: 6ff7eea
+TIMESTAMP: 2026-03-08T20:26Z
+LAST_OP: doc sync (2106 counts, qwen2.5:7b, 5-role DB) + sync-guardian jp-cruz→jp-cruz authorship rewrite fix
 SMOKE_TESTS: 2106/2106
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
