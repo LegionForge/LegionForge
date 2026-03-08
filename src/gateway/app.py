@@ -64,6 +64,30 @@ from src.gateway.worker import task_worker
 logger = logging.getLogger(__name__)
 
 
+# ── LLM health monitor ────────────────────────────────────────────────────────
+
+# Optimistic default — updated by _llm_health_loop() every 30 s.
+# Boolean so the /health endpoint can return "ok" / "unavailable" without a
+# live network call on each request.
+_llm_status: dict = {"ok": True}
+
+
+async def _llm_health_loop() -> None:
+    """Background task: ping Ollama every 30 s and update _llm_status."""
+    import httpx
+    from config.settings import settings as _cfg
+
+    while True:
+        try:
+            base_url = _cfg.local_services.ollama.resolved_url()
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{base_url}/api/tags")
+                _llm_status["ok"] = resp.status_code == 200
+        except Exception:
+            _llm_status["ok"] = False
+        await asyncio.sleep(30)
+
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 
@@ -104,6 +128,9 @@ async def lifespan(app: FastAPI):
             asyncio.sleep(0), name="gateway-task-worker-noop"
         )
 
+    # Start LLM health monitor so /health can reflect Ollama availability.
+    llm_health_task = asyncio.create_task(_llm_health_loop(), name="llm-health-monitor")
+
     # Register agent tools in the security registry so verify_tool_before_invocation
     # succeeds at runtime.  Without this, every invocation hits the lazy-load path
     # which reconstructs the manifest with input_schema={} (not stored in DB),
@@ -140,8 +167,13 @@ async def lifespan(app: FastAPI):
     finally:
         await scheduler.stop()
         worker_task.cancel()
+        llm_health_task.cancel()
         try:
             await worker_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await llm_health_task
         except asyncio.CancelledError:
             pass
         await close_redis()
@@ -300,7 +332,12 @@ async def web_ui() -> HTMLResponse:
 
 @app.get("/health", include_in_schema=False)
 async def health() -> dict:
-    return {"status": "ok", "service": "legionforge-gateway", "version": app.version}
+    return {
+        "status": "ok",
+        "service": "legionforge-gateway",
+        "version": app.version,
+        "llm": "ok" if _llm_status["ok"] else "unavailable",
+    }
 
 
 # ── Prometheus metrics (Phase 14) ─────────────────────────────────────────────

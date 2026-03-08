@@ -22327,3 +22327,38 @@ def test_prune_audit_log_uses_admin_connection():
     func_body = src[func_start : func_start + 1200]
     assert "_build_conninfo_no_password()" in func_body
     assert "get_pool()" not in func_body
+
+
+def test_gateway_health_includes_llm_status():
+    """Gateway /health endpoint returns an 'llm' field for UI health polling."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/app.py").read_text()
+    assert '"llm": "ok" if _llm_status["ok"] else "unavailable"' in src
+
+
+def test_ui_service_banner_present():
+    """index.html contains the service-banner element for Ollama down notification."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="service-banner"' in src
+    assert "service-banner.visible" in src
+
+
+def test_ui_health_poll_checks_llm_field():
+    """UI health poller checks d.llm field and shows banner when unavailable."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "d.llm !== 'ok'" in src
+    assert "setInterval(_pollHealth" in src
+
+
+def test_ui_stream_token_null_guard():
+    """submitTask falls back to polling when stream_token is absent (cache-hit tasks)."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "data.stream_token || null" in src
+    assert "pollTaskUntilComplete(taskId" in src

@@ -242,6 +242,18 @@
       color: var(--text-dim);
       font-size: 12px;
     }
+    #service-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      background: rgba(210,105,30,0.15);
+      border: 1px solid rgba(210,105,30,0.4);
+      border-radius: var(--radius);
+      color: #e8a060;
+      font-size: 12px;
+    }
+    #service-banner.visible { display: flex; }
     #conn-dot {
       width: 8px;
       height: 8px;
@@ -670,6 +682,12 @@
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
     <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts (Phase 91)" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
     <div id="conn-dot" title="Stream connection status"></div>
+  </div>
+
+  <!-- ── Service health banner ──────────────────────────────── -->
+  <div id="service-banner" role="alert">
+    <span>⚠</span>
+    <span id="service-banner-msg">AI service not responding — tasks will fail until Ollama is running.</span>
   </div>
 
   <!-- ── Config card ────────────────────────────────────── -->
@@ -4312,11 +4330,24 @@ const el = {
   } catch (_) { S.history = []; }
   renderHistory();
 
-  // Fetch version from /health and display in footer
-  fetch('/health').then(r => r.json()).then(d => {
-    const v = d.version || '';
-    if (v) document.getElementById('footer-version').textContent = 'v' + v;
-  }).catch(() => {});
+  // Fetch version from /health and start LLM health polling
+  function _pollHealth() {
+    fetch('/health').then(r => r.json()).then(d => {
+      const v = d.version || '';
+      if (v) document.getElementById('footer-version').textContent = 'v' + v;
+      const banner = document.getElementById('service-banner');
+      const dot    = el.connDot();
+      if (d.llm && d.llm !== 'ok') {
+        if (banner) banner.classList.add('visible');
+        if (dot && !dot.classList.contains('live')) dot.style.background = '#d2691e';
+      } else {
+        if (banner) banner.classList.remove('visible');
+        if (dot && dot.style.background === 'rgb(210, 105, 30)') dot.style.background = '';
+      }
+    }).catch(() => {});
+  }
+  _pollHealth();
+  setInterval(_pollHealth, 30000);
 
   // Phase 63: load today's usage counter if API key is available
   if (saved) loadUsage();
@@ -5189,7 +5220,7 @@ async function submitTask() {
 
     const data = await res.json();
     taskId      = data.task_id;
-    streamToken = data.stream_token;
+    streamToken = data.stream_token || null;
     S.activeTaskId  = taskId;
     S.streamToken   = streamToken;
 
@@ -5200,8 +5231,12 @@ async function submitTask() {
     return;
   }
 
-  // Subscribe to SSE
-  openStream(taskId, streamToken, apiKey, agent, task);
+  // Subscribe to SSE — fall back to polling if no stream token (e.g. cache-hit response)
+  if (streamToken) {
+    openStream(taskId, streamToken, apiKey, agent, task);
+  } else {
+    pollTaskUntilComplete(taskId, apiKey, agent, task);
+  }
 }
 
 // ── SSE stream ────────────────────────────────────────────────────
