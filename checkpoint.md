@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 285
+UPDATE: 286
 BRANCH: dev
-COMMIT: ce5ee26
-TIMESTAMP: 2026-03-07T23:00Z
-LAST_OP: PR #237 merged — 5-role DB privilege model, RLS, jp-scrub, DOS protection (sliding-window rate limiter, queue depth cap, SSE stream slots, memory rate limits)
-SMOKE_TESTS: 2089/2089
+COMMIT: 9fc792e
+TIMESTAMP: 2026-03-08T18:20Z
+LAST_OP: dev ready for PR — Guardian TASK_TOKEN_SECRET fix, Ollama status banner, stream_token null guard, DB grants for task_events/audit_log, finalizer [No result] fix, SecureToolNode halt fix
+SMOKE_TESTS: 2106/2106
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
