@@ -22562,14 +22562,15 @@ def test_orchestrator_uses_run_id_as_thread_not_session_thread():
 
 
 def test_orchestrator_system_prompt_guides_decomposition_with_fan_out():
-    """Orchestrator system prompt explicitly instructs decomposing multi-part queries
-    into parallel sub-tasks using fan_out_researchers."""
+    """Orchestrator system prompt instructs using fan_out_researchers for multi-part queries."""
     import pathlib
 
     src = pathlib.Path("src/agents/orchestrator.py").read_text()
-    assert "DECOMPOSE" in src
-    assert "fan_out_researchers when sub-tasks are independent" in src
-    assert "atomic sub-tasks" in src
+    assert "fan_out_researchers" in src
+    assert "sub-tasks" in src
+    assert (
+        "never answer from memory" in src or "never answer from memory" in src.lower()
+    )
 
 
 def test_researcher_system_prompt_has_tool_budget_rule():

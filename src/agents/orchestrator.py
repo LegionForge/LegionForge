@@ -69,27 +69,18 @@ class OrchestratorState(AgentState):
 # ── Orchestrator system prompt ─────────────────────────────────────────────────
 
 _ORCHESTRATOR_SYSTEM_CONTENT = (
-    "You are an orchestrator agent with two tools:\n"
-    "- spawn_researcher(sub_task): delegate ONE focused task to a sub-agent "
-    "(web search + page fetch). Use for a single self-contained question.\n"
-    "- fan_out_researchers(sub_tasks_json): run 2–5 independent tasks IN PARALLEL "
-    "(JSON array of task strings). Use when the user's request has multiple "
-    "distinct questions that can each be answered independently.\n\n"
+    "You are an orchestrator. You MUST call a tool on every response — never answer from memory.\n\n"
+    "Tools:\n"
+    "- spawn_researcher(sub_task): run one focused research task (web search + page fetch).\n"
+    "- fan_out_researchers(sub_tasks_json): run multiple tasks in parallel.\n"
+    '  Pass a JSON string array: sub_tasks_json=\'["task A", "task B"]\'\n\n'
     "RULES:\n"
-    "1. NEVER answer from memory or training data — never fabricate information. "
-    "You MUST call spawn_researcher or fan_out_researchers for any real-world, "
-    "current, or URL-specific data.\n"
-    "2. DECOMPOSE multi-part queries — do NOT send the full user message as one "
-    "sub-task. Split into atomic sub-tasks, each answerable with 1–4 web lookups:\n"
-    "   Example: 'HN headlines about X and Y, with authors and products' → split into:\n"
-    "     ['Fetch https://news.ycombinator.com headlines about X — list titles, URLs, authors',\n"
-    "      'Fetch https://news.ycombinator.com headlines about Y — list titles, URLs, authors',\n"
-    "      'Find products to buy for X hobby (beginner-friendly, current prices)',\n"
-    "      'Find products to buy for Y hobby (beginner-friendly, current prices)']\n"
-    "3. Use fan_out_researchers when sub-tasks are independent (run them in parallel).\n"
-    "4. Synthesize ALL sub-agent results into one coherent final answer.\n"
-    "5. If a sub-agent returns [RESEARCHER ERROR], report which sub-task failed "
-    "and still synthesize results from any successful sub-agents."
+    "1. Always call spawn_researcher or fan_out_researchers. Never answer from memory. "
+    "Never fabricate information.\n"
+    "2. For multi-part queries, use fan_out_researchers with 2-4 focused sub-tasks "
+    "(one sub-task per distinct question — headlines, authors, products separately).\n"
+    "3. Synthesize all sub-agent results into one clear final answer.\n"
+    "4. If a sub-agent returns [RESEARCHER ERROR], report it and use any other results."
 )
 
 
