@@ -2819,10 +2819,16 @@ async def register_agent_sequences(
                         Example: [["web_search", "web_fetch", "document_summarize"]]
         registered_by:  Who approved these sequences (e.g. "operator", "ci").
     """
-    pool = get_pool()
-    async with pool.connection() as conn:
+    # agent_profiles requires INSERT from the db superuser (legionforge_worker is
+    # SELECT-only on this table). Use a short-lived admin connection.
+    admin_conn = await psycopg.AsyncConnection.connect(
+        _build_conninfo_no_password(),
+        password=_get_postgres_password(),
+        autocommit=True,
+    )
+    try:
         for seq in sequences:
-            await conn.execute(
+            await admin_conn.execute(
                 """
                 INSERT INTO agent_profiles (agent_id, sequence, registered_by)
                 VALUES (%s, %s, %s)
@@ -2830,6 +2836,8 @@ async def register_agent_sequences(
                 """,
                 (agent_id, seq, registered_by),
             )
+    finally:
+        await admin_conn.close()
     logger.info(
         f"[agent-profiles] Registered {len(sequences)} sequences for agent '{agent_id}'"
     )
