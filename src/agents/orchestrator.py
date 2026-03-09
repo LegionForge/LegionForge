@@ -195,7 +195,22 @@ async def spawn_researcher(sub_task: str) -> str:
     master_jwt = _master_token_ref.get("token")
     derived = _derive_researcher_token(master_jwt) if master_jwt else None
 
-    result = await _spawn_researcher_sub_agent(sub_task, derived)
+    try:
+        result = await _spawn_researcher_sub_agent(sub_task, derived)
+    except Exception as exc:
+        # Catch GraphRecursionError and other failures so the orchestrator can
+        # degrade gracefully (report the error, then synthesize what it has)
+        # rather than crashing the entire run.
+        err_cls = type(exc).__name__
+        logger.error(
+            f"[spawn_researcher] sub-agent failed for task={sub_task!r:.80}: "
+            f"{err_cls}: {exc}"
+        )
+        return (
+            f"[RESEARCHER ERROR] Sub-agent failed ({err_cls}): {str(exc)[:300]}\n"
+            "The orchestrator should report this error to the user and note that "
+            "real-time data for this sub-task is unavailable."
+        )
 
     research_result = result.get("result", "No result.")
     sources = result.get("sources", [])

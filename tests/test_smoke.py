@@ -22518,3 +22518,34 @@ def test_orchestrator_build_graph_creates_llm_forced_and_llm_free():
     assert "llm_forced = get_primary_llm" in src
     assert "llm_free = get_primary_llm" in src
     assert "_build_orchestrator_agent_node(llm_forced, llm_free)" in src
+
+
+def test_spawn_researcher_handles_sub_agent_exceptions_gracefully():
+    """spawn_researcher wraps _spawn_researcher_sub_agent in try/except to prevent
+    GraphRecursionError from crashing the orchestrator run."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    # Find spawn_researcher function body
+    fn_start = src.index("async def spawn_researcher(")
+    # Next function starts at fan_out_researchers
+    fn_end = src.index("async def fan_out_researchers(")
+    fn_body = src[fn_start:fn_end]
+    assert "try:" in fn_body
+    assert "except Exception as exc:" in fn_body
+    assert "RESEARCHER ERROR" in fn_body
+
+
+def test_hardware_profile_recursion_limit_sufficient_for_multi_step_research():
+    """mac_m4_mini_16gb default_recursion_limit is >= 25 to support multi-step research tasks."""
+    import pathlib
+
+    src = pathlib.Path("config/hardware_profiles/mac_m4_mini_16gb.yaml").read_text()
+    import re
+
+    m = re.search(r"default_recursion_limit:\s*(\d+)", src)
+    assert m is not None, "default_recursion_limit not found in hardware profile"
+    assert int(m.group(1)) >= 25, (
+        f"default_recursion_limit={m.group(1)} is too low for multi-step research "
+        "(need >= 25 for search → fetch → search → fetch → synthesize)"
+    )
