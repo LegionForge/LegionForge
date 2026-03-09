@@ -123,16 +123,43 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
     # Seed all safeguard fields (step_count, action_history, token_count, …)
     # using the same run_id that was recorded in the tasks table for this run.
-    # Mirror run_researcher(): seed messages with the task as the initial
-    # HumanMessage so the agent_node has a non-empty message list to invoke.
-    from langchain_core.messages import HumanMessage
+    # Include the agent-specific SystemMessage so it is persisted in the
+    # LangGraph checkpoint from step 1 onward — critical for multi-step runs
+    # where the LLM needs the instruction context during synthesis (step 2+).
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    if agent_type == "researcher":
+        from src.agents.researcher import _RESEARCHER_SYSTEM_CONTENT
+
+        initial_messages = [
+            SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT),
+            HumanMessage(content=input_text),
+        ]
+        agent_extra: dict = {}
+    elif agent_type == "orchestrator":
+        from src.agents.orchestrator import _ORCHESTRATOR_SYSTEM_CONTENT
+
+        initial_messages = [
+            SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT),
+            HumanMessage(content=input_text),
+        ]
+        agent_extra = {
+            "sub_agent_results": [],
+            "sequence_so_far": [],
+            "task_token": None,
+            "verify_rounds": 0,
+        }
+    else:
+        initial_messages = [HumanMessage(content=input_text)]
+        agent_extra = {}
 
     initial_state = {
         **SafeguardedState.initial(agent_id=agent_id),
+        **agent_extra,
         "task": input_text,
         "run_id": run_id,
         "user_id": user_id,  # Memory bootstrap: persona context injection
-        "messages": [HumanMessage(content=input_text)],
+        "messages": initial_messages,
     }
 
     # Phase 54: use session thread_id for persistent context across turns

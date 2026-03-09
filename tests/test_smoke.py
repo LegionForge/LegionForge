@@ -10158,6 +10158,29 @@ def test_orchestrator_agent_node_injects_system_message_on_step_1():
     ), "SystemMessage injection guard missing from orchestrator agent_node"
 
 
+def test_gateway_worker_seeds_system_message_in_initial_state():
+    """Gateway worker initial_state includes SystemMessage for researcher and orchestrator.
+
+    Root cause of the multi-step 'No result produced.' bug: the SystemMessage
+    was only injected into a local agent_node copy of state, not into the
+    LangGraph checkpoint.  Step 2 (synthesis) therefore had no instructions.
+    Fix: seed SystemMessage in initial_state in the worker so it persists
+    across all steps in the checkpoint.
+    """
+    import src.gateway.worker as _worker_mod
+
+    src_text = open(_worker_mod.__file__).read()
+    assert (
+        "_RESEARCHER_SYSTEM_CONTENT" in src_text
+    ), "Worker must import and use _RESEARCHER_SYSTEM_CONTENT for initial_state"
+    assert (
+        "_ORCHESTRATOR_SYSTEM_CONTENT" in src_text
+    ), "Worker must import and use _ORCHESTRATOR_SYSTEM_CONTENT for initial_state"
+    # Both must be in SystemMessage(...) wrapping
+    assert src_text.count("SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT)") >= 1
+    assert src_text.count("SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)") >= 1
+
+
 def test_web_fetch_html_stripping_removes_script_and_style():
     """HTML stripping logic in web_fetch removes <script>/<style> blocks, keeps body text."""
     import re
