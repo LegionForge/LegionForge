@@ -22559,3 +22559,34 @@ def test_orchestrator_uses_run_id_as_thread_not_session_thread():
 
     src = pathlib.Path("src/gateway/worker.py").read_text()
     assert 'agent_type != "orchestrator"' in src
+
+
+def test_orchestrator_system_prompt_guides_decomposition_with_fan_out():
+    """Orchestrator system prompt explicitly instructs decomposing multi-part queries
+    into parallel sub-tasks using fan_out_researchers."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "DECOMPOSE" in src
+    assert "fan_out_researchers when sub-tasks are independent" in src
+    assert "atomic sub-tasks" in src
+
+
+def test_researcher_system_prompt_has_tool_budget_rule():
+    """Researcher system prompt includes an explicit tool-call budget (max 6) to
+    prevent runaway fetching that hits the LangGraph recursion limit."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "at most 6 tool calls" in src
+    assert "STOP and write your" in src
+
+
+def test_hardware_profile_recursion_limit_raised_to_40():
+    """mac_m4_mini_16gb default_recursion_limit is >= 40 to support fan-out research."""
+    import pathlib, re
+
+    src = pathlib.Path("config/hardware_profiles/mac_m4_mini_16gb.yaml").read_text()
+    m = re.search(r"default_recursion_limit:\s*(\d+)", src)
+    assert m is not None
+    assert int(m.group(1)) >= 40
