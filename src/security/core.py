@@ -699,10 +699,17 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
             row = await get_tool_registry_entry(tool_id)
             if row is not None:
                 raw_schema = row.get("input_schema", {})
+                if isinstance(raw_schema, str):
+                    try:
+                        raw_schema = json.loads(raw_schema)
+                    except (json.JSONDecodeError, ValueError):
+                        raw_schema = {}
+                elif not isinstance(raw_schema, dict):
+                    raw_schema = {}
                 manifest = ToolManifest(
                     tool_id=tool_id,
                     description=row["description"],
-                    input_schema=raw_schema if isinstance(raw_schema, dict) else {},
+                    input_schema=raw_schema,
                     declared_side_effects=[],
                     source=row.get("source", "local"),
                 )
