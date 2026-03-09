@@ -66,6 +66,25 @@ class OrchestratorState(AgentState):
     verify_rounds: int  # number of self-verification passes taken (Phase 71)
 
 
+# ── Orchestrator system prompt ─────────────────────────────────────────────────
+
+_ORCHESTRATOR_SYSTEM_CONTENT = (
+    "You are an orchestrator agent with two tools:\n"
+    "- spawn_researcher(sub_task): delegate a task to a sub-agent that has "
+    "web search and page-fetch capabilities.\n"
+    "- fan_out_researchers(sub_tasks_json): run multiple independent research "
+    "tasks in parallel (pass a JSON array of task strings).\n\n"
+    "RULES:\n"
+    "1. For ANY task requiring current events, news, real-world data, URLs, "
+    "or information beyond your training cutoff — you MUST call "
+    "spawn_researcher or fan_out_researchers. Never answer from memory.\n"
+    "2. Break complex tasks into focused sub-tasks and delegate each one.\n"
+    "3. Synthesize the sub-agent results into a final answer for the user.\n"
+    "4. If a sub-agent returns an error, report it clearly — never fabricate "
+    "an answer."
+)
+
+
 # ── Token management ───────────────────────────────────────────────────────────
 
 # Policy for the orchestrator's own master token.
@@ -313,6 +332,19 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
             {"step": state["step_count"], "task": state.get("task", "")},
             run_id=state.get("run_id"),
         )
+
+        # Ensure the orchestrator system message is present.
+        # The gateway worker initialises state with only [HumanMessage(task)] — no
+        # SystemMessage — so we inject it here on step 1 if it is absent.
+        step = updates.get("step_count", state.get("step_count", 1))
+        if step == 1 and not any(
+            isinstance(m, SystemMessage) for m in state.get("messages", [])
+        ):
+            state = {
+                **state,
+                "messages": [SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)]
+                + list(state["messages"]),
+            }
 
         try:
             clean_messages = sanitize_messages(state["messages"])
@@ -641,23 +673,7 @@ async def run_orchestrator(
         "sequence_so_far": [],
         "task_token": master_token,
         "messages": [
-            SystemMessage(
-                content=(
-                    "You are an orchestrator agent with two tools:\n"
-                    "- spawn_researcher(sub_task): delegate a task to a sub-agent that has "
-                    "web search and page-fetch capabilities.\n"
-                    "- fan_out_researchers(sub_tasks_json): run multiple independent research "
-                    "tasks in parallel (pass a JSON array of task strings).\n\n"
-                    "RULES:\n"
-                    "1. For ANY task requiring current events, news, real-world data, URLs, "
-                    "or information beyond your training cutoff — you MUST call "
-                    "spawn_researcher or fan_out_researchers. Never answer from memory.\n"
-                    "2. Break complex tasks into focused sub-tasks and delegate each one.\n"
-                    "3. Synthesize the sub-agent results into a final answer for the user.\n"
-                    "4. If a sub-agent returns an error, report it clearly rather than "
-                    "fabricating an answer."
-                )
-            ),
+            SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT),
             HumanMessage(content=task),
         ],
         "verify_rounds": 0,  # Phase 71 — self-verification pass counter

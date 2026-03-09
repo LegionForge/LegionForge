@@ -10114,6 +10114,50 @@ def test_researcher_initial_messages_start_with_system_message():
     )
 
 
+def test_orchestrator_initial_messages_start_with_system_message():
+    """run_orchestrator() builds a messages list that starts with SystemMessage."""
+    import inspect
+    import src.agents.orchestrator as _orchestrator_mod
+    from src.agents.orchestrator import run_orchestrator
+
+    src = inspect.getsource(run_orchestrator)
+
+    # The SystemMessage must appear in the messages list before HumanMessage
+    system_pos = src.find("SystemMessage(")
+    human_pos = src.find("HumanMessage(content=task)")
+    assert system_pos != -1, "SystemMessage not found in run_orchestrator source"
+    assert (
+        human_pos != -1
+    ), "HumanMessage(content=task) not found in run_orchestrator source"
+    assert system_pos < human_pos, (
+        "SystemMessage must come before HumanMessage in the messages list "
+        f"(positions: system={system_pos}, human={human_pos})"
+    )
+
+    # Confirm the anti-hallucination instruction text is present — either inline
+    # or in the module-level _ORCHESTRATOR_SYSTEM_CONTENT constant.
+    system_content = getattr(_orchestrator_mod, "_ORCHESTRATOR_SYSTEM_CONTENT", "")
+    combined = src.lower() + system_content.lower()
+    assert "fabricate" in combined, (
+        "Anti-hallucination instruction ('fabricate') not found in "
+        "run_orchestrator source or _ORCHESTRATOR_SYSTEM_CONTENT"
+    )
+
+
+def test_orchestrator_agent_node_injects_system_message_on_step_1():
+    """agent_node in orchestrator injects SystemMessage when absent (gateway worker path)."""
+    import src.agents.orchestrator as _orchestrator_mod
+
+    src_text = open(_orchestrator_mod.__file__).read()
+    assert (
+        "_ORCHESTRATOR_SYSTEM_CONTENT" in src_text
+    ), "_ORCHESTRATOR_SYSTEM_CONTENT constant missing from orchestrator.py"
+    # Injection guard must check for missing SystemMessage
+    assert (
+        "isinstance(m, SystemMessage)" in src_text
+    ), "SystemMessage injection guard missing from orchestrator agent_node"
+
+
 def test_web_fetch_html_stripping_removes_script_and_style():
     """HTML stripping logic in web_fetch removes <script>/<style> blocks, keeps body text."""
     import re
