@@ -22549,3 +22549,13 @@ def test_hardware_profile_recursion_limit_sufficient_for_multi_step_research():
         f"default_recursion_limit={m.group(1)} is too low for multi-step research "
         "(need >= 25 for search → fetch → search → fetch → synthesize)"
     )
+
+
+def test_orchestrator_uses_run_id_as_thread_not_session_thread():
+    """orchestrator always uses run_id as LangGraph thread_id — never the session thread.
+    Inheriting session checkpoints compounds failure history across retries, causing
+    the synthesis LLM to anchor on stale 'previous attempts failed' context."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/worker.py").read_text()
+    assert 'agent_type != "orchestrator"' in src

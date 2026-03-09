@@ -162,9 +162,14 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         "messages": initial_messages,
     }
 
-    # Phase 54: use session thread_id for persistent context across turns
+    # Phase 54: use session thread_id for persistent context across turns.
+    # EXCEPTION — orchestrator: it is stateless by design (delegates to fresh researcher
+    # instances every turn). Inheriting session checkpoints causes accumulated failure
+    # history from retried queries to pollute the synthesis context, leading to confused
+    # "I understand my previous attempts failed" output. The orchestrator always gets a
+    # fresh thread (run_id) so its LangGraph state is clean per task.
     session_id = task.get("session_id")
-    if session_id:
+    if session_id and agent_type != "orchestrator":
         from src.database import get_session as _db_get_session, increment_session_turn
 
         _sess = await _db_get_session(session_id, task["user_id"])
