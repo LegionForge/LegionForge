@@ -22461,3 +22461,41 @@ def test_ui_stream_token_null_guard():
     src = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "data.stream_token || null" in src
     assert "pollTaskUntilComplete(taskId" in src
+
+
+def test_detect_tool_outcomes_helper_exists():
+    """_detect_tool_outcomes is defined in researcher.py and counts skipped vs real ToolMessages."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "def _detect_tool_outcomes(" in src
+    assert "[TOOL SKIPPED]" in src
+    assert "skipped" in src and "real" in src
+
+
+def test_finalizer_checks_unverified_data_marker():
+    """finalizer_node strips [UNVERIFIED DATA] and prepends a prominent warning."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert '"[UNVERIFIED DATA]" in result' in src
+    assert "WARNING: Model memory" in src
+
+
+def test_finalizer_warns_when_all_tools_blocked():
+    """finalizer_node adds a WARNING prefix when all tool calls were sandboxed."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "skipped > 0 and real == 0" in src
+    assert "WARNING: All real-time lookups were blocked" in src
+
+
+def test_finalizer_notes_partial_tool_block():
+    """finalizer_node adds a NOTE prefix when some (not all) tool calls were blocked."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "skipped > 0" in src
+    assert "NOTE:" in src
+    assert "real-time lookup(s) were blocked" in src

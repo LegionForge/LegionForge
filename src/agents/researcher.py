@@ -440,6 +440,24 @@ def _format_tool_fallback(raw: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _detect_tool_outcomes(messages: list) -> tuple[int, int]:
+    """Scan messages and return (skipped_count, real_result_count).
+
+    skipped_count — ToolMessages containing '[TOOL SKIPPED]' (Guardian sandboxed)
+    real_result_count — ToolMessages with genuine content (tool ran successfully)
+    """
+    skipped = 0
+    real = 0
+    for msg in messages:
+        if hasattr(msg, "type") and msg.type == "tool":
+            content = str(msg.content) if msg.content else ""
+            if "[TOOL SKIPPED]" in content:
+                skipped += 1
+            elif content.strip():
+                real += 1
+    return skipped, real
+
+
 def _describe_llm_error(exc: Exception) -> str:
     """Return a user-readable description of a node-level exception."""
     msg = str(exc)
@@ -511,6 +529,37 @@ async def finalizer_node(state: ResearcherState) -> dict:
                     break
         if not result.strip():
             result = "No result produced."
+
+    # Hallucination grounding check — runs after result is extracted so it applies
+    # even to non-force_end paths.  Detect when the LLM synthesised from memory
+    # because real-time tool calls were blocked by Guardian.
+    if not state.get("force_end"):
+        skipped, real = _detect_tool_outcomes(messages)
+        if "[UNVERIFIED DATA]" in result:
+            # LLM obeyed the [TOOL SKIPPED] instruction and self-flagged.
+            # Strip the inline marker and prepend a prominent, consistent warning.
+            clean = result.replace("[UNVERIFIED DATA]", "").strip()
+            result = (
+                "[WARNING: Model memory — not live data] "
+                "Real-time lookups were blocked. "
+                "This response comes from training data and may be outdated.\n\n"
+                + clean
+            )
+        elif skipped > 0 and real == 0:
+            # All tool calls were sandboxed; any synthesis is necessarily from
+            # training data.  The LLM did not self-flag, so we flag explicitly.
+            result = (
+                "[WARNING: All real-time lookups were blocked by the security "
+                "policy. This response comes from model training data, not live "
+                "information.]\n\n" + result
+            )
+        elif skipped > 0:
+            # Mixed outcome: some tools ran, some were blocked.
+            result = (
+                f"[NOTE: {skipped} real-time lookup(s) were blocked. "
+                "Parts of this response may come from model memory rather than "
+                "live data.]\n\n" + result
+            )
 
     log_agent_event(
         "run_end",
