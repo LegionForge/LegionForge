@@ -245,7 +245,34 @@ async def agent_node(state: AgentState) -> dict:
         error_updates = record_error(state, e, context="agent_node")
         updates.update(error_updates)
         logger.exception(f"Error in agent_node: {e}")
+        # Add an AIMessage so the finalizer has a meaningful last message
+        # (without this, the finalizer would see the HumanMessage and echo it
+        # back as the "result", which is deeply confusing to the user).
+        updates["messages"] = [AIMessage(content=_describe_llm_error(e))]
         return updates
+
+
+def _describe_llm_error(exc: Exception) -> str:
+    """Return a user-readable description of a node-level exception."""
+    msg = str(exc)
+    lowered = msg.lower()
+    cls = type(exc).__name__
+    if "connection refused" in lowered or "connecterror" in cls.lower():
+        return (
+            "[Agent error] Could not reach the AI model. "
+            "Make sure Ollama is running: `brew services start ollama`"
+        )
+    if "timeout" in lowered or "timed out" in lowered:
+        return (
+            "[Agent error] The AI model timed out. "
+            "The model may still be loading — try again in a moment."
+        )
+    if "model" in lowered and ("not found" in lowered or "pull" in lowered):
+        return (
+            f"[Agent error] Model not available: {msg[:120]}. "
+            "Run `ollama pull <model>` to download it."
+        )
+    return f"[Agent error] {cls}: {msg[:200]}"
 
 
 async def finalizer_node(state: AgentState) -> dict:
@@ -255,17 +282,47 @@ async def finalizer_node(state: AgentState) -> dict:
     """
     messages = state.get("messages", [])
     result = ""
-    if messages:
-        last = messages[-1]
-        result = last.content if isinstance(last.content, str) else str(last.content)
-    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
-    if not result.strip():
-        for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
-                result = str(msg.content)
-                break
-    if not result.strip():
-        result = "No result produced."
+
+    # When force_end was set by a safeguard, explain why rather than returning
+    # a cryptic "No result produced." or echoing back the task input.
+    if state.get("force_end"):
+        if state.get("loop_detected"):
+            result = (
+                "The agent detected a repeated action loop and stopped early. "
+                "Try rephrasing your query or asking for something more specific."
+            )
+        elif state.get("error_count", 0) >= settings.safeguards.max_errors_per_run:
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and str(msg.content).startswith(
+                    "[Agent error]"
+                ):
+                    result = str(msg.content)
+                    break
+            if not result:
+                result = (
+                    "The agent encountered too many errors and stopped. "
+                    "Check that Ollama is running and the correct model is loaded."
+                )
+        elif state.get("token_count", 0) >= settings.safeguards.default_token_budget:
+            result = (
+                "The task hit the token budget limit and was stopped early. "
+                "Try a more specific query."
+            )
+
+    if not result:
+        if messages:
+            last = messages[-1]
+            result = (
+                last.content if isinstance(last.content, str) else str(last.content)
+            )
+        # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+        if not result.strip():
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                    result = str(msg.content)
+                    break
+        if not result.strip():
+            result = "No result produced."
 
     log_agent_event(
         "run_end",

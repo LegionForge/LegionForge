@@ -194,6 +194,34 @@ RESEARCHER_TOOLS = [
     memory_recall,
 ]
 
+# System message injected at the start of every researcher run — regardless of
+# whether the agent is invoked via run_researcher() or the gateway worker.
+# The worker path initialises state with only [HumanMessage(task)], so without
+# this constant being injected in agent_node the LLM runs with no tool
+# instructions and produces empty output.
+_RESEARCHER_SYSTEM_CONTENT = (
+    "You are a research assistant. You have these tools:\n"
+    "- web_search(query): search the web for current information.\n"
+    "- web_fetch(url): fetch a plain web page (fast, for simple/static pages).\n"
+    "- web_fetch_js(url): fetch a page that requires JavaScript (use for news sites,\n"
+    "  social media, modern SPAs — CNN, BBC, Reddit, etc.).\n"
+    "- document_summarize(text): summarise long text.\n\n"
+    "STRICT RULES:\n"
+    "1. On your FIRST response, call a tool to gather real data. NEVER answer from\n"
+    "   memory or fabricate any URLs, headlines, facts, prices, or live information.\n"
+    "2. After you have received tool results, write your FINAL answer immediately.\n"
+    "   Use ALL the information from the tool results. Do not call more tools unless\n"
+    "   the results are completely empty or you are missing critical information.\n"
+    "3. Your final answer MUST be a complete, structured response — use markdown\n"
+    "   tables and bullet lists when comparing multiple items or presenting options.\n"
+    "4. Do NOT write Python code, shell commands, or any scripts. Call tools directly.\n"
+    "5. For news sites (CNN, BBC, Reuters, etc.) or any modern website, use\n"
+    "   web_fetch_js — plain web_fetch will return empty content on JS-heavy pages.\n"
+    "6. If asked for a URL, call web_fetch or web_fetch_js on it immediately.\n"
+    "7. If a tool returns an error or no results, say so clearly and provide your\n"
+    "   best answer based on what you do know, clearly labelled as approximate."
+)
+
 
 # ── Tool manifests ────────────────────────────────────────────────────────────
 
@@ -290,6 +318,19 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
         step = updates.get("step_count", state.get("step_count", 1))
         llm_with_tools = llm_forced if step <= 1 else llm_free
 
+        # Ensure the researcher system message is present.
+        # The gateway worker initialises state with only [HumanMessage(task)] — no
+        # SystemMessage — so we inject it here on step 1 if it is absent.
+        # run_researcher() already adds it; the injection is idempotent (checks first).
+        if step == 1 and not any(
+            isinstance(m, SystemMessage) for m in state.get("messages", [])
+        ):
+            state = {
+                **state,
+                "messages": [SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT)]
+                + list(state["messages"]),
+            }
+
         log_agent_event(
             "llm_call",
             "researcher",
@@ -350,26 +391,126 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
             error_updates = record_error(state, e, context="researcher/agent_node")
             updates.update(error_updates)
             logger.exception(f"Error in researcher agent_node: {e}")
+            # Add an AIMessage so the finalizer has a meaningful last message
+            # (without this, the finalizer would see the HumanMessage / last tool
+            # result and echo it back as the "result", which is deeply confusing).
+            updates["messages"] = [AIMessage(content=_describe_llm_error(e))]
             return updates
 
     return agent_node
+
+
+def _format_tool_fallback(raw: str) -> str:
+    """
+    Format raw tool output for display when the LLM synthesis step returned empty.
+    Attempts to parse search result JSON and present it as readable markdown.
+    Falls back to returning raw content if it's not a list of search results.
+    """
+    import json
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw  # Not JSON — return as-is (e.g. web_fetch plain text)
+
+    if not isinstance(data, list) or not data:
+        return raw
+
+    # Check for search result shape: list of dicts with title/snippet/url
+    if not isinstance(data[0], dict):
+        return raw
+
+    lines = [
+        "*(The AI could not synthesise these results — showing raw search output)*\n"
+    ]
+    for i, item in enumerate(data[:8], 1):
+        if "error" in item:
+            lines.append(f"**Search error:** {item.get('snippet', item['error'])}")
+            continue
+        title = item.get("title", "").strip()
+        url = item.get("url", "").strip()
+        snippet = item.get("snippet", "").strip()
+        if title:
+            lines.append(f"**{i}. {title}**")
+        if url:
+            lines.append(f"<{url}>")
+        if snippet:
+            lines.append(snippet)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _describe_llm_error(exc: Exception) -> str:
+    """Return a user-readable description of a node-level exception."""
+    msg = str(exc)
+    lowered = msg.lower()
+    cls = type(exc).__name__
+    if "connection refused" in lowered or "connecterror" in cls.lower():
+        return (
+            "[Agent error] Could not reach the AI model. "
+            "Make sure Ollama is running: `brew services start ollama`"
+        )
+    if "timeout" in lowered or "timed out" in lowered:
+        return (
+            "[Agent error] The AI model timed out. "
+            "The model may still be loading — try again in a moment."
+        )
+    if "model" in lowered and ("not found" in lowered or "pull" in lowered):
+        return (
+            f"[Agent error] Model not available: {msg[:120]}. "
+            "Run `ollama pull <model>` to download it."
+        )
+    return f"[Agent error] {cls}: {msg[:200]}"
 
 
 async def finalizer_node(state: ResearcherState) -> dict:
     """Extract final result from last message."""
     messages = state.get("messages", [])
     result = ""
-    if messages:
-        last = messages[-1]
-        result = last.content if isinstance(last.content, str) else str(last.content)
-    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
-    if not result.strip():
-        for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
-                result = str(msg.content)
-                break
-    if not result.strip():
-        result = "No result produced."
+
+    # When force_end was set by a safeguard, explain why rather than returning
+    # a cryptic "No result produced." or echoing back the task input.
+    if state.get("force_end"):
+        if state.get("loop_detected"):
+            result = (
+                "The agent detected a repeated action loop and stopped early. "
+                "Try rephrasing your query or asking for something more specific."
+            )
+        elif state.get("error_count", 0) >= settings.safeguards.max_errors_per_run:
+            # Surface the last error AIMessage if one was added by the except block
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and str(msg.content).startswith(
+                    "[Agent error]"
+                ):
+                    result = str(msg.content)
+                    break
+            if not result:
+                result = (
+                    "The agent encountered too many errors and stopped. "
+                    "Check that Ollama is running and the correct model is loaded."
+                )
+        elif state.get("token_count", 0) >= settings.safeguards.default_token_budget:
+            result = (
+                "The task hit the token budget limit and was stopped early. "
+                "Try a more specific query."
+            )
+
+    if not result:
+        if messages:
+            last = messages[-1]
+            result = (
+                last.content if isinstance(last.content, str) else str(last.content)
+            )
+        # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+        # Format search results as readable text rather than raw JSON.
+        if not result.strip():
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                    raw = str(msg.content)
+                    result = _format_tool_fallback(raw)
+                    break
+        if not result.strip():
+            result = "No result produced."
 
     log_agent_event(
         "run_end",
@@ -556,24 +697,7 @@ async def run_researcher(
         "sequence_so_far": [],
         "task_token": task_token,
         "messages": [
-            SystemMessage(
-                content=(
-                    "You are a research assistant. You have these tools:\n"
-                    "- web_search(query): search the web for current information.\n"
-                    "- web_fetch(url): fetch a plain web page (fast, for simple/static pages).\n"
-                    "- web_fetch_js(url): fetch a page that requires JavaScript (use for news sites,\n"
-                    "  social media, modern SPAs — CNN, BBC, Reddit, etc.).\n"
-                    "- document_summarize(text): summarise long text.\n\n"
-                    "STRICT RULES:\n"
-                    "1. ALWAYS call a tool to get real data. NEVER answer from memory or fabricate\n"
-                    "   any URLs, headlines, facts, prices, or live information.\n"
-                    "2. Do NOT write Python code, shell commands, or any scripts. Call tools directly.\n"
-                    "3. For news sites (CNN, BBC, Reuters, etc.) or any modern website, use\n"
-                    "   web_fetch_js — plain web_fetch will return empty content on JS-heavy pages.\n"
-                    "4. If asked for a URL, call web_fetch or web_fetch_js on it immediately.\n"
-                    "5. If a tool returns an error or no results, report that clearly."
-                )
-            ),
+            SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT),
             HumanMessage(content=task),
         ],
     }

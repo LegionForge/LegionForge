@@ -5330,7 +5330,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
     try {
       const d = JSON.parse(e.data);
-      finishRun('error', d.error || 'Unknown error', taskId, agent, taskInput, 0);
+      finishRun('error', d.user_message || d.error || 'Unknown error', taskId, agent, taskInput, 0);
     } catch(_) { finishRun('error', 'Stream error', taskId, agent, taskInput, 0); }
     es.close();
     S.activeES = null;
@@ -5415,6 +5415,29 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   };
 }
 
+// ── Friendly error translation (client-side fallback for REST responses) ──────
+// SSE task_error events carry a server-side user_message; this covers the
+// polling/REST path where only the raw error string is available.
+const _ERROR_HINTS = [
+  ['connection refused',   'Could not reach the AI model. Make sure Ollama is running.'],
+  ['connecterror',         'Could not reach the AI model. Make sure Ollama is running.'],
+  ['timeout',              'The AI model timed out. It may still be loading — try again.'],
+  ['timed out',            'The AI model timed out. It may still be loading — try again.'],
+  ['model not found',      'The requested model is not available. Run `ollama pull <model>`.'],
+  ['daily budget',         'Daily token budget exceeded. Try again tomorrow or contact an admin.'],
+  ['preflight budget',     'This request exceeds your remaining token budget for today.'],
+  ['injection detected',   'Request blocked: a security pattern was detected in the input.'],
+  ['recursionerror',       'The agent hit its step limit. Try a more specific query.'],
+];
+function friendlyError(raw) {
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+  for (const [key, msg] of _ERROR_HINTS) {
+    if (low.includes(key)) return msg;
+  }
+  return raw;
+}
+
 // ── Fetch task result ─────────────────────────────────────────────
 async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
   if (S.activeES) { S.activeES.close(); S.activeES = null; }
@@ -5443,7 +5466,7 @@ async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
       appendResult(resultText.trim());
     }
     if (data.status === 'failed') {
-      finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
+      finishRun('error', data.user_message || friendlyError(data.error) || 'Task failed', taskId, agent, taskInputText, tokens);
     } else if (data.status === 'cancelled') {
       finishRun('cancelled', 'Task cancelled', taskId, agent, taskInputText, tokens);
     } else {

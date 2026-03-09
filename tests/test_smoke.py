@@ -10087,6 +10087,7 @@ def test_p54_worker_uses_session_thread_id():
 def test_researcher_initial_messages_start_with_system_message():
     """run_researcher() builds a messages list that starts with SystemMessage."""
     import inspect
+    import src.agents.researcher as _researcher_mod
     from src.agents.researcher import run_researcher
 
     src = inspect.getsource(run_researcher)
@@ -10103,12 +10104,14 @@ def test_researcher_initial_messages_start_with_system_message():
         f"(positions: system={system_pos}, human={human_pos})"
     )
 
-    # Confirm the anti-hallucination instruction text is present
-    assert (
-        "never fabricate" in src.lower()
-        or "do not fabricate" in src.lower()
-        or "fabricate" in src.lower()
-    ), "Anti-hallucination instruction ('fabricate') not found in run_researcher system prompt"
+    # Confirm the anti-hallucination instruction text is present — either inline
+    # or in the module-level _RESEARCHER_SYSTEM_CONTENT constant.
+    system_content = getattr(_researcher_mod, "_RESEARCHER_SYSTEM_CONTENT", "")
+    combined = src.lower() + system_content.lower()
+    assert "fabricate" in combined, (
+        "Anti-hallucination instruction ('fabricate') not found in "
+        "run_researcher source or _RESEARCHER_SYSTEM_CONTENT"
+    )
 
 
 def test_web_fetch_html_stripping_removes_script_and_style():
