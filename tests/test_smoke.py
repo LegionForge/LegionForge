@@ -22499,3 +22499,22 @@ def test_finalizer_notes_partial_tool_block():
     assert "skipped > 0" in src
     assert "NOTE:" in src
     assert "real-time lookup(s) were blocked" in src
+
+
+def test_orchestrator_agent_node_uses_llm_forced_on_step_1():
+    """orchestrator agent_node uses tool_choice='required' LLM on step 1 to prevent memory hallucination."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'tool_choice="required"' in src
+    assert "llm_forced if step <= 1 else llm_free" in src
+
+
+def test_orchestrator_build_graph_creates_llm_forced_and_llm_free():
+    """build_orchestrator_graph creates both llm_forced and llm_free LLM bindings."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "llm_forced = get_primary_llm" in src
+    assert "llm_free = get_primary_llm" in src
+    assert "_build_orchestrator_agent_node(llm_forced, llm_free)" in src

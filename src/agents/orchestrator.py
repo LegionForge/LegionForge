@@ -315,8 +315,14 @@ async def register_orchestrator_tools() -> None:
 # ── Graph nodes ────────────────────────────────────────────────────────────────
 
 
-def _build_orchestrator_agent_node(llm_with_tools: Any):
-    """Build the orchestrator agent_node with pre-bound LLM."""
+def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
+    """Build the orchestrator agent_node with pre-bound LLMs.
+
+    llm_forced: bound with tool_choice="required" — used on step 1 to prevent
+                the orchestrator from answering from training data instead of
+                delegating to a researcher sub-agent.
+    llm_free:   standard binding — used on step 2+ for synthesis.
+    """
 
     async def agent_node(state: OrchestratorState) -> dict:
         updates = increment_step(state)
@@ -326,17 +332,25 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
         if state.get("force_end"):
             return updates
 
+        # After increment_step, step_count reflects the current step number.
+        # Use the forced LLM on the first step only.
+        step = updates.get("step_count", state.get("step_count", 1))
+        llm_with_tools = llm_forced if step <= 1 else llm_free
+
         log_agent_event(
             "llm_call",
             "orchestrator",
-            {"step": state["step_count"], "task": state.get("task", "")},
+            {
+                "step": state["step_count"],
+                "task": state.get("task", ""),
+                "forced": step <= 1,
+            },
             run_id=state.get("run_id"),
         )
 
         # Ensure the orchestrator system message is present.
         # The gateway worker initialises state with only [HumanMessage(task)] — no
         # SystemMessage — so we inject it here on step 1 if it is absent.
-        step = updates.get("step_count", state.get("step_count", 1))
         if step == 1 and not any(
             isinstance(m, SystemMessage) for m in state.get("messages", [])
         ):
@@ -537,10 +551,16 @@ def route_after_verify(state: OrchestratorState) -> str:
 
 def build_orchestrator_graph() -> StateGraph:
     """Build the orchestrator graph (uncompiled). Bind tools to LLM here."""
-    llm = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
+    # Step 1 uses tool_choice="required" so the orchestrator always delegates to
+    # a researcher sub-agent rather than answering from training data.
+    # Step 2+ uses the free binding for synthesis (no forced tool call).
+    llm_forced = get_primary_llm(temperature=0.1).bind_tools(
+        ORCHESTRATOR_TOOLS, tool_choice="required"
+    )
+    llm_free = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
     llm_plain = get_primary_llm(temperature=0.0)  # verifier — no tools needed
     tool_node = SecureToolNode(ORCHESTRATOR_TOOLS)
-    agent_node = _build_orchestrator_agent_node(llm)
+    agent_node = _build_orchestrator_agent_node(llm_forced, llm_free)
     verify_node = _build_verify_node(llm_plain)  # Phase 71
 
     graph = StateGraph(OrchestratorState)

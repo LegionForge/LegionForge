@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 287
+UPDATE: 290
 BRANCH: dev
-COMMIT: 6ff7eea
-TIMESTAMP: 2026-03-08T20:26Z
-LAST_OP: doc sync (2106 counts, qwen2.5:7b, 5-role DB) + sync-guardian jp-cruz→jp-cruz authorship rewrite fix
-SMOKE_TESTS: 2106/2106
+COMMIT: 0a1513a
+TIMESTAMP: 2026-03-09T04:35Z
+LAST_OP: fix: seed SystemMessage in gateway worker initial_state — root cause of multi-step "No result produced."
+SMOKE_TESTS: 2109/2109
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
