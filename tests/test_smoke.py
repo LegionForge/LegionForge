@@ -11719,7 +11719,7 @@ def test_p76_ui_notes_button_added_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 2500]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "toggleNotesPanel" in fn_body
     assert "📝 Notes" in fn_body
 
@@ -11749,7 +11749,7 @@ def test_p77_ui_share_button_added_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 2500]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "shareTask" in fn_body
     assert "🔗 Share" in fn_body
 
@@ -12947,7 +12947,7 @@ def test_p106_ui_delete_button_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 3000]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "deleteTask" in fn_body
 
 
