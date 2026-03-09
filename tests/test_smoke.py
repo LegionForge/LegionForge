@@ -22591,3 +22591,18 @@ def test_hardware_profile_recursion_limit_raised_to_40():
     m = re.search(r"default_recursion_limit:\s*(\d+)", src)
     assert m is not None
     assert int(m.group(1)) >= 40
+
+
+def test_orchestrator_agent_node_retries_with_correction_when_no_tool_calls():
+    """agent_node retries with an explicit correction HumanMessage when step 1 produces
+    no tool_calls — guards against tool_choice=required being silently ignored by Ollama.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.index("async def agent_node(state: OrchestratorState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "no_tool_calls_on_step_1" in fn_body
+    assert "correction" in fn_body
+    assert "spawn_researcher or fan_out_researchers right now" in fn_body

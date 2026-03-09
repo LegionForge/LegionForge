@@ -400,6 +400,43 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
                 run_id=state.get("run_id"),
             )
 
+            # Enforcement: if tool_choice="required" was silently ignored by the
+            # model (Ollama/qwen2.5 returns empty content with no tool_calls),
+            # retry once with an explicit correction message so the orchestrator
+            # always delegates rather than synthesising from memory.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                logger.warning(
+                    "[orchestrator] Step 1 produced no tool_calls — "
+                    "retrying with explicit correction message"
+                )
+                log_agent_event(
+                    "tool_call_retry",
+                    "orchestrator",
+                    {"step": step, "reason": "no_tool_calls_on_step_1"},
+                    run_id=state.get("run_id"),
+                )
+                correction = clean_messages + [
+                    response,
+                    HumanMessage(
+                        content=(
+                            "You did not call a tool. You MUST call "
+                            "spawn_researcher or fan_out_researchers right now. "
+                            "Do not write any text — call a tool immediately."
+                        )
+                    ),
+                ]
+                response = await llm_free.ainvoke(correction)
+                log_agent_event(
+                    "llm_response",
+                    "orchestrator",
+                    {
+                        "step": step,
+                        "content": str(response.content)[:200],
+                        "retry": True,
+                    },
+                    run_id=state.get("run_id"),
+                )
+
             updates["messages"] = [response]
             return updates
 
