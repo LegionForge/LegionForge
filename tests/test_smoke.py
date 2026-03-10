@@ -22744,3 +22744,33 @@ def test_claude_md_has_working_with_claude_section():
     assert "Working with Claude" in src
     assert "test plan" in src
     assert "mock_llm_no_tool_calls" in src
+
+
+def test_secure_tool_node_has_alias_map():
+    """SecureToolNode builds an underscore-stripped alias map at construction so
+    qwen2.5 tool name normalisation ('spawnresearcher' → 'spawn_researcher') works.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_alias_map" in src
+    assert 'replace("_", "")' in src or "replace('_', '')" in src
+
+
+def test_secure_tool_node_normalises_before_registry_check():
+    """SecureToolNode normalises tool names from the message before security checks
+    and before passing state to the inner ToolNode — both must see the canonical name.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    # Normalisation must happen before the tool_calls loop (at message level)
+    alias_pos = src.index("_alias_map")
+    norm_pos = src.index("needs_rewrite")
+    loop_pos = src.index("for tc in tool_calls:")
+    assert (
+        norm_pos < loop_pos
+    ), "normalisation must happen before the security check loop"
+    assert (
+        "model_copy" in src[norm_pos:loop_pos]
+    ), "message must be rewritten with canonical names"

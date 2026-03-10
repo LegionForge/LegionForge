@@ -674,12 +674,51 @@ class SecureToolNode:
 
         self._inner = ToolNode(tools)
         self._tool_names = {t.name for t in tools}
+        # Alias map: underscore-stripped name → canonical name.
+        # qwen2.5 (and some other local models) sometimes emit tool call names
+        # without underscores (e.g. "spawnresearcher" instead of "spawn_researcher").
+        # We normalise before the registry check so a stripped name maps back to
+        # its canonical registered form — without loosening actual security checks.
+        self._alias_map: dict[str, str] = {
+            n.replace("_", ""): n for n in self._tool_names
+        }
 
     async def __call__(self, state: AgentState, config=None) -> dict:
         result: dict = {}
 
         # Extract tool calls from the last AI message
         last_msg = state["messages"][-1] if state["messages"] else None
+        raw_tool_calls = getattr(last_msg, "tool_calls", None) or []
+
+        # Normalise tool names: some local models (e.g. qwen2.5) emit tool call
+        # names without underscores ("spawnresearcher" vs "spawn_researcher").
+        # Rewrite to canonical names so both the security registry check and the
+        # inner ToolNode lookup succeed with the same name.
+        needs_rewrite = any(
+            (tc["name"] if isinstance(tc, dict) else tc.name) in self._alias_map
+            for tc in raw_tool_calls
+        )
+        if needs_rewrite:
+            normalised_tcs = []
+            for tc in raw_tool_calls:
+                raw_name = tc["name"] if isinstance(tc, dict) else tc.name
+                canonical = self._alias_map.get(raw_name, raw_name)
+                if canonical != raw_name:
+                    logger.warning(
+                        "[SecureToolNode] Normalised tool name %r → %r "
+                        "(model dropped underscores)",
+                        raw_name,
+                        canonical,
+                    )
+                    tc = dict(tc) if isinstance(tc, dict) else tc
+                    if isinstance(tc, dict):
+                        tc = {**tc, "name": canonical}
+                    else:
+                        tc = tc.model_copy(update={"name": canonical})
+                normalised_tcs.append(tc)
+            last_msg = last_msg.model_copy(update={"tool_calls": normalised_tcs})
+            state = {**state, "messages": [*state["messages"][:-1], last_msg]}
+
         tool_calls = getattr(last_msg, "tool_calls", None) or []
 
         # Sequence tracking for Guardian
