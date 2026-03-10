@@ -15,7 +15,7 @@ built with the security foundations OpenClaw proved are necessary.
 
 ## What OpenClaw Showed Us
 
-OpenClaw (Clawdbot → Moltbot → OpenClaw, by Peter Steinberger) hit 60,000 GitHub stars
+OpenClaw (Clawd → Clawdbot → Moltbot → OpenClaw, by Peter Steinberger) hit 60,000 GitHub stars
 in 72 hours in January 2026. 300,000–400,000 users in weeks. The demand is real.
 
 It also had 512 vulnerabilities (8 critical) found by Kaspersky. Cisco found active data

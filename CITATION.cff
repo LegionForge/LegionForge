@@ -37,17 +37,23 @@ keywords:
 
 references:
   - type: software
-    title: "OpenClaw (née Clawdbot / Moltbot)"
+    title: "OpenClaw (née Clawd / Clawdbot / Moltbot)"
     authors:
       - family-names: Steinberger
         given-names: Peter
-    url: "https://github.com/openClaw"
+        alias: "steipete"
+        website: "https://github.com/steipete"
+    url: "https://github.com/openclaw/openclaw"
+    website: "https://openclaw.ai"
     notes: >
-      Primary inspiration for LegionForge. Proved the demand for self-hosted
-      agent systems and the architectural patterns that work. Also proved the
-      cost of shipping security as an afterthought — 512 post-release
-      vulnerabilities and active data exfiltration in third-party skills were
-      the direct motivation for LegionForge's security-first design.
+      Primary inspiration for LegionForge. Name evolution: Clawd (Nov 2025)
+      → Clawdbot (Nov 2025, open-sourced) → Moltbot (Jan 27 2026) →
+      OpenClaw (Jan 30 2026). Proved the demand for self-hosted agent
+      systems (60K GitHub stars in 72 hours) and the architectural patterns
+      that work. Also proved the cost of shipping security as an afterthought
+      — 512 post-release vulnerabilities and active data exfiltration in
+      third-party skills were the direct motivation for LegionForge's
+      security-first design.
 
   - type: software
     title: "LangGraph"

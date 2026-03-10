@@ -305,7 +305,7 @@ make revoke-tool TOOL_ID=<id>   # Emergency tool revocation
 
 LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
-**[OpenClaw](https://github.com/openClaw)** (Peter Steinberger — née Clawdbot → Moltbot → OpenClaw) — the primary inspiration for LegionForge. Proved the demand (60,000 GitHub stars in 72 hours), proved the architecture (six-component structure, workspace-as-files memory), and proved what happens when security is an afterthought (512 vulnerabilities, active data exfiltration in third-party skills). LegionForge is building in the opposite order: security first, product on top.
+**[OpenClaw](https://github.com/openclaw/openclaw)** (Peter Steinberger — née Clawd → Clawdbot → Moltbot → OpenClaw) — the primary inspiration for LegionForge. Proved the demand (60,000 GitHub stars in 72 hours), proved the architecture (six-component structure, workspace-as-files memory), and proved what happens when security is an afterthought (512 vulnerabilities, active data exfiltration in third-party skills). LegionForge is building in the opposite order: security first, product on top.
 
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. Checkpoint-based state persistence, loop protection, and graph resumption are LangGraph primitives that LegionForge builds on heavily.
 

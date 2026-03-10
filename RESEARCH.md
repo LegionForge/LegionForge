@@ -458,7 +458,7 @@ These risks are real, partially or fully unsolvable with current tooling, and ar
 
 ### Ecosystem Context (as of Feb 2026)
 
-- OpenClaw (formerly Clawdbot/Moltbot) — 100K+ GitHub stars, going to open-source foundation; CVE-2026-25253 (CVSS 8.8) public
+- OpenClaw (formerly Clawd/Clawdbot/Moltbot, by Peter Steinberger — github.com/openclaw/openclaw, openclaw.ai) — 100K+ GitHub stars, going to open-source foundation; CVE-2026-25253 (CVSS 8.8) public
 - Cisco AI Defense — enterprise MCP traffic inspection, February 2026 update
 - Microsoft Dynamic Threat Detection Agent — public preview, Azure-native, adaptive behavioral signals
 - MCPTox benchmark (AAAI 2026) — first systematic tool poisoning evaluation; 72.8% ASR on o1-mini

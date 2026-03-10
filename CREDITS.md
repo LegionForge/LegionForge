@@ -3,7 +3,7 @@
 LegionForge is built on the work of many others. This file is the canonical
 record of design influences, academic inspirations, and conceptual debts.
 
-The primary inspiration is **OpenClaw** (née Clawdbot → Moltbot → OpenClaw)
+The primary inspiration is **OpenClaw** (née Clawd → Clawdbot → Moltbot → OpenClaw)
 by Peter Steinberger — the project that proved the demand, shaped the
 architecture, and made the security costs concrete. See the Primary Inspiration
 section below.
@@ -15,17 +15,29 @@ For third-party software license notices see [`NOTICE`](./NOTICE).
 
 ## Primary Inspiration
 
-### OpenClaw (née Clawdbot → Moltbot → OpenClaw)
+### OpenClaw (née Clawd → Clawdbot → Moltbot → OpenClaw)
 **Author:** Peter Steinberger
-**GitHub:** https://github.com/openClaw
+**GitHub:** https://github.com/openclaw/openclaw
+**Website:** https://openclaw.ai
+**Author GitHub:** https://github.com/steipete
 
 LegionForge exists because of this project. No other single work shaped
 its direction more.
 
-OpenClaw's predecessor Clawdbot (later renamed Moltbot, then OpenClaw)
-hit 60,000 GitHub stars in 72 hours in January 2026, reaching 300,000–400,000
-users within weeks. The demand was undeniable: people want a serious,
-self-hosted AI agent system they can run on their own hardware.
+The project went through four names in rapid succession:
+- **Clawd** (Nov 2025) — Peter Steinberger's personal AI assistant, a pun
+  on Anthropic's Claude. Anthropic's legal team asked for a rename.
+- **Clawdbot** (Nov 2025) — the open-source agent framework published
+  under this name.
+- **Moltbot** (Jan 27, 2026) — renamed in a 5am Discord brainstorm;
+  molting represents growth — lobsters shed their shells to grow.
+- **OpenClaw** (Jan 30, 2026) — final name, three days later, after
+  trademark searches came back clear.
+
+Clawdbot/OpenClaw hit 60,000 GitHub stars in 72 hours in January 2026,
+reaching 300,000–400,000 users within weeks. The demand was undeniable:
+people want a serious, self-hosted AI agent system they can run on their
+own hardware.
 
 LegionForge is a direct response to both what it got right and what it
 got wrong:
