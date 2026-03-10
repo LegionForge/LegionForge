@@ -437,6 +437,40 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
                     run_id=state.get("run_id"),
                 )
 
+            # Deterministic fallback: both LLM attempts failed to produce tool_calls.
+            # Programmatically inject a spawn_researcher call so the graph always
+            # delegates — never silently returns empty on step 1.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                import uuid
+
+                user_task = ""
+                for m in reversed(clean_messages):
+                    if hasattr(m, "type") and m.type == "human":
+                        user_task = (
+                            m.content if isinstance(m.content, str) else str(m.content)
+                        )
+                        break
+                logger.warning(
+                    "[orchestrator] Deterministic fallback: injecting spawn_researcher "
+                    "because model produced no tool_calls after retry"
+                )
+                log_agent_event(
+                    "tool_call_fallback",
+                    "orchestrator",
+                    {"step": step, "task_snippet": user_task[:120]},
+                    run_id=state.get("run_id"),
+                )
+                response = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": str(uuid.uuid4()).replace("-", "")[:8],
+                            "name": "spawn_researcher",
+                            "args": {"sub_task": user_task},
+                        }
+                    ],
+                )
+
             updates["messages"] = [response]
             return updates
 

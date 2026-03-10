@@ -22606,3 +22606,19 @@ def test_orchestrator_agent_node_retries_with_correction_when_no_tool_calls():
     assert "no_tool_calls_on_step_1" in fn_body
     assert "correction" in fn_body
     assert "spawn_researcher or fan_out_researchers right now" in fn_body
+
+
+def test_orchestrator_deterministic_fallback_injects_spawn_researcher():
+    """When both LLM attempts produce no tool_calls on step 1, agent_node injects
+    a spawn_researcher call deterministically — guards against silent model failures.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.index("async def agent_node(state: OrchestratorState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "tool_call_fallback" in fn_body
+    assert "Deterministic fallback" in fn_body
+    assert "spawn_researcher" in fn_body
+    assert "uuid" in fn_body
