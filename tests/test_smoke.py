@@ -22656,3 +22656,91 @@ def test_researcher_deterministic_fallback_injects_web_search():
     assert "Deterministic fallback" in fn_body
     assert "web_search" in fn_body
     assert "uuid" in fn_body
+
+
+# ── Shared fixture smoke tests ────────────────────────────────────────────────
+
+
+def test_mock_llm_no_tool_calls_fixture_exists():
+    """conftest provides mock_llm_no_tool_calls fixture — the canonical mock for
+    testing agent fallback paths when the LLM ignores tool_choice=required.
+    """
+    import pathlib
+
+    src = pathlib.Path("tests/conftest.py").read_text()
+    assert "mock_llm_no_tool_calls" in src
+    assert "ainvoke" in src
+    assert "bind_tools" in src
+
+
+def test_mock_llm_with_tool_call_fixture_exists():
+    """conftest provides mock_llm_with_tool_call fixture — the canonical mock for
+    testing happy-path agent execution where the LLM calls a tool on step 1.
+    """
+    import pathlib
+
+    src = pathlib.Path("tests/conftest.py").read_text()
+    assert "mock_llm_with_tool_call" in src
+    assert "tool_calls" in src
+
+
+def test_makefile_has_ci_target():
+    """Makefile defines a 'ci' target that chains make test + security-audit —
+    the required gate before every commit.
+    """
+    import pathlib
+
+    mk = pathlib.Path("Makefile").read_text()
+    assert "ci:" in mk
+    assert "security-audit" in mk
+    # ci must invoke the full test suite, not just smoke
+    ci_start = mk.index("\nci:")
+    ci_end = mk.index("\n.PHONY:", ci_start + 1)
+    ci_body = mk[ci_start:ci_end]
+    assert "make test" in ci_body or "$(MAKE)" in ci_body
+
+
+def test_makefile_has_test_critical_target():
+    """Makefile defines a 'test-critical' target for ~35s rapid iteration gate
+    covering smoke + security_attacks + UI page-load.
+    """
+    import pathlib
+
+    mk = pathlib.Path("Makefile").read_text()
+    assert "test-critical:" in mk
+    tc_start = mk.index("test-critical:")
+    tc_end = mk.index("\n.PHONY:", tc_start)
+    tc_body = mk[tc_start:tc_end]
+    assert (
+        "test_smoke" in tc_body
+        or "test smoke" in tc_body.lower()
+        or "test_smoke.py" in tc_body
+    )
+    assert "security_attacks" in tc_body
+    assert "test_page_load" in tc_body
+
+
+def test_claude_md_requires_make_ci_gate():
+    """CLAUDE.md mandates 'make ci' as the required gate before commits — not
+    just make test-smoke, so cross-suite event loop issues are always caught.
+    """
+    import pathlib
+
+    src = pathlib.Path("CLAUDE.md").read_text()
+    assert "make ci" in src
+    assert (
+        "make test-smoke alone is not sufficient" in src
+        or "test-smoke` alone is not sufficient" in src
+    )
+
+
+def test_claude_md_has_working_with_claude_section():
+    """CLAUDE.md has a 'Working with Claude' section with the test plan rule,
+    one-concern-per-PR rule, and mock_llm_no_tool_calls reference.
+    """
+    import pathlib
+
+    src = pathlib.Path("CLAUDE.md").read_text()
+    assert "Working with Claude" in src
+    assert "test plan" in src
+    assert "mock_llm_no_tool_calls" in src

@@ -633,6 +633,29 @@ test-fast:
 	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
 	@echo "✅ Fast test suites passed"
 
+.PHONY: test-critical
+test-critical:  ## Fast iteration gate (~35s): smoke + security_attacks + UI page-load
+	@echo "▶ Smoke tests…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -q
+	@echo "▶ Security attack tests…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_security_attacks.py -q --tb=short
+	@echo "▶ UI page-load tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/test_page_load.py -q -m ui
+	@echo "✅ Critical tests passed"
+
+.PHONY: ci
+ci:  ## Full CI gate: make test + security-audit — required before every commit/PR
+	@echo "════════════════════════════════════════════════════"
+	@echo "  LegionForge CI Gate"
+	@echo "════════════════════════════════════════════════════"
+	@$(MAKE) --no-print-directory test
+	@echo ""
+	@$(MAKE) --no-print-directory security-audit
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
+	@echo "  ✅ CI gate passed — safe to commit"
+	@echo "════════════════════════════════════════════════════"
+
 .PHONY: test-smoke
 test-smoke:
 	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
@@ -882,8 +905,8 @@ js-check:  ## Syntax-check JS extracted from index.html (node --check on a temp 
 security-audit:
 	@echo "🔐 Running security audit..."
 	@echo ""
-	@echo "--- Smoke tests (includes security regression tests) ---"
-	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "--- Full test suite (smoke → testlab → ui) ---"
+	@$(MAKE) --no-print-directory test
 	@echo ""
 	@echo "--- JS syntax check (index.html) ---"
 	@$(MAKE) --no-print-directory js-check
@@ -918,8 +941,8 @@ review-prep:
 		&& echo "✅ Black: all files formatted" \
 		|| (echo "❌ Black: unformatted files above — run: make format" && exit 1)
 	@echo ""
-	@echo "─── [2/6] Smoke tests ───────────────────────────────"
-	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "─── [2/6] Full test suite (smoke → testlab → ui) ───"
+	@$(MAKE) --no-print-directory test
 	@echo ""
 	@echo "─── [3/6] Bandit static analysis ────────────────────"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \

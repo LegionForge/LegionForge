@@ -18,16 +18,20 @@ make check          # Verify drive, venv, models, config before starting
 make start          # Full startup (drive check → Ollama → PostgreSQL → model warmup)
 make stop           # Graceful shutdown
 
-# Testing (smoke tests must pass before any PR merge)
+# Testing
 make test-smoke     # 2125 smoke tests, ~21s, no external services required
+make test-critical  # smoke + security_attacks + UI page-load, ~35s — fast iteration gate
+make test           # Full suite: smoke → testlab → ui (separate sessions, ~70s)
 make test-integration  # 38 integration tests (requires PostgreSQL — make db-start first)
-make test-fast      # All tests except slow ones
-make test           # Full test suite
+make test-fast      # smoke + testlab(not slow) + ui
+
+# CI gate — run this before every commit, not just test-smoke
+make ci             # make test + security-audit (bandit + URI scan) — required before merge
 
 # Code quality
 make lint           # Black formatter check (src/, tests/, config/)
 make format         # Auto-format with Black
-make security-audit # smoke tests + bandit + URI scan (run before every PR merge)
+make security-audit # smoke tests + bandit + URI scan
 
 # Database
 make db-init        # Initialize PostgreSQL + LangGraph + app tables (one-time)
@@ -95,9 +99,23 @@ Security violations are logged to the `threat_events` table with structured type
 
 - `main` ← `dev` ← `feature/xxx` / `fix/xxx` / `refactor/xxx`
 - Smoke test count must never decrease; current baseline: 2125 (v0.7.1-alpha, post-G4)
-- All PRs require `make test-smoke` + `make security-audit` passing before merge
+- **Gate before every commit: `make ci`** (smoke → testlab → ui + bandit + URI scan). `make test-smoke` alone is not sufficient — cross-suite event loop issues only appear in the full run.
+- One concern per commit/PR. Do not bundle UI changes, agent logic changes, and test changes in a single commit. If a fix touches more than two files, ask whether it should be split.
 - Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `security:`, `docs:`)
-- Co-author line: `Co-Authored-By: Claude <noreply@anthropic.com>`
+- Co-author line: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+
+## Working with Claude
+
+Before making any code change, Claude must:
+1. **State a test plan** — which existing tests cover the behavior, which new tests will be added, and how the fix will be verified end-to-end (not just unit-level).
+2. **Run `make ci` before committing** — all three test suites (smoke, testlab, ui) plus security-audit must pass. Smoke-only is insufficient.
+3. **Prefer narrowly scoped fixes** — fix the specific code path that is broken, not every related path. If a fix touches agent prompts or LLM calls, also verify with a live gateway task (not just mocks).
+4. **Flag cross-suite risk** — any change to asyncio code, event loop handling, pytest fixtures, or the conftest files must note the cross-suite isolation risk and be verified with `make test`.
+
+Common failure patterns to check for every agent/LLM change:
+- What does this code path do if the LLM returns no `tool_calls`? (use `mock_llm_no_tool_calls` fixture)
+- Does the fix apply through the gateway worker `initial_state` path, not just direct invocation?
+- Does adding async fixtures to a test file break isolation when run with `pytest tests/`?
 
 ## Checkpoint File (`checkpoint.md`)
 
