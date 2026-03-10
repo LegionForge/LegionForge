@@ -37,6 +37,19 @@ keywords:
 
 references:
   - type: software
+    title: "OpenClaw (née Clawdbot / Moltbot)"
+    authors:
+      - family-names: Steinberger
+        given-names: Peter
+    url: "https://github.com/openClaw"
+    notes: >
+      Primary inspiration for LegionForge. Proved the demand for self-hosted
+      agent systems and the architectural patterns that work. Also proved the
+      cost of shipping security as an afterthought — 512 post-release
+      vulnerabilities and active data exfiltration in third-party skills were
+      the direct motivation for LegionForge's security-first design.
+
+  - type: software
     title: "LangGraph"
     authors:
       - name: "LangChain, Inc."

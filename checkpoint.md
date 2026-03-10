@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 298
+UPDATE: 299
 BRANCH: dev
-COMMIT: 761c087
-TIMESTAMP: 2026-03-10T18:00Z
-LAST_OP: docs: add attribution file suite (CREDITS.md, NOTICE, CITATION.cff) + update all READMEs
+COMMIT: 2c56447
+TIMESTAMP: 2026-03-10T18:15Z
+LAST_OP: docs: elevate OpenClaw/Clawdbot/Moltbot as primary inspiration across all attribution docs
 SMOKE_TESTS: 2133/2133
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5

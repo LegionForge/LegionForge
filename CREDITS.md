@@ -3,33 +3,60 @@
 LegionForge is built on the work of many others. This file is the canonical
 record of design influences, academic inspirations, and conceptual debts.
 
+The primary inspiration is **OpenClaw** (née Clawdbot → Moltbot → OpenClaw)
+by Peter Steinberger — the project that proved the demand, shaped the
+architecture, and made the security costs concrete. See the Primary Inspiration
+section below.
+
 For security research citations see [`RESEARCH.md §11`](./RESEARCH.md).
 For third-party software license notices see [`NOTICE`](./NOTICE).
 
 ---
 
-## Design Influences & Inspirations
+## Primary Inspiration
 
-### OpenClaw
+### OpenClaw (née Clawdbot → Moltbot → OpenClaw)
+**Author:** Peter Steinberger
 **GitHub:** https://github.com/openClaw
 
-The closest spiritual peer in the self-hosted agent space. OpenClaw's
-six-component architecture (Gateway, Agent, Tools, Workspace, Sessions, Nodes)
-and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md,
-MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a
-different architectural bet — PostgreSQL-backed state over flat files,
-deterministic security enforcement over convention — but OpenClaw set a high
-bar for what a serious local-first agent system looks like. The gap analysis
-against OpenClaw's six-part memory model directly shaped LegionForge's memory
-architecture (Phases 21–25).
+LegionForge exists because of this project. No other single work shaped
+its direction more.
 
-### Moltbot
-**GitHub:** https://github.com/moltbot
+OpenClaw's predecessor Clawdbot (later renamed Moltbot, then OpenClaw)
+hit 60,000 GitHub stars in 72 hours in January 2026, reaching 300,000–400,000
+users within weeks. The demand was undeniable: people want a serious,
+self-hosted AI agent system they can run on their own hardware.
 
-Demonstrated real multi-agent coordination before most projects were thinking
-about it. The multi-agent isolation patterns in LegionForge were informed in
-part by seeing what Moltbot got right, and where it left security as an
-exercise for the operator.
+LegionForge is a direct response to both what it got right and what it
+got wrong:
+
+**What it proved:**
+- The best UI is the one you already use — agents as contacts in your
+  messaging app (Discord, Telegram, WhatsApp). LegionForge adopted this
+  model directly.
+- Six-component architecture (Gateway, Agent, Tools, Workspace, Sessions,
+  Nodes) is sound. LegionForge's structure maps to this.
+- Workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md,
+  daily logs) is genuinely well-designed. The gap analysis against this
+  model directly shaped LegionForge's memory architecture (Phases 21–25).
+- Multi-agent coordination (demonstrated early in the Moltbot phase) proved
+  the pattern was practical before most projects were thinking about it.
+
+**What it exposed:**
+- 512 vulnerabilities (8 critical) found by Kaspersky after release.
+  Cisco found active data exfiltration in third-party skills (CVE-2026-25253,
+  CVSS 8.8). This is what shipping product before security looks like.
+- Security left as an exercise for the operator is not a viable model at
+  scale.
+
+LegionForge is building in the opposite order: security first, product on
+top. Everything in Guardian, SecureToolNode, prompt injection detection,
+capability boundary enforcement, and Ed25519 tool signing exists because
+OpenClaw's arc made the cost of skipping that work concrete.
+
+---
+
+## Design Influences & Inspirations
 
 ---
 

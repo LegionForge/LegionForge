@@ -305,9 +305,7 @@ make revoke-tool TOOL_ID=<id>   # Emergency tool revocation
 
 LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
-**[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
-
-**[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The isolation patterns here were informed in part by seeing what Moltbot got right.
+**[OpenClaw](https://github.com/openClaw)** (Peter Steinberger — née Clawdbot → Moltbot → OpenClaw) — the primary inspiration for LegionForge. Proved the demand (60,000 GitHub stars in 72 hours), proved the architecture (six-component structure, workspace-as-files memory), and proved what happens when security is an afterthought (512 vulnerabilities, active data exfiltration in third-party skills). LegionForge is building in the opposite order: security first, product on top.
 
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. Checkpoint-based state persistence, loop protection, and graph resumption are LangGraph primitives that LegionForge builds on heavily.
 
