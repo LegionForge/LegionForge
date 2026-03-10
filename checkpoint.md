@@ -1,10 +1,10 @@
 VERSION: 0.7.0-alpha
-UPDATE: 290
+UPDATE: 292
 BRANCH: dev
-COMMIT: 0a1513a
-TIMESTAMP: 2026-03-09T04:35Z
-LAST_OP: fix: seed SystemMessage in gateway worker initial_state — root cause of multi-step "No result produced."
-SMOKE_TESTS: 2109/2109
+COMMIT: pending
+TIMESTAMP: 2026-03-10T07:00Z
+LAST_OP: fix: researcher retry+fallback + Makefile test isolation (testlab/ui run in separate invocations)
+SMOKE_TESTS: 2125/2125
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

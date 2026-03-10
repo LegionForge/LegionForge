@@ -615,11 +615,23 @@ install:
 # ── Testing ───────────────────────────────────────────────────
 .PHONY: test
 test:
-	@cd $(BASE) && $(PYTEST) tests/ -v
+	@echo "▶ Smoke tests…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "▶ TestLab suite…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v --tb=short
+	@echo "▶ UI tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
+	@echo "✅ All test suites passed"
 
 .PHONY: test-fast
 test-fast:
-	@cd $(BASE) && $(PYTEST) tests/ -v -m "not slow"
+	@echo "▶ Smoke tests (not slow)…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v -m "not slow"
+	@echo "▶ TestLab suite (not slow)…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v -m "not slow" --tb=short
+	@echo "▶ UI tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
+	@echo "✅ Fast test suites passed"
 
 .PHONY: test-smoke
 test-smoke:

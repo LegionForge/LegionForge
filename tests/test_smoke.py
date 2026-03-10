@@ -22622,3 +22622,37 @@ def test_orchestrator_deterministic_fallback_injects_spawn_researcher():
     assert "Deterministic fallback" in fn_body
     assert "spawn_researcher" in fn_body
     assert "uuid" in fn_body
+
+
+def test_researcher_agent_node_retries_with_correction_when_no_tool_calls():
+    """agent_node retries with an explicit correction HumanMessage when step 1 produces
+    no tool_calls — mirrors the orchestrator guard; prevents silent model failures from
+    causing "No result produced." when tool_choice=required is ignored by Ollama.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    fn_start = src.index("async def agent_node(state: ResearcherState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "no_tool_calls_on_step_1" in fn_body
+    assert "correction" in fn_body
+    assert "web_search" in fn_body
+    assert "web_fetch" in fn_body
+
+
+def test_researcher_deterministic_fallback_injects_web_search():
+    """When both LLM attempts produce no tool_calls on step 1, agent_node injects
+    a web_search call deterministically — ensures the researcher always fetches
+    real data rather than returning empty on tool_choice failures.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    fn_start = src.index("async def agent_node(state: ResearcherState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "tool_call_fallback" in fn_body
+    assert "Deterministic fallback" in fn_body
+    assert "web_search" in fn_body
+    assert "uuid" in fn_body

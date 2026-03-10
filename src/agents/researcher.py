@@ -371,6 +371,71 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
                 run_id=state.get("run_id"),
             )
 
+            # Enforcement: if tool_choice="required" was silently ignored by the
+            # model (Ollama/qwen2.5 returns content with no tool_calls on step 1),
+            # retry once with an explicit correction message so the researcher
+            # always fetches real data rather than synthesising from memory.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                logger.warning(
+                    "[researcher] Step 1 produced no tool_calls — "
+                    "retrying with explicit correction message"
+                )
+                log_agent_event(
+                    "tool_call_retry",
+                    "researcher",
+                    {"step": step, "reason": "no_tool_calls_on_step_1"},
+                    run_id=state.get("run_id"),
+                )
+                correction = clean_messages + [
+                    response,
+                    HumanMessage(
+                        content=(
+                            "You did not call a tool. You MUST call web_search, "
+                            "web_fetch, or web_fetch_js right now. "
+                            "Do not write any text — call a tool immediately."
+                        )
+                    ),
+                ]
+                response = await llm_free.ainvoke(correction)
+                log_agent_event(
+                    "llm_response",
+                    "researcher",
+                    {
+                        "step": step,
+                        "content": str(response.content)[:200],
+                        "retry": True,
+                    },
+                    run_id=state.get("run_id"),
+                )
+
+            # Deterministic fallback: both LLM attempts failed to produce tool_calls.
+            # Programmatically inject a web_search call so the researcher always
+            # fetches real data on step 1 — never silently returns empty.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                import uuid
+
+                user_task = state.get("task", "")
+                logger.warning(
+                    "[researcher] Deterministic fallback: injecting web_search "
+                    "because model produced no tool_calls after retry"
+                )
+                log_agent_event(
+                    "tool_call_fallback",
+                    "researcher",
+                    {"step": step, "task_snippet": user_task[:120]},
+                    run_id=state.get("run_id"),
+                )
+                response = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": str(uuid.uuid4()).replace("-", "")[:8],
+                            "name": "web_search",
+                            "args": {"query": user_task},
+                        }
+                    ],
+                )
+
             updates["messages"] = [response]
 
             # Collect source URLs from any tool calls requested
