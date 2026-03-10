@@ -21687,16 +21687,23 @@ def test_persona_namespace_format_user():
 
 
 def test_base_graph_wires_persona_bootstrap():
-    """Gap 1: base_graph.agent_node injects persona before user prefs (outermost)."""
+    """Gap 1: base_graph.agent_node injects persona as the outermost stable prefix.
+
+    KV-cache stability ordering: persona (most stable) must appear FIRST in the
+    final message list, which means it must be prepended LAST in code (after memory
+    recall and prefs).  So Gap 5 (prefs) appears before Gap 1 (persona) in source,
+    but Gap 1 ends up at index 0 of the assembled message list at runtime.
+    """
     import pathlib
 
     content = pathlib.Path("src/base_graph.py").read_text()
     assert "persona_bootstrap" in content
-    # The Gap 1 comment must appear before the Gap 5 comment in agent_node
     assert "Gap 1" in content and "Gap 5" in content
-    assert content.index("Gap 1") < content.index(
-        "Gap 5"
-    ), "persona (Gap 1) must be injected before user prefs (Gap 5)"
+    # Gap 5 (prefs, Step 2) is prepended before Gap 1 (persona, Step 3) in source
+    # so that persona ends up first in the final message list (stable-prefix ordering).
+    assert content.index("Gap 5") < content.index(
+        "Gap 1"
+    ), "persona (Gap 1) must be prepended last (Step 3) so it is first in message list"
 
 
 def test_persona_bootstrap_agent_section_label():

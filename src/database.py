@@ -2097,35 +2097,74 @@ async def similarity_search(
     namespace: str = "default",
     limit: int = 5,
     min_similarity: float = 0.7,
+    temporal_decay: bool = False,
 ) -> list[dict]:
     """
     Find documents similar to query_embedding using cosine similarity.
-    Returns list of {id, content, metadata, similarity} dicts.
+    Returns list of {id, content, metadata, similarity, created_at} dicts.
+
+    temporal_decay: if True, blends cosine similarity with a recency factor
+        using the STAR algorithm's gravity formula:
+            final_score = similarity × e^(-λ · age_hours)
+        Half-life is 30 days (720 h) → λ = ln(2)/720 ≈ 0.000962.
+        The min_similarity filter applies to raw cosine score so semantically
+        irrelevant documents are never returned regardless of recency.
+        Results are ordered by final_score descending.
     """
     pool = get_pool()
     async with pool.connection() as conn:
-        cur = await conn.execute(
-            """
-            SELECT
-                id,
-                content,
-                metadata,
-                1 - (embedding <=> %s::vector) AS similarity
-            FROM documents
-            WHERE namespace = %s
-              AND 1 - (embedding <=> %s::vector) >= %s
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-            """,
-            (
-                query_embedding,
-                namespace,
-                query_embedding,
-                min_similarity,
-                query_embedding,
-                limit,
-            ),
-        )
+        if temporal_decay:
+            cur = await conn.execute(
+                """
+                SELECT
+                    id,
+                    content,
+                    metadata,
+                    created_at,
+                    1 - (embedding <=> %s::vector) AS similarity,
+                    (1 - (embedding <=> %s::vector))
+                        * EXP(-0.000962
+                            * EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600
+                        ) AS decayed_score
+                FROM documents
+                WHERE namespace = %s
+                  AND 1 - (embedding <=> %s::vector) >= %s
+                ORDER BY decayed_score DESC
+                LIMIT %s
+                """,
+                (
+                    query_embedding,
+                    query_embedding,
+                    namespace,
+                    query_embedding,
+                    min_similarity,
+                    limit,
+                ),
+            )
+        else:
+            cur = await conn.execute(
+                """
+                SELECT
+                    id,
+                    content,
+                    metadata,
+                    created_at,
+                    1 - (embedding <=> %s::vector) AS similarity
+                FROM documents
+                WHERE namespace = %s
+                  AND 1 - (embedding <=> %s::vector) >= %s
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (
+                    query_embedding,
+                    namespace,
+                    query_embedding,
+                    min_similarity,
+                    query_embedding,
+                    limit,
+                ),
+            )
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
 

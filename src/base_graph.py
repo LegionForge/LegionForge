@@ -150,41 +150,20 @@ async def agent_node(state: AgentState) -> dict:
     try:
         llm = get_primary_llm(temperature=0.1)
 
-        # ── Memory: persona bootstrap (Gap 1) ────────────────────────────────
-        # Inject freeform persona text from persona:agent:<id> and
-        # persona:user:<uid> namespaces — the SOUL.md equivalent.
-        # Outermost SystemMessage: persona → prefs → recall → HumanMessage.
-        if settings.agent_memory.enabled and settings.agent_memory.persona_bootstrap:
-            from src.memory import persona_bootstrap as _persona_bootstrap
-            from langchain_core.messages import SystemMessage as _SM
+        # ── KV-cache stability ordering ───────────────────────────────────────
+        # Context is assembled with the most stable content first and the most
+        # dynamic content last.  This maximises KV-cache hit rate because the
+        # prefix that is identical across runs (persona, prefs) is never
+        # invalidated by the per-run content (memory recall, current task).
+        #
+        # Prepend in REVERSE stability order so the final list is:
+        #   [persona (most stable) → prefs → memory recall → task (most dynamic)]
+        #
+        # Implementation: each prepend pushes previous content one slot right,
+        # so the last prepend ends up at index 0 (first seen by the LLM).
+        # We prepend memory first, prefs second, persona last.
 
-            _persona = await _persona_bootstrap(
-                agent_id=state.get("agent_id", "base_agent"),
-                user_id=state.get("user_id"),
-            )
-            if _persona:
-                state = {
-                    **state,
-                    "messages": [_SM(content=_persona)] + list(state["messages"]),
-                }
-
-        # ── Memory: user preference bootstrap (Gap 5) ────────────────────────
-        # Inject the submitting user's stored preferences as a SystemMessage so
-        # the agent knows who it's talking to without re-explanation each run.
-        if settings.agent_memory.enabled and settings.agent_memory.bootstrap_user_prefs:
-            _uid = state.get("user_id")
-            if _uid:
-                from src.memory import user_context_bootstrap
-                from langchain_core.messages import SystemMessage as _SM
-
-                _bootstrap = await user_context_bootstrap(_uid)
-                if _bootstrap:
-                    state = {
-                        **state,
-                        "messages": [_SM(content=_bootstrap)] + list(state["messages"]),
-                    }
-
-        # ── Phase 21: Memory recall ───────────────────────────────────────────
+        # ── Step 1: Memory recall (Phase 21 — dynamic, changes every run) ──────
         # Inject relevant past context before LLM call (no-op when disabled).
         if settings.agent_memory.enabled and settings.agent_memory.recall_on_task:
             task = state.get("task", "")
@@ -200,6 +179,41 @@ async def agent_node(state: AgentState) -> dict:
                         content=f"[Relevant memory from past runs]\n{memory_ctx}"
                     )
                     state = {**state, "messages": [_mem_msg] + list(state["messages"])}
+
+        # ── Step 2: User preference bootstrap (Gap 5 — semi-stable) ─────────
+        # Inject the submitting user's stored preferences as a SystemMessage so
+        # the agent knows who it's talking to without re-explanation each run.
+        if settings.agent_memory.enabled and settings.agent_memory.bootstrap_user_prefs:
+            _uid = state.get("user_id")
+            if _uid:
+                from src.memory import user_context_bootstrap
+                from langchain_core.messages import SystemMessage as _SM
+
+                _bootstrap = await user_context_bootstrap(_uid)
+                if _bootstrap:
+                    state = {
+                        **state,
+                        "messages": [_SM(content=_bootstrap)] + list(state["messages"]),
+                    }
+
+        # ── Step 3: Persona bootstrap (Gap 1 — most stable, rarely changes) ───
+        # Inject freeform persona text from persona:agent:<id> and
+        # persona:user:<uid> namespaces — the SOUL.md equivalent.
+        # Prepended last in code so it appears FIRST in the final message list
+        # (KV-cache stable prefix — never invalidated by per-run content).
+        if settings.agent_memory.enabled and settings.agent_memory.persona_bootstrap:
+            from src.memory import persona_bootstrap as _persona_bootstrap
+            from langchain_core.messages import SystemMessage as _SM
+
+            _persona = await _persona_bootstrap(
+                agent_id=state.get("agent_id", "base_agent"),
+                user_id=state.get("user_id"),
+            )
+            if _persona:
+                state = {
+                    **state,
+                    "messages": [_SM(content=_persona)] + list(state["messages"]),
+                }
 
         # Sanitize outbound messages (PII redaction before sending to LLM)
         clean_messages = sanitize_messages(state["messages"])

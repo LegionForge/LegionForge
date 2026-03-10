@@ -163,6 +163,8 @@ async def memory_recall(query: str, scope: str = "agent") -> str:
         namespace = MemoryStore.agent_namespace(agent_id)
 
     try:
+        from datetime import timezone
+
         store = get_memory_store()
         results = await store.search(clean_query, namespace=namespace)
         if not results:
@@ -171,7 +173,21 @@ async def memory_recall(query: str, scope: str = "agent") -> str:
         for r in results:
             score = r.get("similarity", 0)
             snippet = r["content"][:400].replace("\n", " ")
-            lines.append(f"[{score:.3f}] {snippet}")
+            created_at = r.get("created_at")
+            if created_at:
+                from datetime import datetime
+
+                now = datetime.now(timezone.utc)
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age_hours = (now - created_at).total_seconds() / 3600
+                if age_hours < 24:
+                    age_str = f"{age_hours:.0f}h ago"
+                else:
+                    age_str = f"{age_hours / 24:.0f}d ago"
+                lines.append(f"[{score:.3f}, {age_str}] {snippet}")
+            else:
+                lines.append(f"[{score:.3f}] {snippet}")
         return "\n".join(lines)
     except Exception as exc:
         logger.warning("[memory_recall] Search failed: %s", exc)

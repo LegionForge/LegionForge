@@ -133,6 +133,7 @@ class MemoryStore:
         namespace: str = "default",
         limit: int | None = None,
         min_similarity: float | None = None,
+        temporal_decay: bool = True,
     ) -> list[dict]:
         """
         Semantic search: return the top-K documents most similar to ``query``.
@@ -142,10 +143,15 @@ class MemoryStore:
             namespace:      Namespace to search within.
             limit:          Max results (defaults to ``settings.agent_memory.search_limit``).
             min_similarity: Cosine threshold (defaults to ``settings.agent_memory.min_similarity``).
+            temporal_decay: If True (default), blends cosine similarity with a
+                recency factor (half-life 30 days) so recent memories rank higher
+                than equally similar but older ones.  Set False to get pure cosine
+                ordering (e.g. for document search where recency is irrelevant).
 
         Returns:
-            List of ``{id, content, metadata, similarity}`` dicts, sorted by
-            similarity descending (most relevant first).
+            List of ``{id, content, metadata, similarity, created_at}`` dicts,
+            ordered by decayed_score desc (temporal_decay=True) or cosine
+            similarity desc (temporal_decay=False).
         """
         from src.database import similarity_search
         from config.settings import settings
@@ -155,7 +161,9 @@ class MemoryStore:
         _min_sim = min_similarity if min_similarity is not None else cfg.min_similarity
 
         embedding = await self.embed(query)
-        results = await similarity_search(embedding, namespace, _limit, _min_sim)
+        results = await similarity_search(
+            embedding, namespace, _limit, _min_sim, temporal_decay=temporal_decay
+        )
         return results
 
     # ── Get all ───────────────────────────────────────────────────────────────
