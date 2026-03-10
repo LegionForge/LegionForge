@@ -264,11 +264,12 @@ RESEARCHER_TOOL_MANIFESTS = [
 # (Phase 3 will retry them in an isolated environment).
 # Register with: make register-agent-sequences
 RESEARCHER_EXPECTED_SEQUENCES: list[list[str]] = [
+    ["web_search"],
+    ["web_search", "web_fetch"],
     ["web_search", "web_fetch", "document_summarize"],
     ["web_search", "document_summarize"],
-    ["web_fetch", "document_summarize"],
-    ["web_search"],
     ["web_fetch"],
+    ["web_fetch", "document_summarize"],
     ["document_summarize"],
     *BROWSER_TOOL_SEQUENCES,
     *MEMORY_TOOL_SEQUENCES,

@@ -136,12 +136,17 @@ async def lifespan(app: FastAPI):
     # which reconstructs the manifest with input_schema={} (not stored in DB),
     # producing a hash mismatch that silently blocks every tool call.
     try:
-        from src.agents.researcher import register_researcher_tools
+        from src.agents.researcher import (
+            register_researcher_tools,
+            RESEARCHER_EXPECTED_SEQUENCES,
+        )
         from src.agents.orchestrator import register_orchestrator_tools
+        from src.database import register_agent_sequences
 
         await register_researcher_tools()
         await register_orchestrator_tools()
-        logger.info("[gateway] Agent tools registered in security registry")
+        await register_agent_sequences("researcher", RESEARCHER_EXPECTED_SEQUENCES)
+        logger.info("[gateway] Agent tools + sequences registered in security registry")
     except Exception as _reg_err:
         logger.error("[gateway] Tool registration failed (non-fatal): %s", _reg_err)
 
