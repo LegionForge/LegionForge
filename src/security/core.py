@@ -511,7 +511,7 @@ class ToolManifest:
         str
     ]  # e.g. ["reads_web", "calls_external_api:duckduckgo.com"]
     source: str  # "local" | "langchain" | "custom"
-    version: str = "0.7.0-alpha"
+    version: str = "0.7.1-alpha"
     entrypoint_func: Any = field(
         default=None, repr=False
     )  # callable; used for source hash

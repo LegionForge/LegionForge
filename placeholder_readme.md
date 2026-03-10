@@ -91,7 +91,7 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **Web + Browser tools** | `web_fetch_js` Playwright headless browser for JS-rendered sites; two-layer SSRF guard | ✅ Complete |
 | **Guardian G1–G3** | `legionforge_guardian` standalone package; backward-compat shim in `src/security/guardian.py` | ✅ Complete |
 
-**1995/1995 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. Runs in ~22 seconds (no external services required).
+**2125/2125 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. Runs in ~21 seconds (no external services required).
 
 ---
 
@@ -131,7 +131,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1995 passed in ~22s
+# Expected: 2125 passed in ~21s
 
 # 6. Start services (three terminals)
 make health-server   # Operator API :8765
@@ -167,7 +167,7 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 1995 smoke tests, ~22s, no services required
+make test-smoke      # 2125 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
@@ -207,6 +207,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 complete + web browser tools + Guardian package spinoff. 1995/1995 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
+**v0.7.1-alpha** — Phases 0–381 complete + web browser tools + Guardian package spinoff. 2125/2125 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

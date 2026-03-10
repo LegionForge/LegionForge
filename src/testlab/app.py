@@ -340,7 +340,7 @@ SUITES: dict[str, dict] = {
 }
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
-app = FastAPI(title="LegionForge TestLab", version="0.7.0-alpha")
+app = FastAPI(title="LegionForge TestLab", version="0.7.1-alpha")
 
 
 @app.get("/health")

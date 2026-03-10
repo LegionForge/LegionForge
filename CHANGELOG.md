@@ -7,14 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Bug-fix sprint (2026-03-07 – 2026-03-08)
+## [Unreleased]
 
-### Fixed — PRs #235–#238
+---
+
+## [0.7.1-alpha] — 2026-03-10
+
+### Fixed — PRs #235–#239
 
 - **PR #235** — Orchestrator hallucination: added `SystemMessage` to `run_orchestrator()` so `llama3.1:8b` / `qwen2.5:7b` calls `spawn_researcher` instead of answering from training data. Maintenance scheduler `permission denied` on `threat_events` DELETE fixed with short-lived admin connection. 2055/2055 smoke.
 - **PR #236** — Live Ollama model selector: replaced hardcoded model preset buttons with a `GET /models` live-loaded dropdown. Switched primary model to `qwen2.5:7b` and embeddings to `mxbai-embed-large:latest`. Fixed `apiFetch()` JSON parse in `loadModels()`. Excluded embedding models from the selector response.
 - **PR #237** — 5-role DB privilege model + Row-Level Security + DOS protection. `legionforge_worker`, `legionforge_gateway`, `legionforge_maintenance`, `legionforge_guardian`, `legionforge_readonly` with minimum required grants. RLS on `tasks`, `gateway_users`, `api_usage`. Sliding-window HTTP rate limiter, queue depth cap, SSE stream slot limit, per-route memory rate limits. 2089/2089 smoke.
 - **PR #238** — Guardian `TASK_TOKEN_SECRET` missing on container restart (force-remove stale container in `make guardian-start`). `stream_token null` guard in UI — cache-hit tasks fall back to polling instead of 401 streaming. Missing DB grants: `INSERT` on `task_events` for `legionforge_worker`; `DELETE` on `audit_log` for `legionforge_maintenance`. `finalizer_node` now handles empty/whitespace LLM responses instead of emitting `[No result]`. `SecureToolNode` halt paths append a `ToolMessage` to clear dangling `tool_calls`. Ollama status banner in web UI. 2106/2106 smoke.
+- **PR #239** — Researcher agent retry+fallback for ignored tool_choice=required (mirrors orchestrator guard). Deterministic web_search injection when both LLM attempts fail. Makefile test isolation: make test/make test-fast run smoke → testlab → ui as separate pytest invocations, preventing asyncio event loop pollution. 2125/2125 smoke.
 
 ---
 

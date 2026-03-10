@@ -4,7 +4,7 @@
 
 > Security is enforced in the execution path — not layered on afterward.
 
-> **Status: Active Development — v0.7.0-alpha**
+> **Status: Active Development — v0.7.1-alpha**
 > This project is currently under active development. The core security stack, gateway, and tool library are complete and tested. APIs and configuration formats may change before v1.0.0. See the [Status](#status) section for details.
 
 [![Smoke Tests](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml/badge.svg)](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml)
@@ -27,7 +27,7 @@ LegionForge is an open-source framework for running hardened AI agent systems on
 
 | Metric | Value |
 |---|---|
-| Smoke tests (no services required) | **2054 / 2054 passing** (~21s) |
+| Smoke tests (no services required) | **2125 / 2125 passing** (~21s) |
 | Integration tests (PostgreSQL) | **38 / 38 passing** |
 | Kerberos live-KDC tests | **5 / 5 passing** |
 | UI tests (Playwright) | **40 / 40 passing** |
@@ -201,7 +201,7 @@ make setup-signing-key
 
 # 6. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1995 passed in ~22s
+# Expected: 2125 passed in ~21s
 
 # 7. Start services (three terminals)
 make health-server   # Operator API at :8765
@@ -260,7 +260,7 @@ make start             # Full startup (Ollama + PostgreSQL + model warmup)
 make stop              # Graceful shutdown
 
 # Testing
-make test-smoke        # 1995 smoke tests, ~22s, no services required
+make test-smoke        # 2125 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui           # 40 UI tests (Playwright)
@@ -325,12 +325,12 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha — Active Development.** This project is currently under active development and is not yet at a stable 1.0 release. The security stack, gateway, and tool library are functionally complete and well-tested, but the project is still evolving toward its v1.0.0 public release.
+**v0.7.1-alpha — Active Development.** This project is currently under active development and is not yet at a stable 1.0 release. The security stack, gateway, and tool library are functionally complete and well-tested, but the project is still evolving toward its v1.0.0 public release.
 
 | | |
 |---|---|
-| **Version** | v0.7.0-alpha |
-| **Smoke tests** | 1995/1995 passing |
+| **Version** | v0.7.1-alpha |
+| **Smoke tests** | 2125/2125 passing |
 | **Integration tests** | 38/38 |
 | **Kerberos tests** | 5/5 |
 | **UI tests** | 40/40 |

@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="LegionForge",
     description="Health and status API for the local agent framework",
-    version="0.7.0-alpha",
+    version="0.7.1-alpha",
 )
 
 _startup_time = time.monotonic()
@@ -200,7 +200,7 @@ async def _sign_and_register(package: dict, approved_by: str) -> dict:
         input_schema=input_schema,
         declared_side_effects=declared_side_effects,
         source="crystallization_pipeline",
-        version="0.7.0-alpha",
+        version="0.7.1-alpha",
         entrypoint_func=None,  # crystallized tools have no Python entrypoint at registration
     )
 

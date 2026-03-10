@@ -186,7 +186,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LegionForge Gateway",
-    version="0.7.0-alpha",
+    version="0.7.1-alpha",
     description="User-facing task API for LegionForge agents.",
     lifespan=lifespan,
     # Disable /docs and /redoc in production — enable in dev via env flag

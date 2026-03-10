@@ -319,10 +319,10 @@ permalink: /
 
 <header class="hero">
   <div class="badge">Open Source · AGPL-3.0 · Local-First · Apple Silicon</div>
-  <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.0-alpha · Active Development · Not Yet Stable</div>
+  <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.1-alpha · Active Development · Not Yet Stable</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 2054/2054 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2125/2125 tests passing</p>
   <div class="cta-group">
     <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
@@ -342,7 +342,7 @@ permalink: /
 <div class="container">
   <div class="stats">
     <div class="stat">
-      <span class="stat-value">2054</span>
+      <span class="stat-value">2125</span>
       <span class="stat-label">Tests Passing</span>
     </div>
     <div class="stat">
@@ -693,7 +693,7 @@ permalink: /
 <br>
 <span class="comment"># Run smoke tests (no services needed)</span><br>
 <span class="cmd">make</span> test-smoke<br>
-<span class="comment"># ✓ 2054 passed in ~21s</span><br>
+<span class="comment"># ✓ 2125 passed in ~21s</span><br>
 <br>
 <span class="comment"># Start services + create your first user</span><br>
 <span class="cmd">make</span> health-server  <span class="comment"># :8765</span><br>
@@ -713,12 +713,12 @@ permalink: /
 <div class="container">
   <h2><span class="icon">📬</span> Status</h2>
   <p style="color: #f9c74f; font-family: var(--mono); font-size: 0.85rem; margin-bottom: 1rem;">
-    ⚠ v0.7.0-alpha — Active Development. This project is not yet at a stable 1.0 release.
+    ⚠ v0.7.1-alpha — Active Development. This project is not yet at a stable 1.0 release.
     APIs and configuration formats may change before v1.0.0.
   </p>
   <p style="color: var(--dim);">
     The security stack, gateway, and operator dashboard are functionally complete and tested.
-    <strong style="color: var(--text);">2054/2054 tests passing.</strong>
+    <strong style="color: var(--text);">2125/2125 tests passing.</strong>
     All pre-v1.0 security blockers resolved. Phases 0–381 complete, plus web browser tools, Guardian package spinoff, and full agent memory model (all 5 gaps — OpenClaw parity).
     Active development toward v1.0.0 public release.
   </p>

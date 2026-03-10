@@ -1,7 +1,7 @@
-VERSION: 0.7.0-alpha
+VERSION: 0.7.1-alpha
 UPDATE: 292
 BRANCH: dev
-COMMIT: pending
+COMMIT: 5c0da68
 TIMESTAMP: 2026-03-10T07:00Z
 LAST_OP: fix: researcher retry+fallback + Makefile test isolation (testlab/ui run in separate invocations)
 SMOKE_TESTS: 2125/2125
