@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 294
+UPDATE: 295
 BRANCH: dev
-COMMIT: b93c015
-TIMESTAMP: 2026-03-10T08:00Z
-LAST_OP: chore: CI gate + test-critical + LLM mock fixtures + CLAUDE.md process rules
-SMOKE_TESTS: 2131/2131
+COMMIT: a2d197c
+TIMESTAMP: 2026-03-10T08:30Z
+LAST_OP: fix: SecureToolNode normalises underscore-stripped tool names from qwen2.5
+SMOKE_TESTS: 2133/2133
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
