@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 295
+UPDATE: 296
 BRANCH: dev
-COMMIT: a2d197c
-TIMESTAMP: 2026-03-10T08:30Z
-LAST_OP: fix: SecureToolNode normalises underscore-stripped tool names from qwen2.5
+COMMIT: 704e08b
+TIMESTAMP: 2026-03-10T16:30Z
+LAST_OP: fix: add missing web_fetch_js sequences + auto-register at gateway startup
 SMOKE_TESTS: 2133/2133
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
