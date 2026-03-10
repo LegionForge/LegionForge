@@ -303,13 +303,19 @@ make revoke-tool TOOL_ID=<id>   # Emergency tool revocation
 
 ## Acknowledgements
 
-LegionForge exists in a space shaped by several projects worth calling out directly.
+LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
 **[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
 
 **[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The isolation patterns here were informed in part by seeing what Moltbot got right.
 
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. Checkpoint-based state persistence, loop protection, and graph resumption are LangGraph primitives that LegionForge builds on heavily.
+
+**[LATM — Learning to Use Tools by Making Them](https://arxiv.org/abs/2305.17126)** (Cai et al., ICLR 2024) and **[Voyager](https://arxiv.org/abs/2305.16291)** (Wang et al., NVIDIA 2023) — the foundational academic work closest to LegionForge-Anneal's tool crystallization pipeline.
+
+**[Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)** by Robert S. Balch II — deterministic semantic memory using graph traversal (the STAR algorithm). Anchor's insight that agent memory should be *explainable and deterministic* directly informed LegionForge's temporal decay memory recall. The STAR gravity formula is adapted from Anchor's published whitepaper.
+
+**[The AI-Human Engineering Stack](https://github.com/hjasanchez/agentic-engineering)** by Hayen Mill and Henrique Jr. Sanchez (March 2026) — a five-layer framework for AI engineering (Prompt, Context, Intent, Judgment, Coherence). The KV-cache stability insight from this paper directly motivated the context ordering in LegionForge's agent message assembly.
 
 The security-first design here is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source moves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
 

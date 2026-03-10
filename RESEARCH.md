@@ -484,3 +484,22 @@ These risks are real, partially or fully unsolvable with current tooling, and ar
 13. AI Security Trends 2026 — Prompt Security (2025)
 14. Reflections on Trusting Trust — Ken Thompson, ACM Communications, 1984 (foundational — capability amplification analog)
 15. Formal Verification of Multi-Agent Systems — survey, various (NP-hardness of compositional verification)
+
+### Design Theory & Memory Architecture
+
+16. **The AI-Human Engineering Stack** — Hayen Mill & Henrique Jr. Sanchez (March 2026).
+    GitHub: https://github.com/hjasanchez/agentic-engineering
+    A five-layer cognitive framework for AI engineering (Prompt → Context → Intent → Judgment → Coherence) plus Evaluation and Harness meta-functions. Directly informed: KV-cache stability ordering in `src/base_graph.py` (the Manus Insight — stable context first, dynamic context last). The paper's layer analysis also provided a diagnostic map for LegionForge's architectural strengths (Layer 4: Judgment) and gaps (Layer 5: Coherence).
+
+17. **Anchor Engine — STAR: Semantic Temporal Associative Retrieval** — Robert S. Balch II (2025–2026).
+    GitHub: https://github.com/RSBalchII/anchor-engine-node
+    DOI: 10.5281/zenodo.18841399
+    A deterministic semantic memory system using graph traversal (bipartite Atoms ↔ Tags) instead of vector embeddings, with a physics-based gravity scoring formula. Directly informed: temporal decay in `src/database.py` `similarity_search()` — the STAR gravity formula `W = similarity × e^(-λ·Δt)` with a 30-day half-life is adapted from Anchor's published whitepaper (`docs/whitepaper.md`). The core insight — that agent memory retrieval should be deterministic and explainable, not statistically fuzzy — aligns with LegionForge's broader principle of replacing probabilism with determinism wherever possible.
+
+18. **LATM — Learning to Use Tools by Making Them** — Cai et al., ICLR 2024.
+    arXiv: https://arxiv.org/abs/2305.17126
+    Foundational academic work on converting LLM-generated actions into reusable tools. Closest published antecedent to LegionForge-Anneal's crystallization pipeline.
+
+19. **Voyager: An Open-Ended Embodied Agent with Large Language Models** — Wang et al., NVIDIA 2023.
+    arXiv: https://arxiv.org/abs/2305.16291
+    Demonstrated lifelong tool accumulation in agents. LegionForge-Anneal's differentiator from both Voyager and LATM is the production-hardening layer: sandboxed execution, adversarial testing, Ed25519 signing, HITL gate.

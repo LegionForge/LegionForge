@@ -162,6 +162,10 @@ async def agent_node(state: AgentState) -> dict:
         # Implementation: each prepend pushes previous content one slot right,
         # so the last prepend ends up at index 0 (first seen by the LLM).
         # We prepend memory first, prefs second, persona last.
+        #
+        # Inspired by: "The AI-Human Engineering Stack" — Hayen Mill &
+        # Henrique Jr. Sanchez (March 2026), the Manus Insight on KV-cache
+        # stability ordering.  https://github.com/hjasanchez/agentic-engineering
 
         # ── Step 1: Memory recall (Phase 21 — dynamic, changes every run) ──────
         # Inject relevant past context before LLM call (no-op when disabled).

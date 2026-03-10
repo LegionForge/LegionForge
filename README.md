@@ -259,7 +259,7 @@ make revoke-tool TOOL_ID=<id>  # Emergency tool revocation
 
 ## Acknowledgements
 
-LegionForge exists in a space shaped by several projects worth calling out directly.
+LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
 **[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture (Gateway, Agent, Tools, Workspace, Sessions, Nodes) and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
 
@@ -268,6 +268,12 @@ LegionForge exists in a space shaped by several projects worth calling out direc
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. The checkpoint-based state persistence and the recursion-limit loop protection are LangGraph primitives that LegionForge builds on heavily.
 
 **[LangChain](https://github.com/langchain-ai/langchain)** and the broader open-source LLM tooling ecosystem — without the ecosystem of open weights models, open inference runtimes (Ollama), and open tooling, a project like this on consumer hardware wouldn't be possible.
+
+**[LATM — Learning to Use Tools by Making Them](https://arxiv.org/abs/2305.17126)** (Cai et al., ICLR 2024) and **[Voyager](https://arxiv.org/abs/2305.16291)** (Wang et al., NVIDIA 2023) — the closest published academic work to LegionForge-Anneal's crystallization pipeline. Both explore converting LLM-generated actions into reusable tools. LegionForge's contribution is the production-hardening layer: sandboxed execution, adversarial testing, Ed25519 signing, and HITL gate.
+
+**[Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)** by Robert S. Balch II — a deterministic semantic memory system using graph traversal (the STAR algorithm) instead of vector embeddings. Anchor Engine's core insight — that agent memory should be *deterministic and explainable*, not statistically fuzzy — directly informed LegionForge's temporal decay weighting in memory recall. The STAR gravity formula (`similarity × e^(-λ·age)`) is adapted from Anchor's whitepaper for the `similarity_search` temporal decay path in `src/database.py`.
+
+**[The AI-Human Engineering Stack](https://github.com/hjasanchez/agentic-engineering)** by Hayen Mill and Henrique Jr. Sanchez (March 2026) — a framework for thinking about the five cognitive layers of AI engineering (Prompt, Context, Intent, Judgment, Coherence) plus Evaluation and Harness as cross-cutting meta-functions. The Manus Insight from this paper — that KV-cache hit rate is the single most important production agent metric, and that context should be ordered stable-first — directly motivated the message assembly reordering in `src/base_graph.py`.
 
 The security-first design of LegionForge is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source evolves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
 

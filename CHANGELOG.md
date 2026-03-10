@@ -11,7 +11,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.7.1-alpha] — 2026-03-10
+## [0.7.1-alpha] — 2026-03-10 (ongoing)
+
+### Added — 2026-03-10 (post-#239 bug-fix session)
+
+- **KV-cache stable context ordering** (`src/base_graph.py`) — agent message assembly now builds `[persona (most stable) → prefs → memory recall → task (most dynamic)]`. Previously assembled in reverse order, defeating KV-cache prefix reuse on every run. Inspired by the Manus Insight in *The AI-Human Engineering Stack* (Mill & Sanchez, March 2026).
+- **Temporal decay on memory recall** (`src/database.py`, `src/memory.py`) — `similarity_search()` gains a `temporal_decay` path using the STAR gravity formula: `score × e^(-0.000962 × age_hours)` (30-day half-life). `MemoryStore.search()` enables temporal decay by default so recent memories rank above equally similar but older ones. Min-similarity threshold is preserved on raw cosine score. The `memory_recall` tool now surfaces age alongside score (`[0.847, 3h ago]`). Adapted from the STAR algorithm whitepaper by Robert S. Balch II ([Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)).
+- **Researcher tool sequences** — `BROWSER_TOOL_SEQUENCES` expanded from 4 → 14 entries. Sequences starting with `web_fetch_js` followed by `web_search`, `web_fetch`, or another `web_fetch_js` were missing, causing Guardian to sandbox the researcher on virtually every modern news site. Gateway lifespan now auto-registers sequences on startup (was manual `make register-agent-sequences` only). 2133/2133 smoke.
+- **SecureToolNode tool name normalisation** (`src/base_graph.py`) — normalises underscore-stripped tool names from local models (e.g. `spawnresearcher` → `spawn_researcher`) before security registry and Guardian checks.
+- **Attribution** — `README.md`, `LegionForge_readme.md`, `RESEARCH.md`, and inline source comments now credit Anchor Engine (Robert S. Balch II), *The AI-Human Engineering Stack* (Mill & Sanchez), LATM (Cai et al.), and Voyager (Wang et al.) for design influences.
 
 ### Fixed — PRs #235–#239
 

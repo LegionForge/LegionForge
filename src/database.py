@@ -2110,6 +2110,10 @@ async def similarity_search(
         The min_similarity filter applies to raw cosine score so semantically
         irrelevant documents are never returned regardless of recency.
         Results are ordered by final_score descending.
+
+        Formula adapted from: Anchor Engine — STAR: Semantic Temporal Associative
+        Retrieval, Robert S. Balch II (2025–2026).
+        https://github.com/RSBalchII/anchor-engine-node  DOI: 10.5281/zenodo.18841399
     """
     pool = get_pool()
     async with pool.connection() as conn:
