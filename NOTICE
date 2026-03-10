@@ -1,0 +1,66 @@
+LegionForge
+Copyright 2026 John Paul "Jp" Cruz
+
+This product includes software developed by third parties.
+The following components are subject to their own licenses, reproduced or
+summarised below as required by those licenses.
+
+---
+
+## Apache License 2.0 Components
+
+The following components are licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). You may obtain a copy of these
+components at the URLs listed.
+
+**bcrypt** — https://github.com/pyca/bcrypt
+Copyright (c) The PyCA Contributors
+
+**cryptography** — https://github.com/pyca/cryptography
+Copyright (c) The PyCA Contributors
+(Dual-licensed Apache-2.0 OR BSD-3-Clause; Apache-2.0 terms apply here)
+
+---
+
+## LGPL-3.0 Components
+
+The following components are licensed under the GNU Lesser General Public
+License v3.0 (https://www.gnu.org/licenses/lgpl-3.0.html).
+
+**psycopg** — https://github.com/psycopg/psycopg
+Copyright (c) Daniele Varrazzo and contributors
+
+**psycopg-pool** — https://github.com/psycopg/psycopg
+Copyright (c) Daniele Varrazzo and contributors
+
+LGPL-3.0 requires that recipients can replace the LGPL component with a
+modified version. Since these components are installed as standard Python
+packages via pip, users can replace them by installing a different version.
+Source code is available at the URLs above.
+
+---
+
+## MIT Components
+
+The following components are licensed under the MIT License. MIT does not
+require reproduction in binary distributions, but we list them here for
+completeness and credit.
+
+- LangGraph — LangChain, Inc. — https://github.com/langchain-ai/langgraph
+- LangChain Core — LangChain, Inc. — https://github.com/langchain-ai/langchain
+- FastAPI — Sebastián Ramírez — https://github.com/fastapi/fastapi
+- Pydantic — Samuel Colvin et al. — https://github.com/pydantic/pydantic
+- pgvector-python — Andrew Kane — https://github.com/pgvector/pgvector-python
+- PyJWT — Jose Padilla et al. — https://github.com/jpadilla/pyjwt
+- redis-py — Redis Ltd. — https://github.com/redis/redis-py
+- langchain-ollama — LangChain, Inc.
+
+## BSD-3-Clause Components
+
+- uvicorn — Tom Christie et al. — https://github.com/encode/uvicorn
+- httpx — Tom Christie et al. — https://github.com/encode/httpx
+
+---
+
+For a complete list of design influences, academic inspirations, and
+conceptual attributions, see CREDITS.md.

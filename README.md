@@ -277,6 +277,8 @@ LegionForge exists in a space shaped by several projects and thinkers worth call
 
 The security-first design of LegionForge is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source evolves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
 
+For the full canonical record of design influences, academic inspirations, and third-party attributions, see [`CREDITS.md`](CREDITS.md). For machine-readable citation data, see [`CITATION.cff`](CITATION.cff).
+
 ---
 
 ## License
