@@ -133,7 +133,7 @@ async def _make_admin_conn():
     """
     Create a direct psycopg admin connection for test fixture setup/teardown.
 
-    Why admin, not get_pool()?  legionforge_app has INSERT+UPDATE on tasks and
+    Why admin, not get_worker_pool()?  legionforge_app has INSERT+UPDATE on tasks and
     gateway_users but NOT DELETE (by RBAC design — runtime code should never bulk-
     delete tasks or users).  Test fixtures need to clean up after themselves, so
     they connect as the admin user instead.

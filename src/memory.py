@@ -178,9 +178,9 @@ class MemoryStore:
         Returns:
             List of ``{id, content, metadata}`` dicts.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             rows = await conn.fetch(
                 """
@@ -204,9 +204,9 @@ class MemoryStore:
         """
         Return document count and oldest/newest timestamps for a namespace.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             row = await conn.fetchrow(
                 """
@@ -237,9 +237,9 @@ class MemoryStore:
         Returns:
             Number of rows deleted.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             result = await conn.execute(
                 "DELETE FROM documents WHERE namespace = $1", namespace
@@ -258,9 +258,9 @@ class MemoryStore:
         Returns:
             Number of rows deleted.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             result = await conn.execute(
                 """

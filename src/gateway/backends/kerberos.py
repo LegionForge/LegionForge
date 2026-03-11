@@ -146,10 +146,10 @@ class KerberosBackend:
         Uses ``[OAUTH-NO-KEY]`` as the api_key_hash sentinel so ApiKeyBackend
         cannot authenticate these users.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
         user_id = f"kerberos:{principal}"
-        pool = get_pool()
+        pool = get_worker_pool()
         try:
             async with pool.connection() as conn:
                 async with conn.cursor() as cur:

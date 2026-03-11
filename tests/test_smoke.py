@@ -5378,7 +5378,7 @@ def test_p10_db_stream_token_round_trip_logic():
     from datetime import datetime, timezone
 
     # We test the round-trip using the in-memory helpers in auth.py which now
-    # delegate to the DB functions.  We mock get_pool to avoid a live DB.
+    # delegate to the DB functions.  We mock get_worker_pool to avoid a live DB.
     # This validates the *wiring*, not the SQL.
 
     call_log: list = []
@@ -5414,7 +5414,7 @@ def test_p10_db_stream_token_round_trip_logic():
 
     import src.database as db_module
 
-    with mock.patch.object(db_module, "get_pool", return_value=FakePool()):
+    with mock.patch.object(db_module, "get_worker_pool", return_value=FakePool()):
         asyncio.run(db_module.create_stream_token("tok123", "task-1", "user-1", 1800))
 
     assert any(
@@ -21970,7 +21970,7 @@ def test_maintenance_role_has_no_full_table_select_in_setup():
 
 
 def test_run_db_maintenance_uses_get_maintenance_connection():
-    """run_db_maintenance uses get_maintenance_connection, not raw get_pool()."""
+    """run_db_maintenance uses get_maintenance_connection, not raw get_worker_pool()."""
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
@@ -21978,7 +21978,7 @@ def test_run_db_maintenance_uses_get_maintenance_connection():
     fn_end = src.index("\n\n\nasync def ", fn_start)
     fn_body = src[fn_start:fn_end]
     assert "get_maintenance_connection" in fn_body
-    assert "pool = get_pool()" not in fn_body
+    assert "pool = get_worker_pool()" not in fn_body
 
 
 def test_all_roles_have_bypassrls_except_gateway():
@@ -22428,11 +22428,11 @@ def test_prune_audit_log_uses_admin_connection():
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
-    # Find the prune_audit_log function and confirm it uses admin credentials, not get_pool()
+    # Find the prune_audit_log function and confirm it uses admin credentials, not get_worker_pool()
     func_start = src.index("async def prune_audit_log(")
     func_body = src[func_start : func_start + 1200]
     assert "_build_conninfo_no_password()" in func_body
-    assert "get_pool()" not in func_body
+    assert "get_worker_pool()" not in func_body
 
 
 def test_gateway_health_includes_llm_status():
@@ -22789,7 +22789,7 @@ def test_secure_tool_node_normalises_before_registry_check():
 def test_database_no_get_pool_on_gateway_tables():
     """
     Static guard: user-facing CRUD functions in database.py must NOT call
-    get_pool() (legionforge_worker — SELECT-only on user tables).
+    get_worker_pool() (legionforge_worker — SELECT-only on user tables).
     They must use get_gateway_pool() instead.
 
     This catches regressions when new functions are added for user-facing
@@ -22834,7 +22834,9 @@ def test_database_no_get_pool_on_gateway_tables():
         if not isinstance(node, ast.FunctionDef):
             continue
         func_src = ast.get_source_segment(src, node) or ""
-        uses_get_pool = "get_pool()" in func_src and "get_gateway_pool" not in func_src
+        uses_get_pool = (
+            "get_worker_pool()" in func_src and "get_gateway_pool" not in func_src
+        )
         if not uses_get_pool:
             continue
         # Check if this function contains a write SQL verb against a gateway table
@@ -22842,7 +22844,7 @@ def test_database_no_get_pool_on_gateway_tables():
             for verb in WRITE_VERBS:
                 if verb in func_src and tbl in func_src:
                     violations.append(
-                        f"{node.name}() uses get_pool() but writes to '{tbl}'"
+                        f"{node.name}() uses get_worker_pool() but writes to '{tbl}'"
                     )
                     break
 

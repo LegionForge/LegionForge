@@ -855,7 +855,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
 
 # ── Connection pools (one per DB role) ───────────────────────────────────────
 
-_pool: Optional[AsyncConnectionPool] = None  # worker pool (backward-compat alias)
+_worker_pool: Optional[AsyncConnectionPool] = None  # legionforge_worker pool
 _gateway_pool: Optional[AsyncConnectionPool] = (
     None  # legionforge_gateway (RLS enforced)
 )
@@ -873,13 +873,13 @@ async def init_db() -> None:
 
     Phase 1 (admin):  Create extensions, LangGraph checkpoint tables, app tables,
                       and the restricted legionforge_app role via _setup_db_roles().
-    Phase 2 (app):    Initialize _pool with the restricted legionforge_app user —
+    Phase 2 (app):    Initialize _worker_pool with the restricted legionforge_app user —
                       no DDL, no DELETE on audit tables, no superuser privileges.
 
     This ensures all runtime agent operations run under the least-privilege DB user.
     Admin credentials are only held during startup schema setup, then discarded.
     """
-    global _pool, _gateway_pool, _maintenance_pool, _readonly_pool
+    global _worker_pool, _gateway_pool, _maintenance_pool, _readonly_pool
 
     # ── Initialize CredentialStore before first secret access ──────────────
     # This loads all credentials into memory once. After this point, no code
@@ -940,8 +940,8 @@ async def init_db() -> None:
 
     # ── Phase 2: Named role pools ────────────────────────────────────────────
     # Each LegionForge component gets its own connection pool backed by its
-    # dedicated least-privilege role. get_pool() returns the worker pool for
-    # backward compatibility. Specialised callers use get_gateway_pool(),
+    # dedicated least-privilege role. get_worker_pool() returns the worker pool.
+    # Specialised callers use get_gateway_pool(),
     # get_readonly_pool(), or get_maintenance_connection().
     logger.info("[db-init] Phase 2: Initializing role-based connection pools...")
 
@@ -970,13 +970,13 @@ async def init_db() -> None:
             return None
 
     # Worker pool — primary runtime pool (BYPASSRLS, broad read/write access)
-    _pool = await _open_role_pool(DB_ROLE_WORKER, min_size=1, max_size=8)
-    if _pool is None:
+    _worker_pool = await _open_role_pool(DB_ROLE_WORKER, min_size=1, max_size=8)
+    if _worker_pool is None:
         logger.warning(
             "[db-init] Worker pool unavailable — falling back to admin pool. "
             "Run 'make setup-db-roles' to create the legionforge_* roles."
         )
-        _pool = AsyncConnectionPool(
+        _worker_pool = AsyncConnectionPool(
             conninfo=admin_conninfo,
             min_size=1,
             max_size=10,
@@ -987,7 +987,7 @@ async def init_db() -> None:
             },
             open=False,
         )
-        await _pool.open(wait=True)
+        await _worker_pool.open(wait=True)
 
     # Gateway pool — RLS-enforced, user-scoped (legionforge_gateway)
     _gateway_pool = await _open_role_pool(DB_ROLE_GATEWAY, min_size=1, max_size=20)
@@ -1967,9 +1967,9 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
 
 async def close_db() -> None:
     """Close all connection pools. Call at application shutdown."""
-    global _pool, _gateway_pool, _maintenance_pool, _readonly_pool
+    global _worker_pool, _gateway_pool, _maintenance_pool, _readonly_pool
     for name, pool in [
-        ("worker", _pool),
+        ("worker", _worker_pool),
         ("gateway", _gateway_pool),
         ("maintenance", _maintenance_pool),
         ("readonly", _readonly_pool),
@@ -1979,29 +1979,32 @@ async def close_db() -> None:
                 await pool.close()
             except Exception as exc:
                 logger.debug("[db-close] %s pool close error: %s", name, exc)
-    _pool = _gateway_pool = _maintenance_pool = _readonly_pool = None
+    _worker_pool = _gateway_pool = _maintenance_pool = _readonly_pool = None
     logger.info("PostgreSQL connection pools closed")
 
 
-def get_pool() -> AsyncConnectionPool:
-    """Return the worker pool (backward-compat). Raises if init_db() not called."""
-    if _pool is None:
+def get_worker_pool() -> AsyncConnectionPool:
+    """Return the worker pool (legionforge_worker — BYPASSRLS, agent operations). Raises if init_db() not called."""
+    if _worker_pool is None:
         raise RuntimeError("Database not initialized. Call await init_db() first.")
-    return _pool
+    return _worker_pool
+
+
+get_pool = get_worker_pool  # backward-compat alias
 
 
 def get_gateway_pool() -> AsyncConnectionPool:
     """Return the legionforge_gateway pool (RLS-enforced, user-scoped).
     Falls back to worker pool if gateway pool is unavailable.
     """
-    return _gateway_pool or get_pool()
+    return _gateway_pool or get_worker_pool()
 
 
 def get_readonly_pool() -> AsyncConnectionPool:
     """Return the legionforge_readonly pool (SELECT-only, health/metrics).
     Falls back to worker pool if readonly pool is unavailable.
     """
-    return _readonly_pool or get_pool()
+    return _readonly_pool or get_worker_pool()
 
 
 @asynccontextmanager
@@ -2048,7 +2051,7 @@ async def get_admin_connection() -> AsyncGenerator[psycopg.AsyncConnection, None
     Use this when you need to operate across user boundaries without
     needing DELETE on prunable tables (use get_maintenance_connection for that).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         yield conn
 
@@ -2063,7 +2066,7 @@ async def get_maintenance_connection() -> AsyncGenerator[psycopg.AsyncConnection
 
     Falls back to the worker pool if the maintenance pool is unavailable.
     """
-    pool = _maintenance_pool or get_pool()
+    pool = _maintenance_pool or get_worker_pool()
     async with pool.connection() as conn:
         yield conn
 
@@ -2082,7 +2085,7 @@ async def get_checkpointer() -> AsyncGenerator[AsyncPostgresSaver, None]:
         async with get_checkpointer() as checkpointer:
             graph = my_graph.compile(checkpointer=checkpointer)
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     checkpointer = AsyncPostgresSaver(pool)
     yield checkpointer
 
@@ -2097,7 +2100,7 @@ async def store_document(
     metadata: dict | None = None,
 ) -> int:
     """Store a document with its embedding. Returns the new document ID."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2134,7 +2137,7 @@ async def similarity_search(
         Retrieval, Robert S. Balch II (2025–2026).
         https://github.com/RSBalchII/anchor-engine-node  DOI: 10.5281/zenodo.18841399
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         if temporal_decay:
             cur = await conn.execute(
@@ -2207,7 +2210,7 @@ async def record_api_usage(
     user_id: str | None = None,
 ) -> None:
     """Record an API call for rate limiting and cost tracking."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -2240,7 +2243,7 @@ async def get_usage_summary(hours: int = 24) -> dict:
         or hours > 8760
     ):
         raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2355,7 +2358,7 @@ async def log_threat_event(
             f"Expected one of: {THREAT_ACTIONS}"
         )
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2396,7 +2399,7 @@ async def get_threat_summary(hours: int = 24) -> dict:
         or hours > 8760
     ):
         raise ValueError(f"hours must be an integer between 1 and 8760, got {hours!r}")
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2426,7 +2429,7 @@ async def get_recent_escalations(hours: int = 24, limit: int = 20) -> list[dict]
     Returns a list of dicts with keys: seq, ts, agent_id, payload.
     Returns an empty list if the DB is unavailable or the table is empty.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2497,7 +2500,7 @@ async def append_audit_log(
 
     Non-fatal if DB is unavailable — returns -1 and logs a warning.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         # Get last row hash — genesis sentinel if table is empty
         cur = await conn.execute(
@@ -2563,7 +2566,7 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
     # Use the readonly pool (SELECT on audit_log + audit_anchors granted to
     # legionforge_readonly). Fall back to worker pool if readonly is unavailable
     # (e.g. role doesn't exist yet on a fresh install before first startup).
-    pool = get_readonly_pool() or get_pool()
+    pool = get_readonly_pool() or get_worker_pool()
     async with pool.connection() as conn:
         # Load latest anchor to determine starting boundary
         cur_anc = await conn.execute(
@@ -2835,7 +2838,7 @@ async def store_document_with_provenance(
     same URL returns different content (possible poisoning indicator).
     """
     source_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -2910,7 +2913,7 @@ async def get_agent_sequences(agent_id: str) -> list[list[str]]:
     Retrieve all registered sequences for an agent.
     Returns empty list if no sequences are registered (agent is unconstrained).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "SELECT sequence FROM agent_profiles WHERE agent_id = %s ORDER BY registered_at ASC",
@@ -2960,7 +2963,7 @@ async def propose_threat_rule(
     Returns:
         rule_id (UUID string) of the newly created rule.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     import json
 
     async with pool.connection() as conn:
@@ -2993,7 +2996,7 @@ async def get_pending_rules(limit: int = 50) -> list[dict]:
     Return all PENDING threat rules for human review.
     Used by the /rules endpoint (operator review UI).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3015,7 +3018,7 @@ async def get_approved_rules() -> list[dict]:
     Return all currently APPROVED, non-expired threat rules.
     Called by Guardian's hot-reload cache refresh (every 5 minutes).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3040,7 +3043,7 @@ async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
 
     Returns True if the rule was found and updated, False if not found.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3061,7 +3064,7 @@ async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
     Reject a PENDING threat rule. Operator-only action.
     Rejected rules are retained for audit; they are never deleted.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3091,7 +3094,7 @@ async def get_threat_events_for_analysis(
         hours:  Lookback window in hours (default 168 = 7 days).
         limit:  Maximum rows returned (prevents context window overflow).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3159,7 +3162,7 @@ async def nominate_candidate(
         candidate_id on success, None if DB unavailable.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """
@@ -3203,7 +3206,7 @@ async def nominate_candidate(
 async def get_pending_candidates(limit: int = 20) -> list[dict]:
     """Return NOMINATED candidates, most recent first. Non-fatal."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3227,7 +3230,7 @@ async def get_pending_candidates(limit: int = 20) -> list[dict]:
 async def get_candidate(candidate_id: str) -> dict | None:
     """Return full candidate record by ID. Non-fatal."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT * FROM crystallization_candidates WHERE candidate_id = %s",
@@ -3263,7 +3266,7 @@ async def create_package(
     Also updates the candidate status to IN_PROGRESS.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """
@@ -3311,7 +3314,7 @@ async def create_package(
 async def get_package(package_id: str) -> dict | None:
     """Return full package record by ID. Non-fatal."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT * FROM crystallization_packages WHERE package_id = %s",
@@ -3330,7 +3333,7 @@ async def get_packages_ready_for_review() -> list[dict]:
     Most recently analyzed first.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3377,7 +3380,7 @@ async def create_analysis(
     Returns analysis row id on success, None on failure.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3433,7 +3436,7 @@ async def create_analysis(
 async def get_analysis(package_id: str) -> dict | None:
     """Return the most recent analysis report for a package. Non-fatal."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT * FROM crystallization_analyses WHERE package_id = %s "
@@ -3453,7 +3456,7 @@ async def approve_package(package_id: str, approved_by: str) -> bool:
     Returns True if the row was updated.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3477,7 +3480,7 @@ async def approve_package(package_id: str, approved_by: str) -> bool:
 async def reject_package(package_id: str, rejected_by: str, reason: str = "") -> bool:
     """Reject a package at any reviewable status. Returns True if updated."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3506,7 +3509,7 @@ async def revise_package(package_id: str, revision_notes: str) -> bool:
     Returns True if updated.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3532,7 +3535,7 @@ async def store_tool_signature(
 ) -> bool:
     """Store Ed25519 signature and public key fingerprint for a registered tool."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3554,7 +3557,7 @@ async def store_tool_signature(
 async def get_tool_registry_entry(tool_id: str) -> dict | None:
     """Return tool_registry row including signature columns. Non-fatal."""
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT * FROM tool_registry WHERE tool_id = %s AND status = 'APPROVED'",
@@ -3592,7 +3595,7 @@ async def revoke_tool(
         True if the tool was found and revoked; False if not found or DB error.
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """
@@ -3647,7 +3650,7 @@ async def get_revoked_tools() -> list[str]:
         List of revoked tool_id strings (empty if none or DB unavailable).
     """
     try:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT tool_id FROM tool_registry WHERE status = 'REVOKED'"
@@ -3673,7 +3676,7 @@ async def create_pentest_run(mode: str = "verify", git_ref: str | None = None) -
     Returns:
         UUID string for the new run.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.fetchone(
             """
@@ -3721,7 +3724,7 @@ async def log_pentest_finding(
     if payload and len(payload) > 4096:
         payload = payload[:4096]
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.fetchone(
             """
@@ -3749,7 +3752,7 @@ async def finish_pentest_run(run_id: str, summary: dict) -> None:
         run_id:  UUID of the run to close.
         summary: Dict with keys: total, passed, bypasses, by_severity, by_class.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -3771,7 +3774,7 @@ async def get_pentest_run(run_id: str) -> dict | None:
     Returns:
         Dict with run fields, or None if not found.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         rows = await conn.fetchall(
@@ -3788,7 +3791,7 @@ async def list_pentest_findings(run_id: str) -> list[dict]:
     Returns:
         List of dicts (empty list if no findings or run not found).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         return await conn.fetchall(
@@ -3899,7 +3902,7 @@ async def promote_pentest_rule_to_threat_rule(
         rationale or f"Promoted from pentest finding #{finding_id} (run {run_id[:8]})"
     )
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -3959,7 +3962,7 @@ async def create_task(
     session_id: UUID of a conversation session (Phase 54).
     model_preference: named speed preset — "fast", "balanced", "powerful" (Phase 58).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -3993,7 +3996,7 @@ async def create_task(
     task_row = dict(row)
     # Phase 39: record 'queued' timeline event (best-effort, non-blocking)
     try:
-        pool2 = get_pool()
+        pool2 = get_worker_pool()
         async with pool2.connection() as conn2:
             await conn2.execute(
                 "INSERT INTO task_events (task_id, event_type, metadata) "
@@ -4026,7 +4029,7 @@ async def lookup_cached_task(
     from datetime import datetime, timezone, timedelta
 
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4051,7 +4054,7 @@ async def get_task(task_id: str, user_id: str | None = None) -> dict | None:
     If user_id is provided, returns None if the task belongs to a different user
     (404 semantics — do not reveal task existence to unauthorized callers).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4110,7 +4113,7 @@ async def list_tasks(
     """
     if status is not None and status not in VALID_TASK_STATUSES:
         raise ValueError(f"Invalid status filter: {status!r}")
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
 
@@ -4197,7 +4200,7 @@ async def update_task_tags(
 
     Phase 31.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4238,7 +4241,7 @@ async def update_task_labels(
             f"Unknown labels: {sorted(unknown)}. "
             f"Allowed: {sorted(VALID_TASK_LABELS)}"
         )
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4338,7 +4341,7 @@ async def claim_next_queued_task() -> dict | None:
     Returns the claimed task row, or None if queue is empty.
     Uses UPDATE ... RETURNING with FOR UPDATE SKIP LOCKED for safe concurrent access.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4373,7 +4376,7 @@ async def mark_task_running(task_id: str, run_id: str) -> None:
 
     Phase 39: also inserts a 'running' timeline event.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -4398,7 +4401,7 @@ async def mark_task_complete(
     tokens: dict | None = None,
     stream_events: list | None = None,
 ) -> None:
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -4426,7 +4429,7 @@ async def mark_task_complete(
 
 
 async def mark_task_failed(task_id: str, error: str) -> None:
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -4452,7 +4455,7 @@ async def fail_dependent_tasks(failed_task_id: str) -> int:
 
     Phase 34 — Task Dependencies.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4474,7 +4477,7 @@ async def mark_task_cancelled(task_id: str, user_id: str) -> bool:
     Cancel a task if it is still queued and belongs to the requesting user.
     Returns True if a row was updated, False if not found / wrong owner / not queued.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4548,7 +4551,7 @@ async def bulk_tag_tasks(task_ids: list[str], user_id: str, tags: list[str]) -> 
     """
     if not task_ids:
         return 0
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4590,7 +4593,7 @@ async def create_gateway_user(
 
 async def get_gateway_user_by_username(username: str) -> dict | None:
     """Fetch a gateway_users row by username (for CLI management)."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4608,7 +4611,7 @@ async def get_gateway_user_for_auth(username: str) -> dict | None:
     if not found / inactive.  Called only from auth.py — not exposed on any
     API endpoint.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4660,7 +4663,7 @@ async def set_gateway_user_quota(username: str, daily_token_limit: int) -> bool:
 
 async def list_gateway_users() -> list[dict]:
     """Return all gateway users (active and inactive) for CLI listing."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4750,7 +4753,7 @@ async def create_stream_token(
         user_id:     The user who submitted the task.
         ttl_seconds: Token lifetime in seconds (default 30 min).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -4775,7 +4778,7 @@ async def resolve_stream_token(token: str) -> tuple[str, str] | None:
     Returns:
         (task_id, user_id) tuple, or None if invalid/expired.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4793,7 +4796,7 @@ async def resolve_stream_token(token: str) -> tuple[str, str] | None:
 
 async def delete_stream_token(token: str) -> None:
     """Delete a specific stream token (call on explicit logout or task cancellation)."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "DELETE FROM stream_tokens WHERE token = %s",
@@ -4809,7 +4812,7 @@ async def purge_expired_stream_tokens() -> int:
     Returns:
         Number of rows deleted.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute("DELETE FROM stream_tokens WHERE expires_at <= NOW()")
         deleted = cur.rowcount
@@ -4835,7 +4838,7 @@ async def get_user_actual_usage_today(user_id: str, provider: str) -> int:
     Returns:
         Total token count (0 if none).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4866,7 +4869,7 @@ async def get_user_inflight_tokens(user_id: str) -> int:
     Returns:
         Total in-flight token estimate (0 if none).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4891,7 +4894,7 @@ async def get_user_usage_summary_today(user_id: str) -> dict:
     Returns:
         Dict with keys: user_id, today (tokens_used, tokens_in_flight), providers.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         # Per-provider breakdown
         cur = await conn.execute(
@@ -5095,7 +5098,7 @@ async def delete_scheduled_task(sched_id: int, user_id: str) -> bool:
 
 async def get_due_scheduled_tasks() -> list[dict]:
     """Return all enabled scheduled tasks whose next_run_at <= now()."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5111,7 +5114,7 @@ async def record_scheduled_run(
     sched_id: int, task_id: str, next_run_at: "datetime"
 ) -> None:
     """Update last_run_at, last_task_id, and next_run_at after a job fires."""
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -5335,7 +5338,7 @@ async def record_task_event(
                     'complete', 'failed', 'cancelled', 'dependency_failed'.
         metadata:   Optional JSONB payload (run_id, steps, error, etc.).
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "INSERT INTO task_events (task_id, event_type, metadata) "
@@ -5358,7 +5361,7 @@ async def get_task_timeline(task_id: str, user_id: str) -> list[dict]:
     Returns:
         List of dicts with keys: id, event_type, metadata, ts.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5402,7 +5405,7 @@ async def get_task_stats(user_id: str) -> dict:
 
     Phase 44 — Task Stats & Analytics.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
 
@@ -5521,7 +5524,7 @@ async def reap_stuck_tasks(timeout_seconds: int = 1800) -> int:
 
     Phase 46 — Task Watchdog.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -6091,7 +6094,7 @@ async def get_user_usage_history(
     Phase 53 — Usage History.
     """
     days = max(1, min(90, days))
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -6382,7 +6385,7 @@ async def list_annotations_admin(
 
     Returns rows ordered newest-first.  Phase 59.
     """
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         if rating is not None:

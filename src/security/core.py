@@ -596,9 +596,9 @@ async def register_tool(
     # (register_researcher_tools / register_orchestrator_tools), which is the hot
     # path.  Lazy-load is only a fallback for tools registered out-of-process.
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """

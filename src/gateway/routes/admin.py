@@ -264,10 +264,10 @@ async def system_stats(admin: dict = Depends(require_admin)):
 
     Aggregates tokens across all users and providers.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     try:
         async with pool.connection() as conn:
             conn.row_factory = dict_row
@@ -322,10 +322,10 @@ async def list_all_schedules(
     admin: dict = Depends(require_admin),
 ):
     """List scheduled tasks across all users (admin view)."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     try:
         async with pool.connection() as conn:
             conn.row_factory = dict_row

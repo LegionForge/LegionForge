@@ -654,9 +654,9 @@ async def score_embedding_trust(doc: dict) -> float:
     if doc_id is None:
         return 0.5
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT trust_score FROM documents WHERE id = %s", (doc_id,)
