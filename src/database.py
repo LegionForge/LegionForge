@@ -6650,12 +6650,14 @@ def __getattr__(name: str) -> object:
 
     Logs a warning BEFORE raising so the stale reference is always visible
     in the application log even if the caller catches the AttributeError.
-    Think of it as the automated version of leaving yourself a note:
-    "Hey — you missed a reference here!"
+    The warning includes the caller's file and line number so the offending
+    reference can be found immediately without grepping the whole codebase.
 
     DB-4: get_pool was removed — all callers must use an explicit accessor.
     DB-5: get_admin_connection was renamed get_worker_connection.
     """
+    import traceback
+
     _removed = {
         "get_pool": (
             "get_pool() was removed (DB-4). "
@@ -6666,14 +6668,29 @@ def __getattr__(name: str) -> object:
     _renamed = {
         "get_admin_connection": "get_worker_connection",
     }
+
+    # Capture caller location from the top of the live call stack
+    # (frame 0 = here, frame 1 = the actual offending import/call site).
+    stack = traceback.extract_stack()
+    caller = stack[-2] if len(stack) >= 2 else None
+    location = (
+        f"{caller.filename}:{caller.lineno} in {caller.name}"
+        if caller
+        else "unknown location"
+    )
+
     if name in _removed:
-        msg = f"[src.database] STALE REFERENCE: {name} — {_removed[name]}"
+        msg = (
+            f"[src.database] STALE REFERENCE: {name} "
+            f"called from {location} — {_removed[name]}"
+        )
         logger.warning(msg)
         raise AttributeError(msg)
     if name in _renamed:
         msg = (
-            f"[src.database] STALE REFERENCE: {name} was renamed to "
-            f"{_renamed[name]}(). Update your import."
+            f"[src.database] STALE REFERENCE: {name} "
+            f"called from {location} — renamed to {_renamed[name]}(). "
+            "Update your import."
         )
         logger.warning(msg)
         raise AttributeError(msg)
