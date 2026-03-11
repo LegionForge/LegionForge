@@ -6646,8 +6646,12 @@ async def list_annotations_admin(
 
 def __getattr__(name: str) -> object:
     """
-    Intercept access to removed or renamed module attributes and give a
-    clear, actionable error instead of a generic AttributeError.
+    Intercept access to removed or renamed module attributes.
+
+    Logs a warning BEFORE raising so the stale reference is always visible
+    in the application log even if the caller catches the AttributeError.
+    Think of it as the automated version of leaving yourself a note:
+    "Hey — you missed a reference here!"
 
     DB-4: get_pool was removed — all callers must use an explicit accessor.
     DB-5: get_admin_connection was renamed get_worker_connection.
@@ -6663,10 +6667,14 @@ def __getattr__(name: str) -> object:
         "get_admin_connection": "get_worker_connection",
     }
     if name in _removed:
-        raise AttributeError(f"src.database.{name}: {_removed[name]}")
+        msg = f"[src.database] STALE REFERENCE: {name} — {_removed[name]}"
+        logger.warning(msg)
+        raise AttributeError(msg)
     if name in _renamed:
-        raise AttributeError(
-            f"src.database.{name} was renamed to {_renamed[name]}(). "
-            "Update your import."
+        msg = (
+            f"[src.database] STALE REFERENCE: {name} was renamed to "
+            f"{_renamed[name]}(). Update your import."
         )
+        logger.warning(msg)
+        raise AttributeError(msg)
     raise AttributeError(f"module 'src.database' has no attribute {name!r}")
