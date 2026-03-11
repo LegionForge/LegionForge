@@ -6639,3 +6639,34 @@ async def list_annotations_admin(
             )
             cur = await conn.execute(sql, (limit, offset))
         return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Module-level guard for removed names ─────────────────────────────────────
+
+
+def __getattr__(name: str) -> object:
+    """
+    Intercept access to removed or renamed module attributes and give a
+    clear, actionable error instead of a generic AttributeError.
+
+    DB-4: get_pool was removed — all callers must use an explicit accessor.
+    DB-5: get_admin_connection was renamed get_worker_connection.
+    """
+    _removed = {
+        "get_pool": (
+            "get_pool() was removed (DB-4). "
+            "Use get_worker_pool(), get_gateway_pool(), get_readonly_pool(), "
+            "or get_maintenance_connection() depending on the privilege level needed."
+        ),
+    }
+    _renamed = {
+        "get_admin_connection": "get_worker_connection",
+    }
+    if name in _removed:
+        raise AttributeError(f"src.database.{name}: {_removed[name]}")
+    if name in _renamed:
+        raise AttributeError(
+            f"src.database.{name} was renamed to {_renamed[name]}(). "
+            "Update your import."
+        )
+    raise AttributeError(f"module 'src.database' has no attribute {name!r}")

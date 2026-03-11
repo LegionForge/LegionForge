@@ -9147,16 +9147,51 @@ def test_db4_get_pool_alias_removed():
     )
 
 
+def test_db4_get_pool_getattr_guard_fires():
+    """
+    DB-4: Accessing src.database.get_pool at runtime must raise AttributeError
+    with a clear, actionable message naming the correct replacement functions —
+    not a generic 'has no attribute' error.
+    """
+    import src.database as db_mod
+
+    with pytest.raises(AttributeError, match="get_worker_pool"):
+        _ = db_mod.get_pool
+
+
 def test_db4_no_get_pool_calls_in_src():
-    """DB-4: No production source file under src/ should call get_pool()."""
+    """
+    DB-4: No production source file under src/ should assign or call get_pool.
+
+    The __getattr__ guard legitimately references the name in an error-message
+    string, so we can't just search for the substring.  Instead check that:
+      - the alias assignment (get_pool = ...) is absent
+      - no line calls get_pool() outside of a string literal
+    """
+    import ast
     import inspect
     import src.database as db_mod
 
     src = inspect.getsource(db_mod)
-    # The alias definition itself is gone; ensure no residual call sites remain.
+
+    # 1. Alias assignment must be gone.
     assert (
-        "get_pool()" not in src
-    ), "DB-4: get_pool() call found in src/database.py — use an explicit pool accessor"
+        "get_pool = " not in src
+    ), "DB-4: get_pool alias assignment found in src/database.py"
+
+    # 2. No call node in the AST uses the name get_pool directly.
+    tree = ast.parse(src)
+    bad_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "get_pool"
+    ]
+    assert not bad_calls, (
+        f"DB-4: {len(bad_calls)} get_pool() call(s) found in src/database.py AST — "
+        "use an explicit pool accessor"
+    )
 
 
 def test_p41_get_current_user_no_sensitive_fields():
