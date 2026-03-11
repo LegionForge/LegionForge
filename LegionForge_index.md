@@ -322,7 +322,7 @@ permalink: /
   <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.1-alpha · Active Development · Not Yet Stable</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 2125/2125 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2151/2151 tests passing</p>
   <div class="cta-group">
     <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
@@ -718,8 +718,8 @@ permalink: /
   </p>
   <p style="color: var(--dim);">
     The security stack, gateway, and operator dashboard are functionally complete and tested.
-    <strong style="color: var(--text);">2125/2125 tests passing.</strong>
-    All pre-v1.0 security blockers resolved. Phases 0–381 complete, plus web browser tools, Guardian package spinoff, and full agent memory model (all 5 gaps — OpenClaw parity).
+    <strong style="color: var(--text);">2151/2151 tests passing.</strong>
+    Phases 0–381 complete, plus web browser tools, Guardian package spinoff, full agent memory model (all 5 gaps — OpenClaw parity), and 2026-03-11 DB security hardening (RLS fail-closed, pool hard-fail, log-bomb cap, Prometheus label normalization — 6 CVE-class issues resolved).
     Active development toward v1.0.0 public release.
   </p>
   <p style="color: var(--dim);">

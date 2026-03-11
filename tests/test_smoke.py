@@ -22852,3 +22852,290 @@ def test_database_no_get_pool_on_gateway_tables():
         "Pool misrouting detected — use get_gateway_pool() for user-facing writes:\n"
         + "\n".join(f"  • {v}" for v in violations)
     )
+
+
+# ── Security Fix Tests — DB-6, DB-7, middleware patches (2026-03-11) ──────────
+# Tests for: worker pool admin fallback removed, raw_input truncation,
+# MetricsMiddleware path normalization, _windows cleanup bug fixed,
+# RLS fail-closed, gateway/readonly pool hard-fail, injection at ingress.
+
+
+def test_worker_pool_no_admin_fallback():
+    """
+    DB-6: Worker pool failure must raise RuntimeError, not fall back to admin pool.
+
+    The old code fell back to admin credentials (DDL + superuser) when legionforge_worker
+    was unavailable, silently granting every agent task superuser DB access.
+    The fix raises RuntimeError so the failure is visible and forces operator action.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.init_db)
+    # Must not contain the admin fallback pattern
+    assert "falling back to admin pool" not in src, (
+        "init_db() must not fall back to admin pool when worker pool is unavailable. "
+        "DB-6: silently escalating to superuser credentials is a security regression."
+    )
+    # Must raise RuntimeError on worker pool failure
+    assert "FATAL: worker pool" in src, (
+        "init_db() must raise RuntimeError with 'FATAL: worker pool' message when "
+        "legionforge_worker pool cannot be opened."
+    )
+
+
+def test_worker_pool_failure_message_mentions_setup_db_roles():
+    """Worker pool RuntimeError message must guide the operator to the fix."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.init_db)
+    assert "make setup-db-roles" in src, (
+        "Worker pool RuntimeError must mention 'make setup-db-roles' so operators "
+        "know the recovery path."
+    )
+
+
+def test_log_threat_event_truncates_raw_input():
+    """
+    DB-7: log_threat_event() must truncate raw_input to _MAX_RAW_INPUT chars.
+
+    Without this truncation an attacker can log-bomb the threat_events table by
+    submitting requests with megabyte-scale payloads — each event fills disk.
+    4 096 chars is sufficient to identify any injection pattern.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.log_threat_event)
+    assert (
+        "_MAX_RAW_INPUT" in src
+    ), "log_threat_event() must define _MAX_RAW_INPUT and use it to cap raw_input length."
+    assert (
+        "safe_raw_input" in src
+    ), "log_threat_event() must create safe_raw_input (truncated) and pass it to INSERT."
+    # Verify the truncation cap value is 4096
+    assert "4096" in src, "log_threat_event() must cap raw_input at 4 096 chars (DB-7)."
+
+
+def test_log_threat_event_uses_safe_raw_input_not_raw():
+    """raw_input must not be passed directly to the INSERT — only safe_raw_input."""
+    import inspect
+    import ast
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod.log_threat_event)
+    # The INSERT tuple must contain safe_raw_input, not the bare raw_input parameter
+    assert (
+        "safe_raw_input," in source
+    ), "log_threat_event() INSERT must use safe_raw_input (truncated), not raw raw_input."
+
+
+def test_gateway_pool_raises_runtimeerror_when_unavailable():
+    """
+    DB-2 (fixed): get_gateway_pool() raises RuntimeError when pool is None.
+
+    The old code fell back to the worker pool (BYPASSRLS), silently disabling RLS
+    for all user-facing requests.  The fix makes a missing gateway pool a hard error.
+    """
+    import src.database as db_mod
+    import inspect
+
+    src = inspect.getsource(db_mod.get_gateway_pool)
+    assert "raise RuntimeError" in src, (
+        "get_gateway_pool() must raise RuntimeError when pool is unavailable. "
+        "DB-2: silently falling back to worker pool disables RLS for all users."
+    )
+    assert (
+        "return _gateway_pool or" not in src
+    ), "get_gateway_pool() must not use 'or' fallback to worker pool. DB-2."
+
+
+def test_readonly_pool_raises_runtimeerror_when_unavailable():
+    """get_readonly_pool() raises RuntimeError — no fallback to worker pool."""
+    import src.database as db_mod
+    import inspect
+
+    src = inspect.getsource(db_mod.get_readonly_pool)
+    assert "raise RuntimeError" in src, (
+        "get_readonly_pool() must raise RuntimeError when pool is unavailable. "
+        "Falling back to worker (BYPASSRLS) for health reads is a privilege escalation."
+    )
+    assert (
+        "return _readonly_pool or" not in src
+    ), "get_readonly_pool() must not use 'or' fallback to worker pool."
+
+
+def test_rls_policy_fail_closed_no_empty_user_id_escape():
+    """
+    DB-1 (fixed): RLS policy must not pass when app.user_id = ''.
+
+    The old policy contained:
+        OR current_setting('app.user_id', true) = ''
+    which meant connections without an explicit user_id saw ALL rows — RLS provided
+    no isolation.  The fix removes the escape hatch so empty user_id sees ZERO rows.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_rls)
+    # The escape hatch must not be present
+    assert "= ''" not in src or "user_id = ''" not in src, (
+        "RLS policy must not contain '= \"\"' escape hatch for app.user_id. "
+        "DB-1: empty user_id must be fail-closed (zero rows), not pass-all."
+    )
+    # The correct fail-closed pattern must be present
+    assert (
+        "user_id = current_setting" in src
+    ), "RLS policy must contain 'user_id = current_setting(...)' strict match."
+
+
+def test_rls_policy_has_no_empty_string_clause():
+    """RLS _policy string in _setup_rls must not include empty-string bypass."""
+    import inspect
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod._setup_rls)
+    assert "true) = ''" not in source, (
+        "RLS policy must not contain the empty-string escape hatch. "
+        "DB-1 fix: _setup_rls._policy should have no 'true) = \"\"' clause."
+    )
+
+
+def test_metrics_middleware_path_normalization_function_exists():
+    """_normalize_path is importable from src.gateway.middleware."""
+    from src.gateway.middleware import _normalize_path
+
+    assert callable(_normalize_path)
+
+
+def test_metrics_middleware_normalizes_uuid_paths():
+    """_normalize_path replaces UUIDs with {id} to prevent Prometheus OOM."""
+    from src.gateway.middleware import _normalize_path
+
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345") == "/tasks/{id}"
+    )
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345/notes")
+        == "/tasks/{id}/notes"
+    )
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345/notes/99999")
+        == "/tasks/{id}/notes/{id}"
+    )
+
+
+def test_metrics_middleware_normalizes_numeric_ids():
+    """_normalize_path replaces long numeric IDs with {id}."""
+    from src.gateway.middleware import _normalize_path
+
+    assert _normalize_path("/pipelines/12345/runs/67890") == "/pipelines/{id}/runs/{id}"
+    # Short numbers (< 4 digits) are left alone — they might be version numbers
+    assert _normalize_path("/v2/status") == "/v2/status"
+
+
+def test_metrics_middleware_leaves_non_id_paths_unchanged():
+    """_normalize_path does not mangle normal path segments."""
+    from src.gateway.middleware import _normalize_path
+
+    for path in ["/health", "/tasks", "/tasks/batch", "/ui", "/metrics"]:
+        assert (
+            _normalize_path(path) == path
+        ), f"_normalize_path should not mangle: {path}"
+
+
+def test_metrics_middleware_uses_normalize_path():
+    """MetricsMiddleware.dispatch calls _normalize_path before recording path label."""
+    import inspect
+    from src.gateway import middleware as mw_mod
+
+    src = inspect.getsource(mw_mod.MetricsMiddleware.dispatch)
+    assert "_normalize_path" in src, (
+        "MetricsMiddleware.dispatch must call _normalize_path() on request.url.path "
+        "before recording the Prometheus label to prevent label cardinality explosion."
+    )
+
+
+def test_rate_limit_window_cleanup_is_after_eviction():
+    """
+    SubmissionRateLimitMiddleware._windows cleanup must happen after eviction,
+    not after append.
+
+    The bug: checking `if not self._windows[key]` after `append()` is dead code —
+    the key is never empty after an append.  Stale empty buckets from churned users
+    accumulate in the dict, causing a slow memory leak.
+    The fix: delete empty buckets immediately after the eviction pass.
+    """
+    import inspect
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+
+    src = inspect.getsource(SubmissionRateLimitMiddleware.dispatch)
+    # The cleanup must appear before the limit check (before 'if len(')
+    cleanup_pos = src.find("if not self._windows[key]:\n")
+    append_pos = src.find("self._windows[key].append(now)")
+    assert (
+        cleanup_pos != -1
+    ), "SubmissionRateLimitMiddleware must delete empty _windows buckets after eviction."
+    assert append_pos != -1, "SubmissionRateLimitMiddleware must have an append() call."
+    assert cleanup_pos < append_pos, (
+        "Empty bucket cleanup must occur BEFORE append(), not after. "
+        "Cleanup after append is dead code — the list can never be empty after an append."
+    )
+
+
+def test_injection_scan_happens_at_gateway_ingress():
+    """
+    Injection detection must fire at POST /tasks before the task is stored.
+
+    This test verifies submit_task() calls sanitize_text(check_injection=True) and
+    raises HTTP 400 on detection, rather than waiting until agent execution.
+    """
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "check_injection=True" in src, (
+        "submit_task() must call sanitize_text(check_injection=True) at the gateway "
+        "boundary — injection scans must fire before the task is stored, not only "
+        "during agent execution."
+    )
+    assert (
+        "injection_detected" in src
+    ), "submit_task() must check the injection_detected flag from sanitize_text()."
+    assert (
+        "HTTP_400_BAD_REQUEST" in src or "400" in src
+    ), "submit_task() must return HTTP 400 when injection is detected."
+
+
+def test_submit_task_does_not_log_injection_detail_in_error():
+    """
+    Gateway must not leak injection detection specifics in the HTTP 400 response.
+
+    Telling an attacker which pattern was matched helps them bypass detection.
+    The response must use a generic message ('Task rejected: invalid input').
+    """
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "Task rejected: invalid input" in src, (
+        "submit_task() HTTP 400 detail must be generic — never include the matched "
+        "pattern or injection type in the response body."
+    )
+
+
+def test_log_threat_event_max_raw_input_constant_value():
+    """_MAX_RAW_INPUT constant (inside log_threat_event) is 4096."""
+    import inspect
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod.log_threat_event)
+    # Extract the assigned value
+    import re
+
+    match = re.search(r"_MAX_RAW_INPUT\s*=\s*(\d+)", source)
+    assert match, "_MAX_RAW_INPUT must be defined inside log_threat_event()"
+    assert (
+        int(match.group(1)) == 4096
+    ), f"_MAX_RAW_INPUT must be 4096, got {match.group(1)}"

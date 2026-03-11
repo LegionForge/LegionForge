@@ -1,11 +1,26 @@
 # LegionForge — Security Posture
 
-**Version:** 0.7.1-alpha | **Last reviewed:** 2026-03-11 | **Reviewer:** Internal + Claude Sonnet 4.6
+**Version:** 0.7.1-alpha | **Last reviewed:** 2026-03-11 (updated) | **Reviewer:** Internal + Claude Sonnet 4.6
 
 This document describes the actual security design of LegionForge — not the aspirational one.
 It is intended to be read by security researchers, third-party auditors, and other AI agents
 evaluating the system. Every known weakness is listed here by design. We do not rely on
 obscurity. Unresolved issues marked **PRE-v1.0** are hard gates before public release.
+
+---
+
+## Changelog — Security Fixes
+
+| Date | ID | What was fixed |
+|------|----|---------------|
+| 2026-03-11 | DB-1 | RLS escape hatch removed — empty `app.user_id` now sees zero rows (fail-closed) |
+| 2026-03-11 | DB-2 | `get_gateway_pool()` and `get_readonly_pool()` now raise `RuntimeError` — no silent fallback to BYPASSRLS worker pool |
+| 2026-03-11 | DB-6 | Worker pool failure in `init_db()` now raises `RuntimeError` — removed silent fallback to admin (superuser) credentials |
+| 2026-03-11 | DB-7 | `log_threat_event()` truncates `raw_input` at 4 096 chars — closes log-bomb DoS vector via oversized injection payloads |
+| 2026-03-11 | SEC-3 | `MetricsMiddleware` normalizes UUIDs and numeric IDs out of path labels — prevents unbounded Prometheus label cardinality growth |
+| 2026-03-11 | SEC-4 | `SubmissionRateLimitMiddleware` empty-bucket cleanup moved to after eviction (was dead code after append) — closes slow memory leak under churned users |
+
+All six fixes are covered by regression tests added to `tests/test_smoke.py` (17 new tests).
 
 ---
 
@@ -130,18 +145,20 @@ RLS-protected tables: `tasks`, `sessions`, `scheduled_tasks`, `pipelines`, `pipe
 3. Resets to `''` / `'off'` on connection release
 4. All queries on that connection are filtered to that user's rows only
 
-### 3.3 Known Issue: RLS Escape Hatch ⚠️
+### 3.3 RLS Fail-Closed — FIXED ✅
 
-**ISSUE:** The policy contains `OR current_setting('app.user_id', true) = ''`.
-This means: *if `app.user_id` is not set, ALL rows pass the RLS check.*
+**Status (2026-03-11):** The escape hatch `OR current_setting('app.user_id', true) = ''` has been removed. The policy is now strictly fail-closed:
 
-**Impact:** The 48+ database functions that call `get_gateway_pool()` directly (without going through `get_user_connection()`) get connections where `app.user_id` defaults to `''`. Those connections see ALL rows — RLS provides no isolation.
+```python
+_policy = (
+    "current_setting('app.bypass_rls', true) = 'on' "
+    "OR user_id = current_setting('app.user_id', true)"
+)
+```
 
-**Current mitigation:** Every one of those functions also has an explicit `WHERE user_id = %s` in the SQL query. User isolation is maintained at the SQL layer. RLS is not providing a second layer in these cases.
+**Behaviour:** If `app.user_id` is not set (empty string), the USING clause evaluates to FALSE for all rows — zero rows returned. A gateway connection that forgets to call `get_user_connection()` now sees nothing instead of everything. This turns a missing setup into a visible application error rather than a silent data leak.
 
-**What this means in practice:** If a SQL injection bug removed the `WHERE user_id = %s` clause from one of those functions, RLS would NOT catch it — because `app.user_id = ''` passes. Defense-in-depth is broken at this layer.
-
-> **PRE-v1.0:** Fix the policy to deny when `app.user_id = ''` (remove the escape hatch). Convert all 48 raw `get_gateway_pool()` functions to use `get_user_connection()` instead, or set `app.user_id` explicitly on each connection.
+**Defence-in-depth restored:** The SQL-layer `WHERE user_id = %s` guard and the RLS policy now both independently enforce user isolation. A bug that removes one guard still has the other.
 
 ### 3.4 `api_usage` Special Policy
 
@@ -168,19 +185,23 @@ Retention pruning / hard deletes        → get_maintenance_pool()
 Health metrics / monitoring reads       → get_readonly_pool()
 ```
 
-### 4.2 Gateway Pool Fallback ⚠️
+### 4.2 Pool Hard-Fail — FIXED ✅
 
-`get_gateway_pool()` falls back to `get_worker_pool()` if the gateway pool fails to initialize:
+**Status (2026-03-11):** All pool accessor functions now raise `RuntimeError` rather than silently falling back to a higher-privilege pool.
+
 ```python
 def get_gateway_pool():
-    return _gateway_pool or get_worker_pool()
+    if _gateway_pool is None:
+        raise RuntimeError("Gateway pool unavailable. Run 'make setup-db-roles'.")
+    return _gateway_pool
+
+def get_readonly_pool():
+    if _readonly_pool is None:
+        raise RuntimeError("Readonly pool unavailable. Run 'make setup-db-roles'.")
+    return _readonly_pool
 ```
 
-**Impact:** If the gateway pool is unavailable, user-facing functions silently escalate to BYPASSRLS worker pool. RLS is completely disabled. The fallback is silent — no log warning at call time.
-
-> **PRE-v1.0:** Change the fallback to raise `RuntimeError` instead of silently escalating. The gateway failing to connect is a startup problem that must be visible, not silently worked around.
-
-Similarly, `get_readonly_pool()` falls back to `get_worker_pool()`. Same issue.
+**Worker pool** is also a hard-fail now — if `legionforge_worker` cannot connect, `init_db()` raises `RuntimeError` immediately. The previous behaviour silently fell back to admin credentials (DDL + superuser), which would have given every agent task superuser DB access. See **DB-6** in Section 9.
 
 ### 4.3 Backward-Compat Alias
 
@@ -293,26 +314,32 @@ All secrets are stored in macOS Keychain via `keyring`. No `.env` files in produ
 
 These must be resolved before LegionForge is published publicly. They are tracked here so they cannot be ignored.
 
-| # | Issue | Severity | Location |
-|---|-------|----------|----------|
-| DB-1 | RLS escape: `app.user_id = ''` lets all rows through | High | `src/database.py:_setup_rls()` |
-| DB-2 | `get_gateway_pool()` silently falls back to worker (BYPASSRLS) on failure | High | `src/database.py:get_gateway_pool()` |
-| DB-3 | Key rotation does not invalidate live stream tokens | Medium | `src/database.py:rotate_api_key()` |
-| DB-4 | `get_pool` backward-compat alias must be removed | Low | `src/database.py` |
-| DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` |
-| SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` |
-| SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` |
-| TEST-1 | 3 RLS integration tests pending (require DB roles to exist) | Medium | `tests/test_integration.py` |
+| # | Issue | Severity | Location | Status |
+|---|-------|----------|----------|--------|
+| DB-1 | RLS escape: `app.user_id = ''` lets all rows through | High | `src/database.py:_setup_rls()` | ✅ **FIXED 2026-03-11** |
+| DB-2 | `get_gateway_pool()` / `get_readonly_pool()` silently fall back to worker (BYPASSRLS) | High | `src/database.py` | ✅ **FIXED 2026-03-11** |
+| DB-3 | Key rotation does not invalidate live stream tokens | Medium | `src/database.py:rotate_api_key()` | Open |
+| DB-4 | `get_pool` backward-compat alias must be removed | Low | `src/database.py` | Open |
+| DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` | Open |
+| DB-6 | Worker pool failure fell back to admin credentials (DDL + superuser) | High | `src/database.py:init_db()` | ✅ **FIXED 2026-03-11** |
+| DB-7 | `log_threat_event()` accepted unbounded `raw_input` — log-bomb DoS vector | Medium | `src/database.py:log_threat_event()` | ✅ **FIXED 2026-03-11** |
+| SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` | Open |
+| SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` | Open |
+| SEC-3 | MetricsMiddleware recorded raw paths → unbounded Prometheus label cardinality (OOM) | Medium | `src/gateway/middleware.py:MetricsMiddleware` | ✅ **FIXED 2026-03-11** |
+| SEC-4 | Rate-limit `_windows` dict leaked empty buckets — slow memory growth under many users | Low | `src/gateway/middleware.py:SubmissionRateLimitMiddleware` | ✅ **FIXED 2026-03-11** |
+| TEST-1 | 3 RLS integration tests pending (require DB roles to exist) | Medium | `tests/test_integration.py` | Open |
 
 ---
 
 ## 10. Post-v1.0 Improvements (Not Blockers)
 
-| # | Issue | Severity | Location |
-|---|-------|----------|----------|
-| INFRA-1 | Guardian should use Unix socket or localhost-only binding | Medium | `docker-compose.yml` |
-| INFRA-2 | Audit anchor signing should use offline key (HSM) | Low | `src/database.py:_setup_audit_anchors()` |
-| TEST-2 | `get_readonly_pool()` fallback to worker (same as DB-2) | Low | `src/database.py` |
+| # | Issue | Severity | Location | Status |
+|---|-------|----------|----------|--------|
+| INFRA-1 | Guardian should use Unix socket or localhost-only binding | Medium | `docker-compose.yml` | Open |
+| INFRA-2 | Audit anchor signing should use offline key (HSM) | Low | `src/database.py:_setup_audit_anchors()` | Open |
+| TEST-2 | `get_readonly_pool()` fallback to worker (same as DB-2) | Low | `src/database.py` | ✅ **FIXED 2026-03-11** (now hard-fail) |
+| PERF-1 | `audit_log` and `threat_events` have no column-level size constraints; retention pruning is the only bound | Low | `src/database.py:_create_app_tables()` | Open |
+| PERF-2 | `task_events` has no retention pruning function | Low | `src/database.py` | Open |
 
 ---
 

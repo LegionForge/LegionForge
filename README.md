@@ -123,7 +123,9 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) | ✅ Complete |
 | **Dual License** | AGPLv3 open source + commercial license; `COMMERCIAL_LICENSE.md` + `CLA.md` added (PR #229) | ✅ Complete |
 
-**2125/2125 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
+| **DB security hardening** | RLS fail-closed (empty user_id sees zero rows), pool hard-fail (no silent privilege escalation), log-bomb cap on threat events, Prometheus label normalization, rate-limit memory leak fix — 17 regression tests | ✅ Complete |
+
+**2151/2151 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -147,6 +149,11 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | Issue | Severity | Status |
 |---|---|---|
 | ~~**PostgreSQL `trust` auth**~~ — any local process can connect to the DB without a password | Medium (local dev) / High (shared/remote) | ✅ **Closed — PR #212.** Now uses `peer` (Unix socket) + `scram-sha-256` (TCP). Passwords in `~/.pgpass`. |
+| ~~**RLS escape hatch**~~ — `app.user_id = ''` passed RLS for all rows | High | ✅ **Closed 2026-03-11.** Empty `user_id` now sees zero rows (fail-closed). |
+| ~~**Pool privilege escalation**~~ — gateway/readonly pools fell back to BYPASSRLS worker on failure | High | ✅ **Closed 2026-03-11.** All pools now raise `RuntimeError` — no silent privilege escalation. |
+| ~~**Worker pool → admin fallback**~~ — worker pool failure fell back to superuser DB credentials | High | ✅ **Closed 2026-03-11.** Hard-fails on missing `legionforge_worker` role. |
+| **Key rotation stream token invalidation** | Medium | Open (DB-3) |
+| **Threat rule HITL gate** — worker can write `threat_rules` without approval | High | Open (SEC-1) |
 
 ---
 
