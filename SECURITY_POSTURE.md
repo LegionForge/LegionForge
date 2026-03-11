@@ -328,7 +328,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 | SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` | ✅ **FIXED 2026-03-11** |
 | SEC-3 | MetricsMiddleware recorded raw paths → unbounded Prometheus label cardinality (OOM) | Medium | `src/gateway/middleware.py:MetricsMiddleware` | ✅ **FIXED 2026-03-11** |
 | SEC-4 | Rate-limit `_windows` dict leaked empty buckets — slow memory growth under many users | Low | `src/gateway/middleware.py:SubmissionRateLimitMiddleware` | ✅ **FIXED 2026-03-11** |
-| TEST-1 | 3 RLS integration tests pending (require DB roles to exist) | Medium | `tests/test_integration.py` | Open |
+| TEST-1 | 3 RLS integration tests pending (require DB roles to exist) | Medium | `tests/test_integration.py` | ✅ **FIXED 2026-03-11** — tests active; also fixed pool misrouting in deactivate_gateway_user/set_gateway_user_quota → 41/41 integration tests pass |
 
 ---
 

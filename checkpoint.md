@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 312
+UPDATE: 313
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-11T14:00Z
-LAST_OP: fix: TEST-1 — 3 RLS integration tests active (41/41 pass); fix deactivate_gateway_user + set_gateway_user_quota pool misrouting (worker→gateway); fix test_budget_exceeded INSERT pool
+TIMESTAMP: 2026-03-11T15:00Z
+LAST_OP: docs: jp.md status audit + CI pipeline explanation; SECURITY_POSTURE TEST-1 closed
 SMOKE_TESTS: 2187/2187
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
