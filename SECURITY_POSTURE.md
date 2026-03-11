@@ -207,11 +207,9 @@ def get_readonly_pool():
 
 **Worker pool** is also a hard-fail now — if `legionforge_worker` cannot connect, `init_db()` raises `RuntimeError` immediately. The previous behaviour silently fell back to admin credentials (DDL + superuser), which would have given every agent task superuser DB access. See **DB-6** in Section 9.
 
-### 4.3 Backward-Compat Alias
+### 4.3 Backward-Compat Alias — REMOVED ✅
 
-`get_pool` is now an alias for `get_worker_pool`. It exists only for external code that may import the old name.
-
-> **PRE-v1.0:** Remove `get_pool` alias. All internal code now uses `get_worker_pool()`.
+`get_pool` has been deleted (DB-4, 2026-03-11). All callers use the explicit pool accessors: `get_worker_pool()`, `get_gateway_pool()`, `get_readonly_pool()`, or `get_maintenance_connection()`. Two regression tests enforce this permanently.
 
 ### 4.4 `get_admin_connection()` Naming
 
