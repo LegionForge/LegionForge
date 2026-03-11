@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 302
+UPDATE: 304
 BRANCH: dev
-COMMIT: pending
-TIMESTAMP: 2026-03-11T04:21Z
-LAST_OP: fix: RBAC pool misrouting — 48 functions get_pool()→get_gateway_pool(), worker agent-table grants, gateway DELETE grants, static smoke test
+COMMIT: dd0f75e
+TIMESTAMP: 2026-03-11T05:30Z
+LAST_OP: docs: SECURITY_POSTURE.md + refactor: get_pool()→get_worker_pool() rename across 20 files
 SMOKE_TESTS: 2134/2134
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
