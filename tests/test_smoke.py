@@ -9129,6 +9129,36 @@ def test_db3_cli_rotate_all_keys_calls_db_function():
     ), "DB-3: CLI rotate_all_standard_keys must delegate to db.rotate_all_standard_users()"
 
 
+def test_db4_get_pool_alias_removed():
+    """
+    DB-4: The get_pool backward-compat alias must not exist in src.database.
+
+    get_pool was a misleading generic name — all callers must use the explicit
+    pool accessors (get_worker_pool, get_gateway_pool, get_readonly_pool,
+    get_maintenance_connection) so the privilege level is always clear at the
+    call site.
+    """
+    import src.database as db_mod
+
+    assert not hasattr(db_mod, "get_pool"), (
+        "DB-4: get_pool backward-compat alias must be removed from src/database.py. "
+        "Use get_worker_pool(), get_gateway_pool(), get_readonly_pool(), or "
+        "get_maintenance_connection() explicitly."
+    )
+
+
+def test_db4_no_get_pool_calls_in_src():
+    """DB-4: No production source file under src/ should call get_pool()."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod)
+    # The alias definition itself is gone; ensure no residual call sites remain.
+    assert (
+        "get_pool()" not in src
+    ), "DB-4: get_pool() call found in src/database.py — use an explicit pool accessor"
+
+
 def test_p41_get_current_user_no_sensitive_fields():
     """get_current_user does not include api_key_hash in response."""
     import inspect

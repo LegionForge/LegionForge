@@ -2139,9 +2139,6 @@ def get_worker_pool() -> AsyncConnectionPool:
     return _worker_pool
 
 
-get_pool = get_worker_pool  # backward-compat alias
-
-
 def get_gateway_pool() -> AsyncConnectionPool:
     """Return the legionforge_gateway pool (RLS-enforced, user-scoped).
 
