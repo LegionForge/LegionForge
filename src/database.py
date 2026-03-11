@@ -4902,7 +4902,7 @@ async def deactivate_gateway_user(username: str) -> bool:
     Deactivate a gateway user so they can no longer authenticate.
     Returns True if a row was updated, False if the user was not found.
     """
-    pool = get_worker_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4919,7 +4919,7 @@ async def set_gateway_user_quota(username: str, daily_token_limit: int) -> bool:
     Update the per-user daily token limit.
     Returns True if a row was updated, False if the user was not found.
     """
-    pool = get_worker_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """

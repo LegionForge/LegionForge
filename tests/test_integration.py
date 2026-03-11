@@ -527,14 +527,14 @@ async def test_budget_check_passes_for_user_under_limit(db, test_user):
 async def test_budget_exceeded_returns_429(db, gateway_client, admin_conn):
     """POST /tasks returns 429 when user's daily_token_limit=1."""
     import bcrypt
-    from src.database import get_worker_pool
+    from src.database import get_gateway_pool
 
     raw_key = secrets.token_urlsafe(32)
     hashed = bcrypt.hashpw(raw_key.encode(), bcrypt.gensalt(rounds=4)).decode()
     user_id = str(uuid.uuid4())
     username = f"budget_{secrets.token_hex(4)}"
 
-    pool = get_worker_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "INSERT INTO gateway_users"
@@ -674,12 +674,12 @@ async def test_cli_create_user_is_callable(db):
 async def test_cli_deactivate_user_sets_is_active_false(db, test_user):
     """deactivate_user() sets is_active=False for the target user in the DB."""
     from src.cli.manage_users import deactivate_user
-    from src.database import get_worker_pool
+    from src.database import get_gateway_pool, get_worker_pool
 
     await deactivate_user(test_user["username"])
 
-    pool = get_worker_pool()
-    async with pool.connection() as conn:
+    read_pool = get_worker_pool()
+    async with read_pool.connection() as conn:
         row = await conn.execute(
             "SELECT is_active FROM gateway_users WHERE user_id = %s",
             (test_user["user_id"],),
@@ -692,7 +692,8 @@ async def test_cli_deactivate_user_sets_is_active_false(db, test_user):
     ), f"Expected is_active=False after deactivation, got {result['is_active']}"
 
     # Re-activate so test_user cleanup fixture doesn't fail
-    async with pool.connection() as conn:
+    write_pool = get_gateway_pool()
+    async with write_pool.connection() as conn:
         await conn.execute(
             "UPDATE gateway_users SET is_active = TRUE WHERE user_id = %s",
             (test_user["user_id"],),
@@ -956,12 +957,15 @@ async def test_api_usage_row_written_with_user_id_after_completion(
 
 
 @pytest.mark.integration
-async def test_rls_user_isolation_on_tasks(db):
+async def test_rls_user_isolation_on_tasks(db, admin_conn):
     """
     RLS policy enforces per-user row isolation on the tasks table.
 
     With app.user_id set to user_a, a SELECT on tasks via the gateway pool
     must return only user_a's rows — user_b's rows must be invisible.
+
+    Cleanup uses admin_conn because legionforge_worker has no DELETE on tasks
+    by RBAC design — runtime agents must never bulk-delete task rows.
     """
     import uuid
 
@@ -1001,14 +1005,14 @@ async def test_rls_user_isolation_on_tasks(db):
             assert user_b not in visible, "RLS VIOLATION: user_a can see user_b's tasks"
             await conn.execute("SELECT set_config('app.user_id', '', false)")
     finally:
-        async with worker_pool.connection() as conn:
-            await conn.execute(
-                "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
-            )
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute(
+            "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+        )
 
 
 @pytest.mark.integration
-async def test_rls_worker_pool_sees_all_users(db):
+async def test_rls_worker_pool_sees_all_users(db, admin_conn):
     """Worker pool (BYPASSRLS) can SELECT tasks across all users."""
     import uuid
 
@@ -1018,32 +1022,35 @@ async def test_rls_worker_pool_sees_all_users(db):
     user_b = f"rls_bypass_b_{uuid.uuid4().hex[:8]}"
 
     pool = get_worker_pool()
-    async with pool.connection() as conn:
-        await conn.execute(
-            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
-            " VALUES (gen_random_uuid(), %s, 'bypass A', 'orchestrator', 'complete')",
-            (user_a,),
-        )
-        await conn.execute(
-            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
-            " VALUES (gen_random_uuid(), %s, 'bypass B', 'orchestrator', 'complete')",
-            (user_b,),
-        )
-        cur = await conn.execute(
-            "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
-        )
-        rows = await cur.fetchall()
-        visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
-        assert (
-            user_a in visible and user_b in visible
-        ), "Worker pool must see all users' tasks (BYPASSRLS)"
-        await conn.execute(
+    try:
+        async with pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+                " VALUES (gen_random_uuid(), %s, 'bypass A', 'orchestrator', 'complete')",
+                (user_a,),
+            )
+            await conn.execute(
+                "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+                " VALUES (gen_random_uuid(), %s, 'bypass B', 'orchestrator', 'complete')",
+                (user_b,),
+            )
+            cur = await conn.execute(
+                "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+            )
+            rows = await cur.fetchall()
+            visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
+            assert (
+                user_a in visible and user_b in visible
+            ), "Worker pool must see all users' tasks (BYPASSRLS)"
+    finally:
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute(
             "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
         )
 
 
 @pytest.mark.integration
-async def test_maintenance_role_cannot_select_tasks(db):
+async def test_maintenance_role_cannot_select_tasks(db, admin_conn):
     """
     legionforge_maintenance has zero SELECT on tasks.
 
@@ -1082,5 +1089,5 @@ async def test_maintenance_role_cannot_select_tasks(db):
                 if "permission denied" not in str(exc).lower():
                     raise
     finally:
-        async with get_worker_pool().connection() as conn:
-            await conn.execute("DELETE FROM tasks WHERE user_id = %s", (user,))
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute("DELETE FROM tasks WHERE user_id = %s", (user,))
