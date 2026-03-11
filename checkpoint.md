@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 300
+UPDATE: 302
 BRANCH: dev
-COMMIT: 1203410
-TIMESTAMP: 2026-03-10T18:30Z
-LAST_OP: docs: correct OpenClaw attribution — full name history, correct GitHub URL, openclaw.ai
-SMOKE_TESTS: 2133/2133
+COMMIT: pending
+TIMESTAMP: 2026-03-11T04:21Z
+LAST_OP: fix: RBAC pool misrouting — 48 functions get_pool()→get_gateway_pool(), worker agent-table grants, gateway DELETE grants, static smoke test
+SMOKE_TESTS: 2134/2134
 INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

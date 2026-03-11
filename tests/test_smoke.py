@@ -22781,3 +22781,72 @@ def test_secure_tool_node_normalises_before_registry_check():
     assert (
         "model_copy" in src[norm_pos:loop_pos]
     ), "message must be rewritten with canonical names"
+
+
+# ── RBAC pool-routing static analysis ────────────────────────────────────────
+
+
+def test_database_no_get_pool_on_gateway_tables():
+    """
+    Static guard: user-facing CRUD functions in database.py must NOT call
+    get_pool() (legionforge_worker — SELECT-only on user tables).
+    They must use get_gateway_pool() instead.
+
+    This catches regressions when new functions are added for user-facing
+    tables but accidentally use the worker pool.
+
+    Worker-OK tables (excluded from check):
+        tasks, api_usage, stream_tokens, tool_registry, audit_log,
+        threat_events, task_events, checkpoints*, documents,
+        crystallization_*, threat_rules, health_metrics, agent_profiles
+
+    Gateway-required tables (checked):
+        task_notes, task_annotations, task_attachments, task_templates,
+        task_shares, webhooks, scheduled_tasks, pipelines, pipeline_runs,
+        user_preferences, sessions (INSERT/UPDATE/DELETE only)
+    """
+    import ast
+    import pathlib
+
+    src_path = pathlib.Path("src/database.py")
+    src = src_path.read_text()
+    tree = ast.parse(src)
+
+    # Tables where worker pool must not perform INSERT/UPDATE/DELETE
+    GATEWAY_TABLES = {
+        "task_notes",
+        "task_annotations",
+        "task_attachments",
+        "task_templates",
+        "task_shares",
+        "webhooks",
+        "scheduled_tasks",
+        "pipelines",
+        "pipeline_runs",
+        "user_preferences",
+        "sessions",
+    }
+    # SQL verbs that require gateway pool on those tables
+    WRITE_VERBS = {"INSERT", "UPDATE", "DELETE"}
+
+    violations = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        func_src = ast.get_source_segment(src, node) or ""
+        uses_get_pool = "get_pool()" in func_src and "get_gateway_pool" not in func_src
+        if not uses_get_pool:
+            continue
+        # Check if this function contains a write SQL verb against a gateway table
+        for tbl in GATEWAY_TABLES:
+            for verb in WRITE_VERBS:
+                if verb in func_src and tbl in func_src:
+                    violations.append(
+                        f"{node.name}() uses get_pool() but writes to '{tbl}'"
+                    )
+                    break
+
+    assert not violations, (
+        "Pool misrouting detected — use get_gateway_pool() for user-facing writes:\n"
+        + "\n".join(f"  • {v}" for v in violations)
+    )

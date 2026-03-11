@@ -89,9 +89,9 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC + async callback) | ✅ Complete |
 | **60–381** | 381-tool operator dashboard UI library — every gateway API endpoint surfaced as a JS function | ✅ Complete |
 | **Web + Browser tools** | `web_fetch_js` Playwright headless browser for JS-rendered sites; two-layer SSRF guard | ✅ Complete |
-| **Guardian G1–G3** | `legionforge_guardian` standalone package; backward-compat shim in `src/security/guardian.py` | ✅ Complete |
+| **Guardian G1–G4** | `legionforge_guardian` standalone package (PyPI published, public repo live, auto-sync CI); backward-compat shim in `src/security/guardian.py` | ✅ Complete |
 
-**2125/2125 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. Runs in ~21 seconds (no external services required).
+**2133/2133 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 106/106 TestLab suite tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -167,7 +167,7 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 2125 smoke tests, ~21s, no services required
+make test-smoke      # 2133 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
@@ -207,6 +207,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.1-alpha** — Phases 0–381 complete + web browser tools + Guardian package spinoff. 2125/2125 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
+**v0.7.1-alpha** — Phases 0–381 complete + web browser tools + Guardian G1–G4 (PyPI published). 2133/2133 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 106/106 TestLab. 79/79 tool accuracy tests. All pre-v1.0 security blockers resolved.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

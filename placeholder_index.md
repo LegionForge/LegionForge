@@ -329,7 +329,7 @@ permalink: /
   <div class="badge">Open Source · AGPL-3.0 · Local-First</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 1946/1946 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2133/2133 smoke tests passing</p>
   <div class="cta-group">
     <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
@@ -345,7 +345,7 @@ permalink: /
 <section>
 <div class="container">
   <div class="stats">
-    <div class="stat"><span class="stat-value">1946</span><span class="stat-label">Tests Passing</span></div>
+    <div class="stat"><span class="stat-value">2133</span><span class="stat-label">Smoke Tests Passing</span></div>
     <div class="stat"><span class="stat-value">7</span><span class="stat-label">Guardian Security Checks</span></div>
     <div class="stat"><span class="stat-value">11</span><span class="stat-label">Threat Classes Covered</span></div>
     <div class="stat"><span class="stat-value">0</span><span class="stat-value" style="font-size:1rem; color: var(--accent)">LLM calls</span><span class="stat-label">in security hot path</span></div>
@@ -532,6 +532,11 @@ permalink: /
       <div class="phase-desc">381-tool operator dashboard — every gateway API endpoint surfaced as a UI function</div>
       <div class="status-done">✓ complete</div>
     </div>
+    <div class="phase-row">
+      <div class="phase-num">Guardian G1–G4</div>
+      <div class="phase-desc">Standalone <code>legionforge-guardian</code> package — PyPI published, public repo, auto-sync CI, dual MIT license</div>
+      <div class="status-done">✓ complete</div>
+    </div>
   </div>
 </div>
 </section>
@@ -552,7 +557,7 @@ permalink: /
 <br>
 <span class="comment"># Run smoke tests (no services needed)</span><br>
 <span class="cmd">make</span> test-smoke<br>
-<span class="comment"># ✓ 1946 passed in ~16s</span><br>
+<span class="comment"># ✓ 2133 passed in ~21s</span><br>
 <br>
 <span class="comment"># Start health server</span><br>
 <span class="cmd">make</span> health-server<br>
@@ -566,8 +571,8 @@ permalink: /
   <h2><span class="icon">📬</span> Status &amp; Updates</h2>
   <p style="color: var(--dim);">
     LegionForge is available now. All pre-v1.0 security blockers are resolved.
-    <strong style="color: var(--text);">1946/1946 tests passing.</strong>
-    Phases 0–381 complete.
+    <strong style="color: var(--text);">2133/2133 smoke tests passing.</strong>
+    Phases 0–381 + Guardian G1–G4 (PyPI published) complete.
   </p>
   <p style="color: var(--dim);">
     Clone from

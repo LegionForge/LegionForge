@@ -656,6 +656,15 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 uid=pgsql.Identifier(DB_ROLE_WORKER)
             )
         )
+        # Agent processes write directly to these tables (Researcher, Crystallizer,
+        # Threat Analyst, Observer).  SELECT-only was too narrow after RBAC tightening.
+        await admin_conn.execute(
+            pgsql.SQL(
+                "GRANT SELECT, INSERT, UPDATE ON documents,"
+                " crystallization_candidates, crystallization_packages,"
+                " crystallization_analyses, threat_rules TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_WORKER))
+        )
     except Exception as e:
         logger.debug("[db-roles] worker extra grants skipped: %s", e)
 
@@ -695,6 +704,16 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             pgsql.SQL("GRANT SELECT ON tool_registry TO {uid}").format(
                 uid=pgsql.Identifier(DB_ROLE_GATEWAY)
             )
+        )
+        # DELETE required for user-facing destructive operations (delete session,
+        # remove note/attachment/share/template, unregister webhook, etc.).
+        await admin_conn.execute(
+            pgsql.SQL(
+                "GRANT DELETE ON task_notes, task_attachments, task_shares,"
+                " task_templates, user_preferences, webhooks, sessions,"
+                " scheduled_tasks, pipelines, pipeline_runs, task_annotations"
+                " TO {uid}"
+            ).format(uid=pgsql.Identifier(DB_ROLE_GATEWAY))
         )
     except Exception as e:
         logger.debug(
@@ -4245,7 +4264,7 @@ async def add_task_note(task_id: str, user_id: str, note: str) -> dict | None:
 
     Phase 32.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         # Verify ownership first (tasks WHERE task_id AND user_id)
@@ -4274,7 +4293,7 @@ async def list_task_notes(task_id: str, user_id: str) -> list[dict]:
 
     Phase 32.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         # Ownership check via JOIN
@@ -4299,7 +4318,7 @@ async def delete_task_note(note_id: int, task_id: str, user_id: str) -> bool:
 
     Phase 32.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4481,7 +4500,7 @@ async def bulk_cancel_tasks(task_ids: list[str], user_id: str) -> int:
     """
     if not task_ids:
         return 0
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         # psycopg ANY(%s) with a list cast to uuid[]
         cur = await conn.execute(
@@ -4507,7 +4526,7 @@ async def bulk_delete_tasks(task_ids: list[str], user_id: str) -> int:
     """
     if not task_ids:
         return 0
-    pool = get_pool()
+    pool = get_maintenance_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4553,7 +4572,7 @@ async def create_gateway_user(
     Insert a new gateway user. api_key_hash must be a bcrypt hash of the raw key.
     Returns the created user row (without the raw key — it is never stored).
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4610,7 +4629,7 @@ async def deactivate_gateway_user(username: str) -> bool:
     Deactivate a gateway user so they can no longer authenticate.
     Returns True if a row was updated, False if the user was not found.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4627,7 +4646,7 @@ async def set_gateway_user_quota(username: str, daily_token_limit: int) -> bool:
     Update the per-user daily token limit.
     Returns True if a row was updated, False if the user was not found.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4661,7 +4680,7 @@ async def promote_gateway_user_to_admin(username: str, is_admin: bool = True) ->
     Grant or revoke admin privilege for a gateway user.
     Returns True if a row was updated, False if the user was not found.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "UPDATE gateway_users SET is_admin = %s WHERE username = %s",
@@ -4672,7 +4691,7 @@ async def promote_gateway_user_to_admin(username: str, is_admin: bool = True) ->
 
 async def get_gateway_user_by_user_id(user_id: str) -> dict | None:
     """Fetch a gateway_users row by user_id (for admin API lookups)."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4696,7 +4715,7 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
 
     Phase 41 — API Key Rotation.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -4953,7 +4972,7 @@ async def create_scheduled_task(
     validate_cron_expr(cron_expr)
     next_run = compute_next_run(cron_expr, datetime.now(timezone.utc))
 
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4971,7 +4990,7 @@ async def create_scheduled_task(
 
 async def get_scheduled_task(sched_id: int, user_id: str) -> dict | None:
     """Fetch a scheduled task by ID, scoped to user_id (returns None if not found)."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -4989,7 +5008,7 @@ async def list_scheduled_tasks(
     include_disabled: bool = True,
 ) -> list[dict]:
     """Return scheduled tasks for user_id ordered by next_run_at."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     where = "WHERE user_id = %s"
     params: list = [user_id]
     if not include_disabled:
@@ -5050,7 +5069,7 @@ async def update_scheduled_task(
         return await get_scheduled_task(sched_id, user_id)
 
     params.extend([sched_id, user_id])
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5064,7 +5083,7 @@ async def update_scheduled_task(
 
 async def delete_scheduled_task(sched_id: int, user_id: str) -> bool:
     """Delete a scheduled task. Returns True if deleted, False if not found."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         result = await conn.execute(
             "DELETE FROM scheduled_tasks WHERE id = %s AND user_id = %s",
@@ -5133,7 +5152,7 @@ async def create_pipeline(
     description: str = "",
 ) -> dict:
     """Create a new pipeline definition. Steps is a list of step dicts."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5150,7 +5169,7 @@ async def create_pipeline(
 
 async def get_pipeline(pipeline_id: int, user_id: str) -> dict | None:
     """Fetch a pipeline by ID scoped to user_id."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5163,7 +5182,7 @@ async def get_pipeline(pipeline_id: int, user_id: str) -> dict | None:
 
 async def list_pipelines(user_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
     """List pipelines for user_id ordered by newest first."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5196,7 +5215,7 @@ async def update_pipeline(
         sets.append("steps = %s::jsonb")
         params.append(json.dumps(steps))
     params.extend([pipeline_id, user_id])
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5210,7 +5229,7 @@ async def update_pipeline(
 
 async def delete_pipeline(pipeline_id: int, user_id: str) -> bool:
     """Delete a pipeline. Returns True if deleted."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         result = await conn.execute(
             "DELETE FROM pipelines WHERE id = %s AND user_id = %s",
@@ -5225,7 +5244,7 @@ async def create_pipeline_run(
     initial_input: str,
 ) -> dict:
     """Start a new pipeline run record."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5242,7 +5261,7 @@ async def create_pipeline_run(
 
 async def get_pipeline_run(run_id: int, user_id: str) -> dict | None:
     """Fetch a pipeline run by ID scoped to user_id."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5257,7 +5276,7 @@ async def list_pipeline_runs(
     pipeline_id: int, user_id: str, limit: int = 20
 ) -> list[dict]:
     """List recent runs for a pipeline."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5275,7 +5294,7 @@ async def update_pipeline_run_step(
     step_results: list[dict],
 ) -> None:
     """Update current_step and step_results after a step finishes."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "UPDATE pipeline_runs SET current_step = %s, step_results = %s::jsonb "
@@ -5290,7 +5309,7 @@ async def finalize_pipeline_run(
     step_results: list[dict],
 ) -> None:
     """Mark a pipeline run as complete or failed."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "UPDATE pipeline_runs SET status = %s, step_results = %s::jsonb, "
@@ -5551,7 +5570,7 @@ async def create_webhook(
     secret: str | None = None,
 ) -> dict:
     """Register a new webhook subscription for a user."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5567,7 +5586,7 @@ async def create_webhook(
 
 async def list_webhooks(user_id: str) -> list[dict]:
     """Return all webhook subscriptions for a user (secrets omitted)."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5584,7 +5603,7 @@ async def list_webhooks(user_id: str) -> list[dict]:
 
 async def delete_webhook(webhook_id: str, user_id: str) -> bool:
     """Delete a webhook subscription.  Returns True if deleted, False if not found."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM webhooks WHERE webhook_id = %s AND user_id = %s RETURNING webhook_id",
@@ -5595,7 +5614,7 @@ async def delete_webhook(webhook_id: str, user_id: str) -> bool:
 
 async def get_user_webhooks_for_event(user_id: str, event: str) -> list[dict]:
     """Return active webhooks for a user that subscribe to a specific event."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5633,7 +5652,7 @@ async def add_task_attachment(
         raise ValueError(
             f"Attachment data exceeds maximum size of {_MAX_ATTACHMENT_BYTES} bytes"
         )
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         # Verify ownership: task must exist and belong to user
@@ -5656,7 +5675,7 @@ async def add_task_attachment(
 
 async def list_task_attachments(task_id: str, user_id: str) -> list[dict]:
     """List attachments for a task (data field excluded for brevity)."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5675,7 +5694,7 @@ async def get_task_attachment(
     attachment_id: str, task_id: str, user_id: str
 ) -> dict | None:
     """Get a single attachment including its data field."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5694,7 +5713,7 @@ async def delete_task_attachment(
     attachment_id: str, task_id: str, user_id: str
 ) -> bool:
     """Delete an attachment.  Returns True if deleted."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM task_attachments "
@@ -5718,7 +5737,7 @@ async def create_task_template(
     default_priority: int = 5,
 ) -> dict:
     """Create a reusable task template.  Raises ValueError on duplicate name."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         try:
@@ -5752,7 +5771,7 @@ async def create_task_template(
 
 async def list_task_templates(user_id: str) -> list[dict]:
     """List all templates for a user."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5770,7 +5789,7 @@ async def list_task_templates(user_id: str) -> list[dict]:
 
 async def get_task_template(template_id: str, user_id: str) -> dict | None:
     """Get a single template by ID."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5788,7 +5807,7 @@ async def get_task_template(template_id: str, user_id: str) -> dict | None:
 
 async def delete_task_template(template_id: str, user_id: str) -> bool:
     """Delete a template.  Returns True if deleted."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM task_templates WHERE template_id = %s AND user_id = %s "
@@ -5812,7 +5831,7 @@ async def create_task_share(
     Returns the new share row including the token.
     Raises ValueError if the task does not exist or is not owned by user.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5840,7 +5859,7 @@ async def get_shared_task(share_token: str) -> dict | None:
     Returns None if the token is expired or does not exist.
     Only returns: task_id, agent_type, status, result, steps, created_at, completed_at.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5860,7 +5879,7 @@ async def get_shared_task(share_token: str) -> dict | None:
 
 async def list_task_shares(task_id: str, user_id: str) -> list[dict]:
     """List all share tokens for a task owned by user."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5877,7 +5896,7 @@ async def list_task_shares(task_id: str, user_id: str) -> list[dict]:
 
 async def revoke_task_share(share_token: str, user_id: str) -> bool:
     """Revoke a share token.  Returns True if deleted."""
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM task_shares WHERE share_token = %s AND user_id = %s "
@@ -5949,7 +5968,7 @@ async def get_user_preferences(user_id: str) -> dict:
 
     Phase 52 — User Preferences.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -5978,7 +5997,7 @@ async def update_user_preferences(user_id: str, prefs: dict) -> dict:
     Phase 52 — User Preferences.
     """
     validated = _validate_prefs(prefs)
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         # UPSERT: merge new keys into existing JSONB
@@ -6010,7 +6029,7 @@ async def delete_user_preferences(user_id: str, keys: list[str] | None = None) -
 
     Phase 52 — User Preferences.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         if not keys:
@@ -6151,7 +6170,7 @@ async def create_session(
         )
     name = (name or "").strip()[:_SESSION_NAME_MAX_LEN]
 
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -6172,7 +6191,7 @@ async def get_session(session_id: str, user_id: str) -> dict | None:
 
     Phase 54 — Conversation Sessions.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -6194,7 +6213,7 @@ async def list_sessions(user_id: str, limit: int = 50, offset: int = 0) -> dict:
 
     Phase 54 — Conversation Sessions.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur_count = await conn.execute(
@@ -6223,7 +6242,7 @@ async def delete_session(session_id: str, user_id: str) -> bool:
 
     Phase 54 — Conversation Sessions.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             "DELETE FROM sessions WHERE session_id = %s::uuid AND user_id = %s "
@@ -6240,7 +6259,7 @@ async def increment_session_turn(session_id: str) -> None:
 
     Phase 54 — Conversation Sessions.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
             """
@@ -6259,7 +6278,7 @@ async def get_session_tasks(session_id: str, user_id: str) -> list[dict]:
 
     Phase 54 — Conversation Sessions.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         # Verify ownership
@@ -6303,7 +6322,7 @@ async def upsert_task_annotation(
     if rating not in (-1, 0, 1):
         raise ValueError("rating must be -1, 0, or 1")
 
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
@@ -6336,7 +6355,7 @@ async def get_task_annotation(task_id: str, user_id: str) -> dict | None:
 
     Phase 59.
     """
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         conn.row_factory = dict_row
         cur = await conn.execute(
