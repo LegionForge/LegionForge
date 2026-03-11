@@ -110,12 +110,13 @@ All commands assume the venv is active: `source venv/bin/activate`
 |--------|-------------|-----------|
 | `test` | Run all test suites (smoke → testlab → ui in separate sessions) | — |
 | `test-fast` | Smoke + TestLab + UI, excluding slow/LLM tests | — |
-| `test-smoke` | 2125 smoke tests, ~21s, no external services required | — |
+| `test-smoke` | 2133 smoke tests, ~21s, no external services required | — |
 | `test-integration` | 38 integration tests (requires PostgreSQL — `make db-start` first) | — |
 | `test-kerberos` | 5 live-KDC Kerberos tests | `[KERBEROS_TEST_KDC=1]` `[KERBEROS_REALM=TEST.LOCAL]` `[KERBEROS_KEYTAB=/tmp/test.keytab]` `[KERBEROS_TEST_USER=testuser]` `[KERBEROS_TEST_PASS=testpass]` |
 | `test-all` | Single-session run of all tests (for CI/quick checks) | — |
 | `test-ui` | 40 Playwright UI tests headless (separate pytest session) | — |
 | `test-testlab-all` | All 110+ testlab_suite tests (excludes LLM/CVE tests, separate session) | — |
+| `test-agent` | Live agent quality suite — submit real queries, assert structure, save transcripts. **Requires gateway + Ollama + `GATEWAY_API_KEY`.** Opt-in only; not part of `make test` or `make ci`. | `GATEWAY_API_KEY=<key>` `[GATEWAY_URL=http://localhost:8080]` `[AGENT_TRANSCRIPT_DIR=...]` |
 
 ---
 

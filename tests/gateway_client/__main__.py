@@ -17,7 +17,8 @@ Suites:
   load      — load / DOS resilience (8 tests)
   pentest   — authorized security verification (12 tests)
   injection — malicious input / injection detection (35+ tests)
-  all       — all suites in sequence (default)
+  agent     — live agent quality: submit real queries, assert structure, save transcripts
+  all       — all suites except agent (agent is opt-in: requires gateway + Ollama)
 
 Environment variables (see config.py for full reference):
   GATEWAY_URL          — base URL of the gateway (default: http://localhost:8080)
@@ -38,7 +39,13 @@ import asyncio
 import sys
 
 from tests.gateway_client import config
-from tests.gateway_client import suite_basic, suite_load, suite_pentest, suite_injection
+from tests.gateway_client import (
+    suite_basic,
+    suite_load,
+    suite_pentest,
+    suite_injection,
+    suite_agent_quality,
+)
 from tests.gateway_client.report import (
     SuiteResult,
     dump_json,
@@ -53,7 +60,13 @@ _ALL_SUITES = {
     "load": suite_load.run,
     "pentest": suite_pentest.run,
     "injection": suite_injection.run,
+    # agent suite is intentionally excluded from "all" — it requires a live
+    # gateway + Ollama and takes several minutes.  Run explicitly with --suite agent.
+    "agent": suite_agent_quality.run,
 }
+
+# Suites run by "all" — excludes agent (opt-in only)
+_DEFAULT_SUITES = ["basic", "load", "pentest", "injection"]
 
 
 def _parse_args() -> argparse.Namespace:
@@ -112,7 +125,7 @@ async def main() -> int:
         )
         return 2
 
-    suites_to_run = list(_ALL_SUITES.keys()) if args.suite == "all" else [args.suite]
+    suites_to_run = _DEFAULT_SUITES if args.suite == "all" else [args.suite]
 
     all_results: list[SuiteResult] = []
     exit_code = 0

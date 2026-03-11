@@ -79,6 +79,10 @@ venv/
 htmlcov/
 .coverage
 
+# Agent quality transcripts — generated at runtime, not committed
+# Keep the directory (tracked via .gitkeep) but not its contents
+tests/agent_quality_transcripts/*.json
+
 # Logs
 logs/
 *.log

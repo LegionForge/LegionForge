@@ -1,0 +1,107 @@
+# tests/agent_queries.yaml
+# ─────────────────────────
+# Live agent query corpus for the agent_quality test suite.
+#
+# Phase 1 — structural checks: did it complete? did it call the expected
+#            tools? is the result non-empty? did it avoid the step limit?
+# Phase 2 — keyword checks:    does the result contain expected content?
+# Phase 3 — veracity scoring:  LLM-as-judge (requires Claude API key)
+#
+# Fields:
+#   id            — unique snake_case identifier (used in file names + test names)
+#   query         — the user-facing task string submitted to the gateway
+#   category      — simple | factual | web_research | orchestration (for grouping)
+#   agent_type    — orchestrator | researcher
+#   timeout_s     — max seconds to wait for completion (Ollama is slow)
+#   expect_completed — true if the task must reach status=complete to pass
+#   expect_result    — true if the result field must be non-empty (>10 chars)
+#   expected_tools   — list of tool names that MUST appear in stream_events
+#                      (empty list = no tool requirement)
+#   keywords         — Phase 2: list of strings; at least one must appear in result
+#                      (empty list = keyword check skipped)
+#
+# Covers the specific failure patterns observed in development:
+#   - spawn_researcher: qwen2.5 drops underscores → SecureToolNode lookup fails
+#   - web_search: orchestrator must delegate, researcher must call tool
+#   - step limit: orchestrator must not recurse past the configured limit
+#   - hallucination grounding: result with sources vs. bare assertion
+
+# ── Simple / baseline ──────────────────────────────────────────────────────────
+
+- id: simple_arithmetic
+  query: "What is 144 divided by 12?"
+  category: simple
+  agent_type: orchestrator
+  timeout_s: 60
+  expect_completed: true
+  expect_result: true
+  expected_tools: []
+  keywords: ["12"]
+
+- id: factual_python_release
+  query: "In what year was the Python programming language first publicly released?"
+  category: factual
+  agent_type: orchestrator
+  timeout_s: 60
+  expect_completed: true
+  expect_result: true
+  expected_tools: []
+  keywords: ["1991"]
+
+# ── Web research — researcher agent direct ─────────────────────────────────────
+
+- id: researcher_web_search_langgraph
+  query: "Find the official LangGraph GitHub repository URL and the current version number."
+  category: web_research
+  agent_type: researcher
+  timeout_s: 120
+  expect_completed: true
+  expect_result: true
+  expected_tools: [web_search]
+  keywords: ["github.com"]
+
+- id: researcher_web_search_guardian
+  query: "What is the legionforge-guardian PyPI package and what does it do?"
+  category: web_research
+  agent_type: researcher
+  timeout_s: 120
+  expect_completed: true
+  expect_result: true
+  expected_tools: [web_search]
+  keywords: []
+
+# ── Orchestration — spawn_researcher delegation ────────────────────────────────
+
+- id: orchestrator_spawn_researcher_basic
+  query: "Research and summarize what LangGraph is in 2-3 sentences."
+  category: orchestration
+  agent_type: orchestrator
+  timeout_s: 180
+  expect_completed: true
+  expect_result: true
+  expected_tools: [spawn_researcher]
+  keywords: []
+
+- id: orchestrator_spawn_researcher_comparison
+  query: "Compare Python and Go for building web APIs. Give the top 2 strengths of each."
+  category: orchestration
+  agent_type: orchestrator
+  timeout_s: 180
+  expect_completed: true
+  expect_result: true
+  expected_tools: [spawn_researcher]
+  keywords: []
+
+# ── Step limit regression ──────────────────────────────────────────────────────
+# These queries are intentionally vague — we are NOT checking answer quality,
+# only that the agent completes without hitting the recursion/step limit.
+
+- id: no_step_limit_vague_task
+  query: "Help me think through how I might approach building a personal finance tracker."
+  category: simple
+  agent_type: orchestrator
+  timeout_s: 120
+  expect_completed: true
+  expect_result: true
+  expected_tools: []
+  keywords: []

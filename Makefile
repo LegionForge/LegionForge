@@ -701,6 +701,19 @@ test-ui-headed:  ## Run Playwright UI tests with browser window visible (debug m
 test-ui-smoke:  ## Run quick subset of UI tests (page-load only)
 	@cd $(BASE) && $(PYTEST) tests/ui/test_page_load.py -v -m ui
 
+## ── Agent Quality Tests — live query runner (Phase Q1) ────────
+.PHONY: test-agent
+test-agent:  ## Run live agent query suite (requires gateway + Ollama — set GATEWAY_API_KEY first)
+	@if [ -z "$$GATEWAY_API_KEY" ]; then \
+	  echo "❌ GATEWAY_API_KEY is not set."; \
+	  echo "   Create a test user first:  make create-user USERNAME=testclient"; \
+	  echo "   Then:  export GATEWAY_API_KEY=<key from above>"; \
+	  exit 1; \
+	fi
+	@echo "Running live agent quality suite against $(GATEWAY_URL)..."
+	@echo "Transcripts will be saved to tests/agent_quality_transcripts/"
+	@cd $(BASE) && $(PYTHON) -m tests.gateway_client --suite agent
+
 ## ── TestLab — admin test management UI (Phase 18) ─────────────
 .PHONY: build-testlab
 build-testlab:  ## Build legionforge-testlab:latest Docker image
