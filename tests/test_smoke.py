@@ -23139,3 +23139,183 @@ def test_log_threat_event_max_raw_input_constant_value():
     assert (
         int(match.group(1)) == 4096
     ), f"_MAX_RAW_INPUT must be 4096, got {match.group(1)}"
+
+
+# ── SEC-1: Threat rule HITL gate — DB grant enforcement (2026-03-11) ──────────
+# Tests that legionforge_worker cannot approve threat rules at the DB grant level.
+# The HITL gate is enforced by: worker has INSERT-only on threat_rules;
+# gateway has UPDATE.  approve_threat_rule() / reject_threat_rule() use
+# get_gateway_pool(), so even a compromised agent process cannot escalate a
+# PENDING rule to APPROVED by calling UPDATE directly.
+
+
+def test_sec1_worker_grant_threat_rules_insert_only():
+    """
+    SEC-1: legionforge_worker must receive only INSERT (not UPDATE) on threat_rules.
+
+    An agent process running as legionforge_worker must never be able to set
+    status='APPROVED' directly.  That requires UPDATE, which is intentionally
+    denied.  The fix grants SELECT,INSERT to worker and SELECT,UPDATE to gateway.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    # The worker grant must be INSERT only — not INSERT, UPDATE
+    assert "GRANT SELECT, INSERT ON threat_rules TO" in src, (
+        "_setup_db_roles() must grant SELECT, INSERT (not UPDATE) on threat_rules "
+        "to legionforge_worker.  SEC-1: agents must not be able to approve their "
+        "own proposed rules."
+    )
+    # The old bad grant pattern must be gone — agent processes must never receive
+    # UPDATE on threat_rules.  Any form of this is a violation.
+    assert "INSERT, UPDATE ON threat_rules" not in src, (
+        "The old 'INSERT, UPDATE ON threat_rules' grant to legionforge_worker must be "
+        "absent from _setup_db_roles().  SEC-1: agents must not be able to approve rules."
+    )
+    assert (
+        "SELECT, INSERT, UPDATE ON" not in src
+        or "threat_rules"
+        not in src.split("SELECT, INSERT, UPDATE ON")[-1].split("TO")[0]
+    ), "threat_rules must not appear in any SELECT,INSERT,UPDATE grant to worker. SEC-1."
+
+
+def test_sec1_worker_grant_explicitly_revokes_update_on_threat_rules():
+    """
+    SEC-1: _setup_db_roles() must explicitly REVOKE UPDATE on threat_rules from worker.
+
+    Existing deployments may have the broader grant from before this fix.
+    The REVOKE is idempotent and runs on every startup via init_db().
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    assert "REVOKE UPDATE ON threat_rules FROM" in src, (
+        "_setup_db_roles() must REVOKE UPDATE ON threat_rules FROM legionforge_worker. "
+        "SEC-1: existing deployments with the old grant need the REVOKE to take effect."
+    )
+
+
+def test_sec1_gateway_grant_has_update_on_threat_rules():
+    """
+    SEC-1: legionforge_gateway must have UPDATE on threat_rules for operator approve/reject.
+
+    approve_threat_rule() and reject_threat_rule() use get_gateway_pool().
+    The gateway role needs UPDATE to change status PENDING→APPROVED/REJECTED.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    assert "GRANT SELECT, UPDATE ON threat_rules TO" in src, (
+        "_setup_db_roles() must grant SELECT, UPDATE on threat_rules to "
+        "legionforge_gateway (operator approve/reject path).  SEC-1."
+    )
+
+
+def test_sec1_approve_threat_rule_uses_gateway_pool():
+    """
+    SEC-1: approve_threat_rule() must use get_gateway_pool(), not get_worker_pool().
+
+    Worker (agent processes) has no UPDATE on threat_rules.  If approve_threat_rule()
+    used the worker pool, it would fail with a permission error — and worse, the old
+    code silently used worker, meaning the grant to worker was the only reason approval
+    worked at all, which is the same grant that allowed agent bypass.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.approve_threat_rule)
+    assert "get_gateway_pool()" in src, (
+        "approve_threat_rule() must use get_gateway_pool() — worker pool has no UPDATE "
+        "on threat_rules.  SEC-1."
+    )
+    assert "get_worker_pool()" not in src, (
+        "approve_threat_rule() must NOT use get_worker_pool().  SEC-1: worker cannot "
+        "UPDATE threat_rules."
+    )
+
+
+def test_sec1_reject_threat_rule_uses_gateway_pool():
+    """SEC-1: reject_threat_rule() must use get_gateway_pool(), not get_worker_pool()."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.reject_threat_rule)
+    assert (
+        "get_gateway_pool()" in src
+    ), "reject_threat_rule() must use get_gateway_pool().  SEC-1."
+    assert (
+        "get_worker_pool()" not in src
+    ), "reject_threat_rule() must NOT use get_worker_pool().  SEC-1."
+
+
+def test_sec1_propose_threat_rule_uses_worker_pool():
+    """
+    SEC-1: propose_threat_rule() must use get_worker_pool() — agents INSERT via worker.
+
+    Agents call propose_threat_rule() to create PENDING rows.  Worker has INSERT
+    on threat_rules, so this is the correct pool.  Verifying this hasn't accidentally
+    been changed to gateway.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.propose_threat_rule)
+    assert (
+        "get_worker_pool()" in src
+    ), "propose_threat_rule() must use get_worker_pool() — agents INSERT via worker."
+
+
+def test_sec1_threat_rules_not_in_bulk_update_grant():
+    """
+    SEC-1: threat_rules must be absent from any bulk INSERT,UPDATE grant to worker.
+
+    The old grant was:
+        GRANT SELECT, INSERT, UPDATE ON documents, ..., threat_rules TO worker
+    The fix splits threat_rules into a separate INSERT-only grant.
+    This test verifies threat_rules is not sneaked back into a bulk UPDATE grant.
+    """
+    import inspect
+    import re
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    # Look for SQL string literals that contain both UPDATE and threat_rules,
+    # and that are followed by legionforge_worker (i.e. granted to worker).
+    # We scan the source line by line: if we find a GRANT...UPDATE line that
+    # also mentions threat_rules before the corresponding .format(uid=...worker),
+    # that is a violation.
+    lines = src.splitlines()
+    for i, line in enumerate(lines):
+        s = line.strip()
+        # Find SQL GRANT lines with UPDATE that name threat_rules directly
+        if "UPDATE" in s and "threat_rules" in s and "GRANT" in s:
+            # Look ahead to see if this block is for the worker role
+            context = "\n".join(lines[i : i + 6])
+            assert "DB_ROLE_WORKER" not in context, (
+                f"threat_rules must not appear in any UPDATE grant to legionforge_worker. "
+                f"Context:\n{context}"
+            )
+
+
+def test_sec1_threat_analyst_uses_propose_not_approve():
+    """
+    SEC-1: Threat Analyst agent must call propose_threat_rule(), never approve_threat_rule().
+
+    The agent should only create PENDING proposals.  If it called approve_threat_rule()
+    directly that would bypass HITL — though the DB grant now blocks it, defensive code
+    should also not call it.
+    """
+    import inspect
+    from src.agents import threat_analyst
+
+    src = inspect.getsource(threat_analyst)
+    assert (
+        "propose_threat_rule" in src
+    ), "Threat Analyst must call propose_threat_rule() to submit new rules."
+    assert "approve_threat_rule" not in src, (
+        "Threat Analyst must never call approve_threat_rule(). "
+        "SEC-1: rule approval is an operator-only action."
+    )

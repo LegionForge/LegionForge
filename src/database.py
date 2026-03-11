@@ -665,12 +665,30 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
         # Agent processes write directly to these tables (Researcher, Crystallizer,
         # Threat Analyst, Observer).  SELECT-only was too narrow after RBAC tightening.
+        # NOTE: threat_rules is excluded here — agents may only INSERT (propose) new
+        # rules with status='PENDING'.  UPDATE (approve/reject) is intentionally not
+        # granted to worker; it belongs only to legionforge_gateway (operator actions).
         await admin_conn.execute(
             pgsql.SQL(
                 "GRANT SELECT, INSERT, UPDATE ON documents,"
                 " crystallization_candidates, crystallization_packages,"
-                " crystallization_analyses, threat_rules TO {uid}"
+                " crystallization_analyses TO {uid}"
             ).format(uid=pgsql.Identifier(DB_ROLE_WORKER))
+        )
+        # threat_rules: INSERT only — agents may PROPOSE (insert PENDING rows) but
+        # never APPROVE (update status).  A compromised agent process cannot bypass
+        # the HITL gate by calling UPDATE directly.  SEC-1.
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT ON threat_rules TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
+        # Explicitly revoke UPDATE on threat_rules from worker — idempotent safety net
+        # for existing deployments that previously had the broader grant.
+        await admin_conn.execute(
+            pgsql.SQL("REVOKE UPDATE ON threat_rules FROM {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
         )
     except Exception as e:
         logger.debug("[db-roles] worker extra grants skipped: %s", e)
@@ -721,6 +739,13 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 " scheduled_tasks, pipelines, pipeline_runs, task_annotations"
                 " TO {uid}"
             ).format(uid=pgsql.Identifier(DB_ROLE_GATEWAY))
+        )
+        # threat_rules UPDATE: only gateway (operator endpoints) may approve/reject.
+        # Worker (agent processes) may only INSERT (propose) PENDING rows.  SEC-1.
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, UPDATE ON threat_rules TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_GATEWAY)
+            )
         )
     except Exception as e:
         logger.debug(
@@ -3081,12 +3106,17 @@ async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
     Approve a PENDING threat rule. Operator-only action.
 
     Security invariant: this function is never called by agents — only by human
-    operators via the /rules/approve endpoint or a CLI tool. Agents may only
+    operators via the /rules/approve endpoint or a CLI tool.  Agents may only
     INSERT PENDING rows via propose_threat_rule().
+
+    Uses get_gateway_pool() (not worker pool) — legionforge_gateway has UPDATE
+    on threat_rules; legionforge_worker intentionally does NOT.  This enforces
+    the HITL gate at the DB grant level: even if an agent somehow calls this
+    function, the UPDATE will be denied by PostgreSQL.  SEC-1.
 
     Returns True if the rule was found and updated, False if not found.
     """
-    pool = get_worker_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
@@ -3106,8 +3136,10 @@ async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
     """
     Reject a PENDING threat rule. Operator-only action.
     Rejected rules are retained for audit; they are never deleted.
+
+    Uses get_gateway_pool() — same SEC-1 reasoning as approve_threat_rule().
     """
-    pool = get_worker_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         cur = await conn.execute(
             """

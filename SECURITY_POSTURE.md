@@ -19,6 +19,7 @@ obscurity. Unresolved issues marked **PRE-v1.0** are hard gates before public re
 | 2026-03-11 | DB-7 | `log_threat_event()` truncates `raw_input` at 4 096 chars — closes log-bomb DoS vector via oversized injection payloads |
 | 2026-03-11 | SEC-3 | `MetricsMiddleware` normalizes UUIDs and numeric IDs out of path labels — prevents unbounded Prometheus label cardinality growth |
 | 2026-03-11 | SEC-4 | `SubmissionRateLimitMiddleware` empty-bucket cleanup moved to after eviction (was dead code after append) — closes slow memory leak under churned users |
+| 2026-03-11 | SEC-1 | `legionforge_worker` `UPDATE` on `threat_rules` revoked; `legionforge_gateway` granted `UPDATE`; `approve_threat_rule()` / `reject_threat_rule()` switched to `get_gateway_pool()`. HITL gate now enforced at DB grant level — a compromised agent process cannot approve its own proposed rules even if application-level controls are bypassed. |
 
 All six fixes are covered by regression tests added to `tests/test_smoke.py` (17 new tests).
 
@@ -86,7 +87,7 @@ gateway_users            │ S       │ S,I,U   │ —       │ —       │
 api_usage                │ S,I,U   │ S,I,U   │ D*      │ —       │ S
 tool_registry            │ S,I,U   │ S       │ —       │ S       │ S
 agent_profiles           │ S       │ —       │ —       │ S       │ —
-threat_rules             │ S,I,U   │ —       │ —       │ S       │ —
+threat_rules             │ S,I     │ S,U     │ —       │ S       │ —
 threat_events            │ I       │ —       │ D*      │ I       │ S
 audit_log                │ I       │ —       │ D*†     │ —       │ S
 audit_anchors            │ —       │ —       │ I       │ —       │ S
@@ -323,7 +324,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 | DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` | Open |
 | DB-6 | Worker pool failure fell back to admin credentials (DDL + superuser) | High | `src/database.py:init_db()` | ✅ **FIXED 2026-03-11** |
 | DB-7 | `log_threat_event()` accepted unbounded `raw_input` — log-bomb DoS vector | Medium | `src/database.py:log_threat_event()` | ✅ **FIXED 2026-03-11** |
-| SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` | Open |
+| SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` | ✅ **FIXED 2026-03-11** |
 | SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` | Open |
 | SEC-3 | MetricsMiddleware recorded raw paths → unbounded Prometheus label cardinality (OOM) | Medium | `src/gateway/middleware.py:MetricsMiddleware` | ✅ **FIXED 2026-03-11** |
 | SEC-4 | Rate-limit `_windows` dict leaked empty buckets — slow memory growth under many users | Low | `src/gateway/middleware.py:SubmissionRateLimitMiddleware` | ✅ **FIXED 2026-03-11** |
