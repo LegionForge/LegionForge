@@ -1097,11 +1097,27 @@ async def init_db() -> None:
         conninfo = f"host={host} port={port} dbname={db} user={role}"
         pw = _get_or_generate_role_password(role)
         try:
+            # idle_in_transaction_session_timeout kills connections that open a
+            # transaction and then hang (crashed agent, network partition) before
+            # they hold row locks indefinitely.  Configured per hardware profile.
+            try:
+                idle_timeout_ms = settings.database.idle_in_transaction_timeout_ms
+            except Exception:
+                idle_timeout_ms = 60_000  # safe default if settings unavailable
+            pool_kwargs: dict = {
+                "password": pw,
+                "row_factory": dict_row,
+                "autocommit": True,
+            }
+            if idle_timeout_ms > 0:
+                pool_kwargs["options"] = (
+                    f"-c idle_in_transaction_session_timeout={idle_timeout_ms}ms"
+                )
             p = AsyncConnectionPool(
                 conninfo=conninfo,
                 min_size=min_size,
                 max_size=max_size,
-                kwargs={"password": pw, "row_factory": dict_row, "autocommit": True},
+                kwargs=pool_kwargs,
                 open=False,
             )
             await p.open(wait=True)
@@ -2205,17 +2221,93 @@ async def get_user_connection(
 
 
 @asynccontextmanager
-async def get_admin_connection() -> AsyncGenerator[psycopg.AsyncConnection, None]:
-    """Yield a worker pool connection (BYPASSRLS by role attribute).
+async def get_worker_connection(
+    task_id: str | None = None,
+    agent_id: str | None = None,
+    request_id: str | None = None,
+) -> AsyncGenerator[psycopg.AsyncConnection, None]:
+    """Yield a worker pool connection (legionforge_worker — BYPASSRLS).
 
-    Backward-compatible name; now backed by the legionforge_worker role
-    which has BYPASSRLS and broad read/write access across all users.
-    Use this when you need to operate across user boundaries without
-    needing DELETE on prunable tables (use get_maintenance_connection for that).
+    Use for cross-user operations (agent task execution, system-level reads).
+    For user-scoped queries use get_user_connection(user_id) instead — it
+    activates RLS so queries are automatically restricted to one user's data.
+    For retention pruning use get_maintenance_connection() — DELETE-only, zero
+    SELECT, isolated from data-reading code.
+
+    Per-connection setup applied on every acquisition:
+
+    application_name
+        Set to ``legionforge_worker`` or ``legionforge_worker/task:{task_id[:8]}``
+        when task_id is provided.  Visible in pg_stat_activity so you can
+        identify which task is holding a lock or running a slow query without
+        grepping logs.
+
+    statement_timeout
+        From ``settings.database.statement_timeout_ms`` (default 30 s).
+        Kills runaway SQL queries before they block the worker pool.
+        LLM calls happen outside DB connections — this does NOT limit task
+        duration, only individual SQL statement duration.
+
+    app.agent_id / app.request_id
+        Session-level audit context.  DB-level audit triggers can read
+        ``current_setting('app.agent_id')`` and ``current_setting('app.request_id')``
+        to capture which agent/request caused a write without the application
+        layer having to pass these values through every function call.
+
+    All settings are reset in a finally block on connection release.
+
+    Args:
+        task_id:    Optional task UUID — appended to application_name for
+                    pg_stat_activity visibility. Only the first 8 chars are
+                    used to keep the label readable.
+        agent_id:   Optional agent identifier set as ``app.agent_id`` session
+                    variable for audit-trigger context.
+        request_id: Optional request/trace ID set as ``app.request_id`` session
+                    variable for audit-trigger context.
     """
     pool = get_worker_pool()
+    try:
+        stmt_timeout_ms = settings.database.statement_timeout_ms
+    except Exception:
+        stmt_timeout_ms = 30_000  # safe default if settings unavailable
+
+    app_name = (
+        f"legionforge_worker/task:{task_id[:8]}" if task_id else "legionforge_worker"
+    )
+
     async with pool.connection() as conn:
-        yield conn
+        # Apply connection-level settings.  Each SET is local to this
+        # connection and will be reset when the connection returns to the pool.
+        setup_sql = ["SET application_name = %s"]
+        setup_params: list = [app_name]
+
+        if stmt_timeout_ms > 0:
+            setup_sql.append("SET statement_timeout = %s")
+            setup_params.append(f"{stmt_timeout_ms}ms")
+
+        if agent_id:
+            setup_sql.append("SELECT set_config('app.agent_id', %s, false)")
+            setup_params.append(agent_id)
+
+        if request_id:
+            setup_sql.append("SELECT set_config('app.request_id', %s, false)")
+            setup_params.append(request_id)
+
+        for sql, param in zip(setup_sql, setup_params):
+            await conn.execute(sql, [param])
+
+        try:
+            yield conn
+        finally:
+            # Reset audit context so stale values don't bleed into the next
+            # caller that acquires this connection from the pool.
+            try:
+                await conn.execute(
+                    "SELECT set_config('app.agent_id', '', false),"
+                    "       set_config('app.request_id', '', false)"
+                )
+            except Exception:
+                pass
 
 
 @asynccontextmanager
@@ -6666,7 +6758,11 @@ def __getattr__(name: str) -> object:
         ),
     }
     _renamed = {
-        "get_admin_connection": "get_worker_connection",
+        "get_admin_connection": (
+            "get_worker_connection(task_id=, agent_id=, request_id=) "
+            "— DB-5 rename; wrapper now applies statement_timeout, "
+            "application_name, and audit context on every connection"
+        ),
     }
 
     # Capture caller location from the top of the live call stack

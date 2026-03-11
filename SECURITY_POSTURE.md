@@ -20,6 +20,7 @@ obscurity. Unresolved issues marked **PRE-v1.0** are hard gates before public re
 | 2026-03-11 | SEC-3 | `MetricsMiddleware` normalizes UUIDs and numeric IDs out of path labels — prevents unbounded Prometheus label cardinality growth |
 | 2026-03-11 | SEC-4 | `SubmissionRateLimitMiddleware` empty-bucket cleanup moved to after eviction (was dead code after append) — closes slow memory leak under churned users |
 | 2026-03-11 | SEC-1 | `legionforge_worker` `UPDATE` on `threat_rules` revoked; `legionforge_gateway` granted `UPDATE`; `approve_threat_rule()` / `reject_threat_rule()` switched to `get_gateway_pool()`. HITL gate now enforced at DB grant level — a compromised agent process cannot approve its own proposed rules even if application-level controls are bypassed. |
+| 2026-03-11 | DB-5 | `get_admin_connection()` renamed to `get_worker_connection(task_id, agent_id, request_id)`. Wrapper now non-trivial: sets `application_name` (pg_stat_activity visibility), `statement_timeout` (from `settings.database.statement_timeout_ms`, default 30s), and `app.agent_id`/`app.request_id` session variables (future audit-trigger context). `idle_in_transaction_session_timeout` wired into pool creation. `DatabaseConfig` settings class added. `__getattr__` guard updated. 8 regression tests. |
 | 2026-03-11 | DB-4 | `get_pool` backward-compat alias deleted from `src/database.py`. All callers already used explicit pool accessors. Two regression tests ensure it can never be silently re-introduced. |
 | 2026-03-11 | DB-3 | `rotate_api_key()` now DELETEs all DB-backed stream tokens for the user on rotation. New `rotate_all_standard_users()` bulk-rotates every active non-admin user and returns new plaintext keys for distribution. Both operations append `API_KEY_ROTATED` to the audit log. Redis-backed tokens expire naturally within 30-minute TTL (task-scoped, acceptable). |
 | 2026-03-11 | SEC-2 | `POSTGRES_PASSWORD` env var no longer silently overrides Keychain. New `_warn_postgres_env_conflict()` gate: when both Keychain and env var are present and differ, requires operator `[y/n]` acknowledgement (interactive) or `POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1` (non-interactive/CI). Keychain now formally wins. Env var still accepted as sole credential in container/CI contexts where Keychain is absent. |
@@ -211,11 +212,9 @@ def get_readonly_pool():
 
 `get_pool` has been deleted (DB-4, 2026-03-11). All callers use the explicit pool accessors: `get_worker_pool()`, `get_gateway_pool()`, `get_readonly_pool()`, or `get_maintenance_connection()`. Two regression tests enforce this permanently.
 
-### 4.4 `get_admin_connection()` Naming
+### 4.4 `get_worker_connection()` — RENAMED + UPGRADED ✅
 
-`get_admin_connection()` is misleadingly named. It yields a **worker** pool connection, not an admin connection. Admin credentials are only used during `init_db()` startup and are never held in a pool.
-
-> **PRE-v1.0:** Rename to `get_worker_connection()` to match what it actually does.
+`get_admin_connection()` has been renamed `get_worker_connection(task_id, agent_id, request_id)` (DB-5, 2026-03-11). The wrapper is now non-trivial — it applies connection-level setup on every acquisition: `application_name` tagging for `pg_stat_activity`, `statement_timeout` from `settings.database`, and `app.agent_id`/`app.request_id` session variables for future DB-level audit triggers. Stale values are reset in a `finally` block.
 
 ---
 
@@ -322,7 +321,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 | DB-2 | `get_gateway_pool()` / `get_readonly_pool()` silently fall back to worker (BYPASSRLS) | High | `src/database.py` | ✅ **FIXED 2026-03-11** |
 | DB-3 | Key rotation does not invalidate live stream tokens | Medium | `src/database.py:rotate_api_key()` | ✅ **FIXED 2026-03-11** |
 | DB-4 | `get_pool` backward-compat alias must be removed | Low | `src/database.py` | ✅ **FIXED 2026-03-11** |
-| DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` | Open |
+| DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` | ✅ **FIXED 2026-03-11** |
 | DB-6 | Worker pool failure fell back to admin credentials (DDL + superuser) | High | `src/database.py:init_db()` | ✅ **FIXED 2026-03-11** |
 | DB-7 | `log_threat_event()` accepted unbounded `raw_input` — log-bomb DoS vector | Medium | `src/database.py:log_threat_event()` | ✅ **FIXED 2026-03-11** |
 | SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` | ✅ **FIXED 2026-03-11** |

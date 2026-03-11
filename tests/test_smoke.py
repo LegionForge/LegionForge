@@ -22089,11 +22089,80 @@ def test_get_user_connection_is_asynccontextmanager():
     assert inspect.isasyncgenfunction(db.get_user_connection.__wrapped__)
 
 
-def test_get_admin_connection_importable():
-    """get_admin_connection is exported from database."""
-    from src.database import get_admin_connection
+def test_db5_get_worker_connection_importable():
+    """DB-5: get_worker_connection() replaced get_admin_connection()."""
+    from src.database import get_worker_connection
 
-    assert callable(get_admin_connection)
+    assert callable(get_worker_connection)
+
+
+def test_db5_get_admin_connection_guard_fires():
+    """DB-5: Accessing get_admin_connection at runtime must raise AttributeError
+    with a message pointing to get_worker_connection."""
+    import src.database as db_mod
+
+    with pytest.raises(AttributeError, match="get_worker_connection"):
+        _ = db_mod.get_admin_connection
+
+
+def test_db5_get_worker_connection_sets_statement_timeout():
+    """DB-5: get_worker_connection source must apply statement_timeout."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "statement_timeout" in src
+
+
+def test_db5_get_worker_connection_sets_application_name():
+    """DB-5: get_worker_connection source must set application_name for pg_stat_activity."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "application_name" in src
+    assert "legionforge_worker" in src
+
+
+def test_db5_get_worker_connection_sets_audit_context():
+    """DB-5: get_worker_connection must set app.agent_id and app.request_id
+    session variables for future DB-level audit trigger support."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "app.agent_id" in src
+    assert "app.request_id" in src
+
+
+def test_db5_get_worker_connection_resets_audit_context():
+    """DB-5: get_worker_connection must reset audit context in a finally block
+    so stale values don't bleed into the next connection pool acquirer."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "finally" in src
+    # Reset must clear both variables
+    assert "app.agent_id', '', false" in src or 'app.agent_id", "", false' in src
+
+
+def test_db5_database_config_exists_in_settings():
+    """DB-5: DatabaseConfig must exist in settings with statement_timeout_ms."""
+    from config.settings import DatabaseConfig
+
+    cfg = DatabaseConfig()
+    assert cfg.statement_timeout_ms > 0
+    assert cfg.idle_in_transaction_timeout_ms > 0
+
+
+def test_db5_idle_timeout_wired_into_pool_creation():
+    """DB-5: _open_role_pool must use idle_in_transaction_session_timeout from settings."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod)
+    assert "idle_in_transaction_session_timeout" in src
 
 
 def test_get_maintenance_connection_importable():
