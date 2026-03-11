@@ -9019,6 +9019,116 @@ def test_p41_rotate_key_returns_plaintext_once():
     assert "not be shown again" in src or "shown once" in src or "once" in src
 
 
+def test_db3_rotate_api_key_deletes_stream_tokens():
+    """
+    DB-3: rotate_api_key() must DELETE stream tokens for the user immediately.
+    Verifies the DELETE FROM stream_tokens is in the source alongside the UPDATE.
+    """
+    import inspect
+    from src.database import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert (
+        "DELETE FROM stream_tokens" in src
+    ), "DB-3: rotate_api_key() must revoke DB-backed stream tokens on rotation"
+    assert (
+        "user_id" in src.split("DELETE FROM stream_tokens")[1][:80]
+    ), "DB-3: DELETE must be scoped by user_id"
+
+
+def test_db3_rotate_api_key_logs_to_audit():
+    """DB-3: rotate_api_key() must call append_audit_log() so rotation is traceable."""
+    import inspect
+    from src.database import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert (
+        "append_audit_log" in src
+    ), "DB-3: rotate_api_key() must append an audit log entry on rotation"
+    assert "API_KEY_ROTATED" in src
+
+
+def test_db3_rotate_all_standard_users_exists():
+    """DB-3: rotate_all_standard_users() is exported from src.database."""
+    from src.database import rotate_all_standard_users
+
+    assert callable(rotate_all_standard_users)
+
+
+def test_db3_rotate_all_standard_users_filters_admins():
+    """
+    DB-3: rotate_all_standard_users() SQL must filter is_admin = false so
+    admin accounts are never included in a bulk rotation.
+    """
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "is_admin = false" in src or "is_admin=false" in src
+    ), "DB-3: rotate_all_standard_users must exclude admin users"
+
+
+def test_db3_rotate_all_standard_users_filters_inactive():
+    """DB-3: rotate_all_standard_users() must only rotate active users."""
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "is_active" in src
+    ), "DB-3: rotate_all_standard_users must skip inactive users"
+
+
+def test_db3_rotate_all_standard_users_returns_keys():
+    """
+    DB-3: rotate_all_standard_users() must return plaintext api_key values
+    so the admin can distribute them.  Verifies the return payload structure.
+    """
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        '"api_key"' in src or "'api_key'" in src
+    ), "DB-3: rotate_all_standard_users must include plaintext api_key in return payload"
+    assert '"username"' in src or "'username'" in src
+
+
+def test_db3_rotate_all_standard_users_uses_secrets_token_hex():
+    """DB-3: rotate_all_standard_users() must use secrets.token_hex for key generation."""
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "secrets.token_hex" in src
+    ), "DB-3: rotate_all_standard_users must use secrets.token_hex for CSPRNG key generation"
+
+
+def test_db3_cli_rotate_all_keys_command_exists():
+    """DB-3: manage_users CLI must expose a rotate-all-keys subcommand."""
+    import inspect
+    from src.cli import manage_users
+
+    src = inspect.getsource(manage_users)
+    assert (
+        "rotate-all-keys" in src
+    ), "DB-3: manage_users CLI must have a rotate-all-keys subcommand"
+    assert "rotate_all_standard_keys" in src
+
+
+def test_db3_cli_rotate_all_keys_calls_db_function():
+    """DB-3: rotate_all_standard_keys() CLI function must call rotate_all_standard_users()."""
+    import inspect
+    from src.cli.manage_users import rotate_all_standard_keys
+
+    src = inspect.getsource(rotate_all_standard_keys)
+    assert (
+        "rotate_all_standard_users" in src
+    ), "DB-3: CLI rotate_all_standard_keys must delegate to db.rotate_all_standard_users()"
+
+
 def test_p41_get_current_user_no_sensitive_fields():
     """get_current_user does not include api_key_hash in response."""
     import inspect

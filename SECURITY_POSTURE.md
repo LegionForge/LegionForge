@@ -20,6 +20,7 @@ obscurity. Unresolved issues marked **PRE-v1.0** are hard gates before public re
 | 2026-03-11 | SEC-3 | `MetricsMiddleware` normalizes UUIDs and numeric IDs out of path labels — prevents unbounded Prometheus label cardinality growth |
 | 2026-03-11 | SEC-4 | `SubmissionRateLimitMiddleware` empty-bucket cleanup moved to after eviction (was dead code after append) — closes slow memory leak under churned users |
 | 2026-03-11 | SEC-1 | `legionforge_worker` `UPDATE` on `threat_rules` revoked; `legionforge_gateway` granted `UPDATE`; `approve_threat_rule()` / `reject_threat_rule()` switched to `get_gateway_pool()`. HITL gate now enforced at DB grant level — a compromised agent process cannot approve its own proposed rules even if application-level controls are bypassed. |
+| 2026-03-11 | DB-3 | `rotate_api_key()` now DELETEs all DB-backed stream tokens for the user on rotation. New `rotate_all_standard_users()` bulk-rotates every active non-admin user and returns new plaintext keys for distribution. Both operations append `API_KEY_ROTATED` to the audit log. Redis-backed tokens expire naturally within 30-minute TTL (task-scoped, acceptable). |
 | 2026-03-11 | SEC-2 | `POSTGRES_PASSWORD` env var no longer silently overrides Keychain. New `_warn_postgres_env_conflict()` gate: when both Keychain and env var are present and differ, requires operator `[y/n]` acknowledgement (interactive) or `POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1` (non-interactive/CI). Keychain now formally wins. Env var still accepted as sole credential in container/CI contexts where Keychain is absent. |
 
 All seven fixes are covered by regression tests added to `tests/test_smoke.py` (25 new tests).
@@ -320,7 +321,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 |---|-------|----------|----------|--------|
 | DB-1 | RLS escape: `app.user_id = ''` lets all rows through | High | `src/database.py:_setup_rls()` | ✅ **FIXED 2026-03-11** |
 | DB-2 | `get_gateway_pool()` / `get_readonly_pool()` silently fall back to worker (BYPASSRLS) | High | `src/database.py` | ✅ **FIXED 2026-03-11** |
-| DB-3 | Key rotation does not invalidate live stream tokens | Medium | `src/database.py:rotate_api_key()` | Open |
+| DB-3 | Key rotation does not invalidate live stream tokens | Medium | `src/database.py:rotate_api_key()` | ✅ **FIXED 2026-03-11** |
 | DB-4 | `get_pool` backward-compat alias must be removed | Low | `src/database.py` | Open |
 | DB-5 | `get_admin_connection()` should be renamed `get_worker_connection()` | Low | `src/database.py` | Open |
 | DB-6 | Worker pool failure fell back to admin credentials (DDL + superuser) | High | `src/database.py:init_db()` | ✅ **FIXED 2026-03-11** |

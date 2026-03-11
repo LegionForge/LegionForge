@@ -4892,7 +4892,14 @@ async def get_gateway_user_by_user_id(user_id: str) -> dict | None:
 
 async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
     """
-    Replace the api_key_hash for user_id with new_key_hash.
+    Replace the api_key_hash for user_id with new_key_hash and immediately
+    invalidate all live stream tokens for that user (DB backend).
+
+    DB-3 fix: stream tokens issued before rotation are killed so a stolen key
+    cannot be used to keep watching an active SSE stream after the owner rotates.
+    Redis-backed stream tokens expire naturally within their 30-minute TTL —
+    acceptable given the narrow window and task-scoped (not general-auth) nature
+    of stream tokens.
 
     Returns True if the row was found and updated, False if user_id not found.
     The new_key_hash must be a bcrypt hash of the new plaintext key.
@@ -4908,7 +4915,92 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
             """,
             (new_key_hash, user_id),
         )
-        return cur.rowcount > 0
+        if cur.rowcount == 0:
+            return False
+
+        # DB-3: revoke all live stream tokens for this user immediately.
+        # Prevents a stolen token from outliving the key rotation window.
+        await conn.execute(
+            "DELETE FROM stream_tokens WHERE user_id = %s",
+            (user_id,),
+        )
+
+    # Audit trail — key rotation is a security event.
+    try:
+        await append_audit_log(
+            event_type="API_KEY_ROTATED",
+            agent_id=None,
+            payload={"user_id": user_id, "stream_tokens_revoked": True},
+        )
+    except Exception:
+        pass  # non-fatal — DB may not be fully initialised in tests
+
+    return True
+
+
+async def rotate_all_standard_users() -> list[dict]:
+    """
+    Rotate API keys for every active, non-admin gateway user.
+
+    Intended for incident response (suspected key leak) or periodic forced
+    rotation policy.  Admin users (is_admin=true) are intentionally excluded
+    so the operator retains access to distribute the new keys.
+
+    For each affected user:
+      - Generates a new cryptographically secure plaintext key
+      - Updates api_key_hash in gateway_users
+      - Deletes all live DB-backed stream tokens (DB-3 fix)
+      - Appends an API_KEY_ROTATED audit log entry
+
+    Returns a list of dicts — one per rotated user:
+        {"user_id": str, "username": str, "api_key": str}
+
+    The plaintext api_key is returned ONCE and never stored.  The caller must
+    distribute keys to users immediately or they will be locked out until a new
+    key is issued via the web UI or CLI.
+
+    Redis-backed stream tokens for the affected users expire naturally within
+    30 minutes (acceptable given task-scoped, short-lived nature of stream tokens).
+    """
+    import bcrypt
+
+    pool = get_worker_pool()
+
+    # Fetch all active non-admin users in one query.
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT user_id, username
+            FROM gateway_users
+            WHERE is_active = true AND is_admin = false
+            ORDER BY username
+            """
+        )
+        users = await cur.fetchall()
+
+    rotated: list[dict] = []
+    for user in users:
+        new_key = secrets.token_hex(32)  # 64 hex chars — same as single-user rotation
+        new_hash = bcrypt.hashpw(new_key.encode(), bcrypt.gensalt(rounds=12)).decode()
+        updated = await rotate_api_key(user["user_id"], new_hash)
+        if updated:
+            rotated.append(
+                {
+                    "user_id": user["user_id"],
+                    "username": user["username"],
+                    "api_key": new_key,
+                }
+            )
+        else:
+            logger.warning(
+                "[rotate-all] rotate_api_key returned False for user_id=%s username=%s — skipped",
+                user["user_id"],
+                user["username"],
+            )
+
+    logger.info("[rotate-all] Rotated API keys for %d standard user(s)", len(rotated))
+    return rotated
 
 
 # ── Phase 10: DB-backed stream tokens ────────────────────────────────────────
