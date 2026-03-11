@@ -21,6 +21,7 @@ import logging
 import secrets
 import string
 import subprocess
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
@@ -138,17 +139,116 @@ def _write_pgpass_entry(
 # ── Connection helpers ────────────────────────────────────────────────────────
 
 
+def _warn_postgres_env_conflict(keychain_pw: str) -> None:
+    """
+    SEC-2: Block startup when POSTGRES_PASSWORD env var conflicts with Keychain.
+
+    Environment variables are lower-trust than macOS Keychain:
+      - They are visible to all child processes in the process tree
+      - They appear in crash dumps and many debug/profiling tools
+      - Stale values from Guardian docker-compose are a documented footgun
+        (POSTGRES_PASSWORD lingers in the shell after `docker-compose up`)
+
+    Policy:
+      - Keychain present, env var absent  → silent (normal path)
+      - Keychain present, env var present, values MATCH → debug log only
+      - Keychain present, env var present, values DIFFER → blocking [y/n]
+          Interactive  : prompt; 'n' raises RuntimeError
+          Non-interactive: raise RuntimeError unless
+                          POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1 is set
+
+    To suppress the prompt and use the Keychain value silently (CI pipelines
+    where Keychain is not available but env var is intentional):
+        export POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1
+    To fix the root cause: `unset POSTGRES_PASSWORD` in your shell.
+    """
+    env_pw = os.environ.get("POSTGRES_PASSWORD", "")
+    if not env_pw:
+        return  # no conflict
+
+    if env_pw == keychain_pw:
+        logger.debug(
+            "[SEC-2] POSTGRES_PASSWORD env var matches Keychain value — consistent."
+        )
+        return
+
+    # Values differ — this is the dangerous case (stale shell / wrong credentials).
+    _SEC2_BANNER = (
+        "\n"
+        "┌─────────────────────────────────────────────────────────────────┐\n"
+        "│  SEC-2 WARNING: POSTGRES_PASSWORD credential conflict          │\n"
+        "├─────────────────────────────────────────────────────────────────┤\n"
+        "│  POSTGRES_PASSWORD env var is set AND differs from the value   │\n"
+        "│  stored in macOS Keychain.                                      │\n"
+        "│                                                                 │\n"
+        "│  Likely cause: a stale shell session from Guardian             │\n"
+        "│  docker-compose (sets POSTGRES_PASSWORD) was not cleaned up.   │\n"
+        "│                                                                 │\n"
+        "│  Risk: env vars are visible to all child processes, appear in  │\n"
+        "│  crash dumps, and are captured by many debug tools.            │\n"
+        "│                                                                 │\n"
+        "│  LegionForge will use the Keychain value (more secure).        │\n"
+        "│  To suppress: unset POSTGRES_PASSWORD                          │\n"
+        "│  To skip this prompt: POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1│\n"
+        "└─────────────────────────────────────────────────────────────────┘\n"
+    )
+
+    # Non-interactive path (container, CI, background process)
+    if not sys.stdin.isatty():
+        if os.environ.get("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.warning(
+                "[SEC-2] POSTGRES_PASSWORD env var conflicts with Keychain "
+                "(acknowledged via POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED). "
+                "Using Keychain value."
+            )
+            return
+        raise RuntimeError(
+            "[SEC-2] FATAL: POSTGRES_PASSWORD env var conflicts with macOS Keychain "
+            "in a non-interactive context. "
+            "Unset POSTGRES_PASSWORD or set "
+            "POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1 to continue."
+        )
+
+    # Interactive path — require explicit acknowledgement.
+    print(_SEC2_BANNER, flush=True)
+    try:
+        answer = (
+            input("Continue using Keychain value and ignore env var? [y/n]: ")
+            .strip()
+            .lower()
+        )
+    except EOFError:
+        answer = "n"
+
+    if answer not in ("y", "yes"):
+        raise RuntimeError(
+            "[SEC-2] Startup aborted. Unset POSTGRES_PASSWORD to remove the conflict, "
+            "then restart."
+        )
+
+    logger.warning(
+        "[SEC-2] POSTGRES_PASSWORD conflict acknowledged by operator. "
+        "Using Keychain value. Recommend: `unset POSTGRES_PASSWORD`."
+    )
+
+
 def _get_postgres_password() -> str:
     """
     Return the PostgreSQL admin password.
 
     Priority order:
       1. CredentialStore in-memory cache (initialized at startup — zero Keychain calls)
-      2. macOS Keychain / security CLI via get_api_key("postgres")
-      3. POSTGRES_PASSWORD environment variable
+      2. macOS Keychain / security CLI via get_api_key("postgres") [WINS over env var]
+         SEC-2: if POSTGRES_PASSWORD env var is also set and differs, blocks with [y/n]
+      3. POSTGRES_PASSWORD environment variable (fallback — Docker/CI path only)
       4. ~/.pgpass (PostgreSQL standard credential file, chmod 0600)
       5. POSTGRES_TRUST_AUTH=true — explicit opt-in for local trust auth (dev only)
 
+    Keychain always takes precedence over the env var when both are present.
     Raises RuntimeError if not found anywhere.
     Never embed this value in a connection URI — pass as a keyword argument only.
     """
@@ -164,18 +264,28 @@ def _get_postgres_password() -> str:
         pass
 
     # ── 2. macOS Keychain via get_api_key (keyring → security CLI → env) ──
+    # Keychain is the authoritative source — it wins over the env var.
+    # SEC-2: if env var is also set and differs, _warn_postgres_env_conflict()
+    # will require explicit operator acknowledgement before proceeding.
     try:
         from src.security.core import get_api_key as _get_api_key
 
         pw = _get_api_key("postgres")
         if pw:
+            _warn_postgres_env_conflict(pw)  # SEC-2 gate
             return pw
     except (RuntimeError, ImportError):
         pass  # key absent or security module unavailable
 
     # ── 3. POSTGRES_PASSWORD environment variable ──────────────────────────
+    # Only reached when Keychain is absent (Docker/CI containers).
     pw = os.environ.get("POSTGRES_PASSWORD", "")
     if pw:
+        logger.warning(
+            "[SEC-2] Using POSTGRES_PASSWORD env var — Keychain unavailable. "
+            "This is acceptable in container/CI environments. "
+            "Do not set this in interactive shell sessions."
+        )
         return pw
 
     # ── 4. ~/.pgpass (PostgreSQL standard, chmod 0600) ─────────────────────
@@ -197,9 +307,9 @@ def _get_postgres_password() -> str:
 
     raise RuntimeError(
         "PostgreSQL admin password not found. Provide it via one of:\n"
-        "  1. ~/.pgpass  (hostname:port:database:username:password, chmod 0600)\n"
-        "  2. python -m keyring set postgres api_key\n"
-        "  3. export POSTGRES_PASSWORD=<value>\n"
+        "  1. macOS Keychain: python -m keyring set postgres api_key\n"
+        "  2. ~/.pgpass  (hostname:port:database:username:password, chmod 0600)\n"
+        "  3. export POSTGRES_PASSWORD=<value>  (container/CI only)\n"
         "  4. export POSTGRES_TRUST_AUTH=true  (local trust auth only — not for production)"
     )
 

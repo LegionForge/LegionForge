@@ -20,8 +20,9 @@ obscurity. Unresolved issues marked **PRE-v1.0** are hard gates before public re
 | 2026-03-11 | SEC-3 | `MetricsMiddleware` normalizes UUIDs and numeric IDs out of path labels — prevents unbounded Prometheus label cardinality growth |
 | 2026-03-11 | SEC-4 | `SubmissionRateLimitMiddleware` empty-bucket cleanup moved to after eviction (was dead code after append) — closes slow memory leak under churned users |
 | 2026-03-11 | SEC-1 | `legionforge_worker` `UPDATE` on `threat_rules` revoked; `legionforge_gateway` granted `UPDATE`; `approve_threat_rule()` / `reject_threat_rule()` switched to `get_gateway_pool()`. HITL gate now enforced at DB grant level — a compromised agent process cannot approve its own proposed rules even if application-level controls are bypassed. |
+| 2026-03-11 | SEC-2 | `POSTGRES_PASSWORD` env var no longer silently overrides Keychain. New `_warn_postgres_env_conflict()` gate: when both Keychain and env var are present and differ, requires operator `[y/n]` acknowledgement (interactive) or `POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1` (non-interactive/CI). Keychain now formally wins. Env var still accepted as sole credential in container/CI contexts where Keychain is absent. |
 
-All six fixes are covered by regression tests added to `tests/test_smoke.py` (17 new tests).
+All seven fixes are covered by regression tests added to `tests/test_smoke.py` (25 new tests).
 
 ---
 
@@ -325,7 +326,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 | DB-6 | Worker pool failure fell back to admin credentials (DDL + superuser) | High | `src/database.py:init_db()` | ✅ **FIXED 2026-03-11** |
 | DB-7 | `log_threat_event()` accepted unbounded `raw_input` — log-bomb DoS vector | Medium | `src/database.py:log_threat_event()` | ✅ **FIXED 2026-03-11** |
 | SEC-1 | Threat rule poisoning: worker can write threat_rules without HITL | High | `src/database.py:_setup_db_roles()` | ✅ **FIXED 2026-03-11** |
-| SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` | Open |
+| SEC-2 | `POSTGRES_PASSWORD` env var silently overrides Keychain | Medium | `src/database.py:_get_postgres_password()` | ✅ **FIXED 2026-03-11** |
 | SEC-3 | MetricsMiddleware recorded raw paths → unbounded Prometheus label cardinality (OOM) | Medium | `src/gateway/middleware.py:MetricsMiddleware` | ✅ **FIXED 2026-03-11** |
 | SEC-4 | Rate-limit `_windows` dict leaked empty buckets — slow memory growth under many users | Low | `src/gateway/middleware.py:SubmissionRateLimitMiddleware` | ✅ **FIXED 2026-03-11** |
 | TEST-1 | 3 RLS integration tests pending (require DB roles to exist) | Medium | `tests/test_integration.py` | Open |

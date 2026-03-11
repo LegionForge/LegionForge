@@ -23319,3 +23319,154 @@ def test_sec1_threat_analyst_uses_propose_not_approve():
         "Threat Analyst must never call approve_threat_rule(). "
         "SEC-1: rule approval is an operator-only action."
     )
+
+
+# ── SEC-2: POSTGRES_PASSWORD env var conflict detection ───────────────────────
+
+
+def test_sec2_warn_function_exists_in_database():
+    """SEC-2: _warn_postgres_env_conflict() must exist in src/database.py."""
+    import inspect
+    import src.database as db_mod
+
+    assert hasattr(
+        db_mod, "_warn_postgres_env_conflict"
+    ), "SEC-2: _warn_postgres_env_conflict() must be defined in src/database.py"
+    src = inspect.getsource(db_mod._warn_postgres_env_conflict)
+    assert "POSTGRES_PASSWORD" in src
+    assert "RuntimeError" in src
+
+
+def test_sec2_keychain_wins_over_env_var_in_priority_comment():
+    """
+    SEC-2: The _get_postgres_password() docstring must document that Keychain
+    takes priority over POSTGRES_PASSWORD env var.
+    """
+    import inspect
+    import src.database as db_mod
+
+    doc = db_mod._get_postgres_password.__doc__ or ""
+    src = inspect.getsource(db_mod._get_postgres_password)
+    assert (
+        "WINS over env var" in src or "wins over env var" in src
+    ), "SEC-2: _get_postgres_password source must note that Keychain wins over env var"
+
+
+def test_sec2_get_password_calls_warn_function():
+    """
+    SEC-2: _get_postgres_password() must call _warn_postgres_env_conflict()
+    after finding a Keychain value so the SEC-2 gate is never bypassed.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._get_postgres_password)
+    assert "_warn_postgres_env_conflict" in src, (
+        "SEC-2: _get_postgres_password must call _warn_postgres_env_conflict() "
+        "after reading from Keychain"
+    )
+
+
+def test_sec2_no_conflict_returns_silently(monkeypatch):
+    """
+    SEC-2: When POSTGRES_PASSWORD is not set, _warn_postgres_env_conflict()
+    must return without raising or printing anything.
+    """
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    # Must not raise
+    _warn_postgres_env_conflict("some-keychain-password")
+
+
+def test_sec2_matching_values_returns_silently(monkeypatch):
+    """
+    SEC-2: When POSTGRES_PASSWORD matches the Keychain value, no error or
+    prompt should occur (identical credentials in both stores is fine).
+    """
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "same-password")
+    # Must not raise
+    _warn_postgres_env_conflict("same-password")
+
+
+def test_sec2_non_interactive_conflict_raises(monkeypatch):
+    """
+    SEC-2: In a non-interactive context (stdin not a tty), a conflicting
+    POSTGRES_PASSWORD env var must raise RuntimeError unless the operator
+    has set POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "wrong-env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # non-tty
+
+    with pytest.raises(RuntimeError, match="SEC-2"):
+        _warn_postgres_env_conflict("correct-keychain-password")
+
+
+def test_sec2_non_interactive_acknowledged_returns(monkeypatch):
+    """
+    SEC-2: With POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1, a non-interactive
+    conflict must NOT raise — CI pipelines may legitimately need this escape hatch.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "different-env-password")
+    monkeypatch.setenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # non-tty
+
+    # Must not raise
+    _warn_postgres_env_conflict("correct-keychain-password")
+
+
+def test_sec2_interactive_yes_returns(monkeypatch):
+    """
+    SEC-2: In an interactive session, answering 'y' to the conflict prompt
+    must allow startup to proceed.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    # Simulate interactive tty with 'y' answer
+    monkeypatch.setattr(
+        "sys.stdin",
+        type(
+            "_FakeTTY",
+            (),
+            {
+                "isatty": lambda self: True,
+                "readline": lambda self: "y\n",
+                "read": lambda self, n=-1: "y\n",
+            },
+        )(),
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+    # Must not raise
+    _warn_postgres_env_conflict("keychain-password")
+
+
+def test_sec2_interactive_no_raises(monkeypatch):
+    """
+    SEC-2: In an interactive session, answering 'n' to the conflict prompt
+    must raise RuntimeError to abort startup.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    monkeypatch.setattr(
+        "sys.stdin", type("_FakeTTY", (), {"isatty": lambda self: True})()
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "n")
+
+    with pytest.raises(RuntimeError, match="Startup aborted"):
+        _warn_postgres_env_conflict("keychain-password")
