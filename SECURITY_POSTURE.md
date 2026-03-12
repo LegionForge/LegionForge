@@ -41,7 +41,7 @@ LegionForge is a local-first AI agent gateway. The realistic threats are:
 | Compromised agent process reads all users' data | Low | Critical | BYPASSRLS scoped to worker only; gateway RLS blocks lateral reads |
 | API key theft → unauthorized task submission | Medium | Medium | Short-lived stream tokens, daily rate limits, audit log |
 | Malicious tool registration | Low | High | Ed25519 signing, Guardian registry check, HITL approval flow |
-| Threat rule poisoning (agent writes bad Guardian rules) | Low | High | **PRE-v1.0: add HITL gate on threat rule writes** |
+| Threat rule poisoning (agent writes bad Guardian rules) | Low | High | ✅ SEC-1 (2026-03-11): worker INSERT-only; gateway UPDATE; HITL gate enforced at DB grant level |
 | Guardian compromise → security checks disabled | Low | Critical | Guardian runs in Docker with no host filesystem access |
 
 ---
@@ -237,8 +237,7 @@ Request →  [1] Bearer API key (gateway_users.api_key_hash)
 
 **Stream tokens:** Short-lived JWTs (signed with `legionforge_task_tokens` Keychain secret) issued at task creation, used for SSE stream auth. Stored in `stream_tokens` table. Expire on task completion or explicit logout.
 
-**Known gap:** API key rotation does not invalidate currently active stream tokens.
-> **PRE-v1.0:** On key rotation, DELETE matching stream_tokens rows.
+**Fixed (DB-3, 2026-03-11):** `rotate_api_key()` now DELETEs all DB-backed stream tokens for the user on rotation. `rotate_all_standard_users()` bulk-rotates every active non-admin user. Both operations are recorded in the audit log. Redis-backed tokens expire within the 30-minute TTL (task-scoped; acceptable).
 
 ---
 
@@ -266,9 +265,9 @@ Guardian is on Docker's default bridge network (not the internal `legionforge-ne
 
 ### 6.2 Threat Rule Poisoning Risk
 
-`legionforge_worker` (BYPASSRLS, agent processes) now has `INSERT, UPDATE` on `threat_rules`. The Threat Analyst agent writes new rules directly. A prompt-injected agent could write a rule that disables a legitimate check or allows a malicious tool.
+`legionforge_worker` (BYPASSRLS, agent processes) has `SELECT, INSERT` on `threat_rules`. The Threat Analyst agent writes new rules with `status='PENDING'`. A prompt-injected agent could insert a malicious pending rule, but cannot approve it.
 
-> **PRE-v1.0:** Add a HITL approval gate on `threat_rules` writes. Guardian should only hot-reload rules with `approved = TRUE`. Threat Analyst writes `pending = TRUE`; human operator approves.
+**Fixed (SEC-1, 2026-03-11):** HITL gate enforced at the DB grant level. `legionforge_worker` has `INSERT` only (propose); `UPDATE` (approve/reject) is granted exclusively to `legionforge_gateway`. `approve_threat_rule()` and `reject_threat_rule()` use `get_gateway_pool()`. Guardian hot-reloads only `APPROVED` rules. A compromised agent process cannot approve its own proposed rules even if application-level controls are bypassed.
 
 ### 6.3 10-Second Hot-Reload Window
 
@@ -305,9 +304,7 @@ All secrets are stored in macOS Keychain via `keyring`. No `.env` files in produ
 | JWT task token signing secret | `legionforge_task_tokens` | `api_key` |
 | Ed25519 tool signing key | `legionforge_tool_signer` | `api_key` |
 
-**Known gap:** macOS Keychain requires GUI unlock for write access from non-GUI processes. The `POSTGRES_PASSWORD` environment variable, if set, overrides the Keychain lookup — a stale env var (e.g., `POSTGRES_PASSWORD=trust` from Docker Compose) silently provides the wrong credential, causing auth failures that look like password errors rather than config errors.
-
-> **PRE-v1.0:** Check for `POSTGRES_PASSWORD` env var at startup and warn loudly if it conflicts with the Keychain value.
+**Fixed (SEC-2, 2026-03-11):** `_warn_postgres_env_conflict()` runs at startup. When both Keychain and `POSTGRES_PASSWORD` env var are present and differ, the process requires operator `[y/n]` acknowledgement (interactive) or `POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1` (CI). Keychain now formally wins; the env var is no longer a silent override.
 
 ---
 

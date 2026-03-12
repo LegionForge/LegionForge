@@ -2831,9 +2831,10 @@ async def verify_audit_log_chain() -> tuple[bool, int, str | None]:
         - chain_ok=False, verified_rows=N, error_message=str  — tamper detected at row N+1
     """
     # Use the readonly pool (SELECT on audit_log + audit_anchors granted to
-    # legionforge_readonly). Fall back to worker pool if readonly is unavailable
-    # (e.g. role doesn't exist yet on a fresh install before first startup).
-    pool = get_readonly_pool() or get_worker_pool()
+    # legionforge_readonly). Raises RuntimeError if unavailable — DB-2 fix means
+    # get_readonly_pool() never returns None; it raises instead.  Callers that
+    # need a graceful degradation path should catch RuntimeError explicitly.
+    pool = get_readonly_pool()
     async with pool.connection() as conn:
         # Load latest anchor to determine starting boundary
         cur_anc = await conn.execute(

@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 313
+UPDATE: 314
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-11T15:00Z
-LAST_OP: docs: jp.md status audit + CI pipeline explanation; SECURITY_POSTURE TEST-1 closed
+TIMESTAMP: 2026-03-11T16:00Z
+LAST_OP: fix: stale readonly pool fallback in verify_audit_log_chain; clear stale PRE-v1.0 notes from SECURITY_POSTURE.md
 SMOKE_TESTS: 2187/2187
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
