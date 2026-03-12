@@ -197,8 +197,9 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `lint` | Black formatter check on src/, tests/, config/ | — |
 | `format` | Auto-format code with Black | — |
 | `js-check` | Syntax-check JS extracted from index.html via `node --check` | — |
-| `security-audit` | Smoke tests + JS check + bandit static analysis + secret scan | — |
-| `review-prep` | All PR gates: formatting + smoke + bandit + secret scan + dependency check + scope check | — |
+| `dep-audit` | Scan dependencies for known CVEs via pip-audit (OSV/PyPI Advisory DB) | — |
+| `security-audit` | Full test suite + JS check + bandit + dep-audit (CVE scan) + secret scan | — |
+| `review-prep` | All PR gates: formatting + smoke + bandit + dep-audit + secret scan + dependency check + scope check | — |
 
 ---
 

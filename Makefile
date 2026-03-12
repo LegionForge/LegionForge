@@ -938,6 +938,17 @@ js-check:  ## Syntax-check JS extracted from index.html (node --check on a temp 
 	node --check "$$TMP" && echo "✅ JS syntax OK" || (echo "❌ JS syntax errors in index.html — fix before merging" && rm -f "$$TMP" && exit 1); \
 	rm -f "$$TMP"
 
+.PHONY: dep-audit
+dep-audit:  ## Scan dependencies for known CVEs via pip-audit (OSV/PyPI Advisory DB)
+	@echo "--- pip-audit: dependency CVE scan ---"
+	@if [ -x "$(VENV)/bin/pip-audit" ]; then \
+		$(VENV)/bin/pip-audit --requirement $(BASE)/requirements.txt --skip-editable \
+		&& echo "✅ pip-audit: no known vulnerabilities" \
+		|| (echo "❌ pip-audit: vulnerabilities above — update affected packages" && exit 1); \
+	else \
+		echo "⚠️  pip-audit not installed. Run: make install"; \
+	fi
+
 .PHONY: security-audit
 security-audit:
 	@echo "🔐 Running security audit..."
@@ -956,6 +967,8 @@ security-audit:
 		echo "⚠️  bandit not installed. Run: make install"; \
 	fi
 	@echo ""
+	@$(MAKE) --no-print-directory dep-audit
+	@echo ""
 	@echo "--- Checking for password/secret in URI patterns ---"
 	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
 		&& echo "✅ No embedded passwords in connection URIs" \
@@ -973,15 +986,15 @@ review-prep:
 	@echo "  LegionForge — PR Review: Automated Gates"
 	@echo "════════════════════════════════════════════════════"
 	@echo ""
-	@echo "─── [1/6] Formatting ────────────────────────────────"
+	@echo "─── [1/7] Formatting ────────────────────────────────"
 	@cd $(BASE) && $(VENV)/bin/black --check src/ tests/ config/ \
 		&& echo "✅ Black: all files formatted" \
 		|| (echo "❌ Black: unformatted files above — run: make format" && exit 1)
 	@echo ""
-	@echo "─── [2/6] Full test suite (smoke → testlab → ui) ───"
+	@echo "─── [2/7] Full test suite (smoke → testlab → ui) ───"
 	@$(MAKE) --no-print-directory test
 	@echo ""
-	@echo "─── [3/6] Bandit static analysis ────────────────────"
+	@echo "─── [3/7] Bandit static analysis ────────────────────"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \
 		$(VENV)/bin/bandit -r $(BASE)/src/ -ll \
 		&& echo "✅ Bandit: no medium/high issues" \
@@ -990,7 +1003,10 @@ review-prep:
 		echo "⚠️  bandit not installed — run: make install"; \
 	fi
 	@echo ""
-	@echo "─── [4/6] Secret scan ───────────────────────────────"
+	@echo "─── [4/6] Dependency CVE scan ───────────────────────"
+	@$(MAKE) --no-print-directory dep-audit
+	@echo ""
+	@echo "─── [5/7] Secret scan ───────────────────────────────"
 	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
 		&& echo "✅ No embedded passwords in connection URIs" \
 		|| (echo "❌ Embedded password in URI — use keyword args" && exit 1)
@@ -998,7 +1014,7 @@ review-prep:
 		&& echo "✅ No OpenAI-style API keys in source" \
 		|| (echo "❌ Possible API key in source above" && exit 1)
 	@echo ""
-	@echo "─── [5/6] New external dependencies ────────────────"
+	@echo "─── [6/7] New external dependencies ────────────────"
 	@DEPS=$$(git diff origin/main -- requirements.txt 2>/dev/null | grep "^+" | grep -v "^+++" | grep -v "^+#"); \
 	if [ -n "$$DEPS" ]; then \
 		echo "⚠️  New dependencies detected — review required (Phase C3):"; \
@@ -1007,7 +1023,7 @@ review-prep:
 		echo "✅ No new external dependencies"; \
 	fi
 	@echo ""
-	@echo "─── [6/6] Scope check — changed files ──────────────"
+	@echo "─── [7/7] Scope check — changed files ──────────────"
 	@git diff --stat origin/main 2>/dev/null || git diff --stat HEAD~1
 	@echo ""
 	@echo "════════════════════════════════════════════════════"
