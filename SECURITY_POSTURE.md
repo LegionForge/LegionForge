@@ -336,7 +336,7 @@ These must be resolved before LegionForge is published publicly. They are tracke
 | INFRA-1 | Guardian should use Unix socket or localhost-only binding | Medium | `docker-compose.yml` | Open |
 | INFRA-2 | Audit anchor signing should use offline key (HSM) | Low | `src/database.py:_setup_audit_anchors()` | Open |
 | TEST-2 | `get_readonly_pool()` fallback to worker (same as DB-2) | Low | `src/database.py` | ✅ **FIXED 2026-03-11** (now hard-fail) |
-| PERF-1 | `audit_log` and `threat_events` have no column-level size constraints; retention pruning is the only bound | Low | `src/database.py:_create_app_tables()` | Open |
+| PERF-1 | `audit_log` and `threat_events` have no column-level size constraints; retention pruning is the only bound | Low | `src/database.py:_create_app_tables()` | ✅ **FIXED 2026-03-11** — `chk_audit_payload_size` (8 KB), `chk_metadata_size` (8 KB), `chk_raw_input_size` (16 KB); DDL + `ALTER TABLE IF NOT EXISTS` for existing installs |
 | PERF-2 | `task_events` has no retention pruning function | Low | `src/database.py` | ✅ **FIXED 2026-03-11** — `task_events_days` param added to `run_db_maintenance()`; maintenance DELETE + SELECT(ts) grants added; scheduler wired |
 
 ---

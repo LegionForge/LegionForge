@@ -20796,6 +20796,40 @@ def test_maintenance_grant_includes_task_events():
     ), "column-level SELECT(ts) on task_events not granted to legionforge_maintenance"
 
 
+def test_perf1_threat_events_raw_input_size_constraint():
+    """threat_events DDL and ALTER TABLE both enforce raw_input <= 16 384 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Constraint name must appear in both CREATE TABLE and ALTER TABLE blocks
+    assert (
+        src.count("chk_raw_input_size") >= 2
+    ), "chk_raw_input_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(raw_input) <= 16384" in src
+
+
+def test_perf1_threat_events_metadata_size_constraint():
+    """threat_events DDL and ALTER TABLE both enforce metadata <= 8 192 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert (
+        src.count("chk_metadata_size") >= 2
+    ), "chk_metadata_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(metadata::text) <= 8192" in src
+
+
+def test_perf1_audit_log_payload_size_constraint():
+    """audit_log DDL and ALTER TABLE both enforce payload <= 8 192 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert (
+        src.count("chk_audit_payload_size") >= 2
+    ), "chk_audit_payload_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(payload::text) <= 8192" in src
+
+
 def test_audit_anchors_table_defined_in_create_app_tables():
     """_create_app_tables() SQL includes the audit_anchors table definition."""
     import inspect

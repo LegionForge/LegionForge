@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 315
+UPDATE: 316
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-11T16:30Z
-LAST_OP: feat: PERF-2 task_events retention pruning — maintenance grant + run_db_maintenance + settings + scheduler + 3 smoke tests
+TIMESTAMP: 2026-03-11T17:00Z
+LAST_OP: feat: PERF-1 column-level size constraints on audit_log.payload (8KB) + threat_events.metadata (8KB) + raw_input (16KB)
 SMOKE_TESTS: 2192/2192
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

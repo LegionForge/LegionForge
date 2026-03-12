@@ -1297,11 +1297,27 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             run_id       TEXT NOT NULL,
             threat_type  TEXT NOT NULL,
             confidence   FLOAT,
-            raw_input    TEXT,
+            raw_input    TEXT
+                         CONSTRAINT chk_raw_input_size
+                         CHECK (octet_length(raw_input) <= 16384),
             action_taken TEXT NOT NULL,
             metadata     JSONB DEFAULT '{}'
+                         CONSTRAINT chk_metadata_size
+                         CHECK (octet_length(metadata::text) <= 8192)
         )
     """
+    )
+    # Add constraints to existing tables (IF NOT EXISTS is idempotent).
+    # The CREATE TABLE above only applies on first creation; these ALTER statements
+    # ensure constraints are enforced on databases that predate this migration.
+    await conn.execute(
+        """
+        ALTER TABLE threat_events
+            ADD CONSTRAINT IF NOT EXISTS chk_raw_input_size
+                CHECK (octet_length(raw_input) <= 16384),
+            ADD CONSTRAINT IF NOT EXISTS chk_metadata_size
+                CHECK (octet_length(metadata::text) <= 8192)
+        """
     )
 
     await conn.execute(
@@ -1363,11 +1379,21 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             ts         TIMESTAMPTZ DEFAULT now(),
             event_type TEXT NOT NULL,
             agent_id   TEXT,
-            payload    JSONB NOT NULL,
+            payload    JSONB NOT NULL
+                       CONSTRAINT chk_audit_payload_size
+                       CHECK (octet_length(payload::text) <= 8192),
             prev_hash  TEXT NOT NULL,
             row_hash   TEXT NOT NULL
         )
     """
+    )
+    # Add constraint to existing tables (idempotent).
+    await conn.execute(
+        """
+        ALTER TABLE audit_log
+            ADD CONSTRAINT IF NOT EXISTS chk_audit_payload_size
+                CHECK (octet_length(payload::text) <= 8192)
+        """
     )
 
     await conn.execute(
