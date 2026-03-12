@@ -867,7 +867,7 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
     # Column-level SELECT only on filter columns (status, created_at, ts) so
     # DELETE ... WHERE clauses work — PostgreSQL requires SELECT on referenced
     # columns. Full-row SELECT is still denied; sensitive data stays unreadable.
-    for tbl in ["tasks", "api_usage", "health_metrics", "threat_events"]:
+    for tbl in ["tasks", "api_usage", "health_metrics", "threat_events", "task_events"]:
         try:
             await admin_conn.execute(
                 pgsql.SQL("GRANT DELETE ON {t} TO {uid}").format(
@@ -901,6 +901,11 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         )
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT (ts) ON threat_events TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
+            )
+        )
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT (ts) ON task_events TO {uid}").format(
                 uid=pgsql.Identifier(DB_ROLE_MAINTENANCE)
             )
         )
@@ -3009,6 +3014,7 @@ async def run_db_maintenance(
     health_metrics_days: int = 30,
     threat_events_days: int = 90,
     audit_log_days: int = 90,
+    task_events_days: int = 30,
 ) -> dict[str, int]:
     """
     Prune stale rows from safe tables per the configured retention schedule.
@@ -3018,6 +3024,8 @@ async def run_db_maintenance(
     - api_usage:      rows older than api_usage_days
     - health_metrics: rows older than health_metrics_days
     - threat_events:  rows older than threat_events_days
+    - task_events:    rows older than task_events_days (cascade covers task deletions;
+                      this catches old events on long-running or still-active tasks)
     - audit_log:      anchor-based pruning (writes audit_anchors before deleting)
 
     Set any *_days argument to 0 to skip that table.
@@ -3054,6 +3062,16 @@ async def run_db_maintenance(
                 (health_metrics_days,),
             )
             results["health_metrics"] = cur.rowcount
+
+        if task_events_days > 0:
+            # ON DELETE CASCADE from tasks prunes events for deleted tasks automatically.
+            # This covers events on long-running or still-active tasks that have
+            # accumulated old timeline rows beyond the retention window.
+            cur = await conn.execute(
+                "DELETE FROM task_events WHERE ts < now() - make_interval(days := %s)",
+                (task_events_days,),
+            )
+            results["task_events"] = cur.rowcount
 
     # threat_events: legionforge_app only has INSERT (append-only audit trail).
     # Scheduled retention pruning is a legitimate admin operation — not tampering.

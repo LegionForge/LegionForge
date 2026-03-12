@@ -699,6 +699,7 @@ class DbMaintenanceSettings(BaseModel):
     health_metrics_days: int = 30
     threat_events_days: int = 90
     audit_log_days: int = 90
+    task_events_days: int = 30
 
 
 class HardwareSettings(BaseModel):

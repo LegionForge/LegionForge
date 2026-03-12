@@ -446,3 +446,4 @@ db_maintenance:
   health_metrics_days: 30 # prune health_metrics rows
   threat_events_days: 90  # prune threat_events rows
   audit_log_days: 90      # prune audit_log rows (anchor-based, 90-day verifiable)
+  task_events_days: 30    # prune task timeline events (cascade covers deleted tasks; this catches long-lived active tasks)

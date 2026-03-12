@@ -20751,8 +20751,49 @@ def test_run_db_maintenance_function_exists():
     from src.database import run_db_maintenance
 
     sig = inspect.signature(run_db_maintenance)
-    for param in ("tasks_days", "api_usage_days", "audit_log_days"):
+    for param in ("tasks_days", "api_usage_days", "audit_log_days", "task_events_days"):
         assert param in sig.parameters, f"Missing parameter: {param}"
+
+
+def test_task_events_pruning_in_run_db_maintenance():
+    """run_db_maintenance() prunes task_events via get_maintenance_connection (not admin)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    fn_start = src.index("async def run_db_maintenance(")
+    fn_end = src.index("\n\n\nasync def ", fn_start)
+    fn_body = src[fn_start:fn_end]
+    assert (
+        "DELETE FROM task_events" in fn_body
+    ), "task_events DELETE missing from run_db_maintenance"
+    assert (
+        "task_events_days" in fn_body
+    ), "task_events_days parameter not used in function body"
+    # The DELETE FROM task_events must come BEFORE the threat_events admin-connection block,
+    # meaning it lives inside the get_maintenance_connection() context manager.
+    delete_pos = fn_body.index("DELETE FROM task_events")
+    threat_admin_pos = fn_body.index("threat_events: legionforge_app only has INSERT")
+    assert delete_pos < threat_admin_pos, (
+        "task_events prune must be inside the get_maintenance_connection() block, "
+        "not in the admin-connection threat_events block"
+    )
+
+
+def test_maintenance_grant_includes_task_events():
+    """_setup_db_roles() grants DELETE and column-level SELECT(ts) on task_events to legionforge_maintenance."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Find the maintenance grants section
+    grant_start = src.index("legionforge_maintenance grants")
+    grant_end = src.index("legionforge_guardian grants", grant_start)
+    grant_block = src[grant_start:grant_end]
+    assert (
+        '"task_events"' in grant_block
+    ), "task_events missing from maintenance DELETE grant loop"
+    assert (
+        "SELECT (ts) ON task_events" in grant_block
+    ), "column-level SELECT(ts) on task_events not granted to legionforge_maintenance"
 
 
 def test_audit_anchors_table_defined_in_create_app_tables():
