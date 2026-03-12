@@ -1307,16 +1307,32 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         )
     """
     )
-    # Add constraints to existing tables (IF NOT EXISTS is idempotent).
-    # The CREATE TABLE above only applies on first creation; these ALTER statements
-    # ensure constraints are enforced on databases that predate this migration.
+    # Add constraints to existing tables (idempotent via pg_constraint check).
+    # The CREATE TABLE above only applies on first creation; the DO block below
+    # ensures constraints are enforced on databases that predate this migration.
     await conn.execute(
         """
-        ALTER TABLE threat_events
-            ADD CONSTRAINT IF NOT EXISTS chk_raw_input_size
-                CHECK (octet_length(raw_input) <= 16384),
-            ADD CONSTRAINT IF NOT EXISTS chk_metadata_size
-                CHECK (octet_length(metadata::text) <= 8192)
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'chk_raw_input_size'
+                  AND conrelid = 'threat_events'::regclass
+            ) THEN
+                ALTER TABLE threat_events
+                    ADD CONSTRAINT chk_raw_input_size
+                        CHECK (octet_length(raw_input) <= 16384);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'chk_metadata_size'
+                  AND conrelid = 'threat_events'::regclass
+            ) THEN
+                ALTER TABLE threat_events
+                    ADD CONSTRAINT chk_metadata_size
+                        CHECK (octet_length(metadata::text) <= 8192);
+            END IF;
+        END $$
         """
     )
 
@@ -1387,12 +1403,21 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         )
     """
     )
-    # Add constraint to existing tables (idempotent).
+    # Add constraint to existing tables (idempotent via pg_constraint check).
     await conn.execute(
         """
-        ALTER TABLE audit_log
-            ADD CONSTRAINT IF NOT EXISTS chk_audit_payload_size
-                CHECK (octet_length(payload::text) <= 8192)
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'chk_audit_payload_size'
+                  AND conrelid = 'audit_log'::regclass
+            ) THEN
+                ALTER TABLE audit_log
+                    ADD CONSTRAINT chk_audit_payload_size
+                        CHECK (octet_length(payload::text) <= 8192);
+            END IF;
+        END $$
         """
     )
 
