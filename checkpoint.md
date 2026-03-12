@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 316
+UPDATE: 317
 BRANCH: dev
 COMMIT: pending
-TIMESTAMP: 2026-03-11T17:00Z
-LAST_OP: feat: PERF-1 column-level size constraints on audit_log.payload (8KB) + threat_events.metadata (8KB) + raw_input (16KB)
+TIMESTAMP: 2026-03-11T17:30Z
+LAST_OP: chore: add requirements.lock (pip-compile); make lock + install-locked targets; pip-tools in requirements.txt
 SMOKE_TESTS: 2192/2192
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

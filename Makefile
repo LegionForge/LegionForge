@@ -612,6 +612,22 @@ install:
 	@$(PIP) install -r $(BASE)/requirements.txt -q
 	@echo "✅ Packages installed"
 
+.PHONY: lock
+lock:  ## Pin all transitive deps → requirements.lock (run after any requirements.txt change)
+	@$(PIP) install pip-tools --quiet
+	@cd $(BASE) && pip-compile requirements.txt \
+		--output-file requirements.lock \
+		--no-strip-extras \
+		--annotation-style line \
+		--quiet
+	@echo "✅ requirements.lock updated"
+
+.PHONY: install-locked
+install-locked:  ## Install exact pinned versions from requirements.lock (use for reproducible envs)
+	@$(PIP) install --upgrade pip -q
+	@$(PIP) install -r $(BASE)/requirements.lock -q
+	@echo "✅ Packages installed from lock file"
+
 # ── Testing ───────────────────────────────────────────────────
 .PHONY: test
 test:

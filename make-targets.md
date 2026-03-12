@@ -318,6 +318,8 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `credential-store-status` | Show CredentialStore status — which services are loaded | — |
 | `install-launch-agent` | Install `com.legionforge.check-agent-drive` LaunchAgent | — |
 | `install` | Install/update Python packages from requirements.txt | — |
+| `install-locked` | Install exact pinned versions from requirements.lock | — |
+| `lock` | Regenerate requirements.lock from requirements.txt (run after dep changes) | — |
 
 ---
 
