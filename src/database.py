@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -1058,8 +1059,33 @@ async def init_db() -> None:
         },
         open=False,
     )
+    # Retry opening the pool to tolerate PostgreSQL still finishing its startup
+    # sequence (e.g. after a cold brew-services start).  Three attempts with
+    # 2 s / 4 s / 8 s back-off; raises loudly if all fail.
+    _DB_OPEN_DELAYS = (2.0, 4.0, 8.0)
+    for _attempt in range(len(_DB_OPEN_DELAYS) + 1):
+        try:
+            await admin_pool.open(wait=True)
+            break
+        except Exception as _exc:
+            if _attempt >= len(_DB_OPEN_DELAYS):
+                raise RuntimeError(
+                    f"[db-init] PostgreSQL unreachable after "
+                    f"{len(_DB_OPEN_DELAYS) + 1} attempts.\n"
+                    f"  Last error : {_exc}\n"
+                    "  Is PostgreSQL running?  →  make db-start\n"
+                    "  Check PG logs with   :  brew services log postgresql@17"
+                ) from _exc
+            _delay = _DB_OPEN_DELAYS[_attempt]
+            logger.warning(
+                "[db-init] Phase 1 attempt %d/%d failed: %s — retrying in %.0fs…",
+                _attempt + 1,
+                len(_DB_OPEN_DELAYS) + 1,
+                _exc,
+                _delay,
+            )
+            await asyncio.sleep(_delay)
     try:
-        await admin_pool.open(wait=True)
 
         # Enable pgvector extension (requires superuser)
         async with admin_pool.connection() as conn:

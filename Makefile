@@ -178,7 +178,7 @@ check:
 		echo "⚠️  Guardian not running (warning only) — run: make guardian-start"
 
 .PHONY: start
-start: check ollama-start db-start ollama-warm guardian-start servers-start
+start: check ollama-start db-start ollama-warm docker-start guardian-start servers-start
 	@echo ""
 	@echo "✅ Framework ready."
 	@echo "   Health  → http://localhost:8765/health"
@@ -391,7 +391,14 @@ usage:
 .PHONY: db-start
 db-start:
 	@brew services start postgresql@17 2>/dev/null || true
-	@sleep 2
+	@printf "   Waiting for PostgreSQL to accept connections"; \
+	for i in $$(seq 1 20); do \
+		if pg_isready -U "$${POSTGRES_USER:-jp}" -d legionforge -q 2>/dev/null; then \
+			printf " ✅\n"; break; \
+		fi; \
+		printf "."; sleep 1; \
+		if [ "$$i" = "20" ]; then printf " ❌ timed out (20s)\n"; exit 1; fi; \
+	done
 	@echo "✅ PostgreSQL started"
 
 .PHONY: db-stop
@@ -1047,9 +1054,28 @@ manifests = list(ollama_dir.rglob('*')); \
 print(f'Found {len(manifests)} manifest entries in {ollama_dir}'); \
 print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 
+# ── Docker Desktop ────────────────────────────────────────────
+.PHONY: docker-start
+docker-start:  ## Ensure Docker Desktop is running; start it if not and wait until ready
+	@if docker info >/dev/null 2>&1; then \
+		echo "✅ Docker Desktop already running"; \
+	else \
+		echo "   Docker Desktop not running — starting..."; \
+		open -a Docker; \
+		printf "   Waiting for Docker Desktop to be ready"; \
+		for i in $$(seq 1 45); do \
+			if docker info >/dev/null 2>&1; then \
+				printf " ✅\n"; break; \
+			fi; \
+			printf "."; sleep 2; \
+			if [ "$$i" = "45" ]; then printf " ❌ timed out (90s)\n"; exit 1; fi; \
+		done; \
+		echo "✅ Docker Desktop ready"; \
+	fi
+
 # ── Guardian (Phase 2) ────────────────────────────────────────
 .PHONY: guardian-start
-guardian-start:
+guardian-start: docker-start
 	@echo "Starting Guardian sidecar..."
 	@# Load secrets from Keychain into the shell so docker-compose substitutes them
 	@# into docker-compose.yml before creating the container.
