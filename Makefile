@@ -240,6 +240,7 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
 	  POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || echo "")} \
+	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
@@ -1230,19 +1231,15 @@ setup-signing-key:
 	@echo "Generating Ed25519 signing keypair..."
 	@cd $(BASE) && $(PYTHON) -c "\
 from src.tools.signing import generate_signing_keypair; \
-import subprocess, hashlib; \
+import hashlib, subprocess; \
 priv, pub = generate_signing_keypair(); \
-result = subprocess.run(['security', 'add-generic-password', \
-    '-s', 'legionforge_tool_signer', '-a', 'api_key', '-w', priv, '-U'], \
-    capture_output=True); \
-if result.returncode == 0: \
-    fp = hashlib.sha256(bytes.fromhex(pub)).hexdigest()[:16]; \
-    print('✅ Signing key stored in Keychain (service=legionforge_tool_signer)'); \
-    print(f'   Public key fingerprint: {fp}'); \
-    print(f'   Public key (full hex):  {pub}'); \
-else: \
-    print('❌ Could not store key in Keychain:', result.stderr.decode()); \
-    print('   Store manually: security add-generic-password -s legionforge_tool_signer -a api_key -w <hex> -U')"
+subprocess.run(['security', 'delete-generic-password', '-s', 'legionforge_tool_signer', '-a', 'api_key'], capture_output=True); \
+r = subprocess.run(['security', 'add-generic-password', '-s', 'legionforge_tool_signer', '-a', 'api_key', '-w', priv, '-A'], capture_output=True, text=True); \
+r.returncode != 0 and (print('❌ Could not store key:', r.stderr.decode()), __import__('sys').exit(1)); \
+fp = hashlib.sha256(bytes.fromhex(pub)).hexdigest()[:16]; \
+print('✅ Signing key stored in Keychain (service=legionforge_tool_signer)'); \
+print(f'   Public key fingerprint: {fp}'); \
+print(f'   Public key (full hex):  {pub}')"
 
 # ── Phase 5: Observer agent ───────────────────────────────────
 .PHONY: register-observer-tools
