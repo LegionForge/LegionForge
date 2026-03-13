@@ -76,9 +76,9 @@ async def read_tool_call_history(hours: int = 168, min_occurrences: int = 3) -> 
         min_occurrences: Minimum calls to include an operation (default: 3).
     """
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             # Read TOOL_CALL events from audit_log — these are written by
             # SecureToolNode on each successful tool execution.

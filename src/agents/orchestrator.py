@@ -66,6 +66,24 @@ class OrchestratorState(AgentState):
     verify_rounds: int  # number of self-verification passes taken (Phase 71)
 
 
+# ── Orchestrator system prompt ─────────────────────────────────────────────────
+
+_ORCHESTRATOR_SYSTEM_CONTENT = (
+    "You are an orchestrator. You MUST call a tool on every response — never answer from memory.\n\n"
+    "Tools:\n"
+    "- spawn_researcher(sub_task): run one focused research task (web search + page fetch).\n"
+    "- fan_out_researchers(sub_tasks_json): run multiple tasks in parallel.\n"
+    '  Pass a JSON string array: sub_tasks_json=\'["task A", "task B"]\'\n\n'
+    "RULES:\n"
+    "1. Always call spawn_researcher or fan_out_researchers. Never answer from memory. "
+    "Never fabricate information.\n"
+    "2. For multi-part queries, use fan_out_researchers with 2-4 focused sub-tasks "
+    "(one sub-task per distinct question — headlines, authors, products separately).\n"
+    "3. Synthesize all sub-agent results into one clear final answer.\n"
+    "4. If a sub-agent returns [RESEARCHER ERROR], report it and use any other results."
+)
+
+
 # ── Token management ───────────────────────────────────────────────────────────
 
 # Policy for the orchestrator's own master token.
@@ -176,7 +194,22 @@ async def spawn_researcher(sub_task: str) -> str:
     master_jwt = _master_token_ref.get("token")
     derived = _derive_researcher_token(master_jwt) if master_jwt else None
 
-    result = await _spawn_researcher_sub_agent(sub_task, derived)
+    try:
+        result = await _spawn_researcher_sub_agent(sub_task, derived)
+    except Exception as exc:
+        # Catch GraphRecursionError and other failures so the orchestrator can
+        # degrade gracefully (report the error, then synthesize what it has)
+        # rather than crashing the entire run.
+        err_cls = type(exc).__name__
+        logger.error(
+            f"[spawn_researcher] sub-agent failed for task={sub_task!r:.80}: "
+            f"{err_cls}: {exc}"
+        )
+        return (
+            f"[RESEARCHER ERROR] Sub-agent failed ({err_cls}): {str(exc)[:300]}\n"
+            "The orchestrator should report this error to the user and note that "
+            "real-time data for this sub-task is unavailable."
+        )
 
     research_result = result.get("result", "No result.")
     sources = result.get("sources", [])
@@ -296,8 +329,14 @@ async def register_orchestrator_tools() -> None:
 # ── Graph nodes ────────────────────────────────────────────────────────────────
 
 
-def _build_orchestrator_agent_node(llm_with_tools: Any):
-    """Build the orchestrator agent_node with pre-bound LLM."""
+def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
+    """Build the orchestrator agent_node with pre-bound LLMs.
+
+    llm_forced: bound with tool_choice="required" — used on step 1 to prevent
+                the orchestrator from answering from training data instead of
+                delegating to a researcher sub-agent.
+    llm_free:   standard binding — used on step 2+ for synthesis.
+    """
 
     async def agent_node(state: OrchestratorState) -> dict:
         updates = increment_step(state)
@@ -307,12 +346,33 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
         if state.get("force_end"):
             return updates
 
+        # After increment_step, step_count reflects the current step number.
+        # Use the forced LLM on the first step only.
+        step = updates.get("step_count", state.get("step_count", 1))
+        llm_with_tools = llm_forced if step <= 1 else llm_free
+
         log_agent_event(
             "llm_call",
             "orchestrator",
-            {"step": state["step_count"], "task": state.get("task", "")},
+            {
+                "step": state["step_count"],
+                "task": state.get("task", ""),
+                "forced": step <= 1,
+            },
             run_id=state.get("run_id"),
         )
+
+        # Ensure the orchestrator system message is present.
+        # The gateway worker initialises state with only [HumanMessage(task)] — no
+        # SystemMessage — so we inject it here on step 1 if it is absent.
+        if step == 1 and not any(
+            isinstance(m, SystemMessage) for m in state.get("messages", [])
+        ):
+            state = {
+                **state,
+                "messages": [SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)]
+                + list(state["messages"]),
+            }
 
         try:
             clean_messages = sanitize_messages(state["messages"])
@@ -339,6 +399,77 @@ def _build_orchestrator_agent_node(llm_with_tools: Any):
                 {"step": state["step_count"], "content": str(response.content)[:200]},
                 run_id=state.get("run_id"),
             )
+
+            # Enforcement: if tool_choice="required" was silently ignored by the
+            # model (Ollama/qwen2.5 returns empty content with no tool_calls),
+            # retry once with an explicit correction message so the orchestrator
+            # always delegates rather than synthesising from memory.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                logger.warning(
+                    "[orchestrator] Step 1 produced no tool_calls — "
+                    "retrying with explicit correction message"
+                )
+                log_agent_event(
+                    "tool_call_retry",
+                    "orchestrator",
+                    {"step": step, "reason": "no_tool_calls_on_step_1"},
+                    run_id=state.get("run_id"),
+                )
+                correction = clean_messages + [
+                    response,
+                    HumanMessage(
+                        content=(
+                            "You did not call a tool. You MUST call "
+                            "spawn_researcher or fan_out_researchers right now. "
+                            "Do not write any text — call a tool immediately."
+                        )
+                    ),
+                ]
+                response = await llm_free.ainvoke(correction)
+                log_agent_event(
+                    "llm_response",
+                    "orchestrator",
+                    {
+                        "step": step,
+                        "content": str(response.content)[:200],
+                        "retry": True,
+                    },
+                    run_id=state.get("run_id"),
+                )
+
+            # Deterministic fallback: both LLM attempts failed to produce tool_calls.
+            # Programmatically inject a spawn_researcher call so the graph always
+            # delegates — never silently returns empty on step 1.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                import uuid
+
+                user_task = ""
+                for m in reversed(clean_messages):
+                    if hasattr(m, "type") and m.type == "human":
+                        user_task = (
+                            m.content if isinstance(m.content, str) else str(m.content)
+                        )
+                        break
+                logger.warning(
+                    "[orchestrator] Deterministic fallback: injecting spawn_researcher "
+                    "because model produced no tool_calls after retry"
+                )
+                log_agent_event(
+                    "tool_call_fallback",
+                    "orchestrator",
+                    {"step": step, "task_snippet": user_task[:120]},
+                    run_id=state.get("run_id"),
+                )
+                response = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": str(uuid.uuid4()).replace("-", "")[:8],
+                            "name": "spawn_researcher",
+                            "args": {"sub_task": user_task},
+                        }
+                    ],
+                )
 
             updates["messages"] = [response]
             return updates
@@ -505,10 +636,16 @@ def route_after_verify(state: OrchestratorState) -> str:
 
 def build_orchestrator_graph() -> StateGraph:
     """Build the orchestrator graph (uncompiled). Bind tools to LLM here."""
-    llm = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
+    # Step 1 uses tool_choice="required" so the orchestrator always delegates to
+    # a researcher sub-agent rather than answering from training data.
+    # Step 2+ uses the free binding for synthesis (no forced tool call).
+    llm_forced = get_primary_llm(temperature=0.1).bind_tools(
+        ORCHESTRATOR_TOOLS, tool_choice="required"
+    )
+    llm_free = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
     llm_plain = get_primary_llm(temperature=0.0)  # verifier — no tools needed
     tool_node = SecureToolNode(ORCHESTRATOR_TOOLS)
-    agent_node = _build_orchestrator_agent_node(llm)
+    agent_node = _build_orchestrator_agent_node(llm_forced, llm_free)
     verify_node = _build_verify_node(llm_plain)  # Phase 71
 
     graph = StateGraph(OrchestratorState)
@@ -641,23 +778,7 @@ async def run_orchestrator(
         "sequence_so_far": [],
         "task_token": master_token,
         "messages": [
-            SystemMessage(
-                content=(
-                    "You are an orchestrator agent with two tools:\n"
-                    "- spawn_researcher(sub_task): delegate a task to a sub-agent that has "
-                    "web search and page-fetch capabilities.\n"
-                    "- fan_out_researchers(sub_tasks_json): run multiple independent research "
-                    "tasks in parallel (pass a JSON array of task strings).\n\n"
-                    "RULES:\n"
-                    "1. For ANY task requiring current events, news, real-world data, URLs, "
-                    "or information beyond your training cutoff — you MUST call "
-                    "spawn_researcher or fan_out_researchers. Never answer from memory.\n"
-                    "2. Break complex tasks into focused sub-tasks and delegate each one.\n"
-                    "3. Synthesize the sub-agent results into a final answer for the user.\n"
-                    "4. If a sub-agent returns an error, report it clearly rather than "
-                    "fabricating an answer."
-                )
-            ),
+            SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT),
             HumanMessage(content=task),
         ],
         "verify_rounds": 0,  # Phase 71 — self-verification pass counter

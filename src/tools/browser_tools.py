@@ -226,10 +226,22 @@ BROWSER_TOOL_MANIFESTS: list[ToolManifest] = [
 # Approved tool-call sequences involving web_fetch_js.
 # Used by Guardian to enforce sequence contracts for agents that include this tool.
 BROWSER_TOOL_SEQUENCES: list[list[str]] = [
+    # Starting with web_fetch_js (direct URL)
     ["web_fetch_js"],
+    ["web_fetch_js", "document_summarize"],
+    ["web_fetch_js", "web_search"],
+    ["web_fetch_js", "web_search", "document_summarize"],
+    ["web_fetch_js", "web_fetch"],
+    ["web_fetch_js", "web_fetch", "document_summarize"],
+    ["web_fetch_js", "web_fetch_js"],
+    ["web_fetch_js", "web_fetch_js", "document_summarize"],
+    # Starting with web_search then fetching via JS
     ["web_search", "web_fetch_js"],
     ["web_search", "web_fetch_js", "document_summarize"],
-    ["web_fetch_js", "document_summarize"],
+    ["web_search", "web_fetch_js", "web_fetch"],
+    ["web_search", "web_fetch_js", "web_fetch", "document_summarize"],
+    ["web_search", "web_fetch", "web_fetch_js"],
+    ["web_search", "web_fetch", "web_fetch_js", "document_summarize"],
 ]
 
 

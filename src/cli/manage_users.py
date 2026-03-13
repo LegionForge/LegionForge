@@ -168,6 +168,40 @@ async def rotate_key(username: str) -> None:
     print("   Use with: curl -H 'Authorization: Bearer <key>' ...")
 
 
+async def rotate_all_standard_keys() -> None:
+    """
+    Rotate API keys for every active, non-admin gateway user and print new keys.
+
+    Use this during incident response (suspected key leak) or for periodic
+    forced rotation.  Admin users are skipped so the operator retains access.
+
+    New plaintext keys are printed once — distribute them to users immediately.
+    """
+    from src.database import init_db, rotate_all_standard_users
+
+    await init_db()
+
+    print("Rotating API keys for all active standard users (admins excluded)...")
+    print()
+
+    rotated = await rotate_all_standard_users()
+
+    if not rotated:
+        print("No active standard users found — nothing to rotate.")
+        return
+
+    print(f"✅ Rotated {len(rotated)} key(s):\n")
+    for entry in rotated:
+        print(f"  User: {entry['username']}")
+        print(f"  Key:  {entry['api_key']}")
+        print()
+
+    print("⚠️  These keys are shown once and not stored in plaintext.")
+    print(
+        "   Distribute them to users now, or they will need to re-issue via the web UI."
+    )
+
+
 async def list_users() -> list:
     """Print all gateway users (active and inactive) in a table. Returns the user list."""
     from src.database import init_db, list_gateway_users
@@ -243,6 +277,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--username", required=True, help="Username whose key to rotate"
     )
 
+    # rotate-all-keys
+    sub.add_parser(
+        "rotate-all-keys",
+        help="Rotate API keys for all active standard users (admins excluded)",
+    )
+
     # list-users
     sub.add_parser("list-users", help="List all gateway users")
 
@@ -261,6 +301,8 @@ def main() -> None:
         asyncio.run(set_quota(args.username, args.daily_limit))
     elif args.command == "rotate-key":
         asyncio.run(rotate_key(args.username))
+    elif args.command == "rotate-all-keys":
+        asyncio.run(rotate_all_standard_keys())
     elif args.command == "list-users":
         asyncio.run(list_users())
     else:

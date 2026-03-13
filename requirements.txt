@@ -86,6 +86,8 @@ pytest-asyncio~=0.23
 pytest-timeout~=2.3              # Per-test timeout support (--timeout flag, Phase 69 fix)
 black~=24.0                      # Code formatter (required for make lint / make format)
 bandit~=1.8                      # Static security analysis (required for make security-audit)
+pip-audit~=2.7                   # Dependency CVE scanning via OSV/PyPI Advisory DB (make dep-audit)
+pip-tools~=7.4                   # Dependency pinning — make lock regenerates requirements.lock
 playwright~=1.50                 # Browser automation for UI tests (make test-ui)
 pytest-playwright~=0.6           # Playwright pytest plugin
 

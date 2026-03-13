@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from src.database import get_pool
+from src.database import get_worker_pool
 from src.gateway.backends.base import AuthBackend, SCHEME_BASIC  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class LDAPBackend:
     async def _provision_user(
         self, user_id: str, username: str, daily_limit: int
     ) -> None:
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """

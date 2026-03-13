@@ -4,7 +4,7 @@
 
 > Security is enforced in the execution path — not layered on afterward.
 
-> **Status: Active Development — v0.7.0-alpha**
+> **Status: Active Development — v0.7.1-alpha**
 > This project is currently under active development. The core security stack, gateway, and tool library are complete and tested. APIs and configuration formats may change before v1.0.0. See the [Status](#status) section for details.
 
 [![Smoke Tests](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml/badge.svg)](https://github.com/LegionForge/LegionForge/actions/workflows/smoke.yml)
@@ -27,7 +27,7 @@ LegionForge is an open-source framework for running hardened AI agent systems on
 
 | Metric | Value |
 |---|---|
-| Smoke tests (no services required) | **2054 / 2054 passing** (~21s) |
+| Smoke tests (no services required) | **2125 / 2125 passing** (~21s) |
 | Integration tests (PostgreSQL) | **38 / 38 passing** |
 | Kerberos live-KDC tests | **5 / 5 passing** |
 | UI tests (Playwright) | **40 / 40 passing** |
@@ -201,7 +201,7 @@ make setup-signing-key
 
 # 6. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1995 passed in ~22s
+# Expected: 2125 passed in ~21s
 
 # 7. Start services (three terminals)
 make health-server   # Operator API at :8765
@@ -260,7 +260,7 @@ make start             # Full startup (Ollama + PostgreSQL + model warmup)
 make stop              # Graceful shutdown
 
 # Testing
-make test-smoke        # 1995 smoke tests, ~22s, no services required
+make test-smoke        # 2125 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui           # 40 UI tests (Playwright)
@@ -303,15 +303,21 @@ make revoke-tool TOOL_ID=<id>   # Emergency tool revocation
 
 ## Acknowledgements
 
-LegionForge exists in a space shaped by several projects worth calling out directly.
+LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
-**[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
-
-**[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The isolation patterns here were informed in part by seeing what Moltbot got right.
+**[OpenClaw](https://github.com/openclaw/openclaw)** (Peter Steinberger — née Clawd → Clawdbot → Moltbot → OpenClaw) — the primary inspiration for LegionForge. Proved the demand (60,000 GitHub stars in 72 hours), proved the architecture (six-component structure, workspace-as-files memory), and proved what happens when security is an afterthought (512 vulnerabilities, active data exfiltration in third-party skills). LegionForge is building in the opposite order: security first, product on top.
 
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. Checkpoint-based state persistence, loop protection, and graph resumption are LangGraph primitives that LegionForge builds on heavily.
 
+**[LATM — Learning to Use Tools by Making Them](https://arxiv.org/abs/2305.17126)** (Cai et al., ICLR 2024) and **[Voyager](https://arxiv.org/abs/2305.16291)** (Wang et al., NVIDIA 2023) — the foundational academic work closest to LegionForge-Anneal's tool crystallization pipeline.
+
+**[Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)** by Robert S. Balch II — deterministic semantic memory using graph traversal (the STAR algorithm). Anchor's insight that agent memory should be *explainable and deterministic* directly informed LegionForge's temporal decay memory recall. The STAR gravity formula is adapted from Anchor's published whitepaper.
+
+**[The AI-Human Engineering Stack](https://github.com/hjasanchez/agentic-engineering)** by Hayen Mill and Henrique Jr. Sanchez (March 2026) — a five-layer framework for AI engineering (Prompt, Context, Intent, Judgment, Coherence). The KV-cache stability insight from this paper directly motivated the context ordering in LegionForge's agent message assembly.
+
 The security-first design here is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source moves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
+
+For the full canonical record of design influences, academic inspirations, and third-party attributions, see [`CREDITS.md`](CREDITS.md). For machine-readable citation data, see [`CITATION.cff`](CITATION.cff).
 
 ---
 
@@ -325,12 +331,12 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha — Active Development.** This project is currently under active development and is not yet at a stable 1.0 release. The security stack, gateway, and tool library are functionally complete and well-tested, but the project is still evolving toward its v1.0.0 public release.
+**v0.7.1-alpha — Active Development.** This project is currently under active development and is not yet at a stable 1.0 release. The security stack, gateway, and tool library are functionally complete and well-tested, but the project is still evolving toward its v1.0.0 public release.
 
 | | |
 |---|---|
-| **Version** | v0.7.0-alpha |
-| **Smoke tests** | 1995/1995 passing |
+| **Version** | v0.7.1-alpha |
+| **Smoke tests** | 2125/2125 passing |
 | **Integration tests** | 38/38 |
 | **Kerberos tests** | 5/5 |
 | **UI tests** | 40/40 |

@@ -5378,7 +5378,7 @@ def test_p10_db_stream_token_round_trip_logic():
     from datetime import datetime, timezone
 
     # We test the round-trip using the in-memory helpers in auth.py which now
-    # delegate to the DB functions.  We mock get_pool to avoid a live DB.
+    # delegate to the DB functions.  We mock get_worker_pool to avoid a live DB.
     # This validates the *wiring*, not the SQL.
 
     call_log: list = []
@@ -5414,7 +5414,7 @@ def test_p10_db_stream_token_round_trip_logic():
 
     import src.database as db_module
 
-    with mock.patch.object(db_module, "get_pool", return_value=FakePool()):
+    with mock.patch.object(db_module, "get_worker_pool", return_value=FakePool()):
         asyncio.run(db_module.create_stream_token("tok123", "task-1", "user-1", 1800))
 
     assert any(
@@ -9019,6 +9019,181 @@ def test_p41_rotate_key_returns_plaintext_once():
     assert "not be shown again" in src or "shown once" in src or "once" in src
 
 
+def test_db3_rotate_api_key_deletes_stream_tokens():
+    """
+    DB-3: rotate_api_key() must DELETE stream tokens for the user immediately.
+    Verifies the DELETE FROM stream_tokens is in the source alongside the UPDATE.
+    """
+    import inspect
+    from src.database import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert (
+        "DELETE FROM stream_tokens" in src
+    ), "DB-3: rotate_api_key() must revoke DB-backed stream tokens on rotation"
+    assert (
+        "user_id" in src.split("DELETE FROM stream_tokens")[1][:80]
+    ), "DB-3: DELETE must be scoped by user_id"
+
+
+def test_db3_rotate_api_key_logs_to_audit():
+    """DB-3: rotate_api_key() must call append_audit_log() so rotation is traceable."""
+    import inspect
+    from src.database import rotate_api_key
+
+    src = inspect.getsource(rotate_api_key)
+    assert (
+        "append_audit_log" in src
+    ), "DB-3: rotate_api_key() must append an audit log entry on rotation"
+    assert "API_KEY_ROTATED" in src
+
+
+def test_db3_rotate_all_standard_users_exists():
+    """DB-3: rotate_all_standard_users() is exported from src.database."""
+    from src.database import rotate_all_standard_users
+
+    assert callable(rotate_all_standard_users)
+
+
+def test_db3_rotate_all_standard_users_filters_admins():
+    """
+    DB-3: rotate_all_standard_users() SQL must filter is_admin = false so
+    admin accounts are never included in a bulk rotation.
+    """
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "is_admin = false" in src or "is_admin=false" in src
+    ), "DB-3: rotate_all_standard_users must exclude admin users"
+
+
+def test_db3_rotate_all_standard_users_filters_inactive():
+    """DB-3: rotate_all_standard_users() must only rotate active users."""
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "is_active" in src
+    ), "DB-3: rotate_all_standard_users must skip inactive users"
+
+
+def test_db3_rotate_all_standard_users_returns_keys():
+    """
+    DB-3: rotate_all_standard_users() must return plaintext api_key values
+    so the admin can distribute them.  Verifies the return payload structure.
+    """
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        '"api_key"' in src or "'api_key'" in src
+    ), "DB-3: rotate_all_standard_users must include plaintext api_key in return payload"
+    assert '"username"' in src or "'username'" in src
+
+
+def test_db3_rotate_all_standard_users_uses_secrets_token_hex():
+    """DB-3: rotate_all_standard_users() must use secrets.token_hex for key generation."""
+    import inspect
+    from src.database import rotate_all_standard_users
+
+    src = inspect.getsource(rotate_all_standard_users)
+    assert (
+        "secrets.token_hex" in src
+    ), "DB-3: rotate_all_standard_users must use secrets.token_hex for CSPRNG key generation"
+
+
+def test_db3_cli_rotate_all_keys_command_exists():
+    """DB-3: manage_users CLI must expose a rotate-all-keys subcommand."""
+    import inspect
+    from src.cli import manage_users
+
+    src = inspect.getsource(manage_users)
+    assert (
+        "rotate-all-keys" in src
+    ), "DB-3: manage_users CLI must have a rotate-all-keys subcommand"
+    assert "rotate_all_standard_keys" in src
+
+
+def test_db3_cli_rotate_all_keys_calls_db_function():
+    """DB-3: rotate_all_standard_keys() CLI function must call rotate_all_standard_users()."""
+    import inspect
+    from src.cli.manage_users import rotate_all_standard_keys
+
+    src = inspect.getsource(rotate_all_standard_keys)
+    assert (
+        "rotate_all_standard_users" in src
+    ), "DB-3: CLI rotate_all_standard_keys must delegate to db.rotate_all_standard_users()"
+
+
+def test_db4_get_pool_alias_removed():
+    """
+    DB-4: The get_pool backward-compat alias must not exist in src.database.
+
+    get_pool was a misleading generic name — all callers must use the explicit
+    pool accessors (get_worker_pool, get_gateway_pool, get_readonly_pool,
+    get_maintenance_connection) so the privilege level is always clear at the
+    call site.
+    """
+    import src.database as db_mod
+
+    assert not hasattr(db_mod, "get_pool"), (
+        "DB-4: get_pool backward-compat alias must be removed from src/database.py. "
+        "Use get_worker_pool(), get_gateway_pool(), get_readonly_pool(), or "
+        "get_maintenance_connection() explicitly."
+    )
+
+
+def test_db4_get_pool_getattr_guard_fires():
+    """
+    DB-4: Accessing src.database.get_pool at runtime must raise AttributeError
+    with a clear, actionable message naming the correct replacement functions —
+    not a generic 'has no attribute' error.
+    """
+    import src.database as db_mod
+
+    with pytest.raises(AttributeError, match="get_worker_pool"):
+        _ = db_mod.get_pool
+
+
+def test_db4_no_get_pool_calls_in_src():
+    """
+    DB-4: No production source file under src/ should assign or call get_pool.
+
+    The __getattr__ guard legitimately references the name in an error-message
+    string, so we can't just search for the substring.  Instead check that:
+      - the alias assignment (get_pool = ...) is absent
+      - no line calls get_pool() outside of a string literal
+    """
+    import ast
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod)
+
+    # 1. Alias assignment must be gone.
+    assert (
+        "get_pool = " not in src
+    ), "DB-4: get_pool alias assignment found in src/database.py"
+
+    # 2. No call node in the AST uses the name get_pool directly.
+    tree = ast.parse(src)
+    bad_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "get_pool"
+    ]
+    assert not bad_calls, (
+        f"DB-4: {len(bad_calls)} get_pool() call(s) found in src/database.py AST — "
+        "use an explicit pool accessor"
+    )
+
+
 def test_p41_get_current_user_no_sensitive_fields():
     """get_current_user does not include api_key_hash in response."""
     import inspect
@@ -10087,6 +10262,7 @@ def test_p54_worker_uses_session_thread_id():
 def test_researcher_initial_messages_start_with_system_message():
     """run_researcher() builds a messages list that starts with SystemMessage."""
     import inspect
+    import src.agents.researcher as _researcher_mod
     from src.agents.researcher import run_researcher
 
     src = inspect.getsource(run_researcher)
@@ -10103,12 +10279,81 @@ def test_researcher_initial_messages_start_with_system_message():
         f"(positions: system={system_pos}, human={human_pos})"
     )
 
-    # Confirm the anti-hallucination instruction text is present
+    # Confirm the anti-hallucination instruction text is present — either inline
+    # or in the module-level _RESEARCHER_SYSTEM_CONTENT constant.
+    system_content = getattr(_researcher_mod, "_RESEARCHER_SYSTEM_CONTENT", "")
+    combined = src.lower() + system_content.lower()
+    assert "fabricate" in combined, (
+        "Anti-hallucination instruction ('fabricate') not found in "
+        "run_researcher source or _RESEARCHER_SYSTEM_CONTENT"
+    )
+
+
+def test_orchestrator_initial_messages_start_with_system_message():
+    """run_orchestrator() builds a messages list that starts with SystemMessage."""
+    import inspect
+    import src.agents.orchestrator as _orchestrator_mod
+    from src.agents.orchestrator import run_orchestrator
+
+    src = inspect.getsource(run_orchestrator)
+
+    # The SystemMessage must appear in the messages list before HumanMessage
+    system_pos = src.find("SystemMessage(")
+    human_pos = src.find("HumanMessage(content=task)")
+    assert system_pos != -1, "SystemMessage not found in run_orchestrator source"
     assert (
-        "never fabricate" in src.lower()
-        or "do not fabricate" in src.lower()
-        or "fabricate" in src.lower()
-    ), "Anti-hallucination instruction ('fabricate') not found in run_researcher system prompt"
+        human_pos != -1
+    ), "HumanMessage(content=task) not found in run_orchestrator source"
+    assert system_pos < human_pos, (
+        "SystemMessage must come before HumanMessage in the messages list "
+        f"(positions: system={system_pos}, human={human_pos})"
+    )
+
+    # Confirm the anti-hallucination instruction text is present — either inline
+    # or in the module-level _ORCHESTRATOR_SYSTEM_CONTENT constant.
+    system_content = getattr(_orchestrator_mod, "_ORCHESTRATOR_SYSTEM_CONTENT", "")
+    combined = src.lower() + system_content.lower()
+    assert "fabricate" in combined, (
+        "Anti-hallucination instruction ('fabricate') not found in "
+        "run_orchestrator source or _ORCHESTRATOR_SYSTEM_CONTENT"
+    )
+
+
+def test_orchestrator_agent_node_injects_system_message_on_step_1():
+    """agent_node in orchestrator injects SystemMessage when absent (gateway worker path)."""
+    import src.agents.orchestrator as _orchestrator_mod
+
+    src_text = open(_orchestrator_mod.__file__).read()
+    assert (
+        "_ORCHESTRATOR_SYSTEM_CONTENT" in src_text
+    ), "_ORCHESTRATOR_SYSTEM_CONTENT constant missing from orchestrator.py"
+    # Injection guard must check for missing SystemMessage
+    assert (
+        "isinstance(m, SystemMessage)" in src_text
+    ), "SystemMessage injection guard missing from orchestrator agent_node"
+
+
+def test_gateway_worker_seeds_system_message_in_initial_state():
+    """Gateway worker initial_state includes SystemMessage for researcher and orchestrator.
+
+    Root cause of the multi-step 'No result produced.' bug: the SystemMessage
+    was only injected into a local agent_node copy of state, not into the
+    LangGraph checkpoint.  Step 2 (synthesis) therefore had no instructions.
+    Fix: seed SystemMessage in initial_state in the worker so it persists
+    across all steps in the checkpoint.
+    """
+    import src.gateway.worker as _worker_mod
+
+    src_text = open(_worker_mod.__file__).read()
+    assert (
+        "_RESEARCHER_SYSTEM_CONTENT" in src_text
+    ), "Worker must import and use _RESEARCHER_SYSTEM_CONTENT for initial_state"
+    assert (
+        "_ORCHESTRATOR_SYSTEM_CONTENT" in src_text
+    ), "Worker must import and use _ORCHESTRATOR_SYSTEM_CONTENT for initial_state"
+    # Both must be in SystemMessage(...) wrapping
+    assert src_text.count("SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT)") >= 1
+    assert src_text.count("SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)") >= 1
 
 
 def test_web_fetch_html_stripping_removes_script_and_style():
@@ -11649,7 +11894,7 @@ def test_p76_ui_notes_button_added_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 2500]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "toggleNotesPanel" in fn_body
     assert "📝 Notes" in fn_body
 
@@ -11679,7 +11924,7 @@ def test_p77_ui_share_button_added_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 2500]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "shareTask" in fn_body
     assert "🔗 Share" in fn_body
 
@@ -12877,7 +13122,7 @@ def test_p106_ui_delete_button_in_rating_bar():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     fn_start = html.find("function finishRun(")
-    fn_body = html[fn_start : fn_start + 3000]
+    fn_body = html[fn_start : fn_start + 4500]
     assert "deleteTask" in fn_body
 
 
@@ -20506,8 +20751,83 @@ def test_run_db_maintenance_function_exists():
     from src.database import run_db_maintenance
 
     sig = inspect.signature(run_db_maintenance)
-    for param in ("tasks_days", "api_usage_days", "audit_log_days"):
+    for param in ("tasks_days", "api_usage_days", "audit_log_days", "task_events_days"):
         assert param in sig.parameters, f"Missing parameter: {param}"
+
+
+def test_task_events_pruning_in_run_db_maintenance():
+    """run_db_maintenance() prunes task_events via get_maintenance_connection (not admin)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    fn_start = src.index("async def run_db_maintenance(")
+    fn_end = src.index("\n\n\nasync def ", fn_start)
+    fn_body = src[fn_start:fn_end]
+    assert (
+        "DELETE FROM task_events" in fn_body
+    ), "task_events DELETE missing from run_db_maintenance"
+    assert (
+        "task_events_days" in fn_body
+    ), "task_events_days parameter not used in function body"
+    # The DELETE FROM task_events must come BEFORE the threat_events admin-connection block,
+    # meaning it lives inside the get_maintenance_connection() context manager.
+    delete_pos = fn_body.index("DELETE FROM task_events")
+    threat_admin_pos = fn_body.index("threat_events: legionforge_app only has INSERT")
+    assert delete_pos < threat_admin_pos, (
+        "task_events prune must be inside the get_maintenance_connection() block, "
+        "not in the admin-connection threat_events block"
+    )
+
+
+def test_maintenance_grant_includes_task_events():
+    """_setup_db_roles() grants DELETE and column-level SELECT(ts) on task_events to legionforge_maintenance."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Find the maintenance grants section
+    grant_start = src.index("legionforge_maintenance grants")
+    grant_end = src.index("legionforge_guardian grants", grant_start)
+    grant_block = src[grant_start:grant_end]
+    assert (
+        '"task_events"' in grant_block
+    ), "task_events missing from maintenance DELETE grant loop"
+    assert (
+        "SELECT (ts) ON task_events" in grant_block
+    ), "column-level SELECT(ts) on task_events not granted to legionforge_maintenance"
+
+
+def test_perf1_threat_events_raw_input_size_constraint():
+    """threat_events DDL and ALTER TABLE both enforce raw_input <= 16 384 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    # Constraint name must appear in both CREATE TABLE and ALTER TABLE blocks
+    assert (
+        src.count("chk_raw_input_size") >= 2
+    ), "chk_raw_input_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(raw_input) <= 16384" in src
+
+
+def test_perf1_threat_events_metadata_size_constraint():
+    """threat_events DDL and ALTER TABLE both enforce metadata <= 8 192 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert (
+        src.count("chk_metadata_size") >= 2
+    ), "chk_metadata_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(metadata::text) <= 8192" in src
+
+
+def test_perf1_audit_log_payload_size_constraint():
+    """audit_log DDL and ALTER TABLE both enforce payload <= 8 192 bytes (PERF-1)."""
+    import pathlib
+
+    src = pathlib.Path("src/database.py").read_text()
+    assert (
+        src.count("chk_audit_payload_size") >= 2
+    ), "chk_audit_payload_size must appear in CREATE TABLE and ALTER TABLE"
+    assert "octet_length(payload::text) <= 8192" in src
 
 
 def test_audit_anchors_table_defined_in_create_app_tables():
@@ -21617,16 +21937,23 @@ def test_persona_namespace_format_user():
 
 
 def test_base_graph_wires_persona_bootstrap():
-    """Gap 1: base_graph.agent_node injects persona before user prefs (outermost)."""
+    """Gap 1: base_graph.agent_node injects persona as the outermost stable prefix.
+
+    KV-cache stability ordering: persona (most stable) must appear FIRST in the
+    final message list, which means it must be prepended LAST in code (after memory
+    recall and prefs).  So Gap 5 (prefs) appears before Gap 1 (persona) in source,
+    but Gap 1 ends up at index 0 of the assembled message list at runtime.
+    """
     import pathlib
 
     content = pathlib.Path("src/base_graph.py").read_text()
     assert "persona_bootstrap" in content
-    # The Gap 1 comment must appear before the Gap 5 comment in agent_node
     assert "Gap 1" in content and "Gap 5" in content
-    assert content.index("Gap 1") < content.index(
-        "Gap 5"
-    ), "persona (Gap 1) must be injected before user prefs (Gap 5)"
+    # Gap 5 (prefs, Step 2) is prepended before Gap 1 (persona, Step 3) in source
+    # so that persona ends up first in the final message list (stable-prefix ordering).
+    assert content.index("Gap 5") < content.index(
+        "Gap 1"
+    ), "persona (Gap 1) must be prepended last (Step 3) so it is first in message list"
 
 
 def test_persona_bootstrap_agent_section_label():
@@ -21837,11 +22164,80 @@ def test_get_user_connection_is_asynccontextmanager():
     assert inspect.isasyncgenfunction(db.get_user_connection.__wrapped__)
 
 
-def test_get_admin_connection_importable():
-    """get_admin_connection is exported from database."""
-    from src.database import get_admin_connection
+def test_db5_get_worker_connection_importable():
+    """DB-5: get_worker_connection() replaced get_admin_connection()."""
+    from src.database import get_worker_connection
 
-    assert callable(get_admin_connection)
+    assert callable(get_worker_connection)
+
+
+def test_db5_get_admin_connection_guard_fires():
+    """DB-5: Accessing get_admin_connection at runtime must raise AttributeError
+    with a message pointing to get_worker_connection."""
+    import src.database as db_mod
+
+    with pytest.raises(AttributeError, match="get_worker_connection"):
+        _ = db_mod.get_admin_connection
+
+
+def test_db5_get_worker_connection_sets_statement_timeout():
+    """DB-5: get_worker_connection source must apply statement_timeout."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "statement_timeout" in src
+
+
+def test_db5_get_worker_connection_sets_application_name():
+    """DB-5: get_worker_connection source must set application_name for pg_stat_activity."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "application_name" in src
+    assert "legionforge_worker" in src
+
+
+def test_db5_get_worker_connection_sets_audit_context():
+    """DB-5: get_worker_connection must set app.agent_id and app.request_id
+    session variables for future DB-level audit trigger support."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "app.agent_id" in src
+    assert "app.request_id" in src
+
+
+def test_db5_get_worker_connection_resets_audit_context():
+    """DB-5: get_worker_connection must reset audit context in a finally block
+    so stale values don't bleed into the next connection pool acquirer."""
+    import inspect
+    from src.database import get_worker_connection
+
+    src = inspect.getsource(get_worker_connection)
+    assert "finally" in src
+    # Reset must clear both variables
+    assert "app.agent_id', '', false" in src or 'app.agent_id", "", false' in src
+
+
+def test_db5_database_config_exists_in_settings():
+    """DB-5: DatabaseConfig must exist in settings with statement_timeout_ms."""
+    from config.settings import DatabaseConfig
+
+    cfg = DatabaseConfig()
+    assert cfg.statement_timeout_ms > 0
+    assert cfg.idle_in_transaction_timeout_ms > 0
+
+
+def test_db5_idle_timeout_wired_into_pool_creation():
+    """DB-5: _open_role_pool must use idle_in_transaction_session_timeout from settings."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod)
+    assert "idle_in_transaction_session_timeout" in src
 
 
 def test_get_maintenance_connection_importable():
@@ -21893,7 +22289,7 @@ def test_maintenance_role_has_no_full_table_select_in_setup():
 
 
 def test_run_db_maintenance_uses_get_maintenance_connection():
-    """run_db_maintenance uses get_maintenance_connection, not raw get_pool()."""
+    """run_db_maintenance uses get_maintenance_connection, not raw get_worker_pool()."""
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
@@ -21901,7 +22297,7 @@ def test_run_db_maintenance_uses_get_maintenance_connection():
     fn_end = src.index("\n\n\nasync def ", fn_start)
     fn_body = src[fn_start:fn_end]
     assert "get_maintenance_connection" in fn_body
-    assert "pool = get_pool()" not in fn_body
+    assert "pool = get_worker_pool()" not in fn_body
 
 
 def test_all_roles_have_bypassrls_except_gateway():
@@ -22351,11 +22747,11 @@ def test_prune_audit_log_uses_admin_connection():
     import pathlib
 
     src = pathlib.Path("src/database.py").read_text()
-    # Find the prune_audit_log function and confirm it uses admin credentials, not get_pool()
+    # Find the prune_audit_log function and confirm it uses admin credentials, not get_worker_pool()
     func_start = src.index("async def prune_audit_log(")
     func_body = src[func_start : func_start + 1200]
     assert "_build_conninfo_no_password()" in func_body
-    assert "get_pool()" not in func_body
+    assert "get_worker_pool()" not in func_body
 
 
 def test_gateway_health_includes_llm_status():
@@ -22391,3 +22787,1005 @@ def test_ui_stream_token_null_guard():
     src = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "data.stream_token || null" in src
     assert "pollTaskUntilComplete(taskId" in src
+
+
+def test_detect_tool_outcomes_helper_exists():
+    """_detect_tool_outcomes is defined in researcher.py and counts skipped vs real ToolMessages."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "def _detect_tool_outcomes(" in src
+    assert "[TOOL SKIPPED]" in src
+    assert "skipped" in src and "real" in src
+
+
+def test_finalizer_checks_unverified_data_marker():
+    """finalizer_node strips [UNVERIFIED DATA] and prepends a prominent warning."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert '"[UNVERIFIED DATA]" in result' in src
+    assert "WARNING: Model memory" in src
+
+
+def test_finalizer_warns_when_all_tools_blocked():
+    """finalizer_node adds a WARNING prefix when all tool calls were sandboxed."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "skipped > 0 and real == 0" in src
+    assert "WARNING: All real-time lookups were blocked" in src
+
+
+def test_finalizer_notes_partial_tool_block():
+    """finalizer_node adds a NOTE prefix when some (not all) tool calls were blocked."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "skipped > 0" in src
+    assert "NOTE:" in src
+    assert "real-time lookup(s) were blocked" in src
+
+
+def test_orchestrator_agent_node_uses_llm_forced_on_step_1():
+    """orchestrator agent_node uses tool_choice='required' LLM on step 1 to prevent memory hallucination."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert 'tool_choice="required"' in src
+    assert "llm_forced if step <= 1 else llm_free" in src
+
+
+def test_orchestrator_build_graph_creates_llm_forced_and_llm_free():
+    """build_orchestrator_graph creates both llm_forced and llm_free LLM bindings."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "llm_forced = get_primary_llm" in src
+    assert "llm_free = get_primary_llm" in src
+    assert "_build_orchestrator_agent_node(llm_forced, llm_free)" in src
+
+
+def test_spawn_researcher_handles_sub_agent_exceptions_gracefully():
+    """spawn_researcher wraps _spawn_researcher_sub_agent in try/except to prevent
+    GraphRecursionError from crashing the orchestrator run."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    # Find spawn_researcher function body
+    fn_start = src.index("async def spawn_researcher(")
+    # Next function starts at fan_out_researchers
+    fn_end = src.index("async def fan_out_researchers(")
+    fn_body = src[fn_start:fn_end]
+    assert "try:" in fn_body
+    assert "except Exception as exc:" in fn_body
+    assert "RESEARCHER ERROR" in fn_body
+
+
+def test_hardware_profile_recursion_limit_sufficient_for_multi_step_research():
+    """mac_m4_mini_16gb default_recursion_limit is >= 25 to support multi-step research tasks."""
+    import pathlib
+
+    src = pathlib.Path("config/hardware_profiles/mac_m4_mini_16gb.yaml").read_text()
+    import re
+
+    m = re.search(r"default_recursion_limit:\s*(\d+)", src)
+    assert m is not None, "default_recursion_limit not found in hardware profile"
+    assert int(m.group(1)) >= 25, (
+        f"default_recursion_limit={m.group(1)} is too low for multi-step research "
+        "(need >= 25 for search → fetch → search → fetch → synthesize)"
+    )
+
+
+def test_orchestrator_uses_run_id_as_thread_not_session_thread():
+    """orchestrator always uses run_id as LangGraph thread_id — never the session thread.
+    Inheriting session checkpoints compounds failure history across retries, causing
+    the synthesis LLM to anchor on stale 'previous attempts failed' context."""
+    import pathlib
+
+    src = pathlib.Path("src/gateway/worker.py").read_text()
+    assert 'agent_type != "orchestrator"' in src
+
+
+def test_orchestrator_system_prompt_guides_decomposition_with_fan_out():
+    """Orchestrator system prompt instructs using fan_out_researchers for multi-part queries."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    assert "fan_out_researchers" in src
+    assert "sub-tasks" in src
+    assert (
+        "never answer from memory" in src or "never answer from memory" in src.lower()
+    )
+
+
+def test_researcher_system_prompt_has_tool_budget_rule():
+    """Researcher system prompt includes an explicit tool-call budget (max 6) to
+    prevent runaway fetching that hits the LangGraph recursion limit."""
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    assert "at most 6 tool calls" in src
+    assert "STOP and write your" in src
+
+
+def test_hardware_profile_recursion_limit_raised_to_40():
+    """mac_m4_mini_16gb default_recursion_limit is >= 40 to support fan-out research."""
+    import pathlib, re
+
+    src = pathlib.Path("config/hardware_profiles/mac_m4_mini_16gb.yaml").read_text()
+    m = re.search(r"default_recursion_limit:\s*(\d+)", src)
+    assert m is not None
+    assert int(m.group(1)) >= 40
+
+
+def test_orchestrator_agent_node_retries_with_correction_when_no_tool_calls():
+    """agent_node retries with an explicit correction HumanMessage when step 1 produces
+    no tool_calls — guards against tool_choice=required being silently ignored by Ollama.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.index("async def agent_node(state: OrchestratorState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "no_tool_calls_on_step_1" in fn_body
+    assert "correction" in fn_body
+    assert "spawn_researcher or fan_out_researchers right now" in fn_body
+
+
+def test_orchestrator_deterministic_fallback_injects_spawn_researcher():
+    """When both LLM attempts produce no tool_calls on step 1, agent_node injects
+    a spawn_researcher call deterministically — guards against silent model failures.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/orchestrator.py").read_text()
+    fn_start = src.index("async def agent_node(state: OrchestratorState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "tool_call_fallback" in fn_body
+    assert "Deterministic fallback" in fn_body
+    assert "spawn_researcher" in fn_body
+    assert "uuid" in fn_body
+
+
+def test_researcher_agent_node_retries_with_correction_when_no_tool_calls():
+    """agent_node retries with an explicit correction HumanMessage when step 1 produces
+    no tool_calls — mirrors the orchestrator guard; prevents silent model failures from
+    causing "No result produced." when tool_choice=required is ignored by Ollama.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    fn_start = src.index("async def agent_node(state: ResearcherState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "no_tool_calls_on_step_1" in fn_body
+    assert "correction" in fn_body
+    assert "web_search" in fn_body
+    assert "web_fetch" in fn_body
+
+
+def test_researcher_deterministic_fallback_injects_web_search():
+    """When both LLM attempts produce no tool_calls on step 1, agent_node injects
+    a web_search call deterministically — ensures the researcher always fetches
+    real data rather than returning empty on tool_choice failures.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/agents/researcher.py").read_text()
+    fn_start = src.index("async def agent_node(state: ResearcherState)")
+    fn_end = src.index("return agent_node")
+    fn_body = src[fn_start:fn_end]
+    assert "tool_call_fallback" in fn_body
+    assert "Deterministic fallback" in fn_body
+    assert "web_search" in fn_body
+    assert "uuid" in fn_body
+
+
+# ── Shared fixture smoke tests ────────────────────────────────────────────────
+
+
+def test_mock_llm_no_tool_calls_fixture_exists():
+    """conftest provides mock_llm_no_tool_calls fixture — the canonical mock for
+    testing agent fallback paths when the LLM ignores tool_choice=required.
+    """
+    import pathlib
+
+    src = pathlib.Path("tests/conftest.py").read_text()
+    assert "mock_llm_no_tool_calls" in src
+    assert "ainvoke" in src
+    assert "bind_tools" in src
+
+
+def test_mock_llm_with_tool_call_fixture_exists():
+    """conftest provides mock_llm_with_tool_call fixture — the canonical mock for
+    testing happy-path agent execution where the LLM calls a tool on step 1.
+    """
+    import pathlib
+
+    src = pathlib.Path("tests/conftest.py").read_text()
+    assert "mock_llm_with_tool_call" in src
+    assert "tool_calls" in src
+
+
+def test_makefile_has_ci_target():
+    """Makefile defines a 'ci' target that chains make test + security-audit —
+    the required gate before every commit.
+    """
+    import pathlib
+
+    mk = pathlib.Path("Makefile").read_text()
+    assert "ci:" in mk
+    assert "security-audit" in mk
+    # ci must invoke the full test suite, not just smoke
+    ci_start = mk.index("\nci:")
+    ci_end = mk.index("\n.PHONY:", ci_start + 1)
+    ci_body = mk[ci_start:ci_end]
+    assert "make test" in ci_body or "$(MAKE)" in ci_body
+
+
+def test_makefile_has_test_critical_target():
+    """Makefile defines a 'test-critical' target for ~35s rapid iteration gate
+    covering smoke + security_attacks + UI page-load.
+    """
+    import pathlib
+
+    mk = pathlib.Path("Makefile").read_text()
+    assert "test-critical:" in mk
+    tc_start = mk.index("test-critical:")
+    tc_end = mk.index("\n.PHONY:", tc_start)
+    tc_body = mk[tc_start:tc_end]
+    assert (
+        "test_smoke" in tc_body
+        or "test smoke" in tc_body.lower()
+        or "test_smoke.py" in tc_body
+    )
+    assert "security_attacks" in tc_body
+    assert "test_page_load" in tc_body
+
+
+def test_claude_md_requires_make_ci_gate():
+    """CLAUDE.md mandates 'make ci' as the required gate before commits — not
+    just make test-smoke, so cross-suite event loop issues are always caught.
+    """
+    import pathlib
+
+    src = pathlib.Path("CLAUDE.md").read_text()
+    assert "make ci" in src
+    assert (
+        "make test-smoke alone is not sufficient" in src
+        or "test-smoke` alone is not sufficient" in src
+    )
+
+
+def test_claude_md_has_working_with_claude_section():
+    """CLAUDE.md has a 'Working with Claude' section with the test plan rule,
+    one-concern-per-PR rule, and mock_llm_no_tool_calls reference.
+    """
+    import pathlib
+
+    src = pathlib.Path("CLAUDE.md").read_text()
+    assert "Working with Claude" in src
+    assert "test plan" in src
+    assert "mock_llm_no_tool_calls" in src
+
+
+def test_secure_tool_node_has_alias_map():
+    """SecureToolNode builds an underscore-stripped alias map at construction so
+    qwen2.5 tool name normalisation ('spawnresearcher' → 'spawn_researcher') works.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    assert "_alias_map" in src
+    assert 'replace("_", "")' in src or "replace('_', '')" in src
+
+
+def test_secure_tool_node_normalises_before_registry_check():
+    """SecureToolNode normalises tool names from the message before security checks
+    and before passing state to the inner ToolNode — both must see the canonical name.
+    """
+    import pathlib
+
+    src = pathlib.Path("src/base_graph.py").read_text()
+    # Normalisation must happen before the tool_calls loop (at message level)
+    alias_pos = src.index("_alias_map")
+    norm_pos = src.index("needs_rewrite")
+    loop_pos = src.index("for tc in tool_calls:")
+    assert (
+        norm_pos < loop_pos
+    ), "normalisation must happen before the security check loop"
+    assert (
+        "model_copy" in src[norm_pos:loop_pos]
+    ), "message must be rewritten with canonical names"
+
+
+# ── RBAC pool-routing static analysis ────────────────────────────────────────
+
+
+def test_database_no_get_pool_on_gateway_tables():
+    """
+    Static guard: user-facing CRUD functions in database.py must NOT call
+    get_worker_pool() (legionforge_worker — SELECT-only on user tables).
+    They must use get_gateway_pool() instead.
+
+    This catches regressions when new functions are added for user-facing
+    tables but accidentally use the worker pool.
+
+    Worker-OK tables (excluded from check):
+        tasks, api_usage, stream_tokens, tool_registry, audit_log,
+        threat_events, task_events, checkpoints*, documents,
+        crystallization_*, threat_rules, health_metrics, agent_profiles
+
+    Gateway-required tables (checked):
+        task_notes, task_annotations, task_attachments, task_templates,
+        task_shares, webhooks, scheduled_tasks, pipelines, pipeline_runs,
+        user_preferences, sessions (INSERT/UPDATE/DELETE only)
+    """
+    import ast
+    import pathlib
+
+    src_path = pathlib.Path("src/database.py")
+    src = src_path.read_text()
+    tree = ast.parse(src)
+
+    # Tables where worker pool must not perform INSERT/UPDATE/DELETE
+    GATEWAY_TABLES = {
+        "task_notes",
+        "task_annotations",
+        "task_attachments",
+        "task_templates",
+        "task_shares",
+        "webhooks",
+        "scheduled_tasks",
+        "pipelines",
+        "pipeline_runs",
+        "user_preferences",
+        "sessions",
+    }
+    # SQL verbs that require gateway pool on those tables
+    WRITE_VERBS = {"INSERT", "UPDATE", "DELETE"}
+
+    violations = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        func_src = ast.get_source_segment(src, node) or ""
+        uses_get_pool = (
+            "get_worker_pool()" in func_src and "get_gateway_pool" not in func_src
+        )
+        if not uses_get_pool:
+            continue
+        # Check if this function contains a write SQL verb against a gateway table
+        for tbl in GATEWAY_TABLES:
+            for verb in WRITE_VERBS:
+                if verb in func_src and tbl in func_src:
+                    violations.append(
+                        f"{node.name}() uses get_worker_pool() but writes to '{tbl}'"
+                    )
+                    break
+
+    assert not violations, (
+        "Pool misrouting detected — use get_gateway_pool() for user-facing writes:\n"
+        + "\n".join(f"  • {v}" for v in violations)
+    )
+
+
+# ── Security Fix Tests — DB-6, DB-7, middleware patches (2026-03-11) ──────────
+# Tests for: worker pool admin fallback removed, raw_input truncation,
+# MetricsMiddleware path normalization, _windows cleanup bug fixed,
+# RLS fail-closed, gateway/readonly pool hard-fail, injection at ingress.
+
+
+def test_worker_pool_no_admin_fallback():
+    """
+    DB-6: Worker pool failure must raise RuntimeError, not fall back to admin pool.
+
+    The old code fell back to admin credentials (DDL + superuser) when legionforge_worker
+    was unavailable, silently granting every agent task superuser DB access.
+    The fix raises RuntimeError so the failure is visible and forces operator action.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.init_db)
+    # Must not contain the admin fallback pattern
+    assert "falling back to admin pool" not in src, (
+        "init_db() must not fall back to admin pool when worker pool is unavailable. "
+        "DB-6: silently escalating to superuser credentials is a security regression."
+    )
+    # Must raise RuntimeError on worker pool failure
+    assert "FATAL: worker pool" in src, (
+        "init_db() must raise RuntimeError with 'FATAL: worker pool' message when "
+        "legionforge_worker pool cannot be opened."
+    )
+
+
+def test_worker_pool_failure_message_mentions_setup_db_roles():
+    """Worker pool RuntimeError message must guide the operator to the fix."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.init_db)
+    assert "make setup-db-roles" in src, (
+        "Worker pool RuntimeError must mention 'make setup-db-roles' so operators "
+        "know the recovery path."
+    )
+
+
+def test_log_threat_event_truncates_raw_input():
+    """
+    DB-7: log_threat_event() must truncate raw_input to _MAX_RAW_INPUT chars.
+
+    Without this truncation an attacker can log-bomb the threat_events table by
+    submitting requests with megabyte-scale payloads — each event fills disk.
+    4 096 chars is sufficient to identify any injection pattern.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.log_threat_event)
+    assert (
+        "_MAX_RAW_INPUT" in src
+    ), "log_threat_event() must define _MAX_RAW_INPUT and use it to cap raw_input length."
+    assert (
+        "safe_raw_input" in src
+    ), "log_threat_event() must create safe_raw_input (truncated) and pass it to INSERT."
+    # Verify the truncation cap value is 4096
+    assert "4096" in src, "log_threat_event() must cap raw_input at 4 096 chars (DB-7)."
+
+
+def test_log_threat_event_uses_safe_raw_input_not_raw():
+    """raw_input must not be passed directly to the INSERT — only safe_raw_input."""
+    import inspect
+    import ast
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod.log_threat_event)
+    # The INSERT tuple must contain safe_raw_input, not the bare raw_input parameter
+    assert (
+        "safe_raw_input," in source
+    ), "log_threat_event() INSERT must use safe_raw_input (truncated), not raw raw_input."
+
+
+def test_gateway_pool_raises_runtimeerror_when_unavailable():
+    """
+    DB-2 (fixed): get_gateway_pool() raises RuntimeError when pool is None.
+
+    The old code fell back to the worker pool (BYPASSRLS), silently disabling RLS
+    for all user-facing requests.  The fix makes a missing gateway pool a hard error.
+    """
+    import src.database as db_mod
+    import inspect
+
+    src = inspect.getsource(db_mod.get_gateway_pool)
+    assert "raise RuntimeError" in src, (
+        "get_gateway_pool() must raise RuntimeError when pool is unavailable. "
+        "DB-2: silently falling back to worker pool disables RLS for all users."
+    )
+    assert (
+        "return _gateway_pool or" not in src
+    ), "get_gateway_pool() must not use 'or' fallback to worker pool. DB-2."
+
+
+def test_readonly_pool_raises_runtimeerror_when_unavailable():
+    """get_readonly_pool() raises RuntimeError — no fallback to worker pool."""
+    import src.database as db_mod
+    import inspect
+
+    src = inspect.getsource(db_mod.get_readonly_pool)
+    assert "raise RuntimeError" in src, (
+        "get_readonly_pool() must raise RuntimeError when pool is unavailable. "
+        "Falling back to worker (BYPASSRLS) for health reads is a privilege escalation."
+    )
+    assert (
+        "return _readonly_pool or" not in src
+    ), "get_readonly_pool() must not use 'or' fallback to worker pool."
+
+
+def test_rls_policy_fail_closed_no_empty_user_id_escape():
+    """
+    DB-1 (fixed): RLS policy must not pass when app.user_id = ''.
+
+    The old policy contained:
+        OR current_setting('app.user_id', true) = ''
+    which meant connections without an explicit user_id saw ALL rows — RLS provided
+    no isolation.  The fix removes the escape hatch so empty user_id sees ZERO rows.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_rls)
+    # The escape hatch must not be present
+    assert "= ''" not in src or "user_id = ''" not in src, (
+        "RLS policy must not contain '= \"\"' escape hatch for app.user_id. "
+        "DB-1: empty user_id must be fail-closed (zero rows), not pass-all."
+    )
+    # The correct fail-closed pattern must be present
+    assert (
+        "user_id = current_setting" in src
+    ), "RLS policy must contain 'user_id = current_setting(...)' strict match."
+
+
+def test_rls_policy_has_no_empty_string_clause():
+    """RLS _policy string in _setup_rls must not include empty-string bypass."""
+    import inspect
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod._setup_rls)
+    assert "true) = ''" not in source, (
+        "RLS policy must not contain the empty-string escape hatch. "
+        "DB-1 fix: _setup_rls._policy should have no 'true) = \"\"' clause."
+    )
+
+
+def test_metrics_middleware_path_normalization_function_exists():
+    """_normalize_path is importable from src.gateway.middleware."""
+    from src.gateway.middleware import _normalize_path
+
+    assert callable(_normalize_path)
+
+
+def test_metrics_middleware_normalizes_uuid_paths():
+    """_normalize_path replaces UUIDs with {id} to prevent Prometheus OOM."""
+    from src.gateway.middleware import _normalize_path
+
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345") == "/tasks/{id}"
+    )
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345/notes")
+        == "/tasks/{id}/notes"
+    )
+    assert (
+        _normalize_path("/tasks/abc12345-1234-1234-1234-abcdef012345/notes/99999")
+        == "/tasks/{id}/notes/{id}"
+    )
+
+
+def test_metrics_middleware_normalizes_numeric_ids():
+    """_normalize_path replaces long numeric IDs with {id}."""
+    from src.gateway.middleware import _normalize_path
+
+    assert _normalize_path("/pipelines/12345/runs/67890") == "/pipelines/{id}/runs/{id}"
+    # Short numbers (< 4 digits) are left alone — they might be version numbers
+    assert _normalize_path("/v2/status") == "/v2/status"
+
+
+def test_metrics_middleware_leaves_non_id_paths_unchanged():
+    """_normalize_path does not mangle normal path segments."""
+    from src.gateway.middleware import _normalize_path
+
+    for path in ["/health", "/tasks", "/tasks/batch", "/ui", "/metrics"]:
+        assert (
+            _normalize_path(path) == path
+        ), f"_normalize_path should not mangle: {path}"
+
+
+def test_metrics_middleware_uses_normalize_path():
+    """MetricsMiddleware.dispatch calls _normalize_path before recording path label."""
+    import inspect
+    from src.gateway import middleware as mw_mod
+
+    src = inspect.getsource(mw_mod.MetricsMiddleware.dispatch)
+    assert "_normalize_path" in src, (
+        "MetricsMiddleware.dispatch must call _normalize_path() on request.url.path "
+        "before recording the Prometheus label to prevent label cardinality explosion."
+    )
+
+
+def test_rate_limit_window_cleanup_is_after_eviction():
+    """
+    SubmissionRateLimitMiddleware._windows cleanup must happen after eviction,
+    not after append.
+
+    The bug: checking `if not self._windows[key]` after `append()` is dead code —
+    the key is never empty after an append.  Stale empty buckets from churned users
+    accumulate in the dict, causing a slow memory leak.
+    The fix: delete empty buckets immediately after the eviction pass.
+    """
+    import inspect
+    from src.gateway.middleware import SubmissionRateLimitMiddleware
+
+    src = inspect.getsource(SubmissionRateLimitMiddleware.dispatch)
+    # The cleanup must appear before the limit check (before 'if len(')
+    cleanup_pos = src.find("if not self._windows[key]:\n")
+    append_pos = src.find("self._windows[key].append(now)")
+    assert (
+        cleanup_pos != -1
+    ), "SubmissionRateLimitMiddleware must delete empty _windows buckets after eviction."
+    assert append_pos != -1, "SubmissionRateLimitMiddleware must have an append() call."
+    assert cleanup_pos < append_pos, (
+        "Empty bucket cleanup must occur BEFORE append(), not after. "
+        "Cleanup after append is dead code — the list can never be empty after an append."
+    )
+
+
+def test_injection_scan_happens_at_gateway_ingress():
+    """
+    Injection detection must fire at POST /tasks before the task is stored.
+
+    This test verifies submit_task() calls sanitize_text(check_injection=True) and
+    raises HTTP 400 on detection, rather than waiting until agent execution.
+    """
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "check_injection=True" in src, (
+        "submit_task() must call sanitize_text(check_injection=True) at the gateway "
+        "boundary — injection scans must fire before the task is stored, not only "
+        "during agent execution."
+    )
+    assert (
+        "injection_detected" in src
+    ), "submit_task() must check the injection_detected flag from sanitize_text()."
+    assert (
+        "HTTP_400_BAD_REQUEST" in src or "400" in src
+    ), "submit_task() must return HTTP 400 when injection is detected."
+
+
+def test_submit_task_does_not_log_injection_detail_in_error():
+    """
+    Gateway must not leak injection detection specifics in the HTTP 400 response.
+
+    Telling an attacker which pattern was matched helps them bypass detection.
+    The response must use a generic message ('Task rejected: invalid input').
+    """
+    import inspect
+    from src.gateway.routes import tasks as tasks_mod
+
+    src = inspect.getsource(tasks_mod.submit_task)
+    assert "Task rejected: invalid input" in src, (
+        "submit_task() HTTP 400 detail must be generic — never include the matched "
+        "pattern or injection type in the response body."
+    )
+
+
+def test_log_threat_event_max_raw_input_constant_value():
+    """_MAX_RAW_INPUT constant (inside log_threat_event) is 4096."""
+    import inspect
+    import src.database as db_mod
+
+    source = inspect.getsource(db_mod.log_threat_event)
+    # Extract the assigned value
+    import re
+
+    match = re.search(r"_MAX_RAW_INPUT\s*=\s*(\d+)", source)
+    assert match, "_MAX_RAW_INPUT must be defined inside log_threat_event()"
+    assert (
+        int(match.group(1)) == 4096
+    ), f"_MAX_RAW_INPUT must be 4096, got {match.group(1)}"
+
+
+# ── SEC-1: Threat rule HITL gate — DB grant enforcement (2026-03-11) ──────────
+# Tests that legionforge_worker cannot approve threat rules at the DB grant level.
+# The HITL gate is enforced by: worker has INSERT-only on threat_rules;
+# gateway has UPDATE.  approve_threat_rule() / reject_threat_rule() use
+# get_gateway_pool(), so even a compromised agent process cannot escalate a
+# PENDING rule to APPROVED by calling UPDATE directly.
+
+
+def test_sec1_worker_grant_threat_rules_insert_only():
+    """
+    SEC-1: legionforge_worker must receive only INSERT (not UPDATE) on threat_rules.
+
+    An agent process running as legionforge_worker must never be able to set
+    status='APPROVED' directly.  That requires UPDATE, which is intentionally
+    denied.  The fix grants SELECT,INSERT to worker and SELECT,UPDATE to gateway.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    # The worker grant must be INSERT only — not INSERT, UPDATE
+    assert "GRANT SELECT, INSERT ON threat_rules TO" in src, (
+        "_setup_db_roles() must grant SELECT, INSERT (not UPDATE) on threat_rules "
+        "to legionforge_worker.  SEC-1: agents must not be able to approve their "
+        "own proposed rules."
+    )
+    # The old bad grant pattern must be gone — agent processes must never receive
+    # UPDATE on threat_rules.  Any form of this is a violation.
+    assert "INSERT, UPDATE ON threat_rules" not in src, (
+        "The old 'INSERT, UPDATE ON threat_rules' grant to legionforge_worker must be "
+        "absent from _setup_db_roles().  SEC-1: agents must not be able to approve rules."
+    )
+    assert (
+        "SELECT, INSERT, UPDATE ON" not in src
+        or "threat_rules"
+        not in src.split("SELECT, INSERT, UPDATE ON")[-1].split("TO")[0]
+    ), "threat_rules must not appear in any SELECT,INSERT,UPDATE grant to worker. SEC-1."
+
+
+def test_sec1_worker_grant_explicitly_revokes_update_on_threat_rules():
+    """
+    SEC-1: _setup_db_roles() must explicitly REVOKE UPDATE on threat_rules from worker.
+
+    Existing deployments may have the broader grant from before this fix.
+    The REVOKE is idempotent and runs on every startup via init_db().
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    assert "REVOKE UPDATE ON threat_rules FROM" in src, (
+        "_setup_db_roles() must REVOKE UPDATE ON threat_rules FROM legionforge_worker. "
+        "SEC-1: existing deployments with the old grant need the REVOKE to take effect."
+    )
+
+
+def test_sec1_gateway_grant_has_update_on_threat_rules():
+    """
+    SEC-1: legionforge_gateway must have UPDATE on threat_rules for operator approve/reject.
+
+    approve_threat_rule() and reject_threat_rule() use get_gateway_pool().
+    The gateway role needs UPDATE to change status PENDING→APPROVED/REJECTED.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    assert "GRANT SELECT, UPDATE ON threat_rules TO" in src, (
+        "_setup_db_roles() must grant SELECT, UPDATE on threat_rules to "
+        "legionforge_gateway (operator approve/reject path).  SEC-1."
+    )
+
+
+def test_sec1_approve_threat_rule_uses_gateway_pool():
+    """
+    SEC-1: approve_threat_rule() must use get_gateway_pool(), not get_worker_pool().
+
+    Worker (agent processes) has no UPDATE on threat_rules.  If approve_threat_rule()
+    used the worker pool, it would fail with a permission error — and worse, the old
+    code silently used worker, meaning the grant to worker was the only reason approval
+    worked at all, which is the same grant that allowed agent bypass.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.approve_threat_rule)
+    assert "get_gateway_pool()" in src, (
+        "approve_threat_rule() must use get_gateway_pool() — worker pool has no UPDATE "
+        "on threat_rules.  SEC-1."
+    )
+    assert "get_worker_pool()" not in src, (
+        "approve_threat_rule() must NOT use get_worker_pool().  SEC-1: worker cannot "
+        "UPDATE threat_rules."
+    )
+
+
+def test_sec1_reject_threat_rule_uses_gateway_pool():
+    """SEC-1: reject_threat_rule() must use get_gateway_pool(), not get_worker_pool()."""
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.reject_threat_rule)
+    assert (
+        "get_gateway_pool()" in src
+    ), "reject_threat_rule() must use get_gateway_pool().  SEC-1."
+    assert (
+        "get_worker_pool()" not in src
+    ), "reject_threat_rule() must NOT use get_worker_pool().  SEC-1."
+
+
+def test_sec1_propose_threat_rule_uses_worker_pool():
+    """
+    SEC-1: propose_threat_rule() must use get_worker_pool() — agents INSERT via worker.
+
+    Agents call propose_threat_rule() to create PENDING rows.  Worker has INSERT
+    on threat_rules, so this is the correct pool.  Verifying this hasn't accidentally
+    been changed to gateway.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod.propose_threat_rule)
+    assert (
+        "get_worker_pool()" in src
+    ), "propose_threat_rule() must use get_worker_pool() — agents INSERT via worker."
+
+
+def test_sec1_threat_rules_not_in_bulk_update_grant():
+    """
+    SEC-1: threat_rules must be absent from any bulk INSERT,UPDATE grant to worker.
+
+    The old grant was:
+        GRANT SELECT, INSERT, UPDATE ON documents, ..., threat_rules TO worker
+    The fix splits threat_rules into a separate INSERT-only grant.
+    This test verifies threat_rules is not sneaked back into a bulk UPDATE grant.
+    """
+    import inspect
+    import re
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._setup_db_roles)
+    # Look for SQL string literals that contain both UPDATE and threat_rules,
+    # and that are followed by legionforge_worker (i.e. granted to worker).
+    # We scan the source line by line: if we find a GRANT...UPDATE line that
+    # also mentions threat_rules before the corresponding .format(uid=...worker),
+    # that is a violation.
+    lines = src.splitlines()
+    for i, line in enumerate(lines):
+        s = line.strip()
+        # Find SQL GRANT lines with UPDATE that name threat_rules directly
+        if "UPDATE" in s and "threat_rules" in s and "GRANT" in s:
+            # Look ahead to see if this block is for the worker role
+            context = "\n".join(lines[i : i + 6])
+            assert "DB_ROLE_WORKER" not in context, (
+                f"threat_rules must not appear in any UPDATE grant to legionforge_worker. "
+                f"Context:\n{context}"
+            )
+
+
+def test_sec1_threat_analyst_uses_propose_not_approve():
+    """
+    SEC-1: Threat Analyst agent must call propose_threat_rule(), never approve_threat_rule().
+
+    The agent should only create PENDING proposals.  If it called approve_threat_rule()
+    directly that would bypass HITL — though the DB grant now blocks it, defensive code
+    should also not call it.
+    """
+    import inspect
+    from src.agents import threat_analyst
+
+    src = inspect.getsource(threat_analyst)
+    assert (
+        "propose_threat_rule" in src
+    ), "Threat Analyst must call propose_threat_rule() to submit new rules."
+    assert "approve_threat_rule" not in src, (
+        "Threat Analyst must never call approve_threat_rule(). "
+        "SEC-1: rule approval is an operator-only action."
+    )
+
+
+# ── SEC-2: POSTGRES_PASSWORD env var conflict detection ───────────────────────
+
+
+def test_sec2_warn_function_exists_in_database():
+    """SEC-2: _warn_postgres_env_conflict() must exist in src/database.py."""
+    import inspect
+    import src.database as db_mod
+
+    assert hasattr(
+        db_mod, "_warn_postgres_env_conflict"
+    ), "SEC-2: _warn_postgres_env_conflict() must be defined in src/database.py"
+    src = inspect.getsource(db_mod._warn_postgres_env_conflict)
+    assert "POSTGRES_PASSWORD" in src
+    assert "RuntimeError" in src
+
+
+def test_sec2_keychain_wins_over_env_var_in_priority_comment():
+    """
+    SEC-2: The _get_postgres_password() docstring must document that Keychain
+    takes priority over POSTGRES_PASSWORD env var.
+    """
+    import inspect
+    import src.database as db_mod
+
+    doc = db_mod._get_postgres_password.__doc__ or ""
+    src = inspect.getsource(db_mod._get_postgres_password)
+    assert (
+        "WINS over env var" in src or "wins over env var" in src
+    ), "SEC-2: _get_postgres_password source must note that Keychain wins over env var"
+
+
+def test_sec2_get_password_calls_warn_function():
+    """
+    SEC-2: _get_postgres_password() must call _warn_postgres_env_conflict()
+    after finding a Keychain value so the SEC-2 gate is never bypassed.
+    """
+    import inspect
+    import src.database as db_mod
+
+    src = inspect.getsource(db_mod._get_postgres_password)
+    assert "_warn_postgres_env_conflict" in src, (
+        "SEC-2: _get_postgres_password must call _warn_postgres_env_conflict() "
+        "after reading from Keychain"
+    )
+
+
+def test_sec2_no_conflict_returns_silently(monkeypatch):
+    """
+    SEC-2: When POSTGRES_PASSWORD is not set, _warn_postgres_env_conflict()
+    must return without raising or printing anything.
+    """
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    # Must not raise
+    _warn_postgres_env_conflict("some-keychain-password")
+
+
+def test_sec2_matching_values_returns_silently(monkeypatch):
+    """
+    SEC-2: When POSTGRES_PASSWORD matches the Keychain value, no error or
+    prompt should occur (identical credentials in both stores is fine).
+    """
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "same-password")
+    # Must not raise
+    _warn_postgres_env_conflict("same-password")
+
+
+def test_sec2_non_interactive_conflict_raises(monkeypatch):
+    """
+    SEC-2: In a non-interactive context (stdin not a tty), a conflicting
+    POSTGRES_PASSWORD env var must raise RuntimeError unless the operator
+    has set POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "wrong-env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # non-tty
+
+    with pytest.raises(RuntimeError, match="SEC-2"):
+        _warn_postgres_env_conflict("correct-keychain-password")
+
+
+def test_sec2_non_interactive_acknowledged_returns(monkeypatch):
+    """
+    SEC-2: With POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED=1, a non-interactive
+    conflict must NOT raise — CI pipelines may legitimately need this escape hatch.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "different-env-password")
+    monkeypatch.setenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # non-tty
+
+    # Must not raise
+    _warn_postgres_env_conflict("correct-keychain-password")
+
+
+def test_sec2_interactive_yes_returns(monkeypatch):
+    """
+    SEC-2: In an interactive session, answering 'y' to the conflict prompt
+    must allow startup to proceed.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    # Simulate interactive tty with 'y' answer
+    monkeypatch.setattr(
+        "sys.stdin",
+        type(
+            "_FakeTTY",
+            (),
+            {
+                "isatty": lambda self: True,
+                "readline": lambda self: "y\n",
+                "read": lambda self, n=-1: "y\n",
+            },
+        )(),
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+    # Must not raise
+    _warn_postgres_env_conflict("keychain-password")
+
+
+def test_sec2_interactive_no_raises(monkeypatch):
+    """
+    SEC-2: In an interactive session, answering 'n' to the conflict prompt
+    must raise RuntimeError to abort startup.
+    """
+    import io
+    from src.database import _warn_postgres_env_conflict
+
+    monkeypatch.setenv("POSTGRES_PASSWORD", "env-password")
+    monkeypatch.delenv("POSTGRES_PASSWORD_OVERRIDE_ACKNOWLEDGED", raising=False)
+    monkeypatch.setattr(
+        "sys.stdin", type("_FakeTTY", (), {"isatty": lambda self: True})()
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "n")
+
+    with pytest.raises(RuntimeError, match="Startup aborted"):
+        _warn_postgres_env_conflict("keychain-password")

@@ -79,6 +79,10 @@ venv/
 htmlcov/
 .coverage
 
+# Agent quality transcripts — generated at runtime, not committed
+# Keep the directory (tracked via .gitkeep) but not its contents
+tests/agent_quality_transcripts/*.json
+
 # Logs
 logs/
 *.log
@@ -97,6 +101,7 @@ CLAUDE.md
 # ── Personal / Private Notes ──────────────────────────────────
 jp.md
 jp_todo.md
+jp_testing.md
 
 # ── Session / Checkpoint Files (local dev sync, never commit) ─
 session.md

@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections import defaultdict
 from uuid import uuid4
@@ -56,6 +57,27 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from src.gateway.metrics import inc_counter
+
+# ── Path normalisation for Prometheus labels ──────────────────────────────────
+# Recording raw request paths as Prometheus label values creates one label series
+# per unique path.  With UUID or numeric IDs in paths (/tasks/abc-123-...) this
+# explodes cardinality unboundedly and will OOM the in-process label store.
+# This regex replaces high-cardinality path segments with placeholders so that
+# /tasks/abc-123/notes/42 → /tasks/{id}/notes/{id} — a single stable series.
+_HIGH_CARDINALITY_RE = re.compile(
+    r"(?<=/)"  # must follow a slash (don't mangle the leading /)
+    r"("
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # UUID v4
+    r"|[0-9]{4,}"  # numeric ID ≥ 4 digits
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _normalize_path(path: str) -> str:
+    """Replace UUIDs and long numeric IDs in a URL path with ``{id}``."""
+    return _HIGH_CARDINALITY_RE.sub("{id}", path)
+
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +139,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             "legionforge_http_requests_total",
             {
                 "method": request.method,
-                "path": request.url.path,
+                "path": _normalize_path(request.url.path),
                 "status": str(response.status_code),
             },
         )
@@ -186,7 +208,13 @@ class SubmissionRateLimitMiddleware(BaseHTTPMiddleware):
                     self._windows[key] = [
                         t for t in self._windows[key] if now - t < self._WINDOW_SECONDS
                     ]
-                    if len(self._windows[key]) >= limit:
+                    # Clean up empty buckets immediately after eviction — this is the
+                    # correct placement.  Checking after append() is dead code because
+                    # the list is never empty after an append.  Without this, stale
+                    # empty buckets from churned users accumulate in the dict.
+                    if not self._windows[key]:
+                        del self._windows[key]
+                    if len(self._windows.get(key, [])) >= limit:
                         logger.warning(
                             "[rate-limit] Submission rate limit hit key=%s path=%s",
                             key[:20],
@@ -208,8 +236,5 @@ class SubmissionRateLimitMiddleware(BaseHTTPMiddleware):
                             headers={"Retry-After": str(self._WINDOW_SECONDS)},
                         )
                     self._windows[key].append(now)
-                    # Clean up empty buckets to prevent unbounded dict growth
-                    if not self._windows[key]:
-                        del self._windows[key]
 
         return await call_next(request)

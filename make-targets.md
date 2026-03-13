@@ -108,12 +108,15 @@ All commands assume the venv is active: `source venv/bin/activate`
 
 | Target | Description | Arguments |
 |--------|-------------|-----------|
-| `test` | Run all tests | — |
-| `test-fast` | Run all tests except slow ones | — |
-| `test-smoke` | 1920 smoke tests, ~25s, no external services required | — |
+| `test` | Run all test suites (smoke → testlab → ui in separate sessions) | — |
+| `test-fast` | Smoke + TestLab + UI, excluding slow/LLM tests | — |
+| `test-smoke` | 2133 smoke tests, ~21s, no external services required | — |
 | `test-integration` | 38 integration tests (requires PostgreSQL — `make db-start` first) | — |
 | `test-kerberos` | 5 live-KDC Kerberos tests | `[KERBEROS_TEST_KDC=1]` `[KERBEROS_REALM=TEST.LOCAL]` `[KERBEROS_KEYTAB=/tmp/test.keytab]` `[KERBEROS_TEST_USER=testuser]` `[KERBEROS_TEST_PASS=testpass]` |
-| `test-all` | Smoke + integration tests | — |
+| `test-all` | Single-session run of all tests (for CI/quick checks) | — |
+| `test-ui` | 40 Playwright UI tests headless (separate pytest session) | — |
+| `test-testlab-all` | All 110+ testlab_suite tests (excludes LLM/CVE tests, separate session) | — |
+| `test-agent` | Live agent quality suite — submit real queries, assert structure, save transcripts. **Requires gateway + Ollama + `GATEWAY_API_KEY`.** Opt-in only; not part of `make test` or `make ci`. | `GATEWAY_API_KEY=<key>` `[GATEWAY_URL=http://localhost:8080]` `[AGENT_TRANSCRIPT_DIR=...]` |
 
 ---
 
@@ -161,6 +164,13 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `test-tool-accuracy` | Tool unit tests — web_fetch/web_search accuracy, no LLM | — |
 | `test-researcher-accuracy` | Researcher anti-hallucination tests (requires Ollama + PostgreSQL, ~90s) | — |
 | `test-tool-all` | All tool accuracy tests (fast + LLM) | — |
+| `test-hallucination` | Live hallucination tests — real internet + LLM stack (~2min/test, manually run) | — |
+| `test-tool-integrity` | All tool runtime integrity tests (schema, injection, Guardian, sandbox, memory) | — |
+| `test-tool-integrity-schema` | Schema conformance only — fast, no services required | — |
+| `test-tool-integrity-injection` | Result injection + PII scrubbing tests (requires Ollama + PostgreSQL) | — |
+| `test-tool-integrity-guardian` | Guardian sidecar e2e tests (requires `make guardian-start`) | — |
+| `test-tool-integrity-sandbox` | code_execute sandbox containment (requires `make sandbox-build`) | — |
+| `test-tool-integrity-memory` | memory_write/memory_recall isolation tests (requires PostgreSQL) | — |
 
 ---
 
@@ -194,8 +204,9 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `lint` | Black formatter check on src/, tests/, config/ | — |
 | `format` | Auto-format code with Black | — |
 | `js-check` | Syntax-check JS extracted from index.html via `node --check` | — |
-| `security-audit` | Smoke tests + JS check + bandit static analysis + secret scan | — |
-| `review-prep` | All PR gates: formatting + smoke + bandit + secret scan + dependency check + scope check | — |
+| `dep-audit` | Scan dependencies for known CVEs via pip-audit (OSV/PyPI Advisory DB) | — |
+| `security-audit` | Full test suite + JS check + bandit + dep-audit (CVE scan) + secret scan | — |
+| `review-prep` | All PR gates: formatting + smoke + bandit + dep-audit + secret scan + dependency check + scope check | — |
 
 ---
 
@@ -315,6 +326,8 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `credential-store-status` | Show CredentialStore status — which services are loaded | — |
 | `install-launch-agent` | Install `com.legionforge.check-agent-drive` LaunchAgent | — |
 | `install` | Install/update Python packages from requirements.txt | — |
+| `install-locked` | Install exact pinned versions from requirements.lock | — |
+| `lock` | Regenerate requirements.lock from requirements.txt (run after dep changes) | — |
 
 ---
 

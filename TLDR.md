@@ -1,7 +1,7 @@
 # TLDR.md
 # LegionForge — What Is This and What Are We Building?
 
-**Version:** 0.7.0-alpha
+**Version:** 0.7.1-alpha
 **Last updated:** 2026-03-08
 
 ---
@@ -16,11 +16,11 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–381 complete. v0.7.0-alpha — active development toward v1.0.0.**
+✅ **Phases 0–381 complete. v0.7.1-alpha — active development toward v1.0.0.**
 
 The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
 
-**2106/2106 smoke tests passing** (~17s, no external services required).
+**2125/2125 smoke tests passing** (~21s, no external services required).
 **38/38 integration tests** (PostgreSQL required — `make test-integration`).
 **40/40 UI tests** (`make test-ui`).
 **79/79 tool accuracy tests** (`make test-tool-accuracy`).
@@ -176,7 +176,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 ---
 
-## Known Gaps (as of v0.7.0-alpha)
+## Known Gaps (as of v0.7.1-alpha)
 
 ~~**PostgreSQL trust auth**~~ — **Closed (PR #212).** Local connections now use `peer` auth (Unix socket) and `scram-sha-256` (TCP). Passwords stored in `~/.pgpass`. New-developer installs: `export POSTGRES_TRUST_AUTH=true` before `make db-init` (PR #213).
 

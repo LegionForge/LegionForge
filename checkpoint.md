@@ -1,12 +1,14 @@
-VERSION: 0.7.0-alpha
-UPDATE: 287
+VERSION: 0.7.1-alpha
+UPDATE: 320
 BRANCH: dev
-COMMIT: 6ff7eea
-TIMESTAMP: 2026-03-08T20:26Z
-LAST_OP: doc sync (2106 counts, qwen2.5:7b, 5-role DB) + sync-guardian jp-cruz→jp-cruz authorship rewrite fix
-SMOKE_TESTS: 2106/2106
-INTEGRATION_TESTS: 38/38 + 3 RLS integration tests pending (require roles to exist)
+COMMIT: 19afdaa
+TIMESTAMP: 2026-03-12T08:00Z
+LAST_OP: feat: chat-mode UI toggle + hallucination/tool-integrity test suites (45 new tests across 6 files)
+SMOKE_TESTS: 2192/2192
+INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
 TESTLAB_SUITE: 104/104
 TOOL_ACCURACY_TESTS: 79/79 (29 existing + 50 web_fetch_js)
+HALLUCINATION_TESTS: 12 (live web + UUID nonce anti-fabrication; manually run)
+TOOL_INTEGRITY_TESTS: 33 (schema conformance 12 + result injection 4 + Guardian e2e 5 + sandbox 6 + memory isolation 6)

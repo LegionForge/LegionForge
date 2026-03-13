@@ -137,6 +137,59 @@ def build_task_complete_event(
     return {"event": "task_complete", "data": data}
 
 
+_TASK_ERROR_TRANSLATIONS: list[tuple[str, str]] = [
+    (
+        "connection refused",
+        "Could not reach the AI model. Make sure Ollama is running: `brew services start ollama`",
+    ),
+    (
+        "connecterror",
+        "Could not reach the AI model. Make sure Ollama is running: `brew services start ollama`",
+    ),
+    (
+        "timeout",
+        "The AI model took too long to respond. It may still be loading — try again in a moment.",
+    ),
+    (
+        "timed out",
+        "The AI model took too long to respond. It may still be loading — try again in a moment.",
+    ),
+    (
+        "model not found",
+        "The requested model is not available. Run `ollama pull <model>` to download it.",
+    ),
+    (
+        "daily budget",
+        "Daily token budget exceeded. Try again tomorrow or ask an admin to raise your quota.",
+    ),
+    (
+        "preflight budget",
+        "This request exceeds your remaining token budget for today.",
+    ),
+    (
+        "injection detected",
+        "The request was blocked: a security pattern was detected in the input.",
+    ),
+    (
+        "security halt",
+        "The task was stopped by the security system. Check the audit log for details.",
+    ),
+    (
+        "recursionerror",
+        "The agent hit its maximum step limit. Try a more specific query.",
+    ),
+]
+
+
+def _friendly_task_error(error: str) -> str:
+    """Translate a raw exception/error string into a user-facing message."""
+    lowered = error.lower()
+    for key, msg in _TASK_ERROR_TRANSLATIONS:
+        if key in lowered:
+            return msg
+    return "An unexpected error occurred. The task could not be completed."
+
+
 def build_task_error_event(task_id: str, error: str) -> dict:
     return {
         "event": "task_error",
@@ -144,6 +197,7 @@ def build_task_error_event(task_id: str, error: str) -> dict:
             "task_id": task_id,
             "status": "failed",
             "error": error,
+            "user_message": _friendly_task_error(error),
             "timestamp": _now(),
         },
     }

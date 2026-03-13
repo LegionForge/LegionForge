@@ -135,8 +135,8 @@ models:
 # ── Agent Safeguard Limits ────────────────────────────────────
 # Tuned for 16GB hardware — adjust up for more powerful machines
 safeguards:
-  default_recursion_limit: 15
-  max_recursion_limit: 30         # Hard ceiling — never exceed this
+  default_recursion_limit: 40     # Raised: researcher 6-tool budget = ~14 nodes; orchestrator fan-out adds more
+  max_recursion_limit: 80         # Hard ceiling — never exceed this
   default_token_budget: 50000     # Tokens per run
   max_token_budget: 150000
   loop_detection_window: 5        # Look at last N actions for repetition
@@ -446,3 +446,4 @@ db_maintenance:
   health_metrics_days: 30 # prune health_metrics rows
   threat_events_days: 90  # prune threat_events rows
   audit_log_days: 90      # prune audit_log rows (anchor-based, 90-day verifiable)
+  task_events_days: 30    # prune task timeline events (cascade covers deleted tasks; this catches long-lived active tasks)

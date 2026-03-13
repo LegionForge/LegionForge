@@ -372,9 +372,9 @@ class DocumentIngestor:
         Returns dicts with: id, namespace, content_preview (first 200 chars),
         metadata, created_at.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             rows = await conn.fetch(
                 """
@@ -406,9 +406,9 @@ class DocumentIngestor:
 
         Returns True if a row was deleted, False if not found.
         """
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             result = await conn.execute(
                 "DELETE FROM documents WHERE id = $1 AND namespace = $2",

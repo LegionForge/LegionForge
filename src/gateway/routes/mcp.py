@@ -38,10 +38,10 @@ async def list_tools(user: dict = Depends(require_user)) -> dict:
     Full metadata (schemas, capability boundaries) is Phase 9 work.
     """
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
         from psycopg.rows import dict_row
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             cur = await conn.execute(

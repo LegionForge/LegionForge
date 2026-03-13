@@ -123,7 +123,9 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) | ✅ Complete |
 | **Dual License** | AGPLv3 open source + commercial license; `COMMERCIAL_LICENSE.md` + `CLA.md` added (PR #229) | ✅ Complete |
 
-**2054/2054 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
+| **DB security hardening** | RLS fail-closed (empty user_id sees zero rows), pool hard-fail (no silent privilege escalation), log-bomb cap on threat events, Prometheus label normalization, rate-limit memory leak fix — 17 regression tests | ✅ Complete |
+
+**2151/2151 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -147,6 +149,11 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | Issue | Severity | Status |
 |---|---|---|
 | ~~**PostgreSQL `trust` auth**~~ — any local process can connect to the DB without a password | Medium (local dev) / High (shared/remote) | ✅ **Closed — PR #212.** Now uses `peer` (Unix socket) + `scram-sha-256` (TCP). Passwords in `~/.pgpass`. |
+| ~~**RLS escape hatch**~~ — `app.user_id = ''` passed RLS for all rows | High | ✅ **Closed 2026-03-11.** Empty `user_id` now sees zero rows (fail-closed). |
+| ~~**Pool privilege escalation**~~ — gateway/readonly pools fell back to BYPASSRLS worker on failure | High | ✅ **Closed 2026-03-11.** All pools now raise `RuntimeError` — no silent privilege escalation. |
+| ~~**Worker pool → admin fallback**~~ — worker pool failure fell back to superuser DB credentials | High | ✅ **Closed 2026-03-11.** Hard-fails on missing `legionforge_worker` role. |
+| **Key rotation stream token invalidation** | Medium | Open (DB-3) |
+| **Threat rule HITL gate** — worker can write `threat_rules` without approval | High | Open (SEC-1) |
 
 ---
 
@@ -175,7 +182,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 2054 passed in ~21s
+# Expected: 2125 passed in ~21s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -228,7 +235,7 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 2054 smoke tests, ~21s, no services required
+make test-smoke      # 2125 smoke tests, ~21s, no services required
 make test-integration  # 38 integration tests (requires PostgreSQL)
 make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui         # 40 UI tests (Playwright)
@@ -259,17 +266,23 @@ make revoke-tool TOOL_ID=<id>  # Emergency tool revocation
 
 ## Acknowledgements
 
-LegionForge exists in a space shaped by several projects worth calling out directly.
+LegionForge exists in a space shaped by several projects and thinkers worth calling out directly.
 
-**[OpenClaw](https://github.com/openClaw)** — the closest spiritual peer. OpenClaw's six-component architecture (Gateway, Agent, Tools, Workspace, Sessions, Nodes) and its workspace-as-files memory model (AGENTS.md, SOUL.md, USER.md, MEMORY.md, daily logs) are genuinely well-designed. LegionForge takes a different bet — PostgreSQL-backed state over flat files, deterministic security enforcement over convention — but OpenClaw showed what a serious self-hosted agent system looks like and set a high bar.
-
-**[Moltbot](https://github.com/moltbot)** — another self-hosted agent framework that demonstrated real multi-agent coordination before most projects were thinking about it. The multi-agent isolation patterns here were informed in part by seeing what Moltbot got right (and where it left security as an exercise for the operator).
+**[OpenClaw](https://github.com/openclaw/openclaw)** (Peter Steinberger — née Clawd → Clawdbot → Moltbot → OpenClaw) — the primary inspiration for LegionForge. OpenClaw proved the demand: 60,000 GitHub stars in 72 hours in January 2026. Its six-component architecture, workspace-as-files memory model, and "agent as messaging contact" UX are genuinely well-designed and directly influenced LegionForge's architecture. It also had 512 vulnerabilities found by Kaspersky post-release and active data exfiltration in third-party skills found by Cisco. LegionForge is building in the opposite order: security first, product on top. Everything in Guardian, SecureToolNode, and the security stack exists because OpenClaw made the cost of skipping that work concrete.
 
 **[LangGraph](https://github.com/langchain-ai/langgraph)** — the graph execution engine underneath everything. The checkpoint-based state persistence and the recursion-limit loop protection are LangGraph primitives that LegionForge builds on heavily.
 
 **[LangChain](https://github.com/langchain-ai/langchain)** and the broader open-source LLM tooling ecosystem — without the ecosystem of open weights models, open inference runtimes (Ollama), and open tooling, a project like this on consumer hardware wouldn't be possible.
 
+**[LATM — Learning to Use Tools by Making Them](https://arxiv.org/abs/2305.17126)** (Cai et al., ICLR 2024) and **[Voyager](https://arxiv.org/abs/2305.16291)** (Wang et al., NVIDIA 2023) — the closest published academic work to LegionForge-Anneal's crystallization pipeline. Both explore converting LLM-generated actions into reusable tools. LegionForge's contribution is the production-hardening layer: sandboxed execution, adversarial testing, Ed25519 signing, and HITL gate.
+
+**[Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)** by Robert S. Balch II — a deterministic semantic memory system using graph traversal (the STAR algorithm) instead of vector embeddings. Anchor Engine's core insight — that agent memory should be *deterministic and explainable*, not statistically fuzzy — directly informed LegionForge's temporal decay weighting in memory recall. The STAR gravity formula (`similarity × e^(-λ·age)`) is adapted from Anchor's whitepaper for the `similarity_search` temporal decay path in `src/database.py`.
+
+**[The AI-Human Engineering Stack](https://github.com/hjasanchez/agentic-engineering)** by Hayen Mill and Henrique Jr. Sanchez (March 2026) — a framework for thinking about the five cognitive layers of AI engineering (Prompt, Context, Intent, Judgment, Coherence) plus Evaluation and Harness as cross-cutting meta-functions. The Manus Insight from this paper — that KV-cache hit rate is the single most important production agent metric, and that context should be ordered stable-first — directly motivated the message assembly reordering in `src/base_graph.py`.
+
 The security-first design of LegionForge is a direct response to watching these ecosystems grow fast and ship security as an afterthought. That's not a criticism — it's the reality of how open-source evolves. This project is an attempt to show what the stack looks like when security is the first constraint, not the last.
+
+For the full canonical record of design influences, academic inspirations, and third-party attributions, see [`CREDITS.md`](CREDITS.md). For machine-readable citation data, see [`CITATION.cff`](CITATION.cff).
 
 ---
 
@@ -290,6 +303,6 @@ Copyright 2026 John Paul "Jp" Cruz.
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2054/2054 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
+**v0.7.1-alpha** — Phases 0–381 + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2125/2125 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

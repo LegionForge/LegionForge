@@ -624,6 +624,238 @@
       font-size: 12px;
       line-height: 1.5;
     }
+    /* ── Partial-tools-blocked banner (yellow — some blocked, some OK) ── */
+    .partial-tools-blocked-banner {
+      display: block;
+      margin: 6px 0 2px;
+      padding: 6px 10px;
+      background: rgba(210, 153, 34, 0.10);
+      border: 1px solid rgba(210, 153, 34, 0.35);
+      border-radius: 4px;
+      color: #d29922;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    /* ── Chat conversation history ──────────────────────────────── */
+    #chat-history {
+      display: none;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .chat-turn { margin-bottom: 14px; }
+    .chat-user-label, .chat-agent-label {
+      font-size: 10px;
+      color: var(--text-xdim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 3px;
+    }
+    .chat-user-text {
+      background: rgba(88,166,255,0.07);
+      border-left: 2px solid var(--accent);
+      padding: 5px 9px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-radius: 0 3px 3px 0;
+    }
+    .chat-agent-text { font-size: 13px; line-height: 1.55; }
+    .chat-agent-text p { margin: 0 0 6px; }
+    /* ── Follow-up input (chat continuation) ───────────────────── */
+    .chat-followup {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .chat-followup textarea {
+      width: 100%;
+      min-height: 48px;
+      max-height: 200px;
+      resize: vertical;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 8px;
+      box-sizing: border-box;
+    }
+    .chat-followup textarea:focus { outline: none; border-color: var(--accent); }
+    .chat-followup-actions { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+
+    /* ── Chat Mode ──────────────────────────────────────────────── */
+    /* Applied as body.chat-mode via toggleChatMode(). All admin cards
+       are hidden, layout becomes a full-viewport conversation thread
+       with a sticky input bar at the bottom. */
+
+    body.chat-mode {
+      overflow: hidden;
+    }
+    body.chat-mode #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0;
+      gap: 0;
+    }
+    body.chat-mode #header {
+      flex-shrink: 0;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-top: none;
+    }
+    body.chat-mode #service-banner { display: none !important; }
+
+    /* Collapse config card to a single compact row */
+    body.chat-mode #config {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+    }
+    body.chat-mode #config .card-title       { display: none; }
+    body.chat-mode #config-apikey-row        { display: none !important; }
+    body.chat-mode #config-model-row         { display: none !important; }
+    body.chat-mode #config .field-row        { flex: 1; min-width: 140px; margin: 0; }
+    body.chat-mode #config .field-row label  { display: none; }
+    body.chat-mode #config .field-row select,
+    body.chat-mode #config .field-row input  { width: 100%; font-size: 12px; }
+
+    /* Hide all dashboard operator cards */
+    body.chat-mode .card:not(#config):not(#chat-input-card):not(#chat-output-card) {
+      display: none !important;
+    }
+
+    /* Output card — scrollable conversation thread */
+    body.chat-mode #chat-output-card {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      scroll-behavior: smooth;
+    }
+    body.chat-mode #output-header {
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      z-index: 2;
+      border-bottom: 1px solid var(--border2);
+      padding: 6px 14px;
+    }
+    body.chat-mode #output-header .card-title { display: none; }
+    body.chat-mode #chat-history {
+      padding: 16px 16px 0;
+    }
+    body.chat-mode #output {
+      padding: 4px 16px 16px;
+      background: transparent;
+      min-height: 0;
+    }
+
+    /* User and agent message bubbles */
+    body.chat-mode .chat-turn { margin-bottom: 22px; }
+    body.chat-mode .chat-user-label,
+    body.chat-mode .chat-agent-label {
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+    body.chat-mode .chat-user-text {
+      background: rgba(88,166,255,0.09);
+      border-left: 3px solid var(--blue);
+      border-radius: 0 12px 12px 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      max-width: 88%;
+      margin-bottom: 0;
+    }
+    body.chat-mode .chat-agent-text {
+      background: var(--panel2);
+      border: 1px solid var(--border2);
+      border-radius: 12px 12px 12px 0;
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 92%;
+    }
+
+    /* Live streaming bubble */
+    body.chat-mode .o-stream {
+      display: block;
+      background: var(--panel2);
+      border: 1px solid var(--border2);
+      border-radius: 12px 12px 12px 0;
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 92%;
+      margin-top: 0;
+      border-top: 1px solid var(--border2);
+    }
+    body.chat-mode .o-result {
+      background: var(--panel2);
+      border: 1px solid var(--border2);
+      border-radius: 12px 12px 12px 0;
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 92%;
+      border-top: 1px solid var(--border2);
+      margin-top: 0;
+    }
+    body.chat-mode .o-error {
+      background: rgba(248,81,73,0.08);
+      border: 1px solid rgba(248,81,73,0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      max-width: 92%;
+    }
+    /* Suppress verbose status/node lines — the status bar handles this */
+    body.chat-mode .o-status,
+    body.chat-mode .o-node,
+    body.chat-mode .o-ready  { display: none; }
+
+    /* Input card — pinned to bottom */
+    body.chat-mode #chat-input-card {
+      flex-shrink: 0;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      border-top: 1px solid var(--border);
+      padding: 10px 14px 14px;
+    }
+    body.chat-mode #chat-input-card .card-title { display: none; }
+    body.chat-mode #task-input {
+      min-height: 46px;
+      max-height: 180px;
+      border-radius: 22px;
+      padding: 11px 16px;
+      font-size: 14px;
+    }
+    body.chat-mode #action-bar { margin-top: 8px; }
+    /* Simplify action bar — hide tools that clutter the chat input area */
+    body.chat-mode #estimate-btn,
+    body.chat-mode #char-count,
+    body.chat-mode #cost-estimate,
+    body.chat-mode #attach-label,
+    body.chat-mode #attach-name { display: none !important; }
+
+    /* Chat-mode toggle button state */
+    #chat-mode-btn.active { color: var(--blue); border-color: var(--blue); }
 
     /* ── Version footer ─────────────────────────────────────────── */
     #version-footer {
@@ -680,6 +912,7 @@
     <span class="subtitle">agent gateway</span>
     <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion">🔕</button>
     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
+    <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">💬</button>
     <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts (Phase 91)" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
     <div id="conn-dot" title="Stream connection status"></div>
   </div>
@@ -694,7 +927,7 @@
   <div class="card" id="config">
     <div class="card-title">Configuration</div>
 
-    <div class="field-row">
+    <div class="field-row" id="config-apikey-row">
       <label for="api-key">API Key</label>
       <input type="password" id="api-key" placeholder="Paste your API key" autocomplete="off" spellcheck="false">
       <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key">👁</button>
@@ -710,7 +943,7 @@
       </select>
     </div>
 
-    <div class="field-row">
+    <div class="field-row" id="config-model-row">
       <label for="model-select">Model</label>
       <select id="model-select" onchange="setModelPref(this.value)" style="flex:1;" title="Select a model installed in Ollama">
         <option value="">Loading models…</option>
@@ -728,7 +961,7 @@
   </div>
 
   <!-- ── Input card ─────────────────────────────────────── -->
-  <div class="card">
+  <div class="card" id="chat-input-card">
     <div class="card-title">Task</div>
     <textarea id="task-input"
       placeholder="Enter a task or question…&#10;&#10;Examples:&#10;  Research the latest developments in AI agent security&#10;  Summarize this document: [paste text]&#10;  What is the current threat landscape for RAG systems?"
@@ -752,7 +985,7 @@
   </div>
 
   <!-- ── Output card ────────────────────────────────────── -->
-  <div class="card">
+  <div class="card" id="chat-output-card">
     <div id="output-header">
       <div class="card-title">Output</div>
       <div id="status-bar">
@@ -762,6 +995,7 @@
       </div>
       <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" style="margin-left:8px">⎘</button>
     </div>
+    <div id="chat-history"></div>
     <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
   </div>
 
@@ -4792,6 +5026,50 @@ async function deleteCurrentSession() {
 function onSessionChange(val) {
   S.sessionId = val || null;
   $('del-session-btn').style.display = val ? 'inline-flex' : 'none';
+  loadSessionHistory(val || null);
+}
+
+// ── Chat session history ──────────────────────────────────────────
+async function loadSessionHistory(sessionId) {
+  const histDiv = $('chat-history');
+  if (!histDiv) return;
+  if (!sessionId) { histDiv.style.display = 'none'; histDiv.innerHTML = ''; return; }
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { histDiv.style.display = 'none'; return; }
+  try {
+    const r = await apiFetch('/sessions/' + sessionId + '/tasks');
+    if (!r.ok) { histDiv.style.display = 'none'; return; }
+    const data = await r.json();
+    const tasks = (data.tasks || []).filter(t => t.status === 'complete' && t.result);
+    if (tasks.length === 0) { histDiv.style.display = 'none'; return; }
+    histDiv.innerHTML = '';
+    tasks.forEach(t => {
+      const turn = document.createElement('div');
+      turn.className = 'chat-turn';
+      const inputHtml = escapeHtml((t.input || '').slice(0, 600));
+      turn.innerHTML =
+        '<div class="chat-user-label">👤 You</div>' +
+        '<div class="chat-user-text">' + inputHtml + '</div>' +
+        '<div class="chat-agent-label">🤖 Agent</div>' +
+        '<div class="chat-agent-text">' + renderMarkdown(t.result) + '</div>';
+      histDiv.appendChild(turn);
+    });
+    histDiv.style.display = 'block';
+    histDiv.scrollTop = histDiv.scrollHeight;
+  } catch(_) { histDiv.style.display = 'none'; }
+}
+
+// Submit a follow-up within the current session
+function submitFollowup() {
+  const inp = $('chat-followup-input');
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) return;
+  const fu = $('chat-followup-div');
+  if (fu) fu.remove();
+  el.taskInput().value = text;
+  onTaskInput(el.taskInput());
+  submitTask();
 }
 
 // ── Textarea auto-resize + char count ────────────────────────────
@@ -4838,6 +5116,8 @@ function appendSpan(text, cls) {
   out.scrollTop = out.scrollHeight;
   // Accumulate plain text for copy
   S.outputBuffer += text;
+  // In chat mode, keep the thread scrolled to bottom
+  if (document.body.classList.contains('chat-mode')) scrollChatToBottom();
 }
 
 function appendHTML(html) {
@@ -5178,6 +5458,24 @@ async function submitTask() {
   // Close any existing stream
   if (S.activeES) { S.activeES.close(); S.activeES = null; }
 
+  // In chat mode: immediately render the user's message as a bubble in the thread
+  if (document.body.classList.contains('chat-mode')) {
+    const histDiv = $('chat-history');
+    if (histDiv) {
+      const pendingTurn = document.createElement('div');
+      pendingTurn.className = 'chat-turn';
+      pendingTurn.id = 'chat-pending-turn';
+      pendingTurn.innerHTML =
+        '<div class="chat-user-label">👤 You</div>' +
+        '<div class="chat-user-text">' + escapeHtml(task) + '</div>';
+      histDiv.appendChild(pendingTurn);
+      histDiv.style.display = 'block';
+      scrollChatToBottom();
+    }
+    el.taskInput().value = '';
+    onTaskInput(el.taskInput());
+  }
+
   // Reset UI
   el.output().innerHTML = '';
   S.outputBuffer = '';
@@ -5330,7 +5628,7 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
     try {
       const d = JSON.parse(e.data);
-      finishRun('error', d.error || 'Unknown error', taskId, agent, taskInput, 0);
+      finishRun('error', d.user_message || d.error || 'Unknown error', taskId, agent, taskInput, 0);
     } catch(_) { finishRun('error', 'Stream error', taskId, agent, taskInput, 0); }
     es.close();
     S.activeES = null;
@@ -5415,6 +5713,29 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
   };
 }
 
+// ── Friendly error translation (client-side fallback for REST responses) ──────
+// SSE task_error events carry a server-side user_message; this covers the
+// polling/REST path where only the raw error string is available.
+const _ERROR_HINTS = [
+  ['connection refused',   'Could not reach the AI model. Make sure Ollama is running.'],
+  ['connecterror',         'Could not reach the AI model. Make sure Ollama is running.'],
+  ['timeout',              'The AI model timed out. It may still be loading — try again.'],
+  ['timed out',            'The AI model timed out. It may still be loading — try again.'],
+  ['model not found',      'The requested model is not available. Run `ollama pull <model>`.'],
+  ['daily budget',         'Daily token budget exceeded. Try again tomorrow or contact an admin.'],
+  ['preflight budget',     'This request exceeds your remaining token budget for today.'],
+  ['injection detected',   'Request blocked: a security pattern was detected in the input.'],
+  ['recursionerror',       'The agent hit its step limit. Try a more specific query.'],
+];
+function friendlyError(raw) {
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+  for (const [key, msg] of _ERROR_HINTS) {
+    if (low.includes(key)) return msg;
+  }
+  return raw;
+}
+
 // ── Fetch task result ─────────────────────────────────────────────
 async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
   if (S.activeES) { S.activeES.close(); S.activeES = null; }
@@ -5443,7 +5764,7 @@ async function fetchTaskResult(taskId, apiKey, agent, taskInputText) {
       appendResult(resultText.trim());
     }
     if (data.status === 'failed') {
-      finishRun('error', data.error || 'Task failed', taskId, agent, taskInputText, tokens);
+      finishRun('error', data.user_message || friendlyError(data.error) || 'Task failed', taskId, agent, taskInputText, tokens);
     } else if (data.status === 'cancelled') {
       finishRun('cancelled', 'Task cancelled', taskId, agent, taskInputText, tokens);
     } else {
@@ -5529,8 +5850,17 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
     if (S.toolsAttempted > 0 && S.toolsBlocked > 0 && S.toolsCompleted === 0) {
       appendHTML(
         '<span class="all-tools-failed-banner">' +
-        '⚠ All tool calls were blocked — this response could not be verified with live data ' +
-        'and may be based on training knowledge. Treat it as speculative.' +
+        '⚠️ All real-time lookups were blocked — this response is based entirely on model ' +
+        'memory (training data, not live information). Verify independently before acting on it.' +
+        '</span>'
+      );
+      appendSpan('\n', '');
+    } else if (S.toolsBlocked > 0 && S.toolsCompleted > 0) {
+      // Partial block: some tools ran, some were blocked. Response may mix live and memory data.
+      appendHTML(
+        '<span class="partial-tools-blocked-banner">' +
+        '⚠️ ' + S.toolsBlocked + ' real-time lookup' + (S.toolsBlocked > 1 ? 's were' : ' was') +
+        ' blocked. Parts of this response may come from model memory rather than live data.' +
         '</span>'
       );
       appendSpan('\n', '');
@@ -5580,6 +5910,34 @@ function finishRun(status, detail, taskId, agent, taskInputText, tokens) {
     }
     saveHistory({ task_id: taskId, agent_type: agent, input_preview: taskInputText.slice(0, 80), status: 'complete', elapsed_ms: Math.round(parseFloat(elapsed) * 1000), tokens, ts: Date.now() });
     notifyTaskComplete(taskInputText, elapsed);  // Phase 74
+    // Show follow-up input when a session is active (chat continuation)
+    if (S.sessionId) {
+      if (document.body.classList.contains('chat-mode')) {
+        // Chat mode: reload session history to show completed turn as a proper bubble,
+        // clear the pending turn placeholder, then focus the main input.
+        const pending = $('chat-pending-turn');
+        if (pending) pending.remove();
+        loadSessionHistory(S.sessionId).then(() => scrollChatToBottom());
+        setTimeout(() => { el.taskInput().focus(); }, 80);
+      } else {
+        const existingFu = $('chat-followup-div');
+        if (existingFu) existingFu.remove();
+        const fu = document.createElement('div');
+        fu.className = 'chat-followup';
+        fu.id = 'chat-followup-div';
+        fu.innerHTML =
+          '<div style="font-size:10px;color:var(--text-xdim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em">💬 Continue this conversation</div>' +
+          '<textarea id="chat-followup-input" placeholder="Ask a follow-up question…" ' +
+          'oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,180)+\'px\'" ' +
+          'onkeydown="if(event.key===\'Enter\'&&(event.metaKey||event.ctrlKey)){event.preventDefault();submitFollowup()}"></textarea>' +
+          '<div class="chat-followup-actions">' +
+          '<button class="btn primary" onclick="submitFollowup()">▶ Follow up <kbd style="font-size:10px;opacity:0.7">⌘↵</kbd></button>' +
+          '<button class="btn ghost" onclick="$(\'chat-followup-div\').remove()" title="Dismiss">✕</button>' +
+          '</div>';
+        el.output().appendChild(fu);
+        setTimeout(() => { const t = $('chat-followup-input'); if (t) t.focus(); }, 80);
+      }
+    }
   } else if (status === 'error') {
     setStatus('error', '✗ Error', detail);
     appendSpan('\n[error] ' + detail + '\n', 'o-error');
@@ -5648,6 +6006,8 @@ function clearOutput() {
   el.submitBtn().disabled = false;
   el.cancelBtn().style.display = 'none';
   S.activeTaskId = null;
+  // Reload session history so the cleared output still shows prior turns
+  if (S.sessionId) loadSessionHistory(S.sessionId);
 }
 
 // ── History ───────────────────────────────────────────────────────
@@ -13206,6 +13566,37 @@ async function toggleStar(idx, event) {
     });
   } catch(_) {}
 }
+
+// ── Chat Mode ─────────────────────────────────────────────────────
+
+function scrollChatToBottom() {
+  const card = $('chat-output-card');
+  if (card) card.scrollTop = card.scrollHeight;
+}
+
+function toggleChatMode() {
+  const isChat = document.body.classList.toggle('chat-mode');
+  localStorage.setItem('lf_chat_mode', isChat ? '1' : '');
+  const btn = $('chat-mode-btn');
+  if (btn) btn.classList.toggle('active', isChat);
+
+  if (isChat) {
+    // Auto-create a session if none is active so conversation is persisted
+    if (!S.sessionId) newSession();
+    scrollChatToBottom();
+    // Focus the input so the user can type immediately
+    setTimeout(() => el.taskInput().focus(), 80);
+  }
+}
+
+// Restore chat mode preference on page load
+(function restoreChatMode() {
+  if (localStorage.getItem('lf_chat_mode') === '1') {
+    document.body.classList.add('chat-mode');
+    const btn = $('chat-mode-btn');
+    if (btn) btn.classList.add('active');
+  }
+})();
 </script>
 </body>
 </html>

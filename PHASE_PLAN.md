@@ -1,7 +1,7 @@
 # PHASE_PLAN.md
 # LegionForge — Phased Roadmap
 
-**Version:** 0.7.0-alpha
+**Version:** 0.7.1-alpha
 **Last updated:** 2026-03-06
 **Status:** Phases 0–59 ✅ complete (846/846 smoke tests · 38/38 integration · 5/5 Kerberos · 40/40 UI)
 
@@ -2183,7 +2183,7 @@ Full OpenClaw memory parity. All implemented against existing `MemoryStore`/pgve
 
 **All 5 flags in `AgentMemoryConfig`:** `bootstrap_user_prefs`, `episodic_memory`, `flush_on_compaction`, `persona_bootstrap` (+ existing `recall_on_task`, `store_results`).
 
-**Current state (2026-03-07, post-PRs #227–#235):** 2055/2055 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) · `pip install legionforge-guardian` on PyPI · Dual license AGPLv3 + commercial · `COMMERCIAL_LICENSE.md` + `CLA.md` added
+**Current state (2026-03-10, post-PRs #227–#239):** 2125/2125 smoke · 38/38 integration · 5/5 Kerberos · 40/40 UI · 104/104 TestLab · 79/79 tool accuracy · Guardian live at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) · `pip install legionforge-guardian` on PyPI · Dual license AGPLv3 + commercial · `COMMERCIAL_LICENSE.md` + `CLA.md` added
 
 ---
 

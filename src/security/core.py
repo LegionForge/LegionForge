@@ -511,7 +511,7 @@ class ToolManifest:
         str
     ]  # e.g. ["reads_web", "calls_external_api:duckduckgo.com"]
     source: str  # "local" | "langchain" | "custom"
-    version: str = "0.7.0-alpha"
+    version: str = "0.7.1-alpha"
     entrypoint_func: Any = field(
         default=None, repr=False
     )  # callable; used for source hash
@@ -596,9 +596,9 @@ async def register_tool(
     # (register_researcher_tools / register_orchestrator_tools), which is the hot
     # path.  Lazy-load is only a fallback for tools registered out-of-process.
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """
@@ -699,10 +699,17 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
             row = await get_tool_registry_entry(tool_id)
             if row is not None:
                 raw_schema = row.get("input_schema", {})
+                if isinstance(raw_schema, str):
+                    try:
+                        raw_schema = json.loads(raw_schema)
+                    except (json.JSONDecodeError, ValueError):
+                        raw_schema = {}
+                elif not isinstance(raw_schema, dict):
+                    raw_schema = {}
                 manifest = ToolManifest(
                     tool_id=tool_id,
                     description=row["description"],
-                    input_schema=raw_schema if isinstance(raw_schema, dict) else {},
+                    input_schema=raw_schema,
                     declared_side_effects=[],
                     source=row.get("source", "local"),
                 )

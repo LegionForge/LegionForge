@@ -1,7 +1,7 @@
 # LegionForge — Product Vision & Target Architecture
 
 **Recorded:** 2026-02-27
-**Status:** Phases 0–381 complete + browser tools + Guardian spinoff — v0.7.0-alpha. All services operational. 1995/1995 smoke tests. See [`docs/quick-start.md`](./quick-start.md) to connect.
+**Status:** Phases 0–381 complete + browser tools + Guardian spinoff — v0.7.1-alpha. All services operational. 2125/2125 smoke tests. See [`docs/quick-start.md`](./quick-start.md) to connect.
 **Source:** Architecture retrospective and requirements session
 
 ---
@@ -15,7 +15,7 @@ built with the security foundations OpenClaw proved are necessary.
 
 ## What OpenClaw Showed Us
 
-OpenClaw (Clawdbot → Moltbot → OpenClaw, by Peter Steinberger) hit 60,000 GitHub stars
+OpenClaw (Clawd → Clawdbot → Moltbot → OpenClaw, by Peter Steinberger) hit 60,000 GitHub stars
 in 72 hours in January 2026. 300,000–400,000 users in weeks. The demand is real.
 
 It also had 512 vulnerabilities (8 critical) found by Kaspersky. Cisco found active data
@@ -200,7 +200,7 @@ The moon is visible and the rocket exists. The fuel budget is tighter than it lo
 
 ## Phase Roadmap — From Here
 
-> **As of v0.7.0-alpha:** Phases 8–16 and the UI tool library (Phases 60–381) are all
+> **As of v0.7.1-alpha:** Phases 8–16 and the UI tool library (Phases 60–381) are all
 > complete. The goals below were the original design targets; they are recorded here for
 > historical reference. The architecture described was implemented as specified.
 

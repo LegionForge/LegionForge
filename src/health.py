@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="LegionForge",
     description="Health and status API for the local agent framework",
-    version="0.7.0-alpha",
+    version="0.7.1-alpha",
 )
 
 _startup_time = time.monotonic()
@@ -200,7 +200,7 @@ async def _sign_and_register(package: dict, approved_by: str) -> dict:
         input_schema=input_schema,
         declared_side_effects=declared_side_effects,
         source="crystallization_pipeline",
-        version="0.7.0-alpha",
+        version="0.7.1-alpha",
         entrypoint_func=None,  # crystallized tools have no Python entrypoint at registration
     )
 
@@ -962,10 +962,10 @@ async def list_pentest_runs(request: Request) -> JSONResponse:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
         from psycopg.rows import dict_row
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             rows = await conn.fetchall(
@@ -1185,12 +1185,12 @@ async def approve_pentest_rule(
     try:
         from src.database import (
             append_audit_log,
-            get_pool,
+            get_worker_pool,
             promote_pentest_rule_to_threat_rule,
         )
         from psycopg.rows import dict_row
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             conn.row_factory = dict_row
             rows = await conn.fetchall(

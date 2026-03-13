@@ -262,9 +262,9 @@ async def _tool_entries_from_db() -> list[BOMEntry]:
     Falls back to an empty list if the DB is unavailable.
     """
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 """

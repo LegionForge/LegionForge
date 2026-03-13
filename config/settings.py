@@ -653,6 +653,37 @@ class ModelPreferencesConfig(BaseModel):
         return getattr(self, pref, None)
 
 
+class DatabaseConfig(BaseModel):
+    """
+    Connection-level behaviour for worker pool connections.
+
+    These settings are applied inside get_worker_connection() on each
+    connection acquisition, not at pool creation time, so they can be
+    changed in YAML without restarting the pool.
+
+    statement_timeout_ms
+        Maximum duration of any single SQL statement on a worker connection.
+        Kills runaway queries (full-table scans, bad JOINs) before they
+        block the worker pool.  LLM calls happen outside DB connections so
+        this does NOT limit task duration.
+        0 = disabled (not recommended in production).
+        Default: 30 000 ms (30 s) — generous for the heaviest legitimate
+        queries (verify_audit_log_chain, pgvector similarity search).
+
+    idle_in_transaction_timeout_ms
+        Maximum time a worker connection may sit idle inside an open
+        transaction.  Kills connections that opened a transaction and then
+        hung (crashed agent, network partition) before they hold row locks
+        indefinitely.  This is set at pool creation time (not per-
+        connection) so changing it requires a pool restart.
+        0 = disabled.
+        Default: 60 000 ms (60 s).
+    """
+
+    statement_timeout_ms: int = 30_000
+    idle_in_transaction_timeout_ms: int = 60_000
+
+
 class DbMaintenanceSettings(BaseModel):
     """
     Per-table retention schedule for nightly DB maintenance.
@@ -668,6 +699,7 @@ class DbMaintenanceSettings(BaseModel):
     health_metrics_days: int = 30
     threat_events_days: int = 90
     audit_log_days: int = 90
+    task_events_days: int = 30
 
 
 class HardwareSettings(BaseModel):
@@ -688,6 +720,7 @@ class HardwareSettings(BaseModel):
     search: SearchSettings = SearchSettings()
     model_preferences: ModelPreferencesConfig = ModelPreferencesConfig()
     db_maintenance: DbMaintenanceSettings = DbMaintenanceSettings()
+    database: DatabaseConfig = DatabaseConfig()
 
     def apply_to_environment(self) -> None:
         os.environ.setdefault("OLLAMA_MODELS", self.paths.models.ollama)

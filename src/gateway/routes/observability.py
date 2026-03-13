@@ -47,10 +47,10 @@ async def list_audit_log(
 
     Filter by ``event_type`` (e.g. ``TASK_SUBMITTED``) or ``agent_id``.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     conditions = []
     params: list = []
 
@@ -136,10 +136,10 @@ async def list_threat_events(
     Filter by ``threat_type`` (e.g. ``INJECTION_DETECTED``) and
     ``since_hours`` (default: last 24 hours).
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     conditions = ["ts >= now() - interval '%s hours'"]
     params: list = [since_hours]
 
@@ -195,10 +195,10 @@ async def threat_summary(
 
     Useful for dashboards and automated alerting.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     try:
         async with pool.connection() as conn:
             conn.row_factory = dict_row
@@ -251,10 +251,10 @@ async def metrics_history(
 
     Data points are written by the health server every 30 seconds.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     try:
         async with pool.connection() as conn:
             conn.row_factory = dict_row
@@ -304,10 +304,10 @@ async def list_tools(
 
     Filter by ``status``: ``APPROVED``, ``PENDING``, ``REVOKED``.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from psycopg.rows import dict_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     conditions = []
     params: list = []
     if status:
@@ -357,9 +357,9 @@ async def set_tool_status(
     invocation.  The block takes effect within Guardian's 10-second
     hot-reload interval.
     """
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     try:
         async with pool.connection() as conn:
             cur = await conn.execute(

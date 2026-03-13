@@ -34,9 +34,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 @pytest.mark.integration
 async def test_db_gateway_users_has_daily_token_limit(db):
     """gateway_users table has the daily_token_limit column (Phase 10)."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             """
@@ -53,9 +53,9 @@ async def test_db_gateway_users_has_daily_token_limit(db):
 @pytest.mark.integration
 async def test_db_tasks_has_estimated_tokens(db):
     """tasks table has the estimated_tokens column (Phase 10)."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             """
@@ -72,9 +72,9 @@ async def test_db_tasks_has_estimated_tokens(db):
 @pytest.mark.integration
 async def test_db_api_usage_has_user_id(db):
     """api_usage table has the user_id column (Phase 10)."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             """
@@ -91,9 +91,9 @@ async def test_db_api_usage_has_user_id(db):
 @pytest.mark.integration
 async def test_db_stream_tokens_table_exists(db):
     """stream_tokens table exists with token, task_id, user_id, expires_at columns."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     expected_cols = {"token", "task_id", "user_id", "expires_at"}
     async with pool.connection() as conn:
         rows = await conn.execute(
@@ -119,9 +119,9 @@ async def test_db_init_is_idempotent(db):
 @pytest.mark.integration
 async def test_db_gateway_users_is_active_defaults_true(db, test_user):
     """Newly created gateway_users rows have is_active=True by default."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             "SELECT is_active FROM gateway_users WHERE user_id = %s",
@@ -209,12 +209,12 @@ async def test_auth_missing_bearer_returns_401(db, gateway_client):
 async def test_stream_token_create_writes_db_row(db, test_user):
     """create_stream_token() writes a row to the stream_tokens table."""
     from src.gateway.auth import create_stream_token
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
     task_id = str(uuid.uuid4())
     token = await create_stream_token(task_id, test_user["user_id"])
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             "SELECT task_id, user_id FROM stream_tokens WHERE token = %s", (token,)
@@ -245,9 +245,9 @@ async def test_stream_token_resolve_returns_task_and_user(db, test_user):
     assert resolved_user_id == test_user["user_id"]
 
     # cleanup
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute("DELETE FROM stream_tokens WHERE token = %s", (token,))
 
@@ -255,13 +255,13 @@ async def test_stream_token_resolve_returns_task_and_user(db, test_user):
 @pytest.mark.integration
 async def test_stream_token_resolve_expired_returns_none(db, test_user):
     """resolve_stream_token() returns None for a token with expires_at in the past."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from src.gateway.auth import resolve_stream_token
 
     token = secrets.token_urlsafe(32)
     task_id = str(uuid.uuid4())
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "INSERT INTO stream_tokens (token, task_id, user_id, expires_at)"
@@ -288,9 +288,9 @@ async def test_stream_token_resolve_unknown_returns_none(db):
 @pytest.mark.integration
 async def test_stream_token_purge_removes_only_expired(db, test_user):
     """purge_expired_stream_tokens() removes expired rows and leaves valid ones."""
-    from src.database import get_pool, purge_expired_stream_tokens
+    from src.database import get_worker_pool, purge_expired_stream_tokens
 
-    pool = get_pool()
+    pool = get_worker_pool()
     expired_token = secrets.token_urlsafe(32)
     valid_token = secrets.token_urlsafe(32)
     task_id = str(uuid.uuid4())
@@ -527,14 +527,14 @@ async def test_budget_check_passes_for_user_under_limit(db, test_user):
 async def test_budget_exceeded_returns_429(db, gateway_client, admin_conn):
     """POST /tasks returns 429 when user's daily_token_limit=1."""
     import bcrypt
-    from src.database import get_pool
+    from src.database import get_gateway_pool
 
     raw_key = secrets.token_urlsafe(32)
     hashed = bcrypt.hashpw(raw_key.encode(), bcrypt.gensalt(rounds=4)).decode()
     user_id = str(uuid.uuid4())
     username = f"budget_{secrets.token_hex(4)}"
 
-    pool = get_pool()
+    pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
             "INSERT INTO gateway_users"
@@ -576,10 +576,10 @@ async def test_get_user_actual_usage_today_returns_zero_for_new_user(db, test_us
 @pytest.mark.integration
 async def test_get_user_inflight_tokens_counts_queued_tasks(db, test_user, admin_conn):
     """get_user_inflight_tokens counts estimated_tokens from queued tasks."""
-    from src.database import get_pool
+    from src.database import get_worker_pool
     from src.database import get_user_inflight_tokens
 
-    pool = get_pool()
+    pool = get_worker_pool()
     task_id = str(uuid.uuid4())
     async with pool.connection() as conn:
         await conn.execute(
@@ -674,12 +674,12 @@ async def test_cli_create_user_is_callable(db):
 async def test_cli_deactivate_user_sets_is_active_false(db, test_user):
     """deactivate_user() sets is_active=False for the target user in the DB."""
     from src.cli.manage_users import deactivate_user
-    from src.database import get_pool
+    from src.database import get_gateway_pool, get_worker_pool
 
     await deactivate_user(test_user["username"])
 
-    pool = get_pool()
-    async with pool.connection() as conn:
+    read_pool = get_worker_pool()
+    async with read_pool.connection() as conn:
         row = await conn.execute(
             "SELECT is_active FROM gateway_users WHERE user_id = %s",
             (test_user["user_id"],),
@@ -692,7 +692,8 @@ async def test_cli_deactivate_user_sets_is_active_false(db, test_user):
     ), f"Expected is_active=False after deactivation, got {result['is_active']}"
 
     # Re-activate so test_user cleanup fixture doesn't fail
-    async with pool.connection() as conn:
+    write_pool = get_gateway_pool()
+    async with write_pool.connection() as conn:
         await conn.execute(
             "UPDATE gateway_users SET is_active = TRUE WHERE user_id = %s",
             (test_user["user_id"],),
@@ -703,12 +704,12 @@ async def test_cli_deactivate_user_sets_is_active_false(db, test_user):
 async def test_cli_set_quota_updates_daily_token_limit(db, test_user):
     """set_quota() updates daily_token_limit for the target user."""
     from src.cli.manage_users import set_quota
-    from src.database import get_pool
+    from src.database import get_worker_pool
 
     new_limit = 42000
     await set_quota(test_user["username"], new_limit)
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         row = await conn.execute(
             "SELECT daily_token_limit FROM gateway_users WHERE user_id = %s",
@@ -934,9 +935,9 @@ async def test_api_usage_row_written_with_user_id_after_completion(
 
         await _wait_for_task(gateway_client, task_id, auth_headers)
 
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             row = await conn.execute(
                 "SELECT user_id FROM api_usage WHERE user_id = %s LIMIT 1",
@@ -956,22 +957,25 @@ async def test_api_usage_row_written_with_user_id_after_completion(
 
 
 @pytest.mark.integration
-async def test_rls_user_isolation_on_tasks(db):
+async def test_rls_user_isolation_on_tasks(db, admin_conn):
     """
     RLS policy enforces per-user row isolation on the tasks table.
 
     With app.user_id set to user_a, a SELECT on tasks via the gateway pool
     must return only user_a's rows — user_b's rows must be invisible.
+
+    Cleanup uses admin_conn because legionforge_worker has no DELETE on tasks
+    by RBAC design — runtime agents must never bulk-delete task rows.
     """
     import uuid
 
-    from src.database import get_gateway_pool, get_pool
+    from src.database import get_gateway_pool, get_worker_pool
 
     user_a = f"rls_test_a_{uuid.uuid4().hex[:8]}"
     user_b = f"rls_test_b_{uuid.uuid4().hex[:8]}"
 
     # Insert one task for each user via the worker pool (BYPASSRLS)
-    worker_pool = get_pool()
+    worker_pool = get_worker_pool()
     async with worker_pool.connection() as conn:
         await conn.execute(
             "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
@@ -985,7 +989,7 @@ async def test_rls_user_isolation_on_tasks(db):
         )
 
     gateway_pool = get_gateway_pool()
-    if gateway_pool is get_pool():
+    if gateway_pool is get_worker_pool():
         pytest.skip("Gateway pool unavailable — RLS not active (roles not created yet)")
 
     try:
@@ -1001,49 +1005,52 @@ async def test_rls_user_isolation_on_tasks(db):
             assert user_b not in visible, "RLS VIOLATION: user_a can see user_b's tasks"
             await conn.execute("SELECT set_config('app.user_id', '', false)")
     finally:
-        async with worker_pool.connection() as conn:
-            await conn.execute(
-                "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
-            )
-
-
-@pytest.mark.integration
-async def test_rls_worker_pool_sees_all_users(db):
-    """Worker pool (BYPASSRLS) can SELECT tasks across all users."""
-    import uuid
-
-    from src.database import get_pool
-
-    user_a = f"rls_bypass_a_{uuid.uuid4().hex[:8]}"
-    user_b = f"rls_bypass_b_{uuid.uuid4().hex[:8]}"
-
-    pool = get_pool()
-    async with pool.connection() as conn:
-        await conn.execute(
-            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
-            " VALUES (gen_random_uuid(), %s, 'bypass A', 'orchestrator', 'complete')",
-            (user_a,),
-        )
-        await conn.execute(
-            "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
-            " VALUES (gen_random_uuid(), %s, 'bypass B', 'orchestrator', 'complete')",
-            (user_b,),
-        )
-        cur = await conn.execute(
-            "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
-        )
-        rows = await cur.fetchall()
-        visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
-        assert (
-            user_a in visible and user_b in visible
-        ), "Worker pool must see all users' tasks (BYPASSRLS)"
-        await conn.execute(
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute(
             "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
         )
 
 
 @pytest.mark.integration
-async def test_maintenance_role_cannot_select_tasks(db):
+async def test_rls_worker_pool_sees_all_users(db, admin_conn):
+    """Worker pool (BYPASSRLS) can SELECT tasks across all users."""
+    import uuid
+
+    from src.database import get_worker_pool
+
+    user_a = f"rls_bypass_a_{uuid.uuid4().hex[:8]}"
+    user_b = f"rls_bypass_b_{uuid.uuid4().hex[:8]}"
+
+    pool = get_worker_pool()
+    try:
+        async with pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+                " VALUES (gen_random_uuid(), %s, 'bypass A', 'orchestrator', 'complete')",
+                (user_a,),
+            )
+            await conn.execute(
+                "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
+                " VALUES (gen_random_uuid(), %s, 'bypass B', 'orchestrator', 'complete')",
+                (user_b,),
+            )
+            cur = await conn.execute(
+                "SELECT user_id FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+            )
+            rows = await cur.fetchall()
+            visible = {r["user_id"] if isinstance(r, dict) else r[0] for r in rows}
+            assert (
+                user_a in visible and user_b in visible
+            ), "Worker pool must see all users' tasks (BYPASSRLS)"
+    finally:
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute(
+            "DELETE FROM tasks WHERE user_id IN (%s, %s)", (user_a, user_b)
+        )
+
+
+@pytest.mark.integration
+async def test_maintenance_role_cannot_select_tasks(db, admin_conn):
     """
     legionforge_maintenance has zero SELECT on tasks.
 
@@ -1052,13 +1059,13 @@ async def test_maintenance_role_cannot_select_tasks(db):
     """
     import uuid
 
-    from src.database import _maintenance_pool, get_pool
+    from src.database import _maintenance_pool, get_worker_pool
 
     if _maintenance_pool is None:
         pytest.skip("Maintenance pool not initialized — role may not exist yet")
 
     user = f"maint_test_{uuid.uuid4().hex[:8]}"
-    async with get_pool().connection() as conn:
+    async with get_worker_pool().connection() as conn:
         await conn.execute(
             "INSERT INTO tasks (task_id, user_id, input, agent_type, status)"
             " VALUES (gen_random_uuid(), %s, 'maint test', 'orchestrator', 'complete')",
@@ -1082,5 +1089,5 @@ async def test_maintenance_role_cannot_select_tasks(db):
                 if "permission denied" not in str(exc).lower():
                     raise
     finally:
-        async with get_pool().connection() as conn:
-            await conn.execute("DELETE FROM tasks WHERE user_id = %s", (user,))
+        # Admin conn required — legionforge_worker has no DELETE on tasks by design.
+        await admin_conn.execute("DELETE FROM tasks WHERE user_id = %s", (user,))

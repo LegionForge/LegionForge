@@ -60,7 +60,7 @@ def build_agent_card(host: str = "localhost:8080") -> dict:
             "Supports web research, threat analysis, and task orchestration."
         ),
         "url": f"http://{host}",
-        "version": "0.7.0-alpha",
+        "version": "0.7.1-alpha",
         "provider": {
             "organization": "jp-cruz",
             "url": "https://github.com/LegionForge/LegionForge",

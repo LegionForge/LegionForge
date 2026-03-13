@@ -6,6 +6,13 @@ Pytest configuration and shared fixtures.
 Smoke fixtures: settings (session-scoped, no services required)
 Integration fixtures: db, test_user, auth_headers, gateway_client
   (require PostgreSQL — only used by tests/test_integration.py)
+
+Shared agent-test fixtures:
+  mock_llm_no_tool_calls  — returns an AIMessage with no tool_calls; tests
+                            the "LLM ignores tool_choice=required" fallback
+                            path in orchestrator and researcher agent nodes.
+  mock_llm_with_tool_call — returns an AIMessage with a single named tool
+                            call; used to test normal agent execution paths.
 """
 
 import os
@@ -47,6 +54,76 @@ def settings():
     return s
 
 
+# ── Agent-test shared fixtures ────────────────────────────────────────────────
+# These are the canonical mocks for testing the "LLM returns no tool_calls"
+# fallback path (orchestrator + researcher agent_node retry/deterministic
+# fallback). Use these instead of hand-rolling mocks in individual tests.
+
+
+@pytest.fixture()
+def mock_llm_no_tool_calls():
+    """
+    A mock LLM that always returns an AIMessage with content but no tool_calls.
+
+    Simulates qwen2.5/Ollama ignoring tool_choice=required. Use this to test
+    that agent_node retry logic and deterministic fallbacks fire correctly.
+
+    Usage:
+        def test_my_agent_fallback(mock_llm_no_tool_calls):
+            llm = mock_llm_no_tool_calls
+            response = asyncio.run(llm.ainvoke([...]))
+            assert not response.tool_calls
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from langchain_core.messages import AIMessage
+
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(
+        return_value=AIMessage(content="I can answer that from my training data.")
+    )
+    llm.bind_tools = MagicMock(return_value=llm)
+    return llm
+
+
+@pytest.fixture()
+def mock_llm_with_tool_call():
+    """
+    A mock LLM that returns an AIMessage with a single web_search tool call.
+
+    Use this to test the normal (happy-path) agent execution flow where the
+    LLM correctly calls a tool on step 1.
+
+    Accepts an optional tool_name keyword — defaults to "web_search".
+
+    Usage:
+        def test_my_agent_calls_tool(mock_llm_with_tool_call):
+            llm = mock_llm_with_tool_call()
+            response = asyncio.run(llm.ainvoke([...]))
+            assert response.tool_calls[0]["name"] == "web_search"
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from langchain_core.messages import AIMessage
+
+    def _factory(tool_name: str = "web_search", query: str = "test query"):
+        llm = MagicMock()
+        llm.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "mock_tc_001",
+                        "name": tool_name,
+                        "args": {"query": query},
+                    }
+                ],
+            )
+        )
+        llm.bind_tools = MagicMock(return_value=llm)
+        return llm
+
+    return _factory
+
+
 # ── Integration fixtures (PostgreSQL required) ────────────────────────────────
 # These are only exercised by tests/test_integration.py (@pytest.mark.integration).
 # Smoke tests never import these fixtures.
@@ -56,7 +133,7 @@ async def _make_admin_conn():
     """
     Create a direct psycopg admin connection for test fixture setup/teardown.
 
-    Why admin, not get_pool()?  legionforge_app has INSERT+UPDATE on tasks and
+    Why admin, not get_worker_pool()?  legionforge_app has INSERT+UPDATE on tasks and
     gateway_users but NOT DELETE (by RBAC design — runtime code should never bulk-
     delete tasks or users).  Test fixtures need to clean up after themselves, so
     they connect as the admin user instead.

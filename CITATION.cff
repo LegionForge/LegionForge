@@ -1,0 +1,116 @@
+cff-version: 1.2.0
+message: "If you use LegionForge in your research or build on it, please cite it using this file."
+
+title: "LegionForge"
+abstract: >
+  A local-first, security-native AI agent framework built on LangGraph.
+  Runs local LLMs (Ollama) or cloud APIs with a full security stack baked
+  in at every layer: Guardian sidecar (7-check deterministic pipeline),
+  SecureToolNode, prompt injection detection, Ed25519 tool signing,
+  capability boundary enforcement, and a tool crystallization pipeline
+  (LegionForge-Anneal) that converts LLM-generated actions into signed,
+  sandboxed, reusable tools.
+
+authors:
+  - family-names: Cruz
+    given-names: John Paul
+    alias: "Jp"
+    email: jp@legionforge.org
+    orcid: ""
+
+version: "0.7.1-alpha"
+date-released: "2026-03-10"
+license: "AGPL-3.0-or-later"
+repository-code: "https://github.com/LegionForge/LegionForge"
+url: "https://github.com/LegionForge/LegionForge"
+
+keywords:
+  - AI agents
+  - LangGraph
+  - security
+  - local LLM
+  - Ollama
+  - multi-agent
+  - tool crystallization
+  - prompt injection
+  - Apple Silicon
+
+references:
+  - type: software
+    title: "OpenClaw (née Clawd / Clawdbot / Moltbot)"
+    authors:
+      - family-names: Steinberger
+        given-names: Peter
+        alias: "steipete"
+        website: "https://github.com/steipete"
+    url: "https://github.com/openclaw/openclaw"
+    website: "https://openclaw.ai"
+    notes: >
+      Primary inspiration for LegionForge. Name evolution: Clawd (Nov 2025)
+      → Clawdbot (Nov 2025, open-sourced) → Moltbot (Jan 27 2026) →
+      OpenClaw (Jan 30 2026). Proved the demand for self-hosted agent
+      systems (60K GitHub stars in 72 hours) and the architectural patterns
+      that work. Also proved the cost of shipping security as an afterthought
+      — 512 post-release vulnerabilities and active data exfiltration in
+      third-party skills were the direct motivation for LegionForge's
+      security-first design.
+
+  - type: software
+    title: "LangGraph"
+    authors:
+      - name: "LangChain, Inc."
+    url: "https://github.com/langchain-ai/langgraph"
+    license: MIT
+
+  - type: article
+    title: "Learning to Use Tools by Making Them (LATM)"
+    authors:
+      - family-names: Cai
+        given-names: Tianle
+    year: 2024
+    url: "https://arxiv.org/abs/2305.17126"
+    notes: "ICLR 2024. Closest published antecedent to LegionForge-Anneal's tool crystallization pipeline."
+
+  - type: article
+    title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
+    authors:
+      - family-names: Wang
+        given-names: Guanzhi
+    year: 2023
+    url: "https://arxiv.org/abs/2305.16291"
+    notes: "NVIDIA. Demonstrates lifelong tool accumulation — informs LegionForge-Anneal vision."
+
+  - type: software
+    title: "Anchor Engine — STAR: Semantic Temporal Associative Retrieval"
+    authors:
+      - family-names: Balch II
+        given-names: Robert S.
+    doi: "10.5281/zenodo.18841399"
+    url: "https://github.com/RSBalchII/anchor-engine-node"
+    license: "AGPL-3.0"
+    notes: >
+      The STAR gravity formula (similarity × e^(-λ · age)) is adapted for
+      LegionForge's temporal decay path in src/database.py similarity_search().
+
+  - type: report
+    title: "The AI-Human Engineering Stack"
+    authors:
+      - family-names: Mill
+        given-names: Hayen
+      - family-names: Sanchez
+        given-names: Henrique Jr.
+        alias: "hjasanchez"
+    year: 2026
+    url: "https://github.com/hjasanchez/agentic-engineering"
+    notes: >
+      The Manus Insight on KV-cache stability ordering motivated the context
+      assembly order in src/base_graph.py: [persona (stable) → prefs → memory → task].
+
+  - type: article
+    title: "Reflections on Trusting Trust"
+    authors:
+      - family-names: Thompson
+        given-names: Ken
+    year: 1984
+    journal: "Communications of the ACM"
+    notes: "The capability amplification problem in §1.9 of RESEARCH.md is a direct analogue."

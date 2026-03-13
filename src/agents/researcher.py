@@ -194,6 +194,37 @@ RESEARCHER_TOOLS = [
     memory_recall,
 ]
 
+# System message injected at the start of every researcher run — regardless of
+# whether the agent is invoked via run_researcher() or the gateway worker.
+# The worker path initialises state with only [HumanMessage(task)], so without
+# this constant being injected in agent_node the LLM runs with no tool
+# instructions and produces empty output.
+_RESEARCHER_SYSTEM_CONTENT = (
+    "You are a research assistant. You have these tools:\n"
+    "- web_search(query): search the web for current information.\n"
+    "- web_fetch(url): fetch a plain web page (fast, for simple/static pages).\n"
+    "- web_fetch_js(url): fetch a page that requires JavaScript (use for news sites,\n"
+    "  social media, modern SPAs — CNN, BBC, Reddit, etc.).\n"
+    "- document_summarize(text): summarise long text.\n\n"
+    "STRICT RULES:\n"
+    "1. On your FIRST response, call a tool to gather real data. NEVER answer from\n"
+    "   memory or fabricate any URLs, headlines, facts, prices, or live information.\n"
+    "2. BUDGET: You may use at most 6 tool calls total. Plan carefully:\n"
+    "   - Call 1: fetch the primary source (the URL or main search).\n"
+    "   - Calls 2–4: fetch 1–3 follow-up pages if essential details are missing.\n"
+    "   - Call 5–6: one or two final lookups only if critical info is absent.\n"
+    "   After 6 tool calls — or once you have enough content — STOP and write your\n"
+    "   final answer immediately. Do NOT keep fetching more pages.\n"
+    "3. Your final answer MUST be a complete, structured response — use markdown\n"
+    "   tables and bullet lists when comparing multiple items or presenting options.\n"
+    "4. Do NOT write Python code, shell commands, or any scripts. Call tools directly.\n"
+    "5. For news sites (HN, CNN, BBC, Reuters, Reddit, etc.) or any modern website,\n"
+    "   use web_fetch_js — plain web_fetch will return empty content on JS-heavy pages.\n"
+    "6. If asked for a URL, call web_fetch or web_fetch_js on it immediately.\n"
+    "7. If a tool returns an error or no results, say so clearly and synthesize from\n"
+    "   whatever data you have. Label approximate answers clearly."
+)
+
 
 # ── Tool manifests ────────────────────────────────────────────────────────────
 
@@ -233,11 +264,12 @@ RESEARCHER_TOOL_MANIFESTS = [
 # (Phase 3 will retry them in an isolated environment).
 # Register with: make register-agent-sequences
 RESEARCHER_EXPECTED_SEQUENCES: list[list[str]] = [
+    ["web_search"],
+    ["web_search", "web_fetch"],
     ["web_search", "web_fetch", "document_summarize"],
     ["web_search", "document_summarize"],
-    ["web_fetch", "document_summarize"],
-    ["web_search"],
     ["web_fetch"],
+    ["web_fetch", "document_summarize"],
     ["document_summarize"],
     *BROWSER_TOOL_SEQUENCES,
     *MEMORY_TOOL_SEQUENCES,
@@ -290,6 +322,19 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
         step = updates.get("step_count", state.get("step_count", 1))
         llm_with_tools = llm_forced if step <= 1 else llm_free
 
+        # Ensure the researcher system message is present.
+        # The gateway worker initialises state with only [HumanMessage(task)] — no
+        # SystemMessage — so we inject it here on step 1 if it is absent.
+        # run_researcher() already adds it; the injection is idempotent (checks first).
+        if step == 1 and not any(
+            isinstance(m, SystemMessage) for m in state.get("messages", [])
+        ):
+            state = {
+                **state,
+                "messages": [SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT)]
+                + list(state["messages"]),
+            }
+
         log_agent_event(
             "llm_call",
             "researcher",
@@ -327,6 +372,71 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
                 run_id=state.get("run_id"),
             )
 
+            # Enforcement: if tool_choice="required" was silently ignored by the
+            # model (Ollama/qwen2.5 returns content with no tool_calls on step 1),
+            # retry once with an explicit correction message so the researcher
+            # always fetches real data rather than synthesising from memory.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                logger.warning(
+                    "[researcher] Step 1 produced no tool_calls — "
+                    "retrying with explicit correction message"
+                )
+                log_agent_event(
+                    "tool_call_retry",
+                    "researcher",
+                    {"step": step, "reason": "no_tool_calls_on_step_1"},
+                    run_id=state.get("run_id"),
+                )
+                correction = clean_messages + [
+                    response,
+                    HumanMessage(
+                        content=(
+                            "You did not call a tool. You MUST call web_search, "
+                            "web_fetch, or web_fetch_js right now. "
+                            "Do not write any text — call a tool immediately."
+                        )
+                    ),
+                ]
+                response = await llm_free.ainvoke(correction)
+                log_agent_event(
+                    "llm_response",
+                    "researcher",
+                    {
+                        "step": step,
+                        "content": str(response.content)[:200],
+                        "retry": True,
+                    },
+                    run_id=state.get("run_id"),
+                )
+
+            # Deterministic fallback: both LLM attempts failed to produce tool_calls.
+            # Programmatically inject a web_search call so the researcher always
+            # fetches real data on step 1 — never silently returns empty.
+            if step <= 1 and not getattr(response, "tool_calls", None):
+                import uuid
+
+                user_task = state.get("task", "")
+                logger.warning(
+                    "[researcher] Deterministic fallback: injecting web_search "
+                    "because model produced no tool_calls after retry"
+                )
+                log_agent_event(
+                    "tool_call_fallback",
+                    "researcher",
+                    {"step": step, "task_snippet": user_task[:120]},
+                    run_id=state.get("run_id"),
+                )
+                response = AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": str(uuid.uuid4()).replace("-", "")[:8],
+                            "name": "web_search",
+                            "args": {"query": user_task},
+                        }
+                    ],
+                )
+
             updates["messages"] = [response]
 
             # Collect source URLs from any tool calls requested
@@ -350,26 +460,175 @@ def _build_researcher_agent_node(llm_forced: Any, llm_free: Any):
             error_updates = record_error(state, e, context="researcher/agent_node")
             updates.update(error_updates)
             logger.exception(f"Error in researcher agent_node: {e}")
+            # Add an AIMessage so the finalizer has a meaningful last message
+            # (without this, the finalizer would see the HumanMessage / last tool
+            # result and echo it back as the "result", which is deeply confusing).
+            updates["messages"] = [AIMessage(content=_describe_llm_error(e))]
             return updates
 
     return agent_node
+
+
+def _format_tool_fallback(raw: str) -> str:
+    """
+    Format raw tool output for display when the LLM synthesis step returned empty.
+    Attempts to parse search result JSON and present it as readable markdown.
+    Falls back to returning raw content if it's not a list of search results.
+    """
+    import json
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw  # Not JSON — return as-is (e.g. web_fetch plain text)
+
+    if not isinstance(data, list) or not data:
+        return raw
+
+    # Check for search result shape: list of dicts with title/snippet/url
+    if not isinstance(data[0], dict):
+        return raw
+
+    lines = [
+        "*(The AI could not synthesise these results — showing raw search output)*\n"
+    ]
+    for i, item in enumerate(data[:8], 1):
+        if "error" in item:
+            lines.append(f"**Search error:** {item.get('snippet', item['error'])}")
+            continue
+        title = item.get("title", "").strip()
+        url = item.get("url", "").strip()
+        snippet = item.get("snippet", "").strip()
+        if title:
+            lines.append(f"**{i}. {title}**")
+        if url:
+            lines.append(f"<{url}>")
+        if snippet:
+            lines.append(snippet)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _detect_tool_outcomes(messages: list) -> tuple[int, int]:
+    """Scan messages and return (skipped_count, real_result_count).
+
+    skipped_count — ToolMessages containing '[TOOL SKIPPED]' (Guardian sandboxed)
+    real_result_count — ToolMessages with genuine content (tool ran successfully)
+    """
+    skipped = 0
+    real = 0
+    for msg in messages:
+        if hasattr(msg, "type") and msg.type == "tool":
+            content = str(msg.content) if msg.content else ""
+            if "[TOOL SKIPPED]" in content:
+                skipped += 1
+            elif content.strip():
+                real += 1
+    return skipped, real
+
+
+def _describe_llm_error(exc: Exception) -> str:
+    """Return a user-readable description of a node-level exception."""
+    msg = str(exc)
+    lowered = msg.lower()
+    cls = type(exc).__name__
+    if "connection refused" in lowered or "connecterror" in cls.lower():
+        return (
+            "[Agent error] Could not reach the AI model. "
+            "Make sure Ollama is running: `brew services start ollama`"
+        )
+    if "timeout" in lowered or "timed out" in lowered:
+        return (
+            "[Agent error] The AI model timed out. "
+            "The model may still be loading — try again in a moment."
+        )
+    if "model" in lowered and ("not found" in lowered or "pull" in lowered):
+        return (
+            f"[Agent error] Model not available: {msg[:120]}. "
+            "Run `ollama pull <model>` to download it."
+        )
+    return f"[Agent error] {cls}: {msg[:200]}"
 
 
 async def finalizer_node(state: ResearcherState) -> dict:
     """Extract final result from last message."""
     messages = state.get("messages", [])
     result = ""
-    if messages:
-        last = messages[-1]
-        result = last.content if isinstance(last.content, str) else str(last.content)
-    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
-    if not result.strip():
-        for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
-                result = str(msg.content)
-                break
-    if not result.strip():
-        result = "No result produced."
+
+    # When force_end was set by a safeguard, explain why rather than returning
+    # a cryptic "No result produced." or echoing back the task input.
+    if state.get("force_end"):
+        if state.get("loop_detected"):
+            result = (
+                "The agent detected a repeated action loop and stopped early. "
+                "Try rephrasing your query or asking for something more specific."
+            )
+        elif state.get("error_count", 0) >= settings.safeguards.max_errors_per_run:
+            # Surface the last error AIMessage if one was added by the except block
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and str(msg.content).startswith(
+                    "[Agent error]"
+                ):
+                    result = str(msg.content)
+                    break
+            if not result:
+                result = (
+                    "The agent encountered too many errors and stopped. "
+                    "Check that Ollama is running and the correct model is loaded."
+                )
+        elif state.get("token_count", 0) >= settings.safeguards.default_token_budget:
+            result = (
+                "The task hit the token budget limit and was stopped early. "
+                "Try a more specific query."
+            )
+
+    if not result:
+        if messages:
+            last = messages[-1]
+            result = (
+                last.content if isinstance(last.content, str) else str(last.content)
+            )
+        # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+        # Format search results as readable text rather than raw JSON.
+        if not result.strip():
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                    raw = str(msg.content)
+                    result = _format_tool_fallback(raw)
+                    break
+        if not result.strip():
+            result = "No result produced."
+
+    # Hallucination grounding check — runs after result is extracted so it applies
+    # even to non-force_end paths.  Detect when the LLM synthesised from memory
+    # because real-time tool calls were blocked by Guardian.
+    if not state.get("force_end"):
+        skipped, real = _detect_tool_outcomes(messages)
+        if "[UNVERIFIED DATA]" in result:
+            # LLM obeyed the [TOOL SKIPPED] instruction and self-flagged.
+            # Strip the inline marker and prepend a prominent, consistent warning.
+            clean = result.replace("[UNVERIFIED DATA]", "").strip()
+            result = (
+                "[WARNING: Model memory — not live data] "
+                "Real-time lookups were blocked. "
+                "This response comes from training data and may be outdated.\n\n"
+                + clean
+            )
+        elif skipped > 0 and real == 0:
+            # All tool calls were sandboxed; any synthesis is necessarily from
+            # training data.  The LLM did not self-flag, so we flag explicitly.
+            result = (
+                "[WARNING: All real-time lookups were blocked by the security "
+                "policy. This response comes from model training data, not live "
+                "information.]\n\n" + result
+            )
+        elif skipped > 0:
+            # Mixed outcome: some tools ran, some were blocked.
+            result = (
+                f"[NOTE: {skipped} real-time lookup(s) were blocked. "
+                "Parts of this response may come from model memory rather than "
+                "live data.]\n\n" + result
+            )
 
     log_agent_event(
         "run_end",
@@ -556,24 +815,7 @@ async def run_researcher(
         "sequence_so_far": [],
         "task_token": task_token,
         "messages": [
-            SystemMessage(
-                content=(
-                    "You are a research assistant. You have these tools:\n"
-                    "- web_search(query): search the web for current information.\n"
-                    "- web_fetch(url): fetch a plain web page (fast, for simple/static pages).\n"
-                    "- web_fetch_js(url): fetch a page that requires JavaScript (use for news sites,\n"
-                    "  social media, modern SPAs — CNN, BBC, Reddit, etc.).\n"
-                    "- document_summarize(text): summarise long text.\n\n"
-                    "STRICT RULES:\n"
-                    "1. ALWAYS call a tool to get real data. NEVER answer from memory or fabricate\n"
-                    "   any URLs, headlines, facts, prices, or live information.\n"
-                    "2. Do NOT write Python code, shell commands, or any scripts. Call tools directly.\n"
-                    "3. For news sites (CNN, BBC, Reuters, etc.) or any modern website, use\n"
-                    "   web_fetch_js — plain web_fetch will return empty content on JS-heavy pages.\n"
-                    "4. If asked for a URL, call web_fetch or web_fetch_js on it immediately.\n"
-                    "5. If a tool returns an error or no results, report that clearly."
-                )
-            ),
+            SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT),
             HumanMessage(content=task),
         ],
     }

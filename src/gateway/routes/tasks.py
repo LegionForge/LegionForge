@@ -35,7 +35,7 @@ from src.database import (
     bulk_tag_tasks,
     create_task,
     delete_task_note,
-    get_pool,
+    get_worker_pool,
     get_task,
     get_task_stats,
     get_task_timeline,
@@ -100,7 +100,7 @@ async def _check_queue_depth(user_id: str, additional: int = 1) -> None:
         return
     from psycopg.rows import tuple_row
 
-    pool = get_pool()
+    pool = get_worker_pool()
     async with pool.connection() as conn:
         async with conn.cursor(row_factory=tuple_row) as cur:
             await cur.execute(

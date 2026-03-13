@@ -195,6 +195,7 @@ class Scheduler:
                 health_metrics_days=m.health_metrics_days,
                 threat_events_days=m.threat_events_days,
                 audit_log_days=m.audit_log_days,
+                task_events_days=m.task_events_days,
             )
             logger.info("[scheduler] Nightly DB maintenance complete: %s", results)
         except Exception as exc:

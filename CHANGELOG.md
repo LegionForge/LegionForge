@@ -7,14 +7,49 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Bug-fix sprint (2026-03-07 – 2026-03-08)
+## [Unreleased]
 
-### Fixed — PRs #235–#238
+---
+
+## [0.7.1-alpha] — 2026-03-12 (chat UI + test suites)
+
+### Added — 2026-03-12 (post-#240 UAT session)
+
+- **Chat mode UI** (`src/gateway/static/index.html`) — toggle button (`💬`) converts the web UI into a persistent chat interface. Activating chat mode hides admin/config cards, scrolls conversation history into a full-viewport bubble view, pins the input bar at the bottom, auto-creates a session, and persists state to `localStorage`. SSE token streaming continues to work; `appendSpan()` calls `scrollChatToBottom()` automatically. Normal dashboard mode restored on toggle-off. No backend changes required.
+- **Hallucination test suite** (`tests/hallucination/`) — 12 manually-run tests (`pytest.mark.hallucination`). Covers: stable-content web fetch grounding (httpbin, PyPI, JSONPlaceholder), web search grounding (Python.org, FastAPI), runtime UUID nonce anti-fabrication (UUID must be fetched, not invented), sequential UUID distinctness, 404 non-fabrication, and source citation verification (`sources[]` must contain the exact fetched URL). Requires Ollama + PostgreSQL + internet access; excluded from `make test` and `make ci` by default.
+- **Tool integrity test suites** (`tests/tool_integrity/`) — 33 tests across 5 suites:
+  - **Schema conformance** (12 tests, `pytest.mark.tool_integrity`, no services) — input boundary rejection (empty content, oversized content, invalid enum scope/content_type) and return-type conformance on SSRF-blocked paths and feature-disabled paths for all 8 registered tools.
+  - **Result injection** (4 tests, `tool_integrity`) — end-to-end Tier 1 injection blocking via `run_researcher()` with a live injection server; control test for clean pages; `http_post` PII redaction verification before outbound send.
+  - **Guardian e2e** (5 tests, `pytest.mark.tool_integrity_guardian`) — health endpoint responsiveness, forbidden tool ID blocking (`register_tool`), destructive argument detection (`rm -rf /` in `file_write` content), legitimate tool allowance, unregistered tool denial.
+  - **Docker sandbox containment** (6 tests, `pytest.mark.tool_integrity_sandbox`) — network blocked (`--network=none`), `/etc/` write blocked (`--read-only`), `/tmp` writable, timeout enforcement (300s sleep), stderr captured, clean code executes.
+  - **Memory namespace isolation** (6 tests, `pytest.mark.tool_integrity_memory`) — same-agent recall, cross-agent isolation, scope isolation (agent vs user), fresh namespace emptiness, injection payload blocking, cross-user isolation.
+- **Makefile targets** (7 new): `test-hallucination`, `test-tool-integrity`, `test-tool-integrity-schema`, `test-tool-integrity-injection`, `test-tool-integrity-guardian`, `test-tool-integrity-sandbox`, `test-tool-integrity-memory`.
+- **`pytest.ini` marks** (6 new): `hallucination`, `live_web`, `tool_integrity`, `tool_integrity_guardian`, `tool_integrity_sandbox`, `tool_integrity_memory`.
+
+### Fixed — 2026-03-12
+
+- `test_memory_write_rejects_oversized_content` / `_invalid_scope` / `test_memory_recall_rejects_invalid_scope` — tests now `monkeypatch` `settings.agent_memory.enabled = True` so size/scope checks are reached before the disabled guard fires.
+- `test_http_post_rejects_invalid_content_type` — Pydantic `Literal` constraint raises `ValidationError` before the function body; test correctly uses `pytest.raises((ValidationError, Exception))` instead of asserting on return value.
+
+---
+
+## [0.7.1-alpha] — 2026-03-10 (ongoing)
+
+### Added — 2026-03-10 (post-#239 bug-fix session)
+
+- **KV-cache stable context ordering** (`src/base_graph.py`) — agent message assembly now builds `[persona (most stable) → prefs → memory recall → task (most dynamic)]`. Previously assembled in reverse order, defeating KV-cache prefix reuse on every run. Inspired by the Manus Insight in *The AI-Human Engineering Stack* (Mill & Sanchez, March 2026).
+- **Temporal decay on memory recall** (`src/database.py`, `src/memory.py`) — `similarity_search()` gains a `temporal_decay` path using the STAR gravity formula: `score × e^(-0.000962 × age_hours)` (30-day half-life). `MemoryStore.search()` enables temporal decay by default so recent memories rank above equally similar but older ones. Min-similarity threshold is preserved on raw cosine score. The `memory_recall` tool now surfaces age alongside score (`[0.847, 3h ago]`). Adapted from the STAR algorithm whitepaper by Robert S. Balch II ([Anchor Engine](https://github.com/RSBalchII/anchor-engine-node)).
+- **Researcher tool sequences** — `BROWSER_TOOL_SEQUENCES` expanded from 4 → 14 entries. Sequences starting with `web_fetch_js` followed by `web_search`, `web_fetch`, or another `web_fetch_js` were missing, causing Guardian to sandbox the researcher on virtually every modern news site. Gateway lifespan now auto-registers sequences on startup (was manual `make register-agent-sequences` only). 2133/2133 smoke.
+- **SecureToolNode tool name normalisation** (`src/base_graph.py`) — normalises underscore-stripped tool names from local models (e.g. `spawnresearcher` → `spawn_researcher`) before security registry and Guardian checks.
+- **Attribution** — `README.md`, `LegionForge_readme.md`, `RESEARCH.md`, and inline source comments now credit Anchor Engine (Robert S. Balch II), *The AI-Human Engineering Stack* (Mill & Sanchez), LATM (Cai et al.), and Voyager (Wang et al.) for design influences.
+
+### Fixed — PRs #235–#239
 
 - **PR #235** — Orchestrator hallucination: added `SystemMessage` to `run_orchestrator()` so `llama3.1:8b` / `qwen2.5:7b` calls `spawn_researcher` instead of answering from training data. Maintenance scheduler `permission denied` on `threat_events` DELETE fixed with short-lived admin connection. 2055/2055 smoke.
 - **PR #236** — Live Ollama model selector: replaced hardcoded model preset buttons with a `GET /models` live-loaded dropdown. Switched primary model to `qwen2.5:7b` and embeddings to `mxbai-embed-large:latest`. Fixed `apiFetch()` JSON parse in `loadModels()`. Excluded embedding models from the selector response.
 - **PR #237** — 5-role DB privilege model + Row-Level Security + DOS protection. `legionforge_worker`, `legionforge_gateway`, `legionforge_maintenance`, `legionforge_guardian`, `legionforge_readonly` with minimum required grants. RLS on `tasks`, `gateway_users`, `api_usage`. Sliding-window HTTP rate limiter, queue depth cap, SSE stream slot limit, per-route memory rate limits. 2089/2089 smoke.
 - **PR #238** — Guardian `TASK_TOKEN_SECRET` missing on container restart (force-remove stale container in `make guardian-start`). `stream_token null` guard in UI — cache-hit tasks fall back to polling instead of 401 streaming. Missing DB grants: `INSERT` on `task_events` for `legionforge_worker`; `DELETE` on `audit_log` for `legionforge_maintenance`. `finalizer_node` now handles empty/whitespace LLM responses instead of emitting `[No result]`. `SecureToolNode` halt paths append a `ToolMessage` to clear dangling `tool_calls`. Ollama status banner in web UI. 2106/2106 smoke.
+- **PR #239** — Researcher agent retry+fallback for ignored tool_choice=required (mirrors orchestrator guard). Deterministic web_search injection when both LLM attempts fail. Makefile test isolation: make test/make test-fast run smoke → testlab → ui as separate pytest invocations, preventing asyncio event loop pollution. 2125/2125 smoke.
 
 ---
 

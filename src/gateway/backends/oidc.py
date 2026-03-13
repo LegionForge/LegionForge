@@ -44,7 +44,7 @@ import httpx
 import jwt
 from jwt.exceptions import PyJWTError
 
-from src.database import get_pool
+from src.database import get_worker_pool
 from src.gateway.backends.base import AuthBackend, SCHEME_BEARER  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -147,7 +147,7 @@ class OIDCBackend:
         self, user_id: str, username: str, daily_limit: int
     ) -> None:
         """Insert user on first OIDC login; do nothing on subsequent logins."""
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             await conn.execute(
                 """

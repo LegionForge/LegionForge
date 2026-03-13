@@ -178,7 +178,7 @@ check:
 		echo "⚠️  Guardian not running (warning only) — run: make guardian-start"
 
 .PHONY: start
-start: check ollama-start db-start ollama-warm guardian-start servers-start
+start: check ollama-start db-start ollama-warm docker-start guardian-start servers-start
 	@echo ""
 	@echo "✅ Framework ready."
 	@echo "   Health  → http://localhost:8765/health"
@@ -240,6 +240,7 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
 	  POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || echo "")} \
+	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
@@ -391,7 +392,14 @@ usage:
 .PHONY: db-start
 db-start:
 	@brew services start postgresql@17 2>/dev/null || true
-	@sleep 2
+	@printf "   Waiting for PostgreSQL to accept connections"; \
+	for i in $$(seq 1 20); do \
+		if pg_isready -U "$${POSTGRES_USER:-jp}" -d legionforge -q 2>/dev/null; then \
+			printf " ✅\n"; break; \
+		fi; \
+		printf "."; sleep 1; \
+		if [ "$$i" = "20" ]; then printf " ❌ timed out (20s)\n"; exit 1; fi; \
+	done
 	@echo "✅ PostgreSQL started"
 
 .PHONY: db-stop
@@ -612,14 +620,65 @@ install:
 	@$(PIP) install -r $(BASE)/requirements.txt -q
 	@echo "✅ Packages installed"
 
+.PHONY: lock
+lock:  ## Pin all transitive deps → requirements.lock (run after any requirements.txt change)
+	@$(PIP) install pip-tools --quiet
+	@cd $(BASE) && pip-compile requirements.txt \
+		--output-file requirements.lock \
+		--no-strip-extras \
+		--annotation-style line \
+		--quiet
+	@echo "✅ requirements.lock updated"
+
+.PHONY: install-locked
+install-locked:  ## Install exact pinned versions from requirements.lock (use for reproducible envs)
+	@$(PIP) install --upgrade pip -q
+	@$(PIP) install -r $(BASE)/requirements.lock -q
+	@echo "✅ Packages installed from lock file"
+
 # ── Testing ───────────────────────────────────────────────────
 .PHONY: test
 test:
-	@cd $(BASE) && $(PYTEST) tests/ -v
+	@echo "▶ Smoke tests…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "▶ TestLab suite…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v --tb=short
+	@echo "▶ UI tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
+	@echo "✅ All test suites passed"
 
 .PHONY: test-fast
 test-fast:
-	@cd $(BASE) && $(PYTEST) tests/ -v -m "not slow"
+	@echo "▶ Smoke tests (not slow)…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v -m "not slow"
+	@echo "▶ TestLab suite (not slow)…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v -m "not slow" --tb=short
+	@echo "▶ UI tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/ -v -m ui
+	@echo "✅ Fast test suites passed"
+
+.PHONY: test-critical
+test-critical:  ## Fast iteration gate (~35s): smoke + security_attacks + UI page-load
+	@echo "▶ Smoke tests…"
+	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -q
+	@echo "▶ Security attack tests…"
+	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_security_attacks.py -q --tb=short
+	@echo "▶ UI page-load tests…"
+	@cd $(BASE) && $(PYTEST) tests/ui/test_page_load.py -q -m ui
+	@echo "✅ Critical tests passed"
+
+.PHONY: ci
+ci:  ## Full CI gate: make test + security-audit — required before every commit/PR
+	@echo "════════════════════════════════════════════════════"
+	@echo "  LegionForge CI Gate"
+	@echo "════════════════════════════════════════════════════"
+	@$(MAKE) --no-print-directory test
+	@echo ""
+	@$(MAKE) --no-print-directory security-audit
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
+	@echo "  ✅ CI gate passed — safe to commit"
+	@echo "════════════════════════════════════════════════════"
 
 .PHONY: test-smoke
 test-smoke:
@@ -665,6 +724,19 @@ test-ui-headed:  ## Run Playwright UI tests with browser window visible (debug m
 .PHONY: test-ui-smoke
 test-ui-smoke:  ## Run quick subset of UI tests (page-load only)
 	@cd $(BASE) && $(PYTEST) tests/ui/test_page_load.py -v -m ui
+
+## ── Agent Quality Tests — live query runner (Phase Q1) ────────
+.PHONY: test-agent
+test-agent:  ## Run live agent query suite (requires gateway + Ollama — set GATEWAY_API_KEY first)
+	@if [ -z "$$GATEWAY_API_KEY" ]; then \
+	  echo "❌ GATEWAY_API_KEY is not set."; \
+	  echo "   Create a test user first:  make create-user USERNAME=testclient"; \
+	  echo "   Then:  export GATEWAY_API_KEY=<key from above>"; \
+	  exit 1; \
+	fi
+	@echo "Running live agent quality suite against $(GATEWAY_URL)..."
+	@echo "Transcripts will be saved to tests/agent_quality_transcripts/"
+	@cd $(BASE) && $(PYTHON) -m tests.gateway_client --suite agent
 
 ## ── TestLab — admin test management UI (Phase 18) ─────────────
 .PHONY: build-testlab
@@ -758,6 +830,41 @@ test-researcher-accuracy:  ## Researcher anti-hallucination tests (require Ollam
 test-tool-all:  ## All tool accuracy tests (fast + LLM)
 	@cd $(BASE) && $(PYTEST) tests/tool_accuracy/ -v --tb=short --timeout=90
 	@echo "✅ All tool accuracy tests complete"
+
+.PHONY: test-hallucination
+test-hallucination:  ## Live hallucination detection tests (require Ollama + PostgreSQL + internet, ~120s/test)
+	@cd $(BASE) && $(PYTEST) tests/hallucination/ -v --tb=short --timeout=180 -s
+	@echo "✅ Live hallucination tests complete"
+
+.PHONY: test-tool-integrity
+test-tool-integrity:  ## All tool runtime integrity tests (schema, result injection, Guardian, sandbox, memory)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/ -v --tb=short --timeout=120 -s
+	@echo "✅ Tool integrity tests complete"
+
+.PHONY: test-tool-integrity-schema
+test-tool-integrity-schema:  ## Schema conformance tests — fast, no external services required
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_schema_conformance.py -v --tb=short
+	@echo "✅ Schema conformance tests complete"
+
+.PHONY: test-tool-integrity-injection
+test-tool-integrity-injection:  ## Result injection + PII scrubbing tests (require Ollama + PostgreSQL)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_result_injection.py -v --tb=short --timeout=120 -s
+	@echo "✅ Result injection tests complete"
+
+.PHONY: test-tool-integrity-guardian
+test-tool-integrity-guardian:  ## Guardian sidecar end-to-end tests (require make guardian-start)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_guardian_e2e.py -v --tb=short --timeout=30 -s
+	@echo "✅ Guardian e2e tests complete"
+
+.PHONY: test-tool-integrity-sandbox
+test-tool-integrity-sandbox:  ## code_execute Docker sandbox containment tests (require make sandbox-build)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_code_execute_sandbox.py -v --tb=short --timeout=120 -s
+	@echo "✅ Sandbox containment tests complete"
+
+.PHONY: test-tool-integrity-memory
+test-tool-integrity-memory:  ## memory_write/memory_recall isolation tests (require PostgreSQL)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_memory_isolation.py -v --tb=short --timeout=60 -s
+	@echo "✅ Memory isolation tests complete"
 
 ## ── Gateway Docker (Phase 11) ─────────────────────────────────
 .PHONY: build-gateway
@@ -866,12 +973,23 @@ js-check:  ## Syntax-check JS extracted from index.html (node --check on a temp 
 	node --check "$$TMP" && echo "✅ JS syntax OK" || (echo "❌ JS syntax errors in index.html — fix before merging" && rm -f "$$TMP" && exit 1); \
 	rm -f "$$TMP"
 
+.PHONY: dep-audit
+dep-audit:  ## Scan dependencies for known CVEs via pip-audit (OSV/PyPI Advisory DB)
+	@echo "--- pip-audit: dependency CVE scan ---"
+	@if [ -x "$(VENV)/bin/pip-audit" ]; then \
+		$(VENV)/bin/pip-audit --requirement $(BASE)/requirements.txt --skip-editable \
+		&& echo "✅ pip-audit: no known vulnerabilities" \
+		|| (echo "❌ pip-audit: vulnerabilities above — update affected packages" && exit 1); \
+	else \
+		echo "⚠️  pip-audit not installed. Run: make install"; \
+	fi
+
 .PHONY: security-audit
 security-audit:
 	@echo "🔐 Running security audit..."
 	@echo ""
-	@echo "--- Smoke tests (includes security regression tests) ---"
-	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "--- Full test suite (smoke → testlab → ui) ---"
+	@$(MAKE) --no-print-directory test
 	@echo ""
 	@echo "--- JS syntax check (index.html) ---"
 	@$(MAKE) --no-print-directory js-check
@@ -883,6 +1001,8 @@ security-audit:
 	else \
 		echo "⚠️  bandit not installed. Run: make install"; \
 	fi
+	@echo ""
+	@$(MAKE) --no-print-directory dep-audit
 	@echo ""
 	@echo "--- Checking for password/secret in URI patterns ---"
 	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
@@ -901,15 +1021,15 @@ review-prep:
 	@echo "  LegionForge — PR Review: Automated Gates"
 	@echo "════════════════════════════════════════════════════"
 	@echo ""
-	@echo "─── [1/6] Formatting ────────────────────────────────"
+	@echo "─── [1/7] Formatting ────────────────────────────────"
 	@cd $(BASE) && $(VENV)/bin/black --check src/ tests/ config/ \
 		&& echo "✅ Black: all files formatted" \
 		|| (echo "❌ Black: unformatted files above — run: make format" && exit 1)
 	@echo ""
-	@echo "─── [2/6] Smoke tests ───────────────────────────────"
-	@cd $(BASE) && $(PYTEST) tests/test_smoke.py -v
+	@echo "─── [2/7] Full test suite (smoke → testlab → ui) ───"
+	@$(MAKE) --no-print-directory test
 	@echo ""
-	@echo "─── [3/6] Bandit static analysis ────────────────────"
+	@echo "─── [3/7] Bandit static analysis ────────────────────"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \
 		$(VENV)/bin/bandit -r $(BASE)/src/ -ll \
 		&& echo "✅ Bandit: no medium/high issues" \
@@ -918,7 +1038,10 @@ review-prep:
 		echo "⚠️  bandit not installed — run: make install"; \
 	fi
 	@echo ""
-	@echo "─── [4/6] Secret scan ───────────────────────────────"
+	@echo "─── [4/6] Dependency CVE scan ───────────────────────"
+	@$(MAKE) --no-print-directory dep-audit
+	@echo ""
+	@echo "─── [5/7] Secret scan ───────────────────────────────"
 	@! grep -rn "postgresql://.*:.*@" $(BASE)/src/ --include="*.py" \
 		&& echo "✅ No embedded passwords in connection URIs" \
 		|| (echo "❌ Embedded password in URI — use keyword args" && exit 1)
@@ -926,7 +1049,7 @@ review-prep:
 		&& echo "✅ No OpenAI-style API keys in source" \
 		|| (echo "❌ Possible API key in source above" && exit 1)
 	@echo ""
-	@echo "─── [5/6] New external dependencies ────────────────"
+	@echo "─── [6/7] New external dependencies ────────────────"
 	@DEPS=$$(git diff origin/main -- requirements.txt 2>/dev/null | grep "^+" | grep -v "^+++" | grep -v "^+#"); \
 	if [ -n "$$DEPS" ]; then \
 		echo "⚠️  New dependencies detected — review required (Phase C3):"; \
@@ -935,7 +1058,7 @@ review-prep:
 		echo "✅ No new external dependencies"; \
 	fi
 	@echo ""
-	@echo "─── [6/6] Scope check — changed files ──────────────"
+	@echo "─── [7/7] Scope check — changed files ──────────────"
 	@git diff --stat origin/main 2>/dev/null || git diff --stat HEAD~1
 	@echo ""
 	@echo "════════════════════════════════════════════════════"
@@ -983,9 +1106,28 @@ manifests = list(ollama_dir.rglob('*')); \
 print(f'Found {len(manifests)} manifest entries in {ollama_dir}'); \
 print('✅ Model manifest check complete (hash diffing added in Phase 2)')"
 
+# ── Docker Desktop ────────────────────────────────────────────
+.PHONY: docker-start
+docker-start:  ## Ensure Docker Desktop is running; start it if not and wait until ready
+	@if docker info >/dev/null 2>&1; then \
+		echo "✅ Docker Desktop already running"; \
+	else \
+		echo "   Docker Desktop not running — starting..."; \
+		open -a Docker; \
+		printf "   Waiting for Docker Desktop to be ready"; \
+		for i in $$(seq 1 45); do \
+			if docker info >/dev/null 2>&1; then \
+				printf " ✅\n"; break; \
+			fi; \
+			printf "."; sleep 2; \
+			if [ "$$i" = "45" ]; then printf " ❌ timed out (90s)\n"; exit 1; fi; \
+		done; \
+		echo "✅ Docker Desktop ready"; \
+	fi
+
 # ── Guardian (Phase 2) ────────────────────────────────────────
 .PHONY: guardian-start
-guardian-start:
+guardian-start: docker-start
 	@echo "Starting Guardian sidecar..."
 	@# Load secrets from Keychain into the shell so docker-compose substitutes them
 	@# into docker-compose.yml before creating the container.
@@ -1140,19 +1282,15 @@ setup-signing-key:
 	@echo "Generating Ed25519 signing keypair..."
 	@cd $(BASE) && $(PYTHON) -c "\
 from src.tools.signing import generate_signing_keypair; \
-import subprocess, hashlib; \
+import hashlib, subprocess; \
 priv, pub = generate_signing_keypair(); \
-result = subprocess.run(['security', 'add-generic-password', \
-    '-s', 'legionforge_tool_signer', '-a', 'api_key', '-w', priv, '-U'], \
-    capture_output=True); \
-if result.returncode == 0: \
-    fp = hashlib.sha256(bytes.fromhex(pub)).hexdigest()[:16]; \
-    print('✅ Signing key stored in Keychain (service=legionforge_tool_signer)'); \
-    print(f'   Public key fingerprint: {fp}'); \
-    print(f'   Public key (full hex):  {pub}'); \
-else: \
-    print('❌ Could not store key in Keychain:', result.stderr.decode()); \
-    print('   Store manually: security add-generic-password -s legionforge_tool_signer -a api_key -w <hex> -U')"
+subprocess.run(['security', 'delete-generic-password', '-s', 'legionforge_tool_signer', '-a', 'api_key'], capture_output=True); \
+r = subprocess.run(['security', 'add-generic-password', '-s', 'legionforge_tool_signer', '-a', 'api_key', '-w', priv, '-A'], capture_output=True, text=True); \
+r.returncode != 0 and (print('❌ Could not store key:', r.stderr.decode()), __import__('sys').exit(1)); \
+fp = hashlib.sha256(bytes.fromhex(pub)).hexdigest()[:16]; \
+print('✅ Signing key stored in Keychain (service=legionforge_tool_signer)'); \
+print(f'   Public key fingerprint: {fp}'); \
+print(f'   Public key (full hex):  {pub}')"
 
 # ── Phase 5: Observer agent ───────────────────────────────────
 .PHONY: register-observer-tools

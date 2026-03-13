@@ -89,9 +89,12 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | **16** | Channel connectors — Telegram (polling), Slack (Socket Mode), generic Webhook (HMAC + async callback) | ✅ Complete |
 | **60–381** | 381-tool operator dashboard UI library — every gateway API endpoint surfaced as a JS function | ✅ Complete |
 | **Web + Browser tools** | `web_fetch_js` Playwright headless browser for JS-rendered sites; two-layer SSRF guard | ✅ Complete |
-| **Guardian G1–G3** | `legionforge_guardian` standalone package; backward-compat shim in `src/security/guardian.py` | ✅ Complete |
+| **Guardian G1–G4** | `legionforge_guardian` standalone package (PyPI published, public repo live, auto-sync CI); backward-compat shim in `src/security/guardian.py` | ✅ Complete |
+| **Chat UI** | Chat-mode toggle on the web UI — persistent conversation view with scrollable message bubbles, session auto-create, localStorage state | ✅ Complete |
+| **Tool Integrity Tests** | 33 runtime integrity tests across 5 suites: schema conformance, result injection, Guardian e2e, Docker sandbox containment, memory namespace isolation | ✅ Complete |
+| **Hallucination Tests** | 12 live hallucination tests — UUID nonce anti-fabrication, source citation verification, 404 non-fabrication, real web fetch grounding (manually run) | ✅ Complete |
 
-**1995/1995 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. Runs in ~22 seconds (no external services required).
+**2192/2192 smoke tests passing.** 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab suite tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -100,7 +103,7 @@ Observer → Crystallizer → Pre-HITL Analyzer → Human gate → Ed25519-signe
 | Component | Version | Notes |
 |---|---|---|
 | Python | 3.11+ | via pyenv recommended |
-| PostgreSQL | 16 or 17 | with pgvector extension |
+| PostgreSQL | 17 | with pgvector extension |
 | Ollama | latest | for local LLM inference |
 | Docker | 24+ | for Guardian sidecar + analyzer container |
 | macOS | 14+ (Apple Silicon) | primary target; Linux support planned |
@@ -131,7 +134,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 1995 passed in ~22s
+# Expected: 2192 passed in ~21s
 
 # 6. Start services (three terminals)
 make health-server   # Operator API :8765
@@ -167,8 +170,8 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 1995 smoke tests, ~22s, no services required
-make test-integration  # 38 integration tests (requires PostgreSQL)
+make test-smoke      # 2192 smoke tests, ~21s, no services required
+make test-integration  # 41 integration tests (requires PostgreSQL)
 make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
 make health-server   # Start health/status API at localhost:8765
@@ -186,6 +189,9 @@ make discord-start   # Start Discord bot connector
 make telegram-start  # Start Telegram bot connector
 make slack-start     # Start Slack Socket Mode connector
 make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
+make test-hallucination          # 12 live hallucination tests (real internet + Ollama, manually run)
+make test-tool-integrity         # All 33 tool runtime integrity tests
+make test-tool-integrity-schema  # Schema conformance only — fast, no services needed
 ```
 
 ---
@@ -193,7 +199,7 @@ make webhook-start   # Start generic inbound/outbound webhook connector (:8081)
 ## Known Gaps (Accepted Residual Risk)
 
 - **Embedding-level anomaly detection** — RAG poisoning at the semantic vector level is an open research problem. Provenance scoring and trust flagging exist; embedding-level detection is deferred.
-- **pip-audit / dependency hash pinning** — Supply chain hygiene for transitive Python dependencies. Managed via Dependabot; transitive hash pinning is accepted residual risk.
+- **Transitive dependency hash pinning** — `requirements.lock` pins direct and transitive deps; CVE scanning via `make dep-audit` (pip-audit) runs in CI. Deep transitive hash attestation is accepted residual risk.
 
 ---
 
@@ -207,6 +213,6 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 
 ## Status
 
-**v0.7.0-alpha** — Phases 0–381 complete + web browser tools + Guardian package spinoff. 1995/1995 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved.
+**v0.7.1-alpha** — Phases 0–381 complete + web browser tools + Guardian G1–G4 (PyPI published) + chat UI + tool integrity / hallucination test suites. 2192/2192 smoke tests. 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab. 79/79 tool accuracy tests. 12 hallucination tests. 33 tool integrity tests. All pre-v1.0 security blockers resolved.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

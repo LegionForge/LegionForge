@@ -150,41 +150,24 @@ async def agent_node(state: AgentState) -> dict:
     try:
         llm = get_primary_llm(temperature=0.1)
 
-        # ── Memory: persona bootstrap (Gap 1) ────────────────────────────────
-        # Inject freeform persona text from persona:agent:<id> and
-        # persona:user:<uid> namespaces — the SOUL.md equivalent.
-        # Outermost SystemMessage: persona → prefs → recall → HumanMessage.
-        if settings.agent_memory.enabled and settings.agent_memory.persona_bootstrap:
-            from src.memory import persona_bootstrap as _persona_bootstrap
-            from langchain_core.messages import SystemMessage as _SM
+        # ── KV-cache stability ordering ───────────────────────────────────────
+        # Context is assembled with the most stable content first and the most
+        # dynamic content last.  This maximises KV-cache hit rate because the
+        # prefix that is identical across runs (persona, prefs) is never
+        # invalidated by the per-run content (memory recall, current task).
+        #
+        # Prepend in REVERSE stability order so the final list is:
+        #   [persona (most stable) → prefs → memory recall → task (most dynamic)]
+        #
+        # Implementation: each prepend pushes previous content one slot right,
+        # so the last prepend ends up at index 0 (first seen by the LLM).
+        # We prepend memory first, prefs second, persona last.
+        #
+        # Inspired by: "The AI-Human Engineering Stack" — Hayen Mill &
+        # Henrique Jr. Sanchez (March 2026), the Manus Insight on KV-cache
+        # stability ordering.  https://github.com/hjasanchez/agentic-engineering
 
-            _persona = await _persona_bootstrap(
-                agent_id=state.get("agent_id", "base_agent"),
-                user_id=state.get("user_id"),
-            )
-            if _persona:
-                state = {
-                    **state,
-                    "messages": [_SM(content=_persona)] + list(state["messages"]),
-                }
-
-        # ── Memory: user preference bootstrap (Gap 5) ────────────────────────
-        # Inject the submitting user's stored preferences as a SystemMessage so
-        # the agent knows who it's talking to without re-explanation each run.
-        if settings.agent_memory.enabled and settings.agent_memory.bootstrap_user_prefs:
-            _uid = state.get("user_id")
-            if _uid:
-                from src.memory import user_context_bootstrap
-                from langchain_core.messages import SystemMessage as _SM
-
-                _bootstrap = await user_context_bootstrap(_uid)
-                if _bootstrap:
-                    state = {
-                        **state,
-                        "messages": [_SM(content=_bootstrap)] + list(state["messages"]),
-                    }
-
-        # ── Phase 21: Memory recall ───────────────────────────────────────────
+        # ── Step 1: Memory recall (Phase 21 — dynamic, changes every run) ──────
         # Inject relevant past context before LLM call (no-op when disabled).
         if settings.agent_memory.enabled and settings.agent_memory.recall_on_task:
             task = state.get("task", "")
@@ -200,6 +183,41 @@ async def agent_node(state: AgentState) -> dict:
                         content=f"[Relevant memory from past runs]\n{memory_ctx}"
                     )
                     state = {**state, "messages": [_mem_msg] + list(state["messages"])}
+
+        # ── Step 2: User preference bootstrap (Gap 5 — semi-stable) ─────────
+        # Inject the submitting user's stored preferences as a SystemMessage so
+        # the agent knows who it's talking to without re-explanation each run.
+        if settings.agent_memory.enabled and settings.agent_memory.bootstrap_user_prefs:
+            _uid = state.get("user_id")
+            if _uid:
+                from src.memory import user_context_bootstrap
+                from langchain_core.messages import SystemMessage as _SM
+
+                _bootstrap = await user_context_bootstrap(_uid)
+                if _bootstrap:
+                    state = {
+                        **state,
+                        "messages": [_SM(content=_bootstrap)] + list(state["messages"]),
+                    }
+
+        # ── Step 3: Persona bootstrap (Gap 1 — most stable, rarely changes) ───
+        # Inject freeform persona text from persona:agent:<id> and
+        # persona:user:<uid> namespaces — the SOUL.md equivalent.
+        # Prepended last in code so it appears FIRST in the final message list
+        # (KV-cache stable prefix — never invalidated by per-run content).
+        if settings.agent_memory.enabled and settings.agent_memory.persona_bootstrap:
+            from src.memory import persona_bootstrap as _persona_bootstrap
+            from langchain_core.messages import SystemMessage as _SM
+
+            _persona = await _persona_bootstrap(
+                agent_id=state.get("agent_id", "base_agent"),
+                user_id=state.get("user_id"),
+            )
+            if _persona:
+                state = {
+                    **state,
+                    "messages": [_SM(content=_persona)] + list(state["messages"]),
+                }
 
         # Sanitize outbound messages (PII redaction before sending to LLM)
         clean_messages = sanitize_messages(state["messages"])
@@ -245,7 +263,34 @@ async def agent_node(state: AgentState) -> dict:
         error_updates = record_error(state, e, context="agent_node")
         updates.update(error_updates)
         logger.exception(f"Error in agent_node: {e}")
+        # Add an AIMessage so the finalizer has a meaningful last message
+        # (without this, the finalizer would see the HumanMessage and echo it
+        # back as the "result", which is deeply confusing to the user).
+        updates["messages"] = [AIMessage(content=_describe_llm_error(e))]
         return updates
+
+
+def _describe_llm_error(exc: Exception) -> str:
+    """Return a user-readable description of a node-level exception."""
+    msg = str(exc)
+    lowered = msg.lower()
+    cls = type(exc).__name__
+    if "connection refused" in lowered or "connecterror" in cls.lower():
+        return (
+            "[Agent error] Could not reach the AI model. "
+            "Make sure Ollama is running: `brew services start ollama`"
+        )
+    if "timeout" in lowered or "timed out" in lowered:
+        return (
+            "[Agent error] The AI model timed out. "
+            "The model may still be loading — try again in a moment."
+        )
+    if "model" in lowered and ("not found" in lowered or "pull" in lowered):
+        return (
+            f"[Agent error] Model not available: {msg[:120]}. "
+            "Run `ollama pull <model>` to download it."
+        )
+    return f"[Agent error] {cls}: {msg[:200]}"
 
 
 async def finalizer_node(state: AgentState) -> dict:
@@ -255,17 +300,47 @@ async def finalizer_node(state: AgentState) -> dict:
     """
     messages = state.get("messages", [])
     result = ""
-    if messages:
-        last = messages[-1]
-        result = last.content if isinstance(last.content, str) else str(last.content)
-    # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
-    if not result.strip():
-        for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "tool" and msg.content:
-                result = str(msg.content)
-                break
-    if not result.strip():
-        result = "No result produced."
+
+    # When force_end was set by a safeguard, explain why rather than returning
+    # a cryptic "No result produced." or echoing back the task input.
+    if state.get("force_end"):
+        if state.get("loop_detected"):
+            result = (
+                "The agent detected a repeated action loop and stopped early. "
+                "Try rephrasing your query or asking for something more specific."
+            )
+        elif state.get("error_count", 0) >= settings.safeguards.max_errors_per_run:
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and str(msg.content).startswith(
+                    "[Agent error]"
+                ):
+                    result = str(msg.content)
+                    break
+            if not result:
+                result = (
+                    "The agent encountered too many errors and stopped. "
+                    "Check that Ollama is running and the correct model is loaded."
+                )
+        elif state.get("token_count", 0) >= settings.safeguards.default_token_budget:
+            result = (
+                "The task hit the token budget limit and was stopped early. "
+                "Try a more specific query."
+            )
+
+    if not result:
+        if messages:
+            last = messages[-1]
+            result = (
+                last.content if isinstance(last.content, str) else str(last.content)
+            )
+        # Fallback: if LLM returned empty synthesis, surface the last tool output instead.
+        if not result.strip():
+            for msg in reversed(messages):
+                if hasattr(msg, "type") and msg.type == "tool" and msg.content:
+                    result = str(msg.content)
+                    break
+        if not result.strip():
+            result = "No result produced."
 
     log_agent_event(
         "run_end",
@@ -579,9 +654,9 @@ async def score_embedding_trust(doc: dict) -> float:
     if doc_id is None:
         return 0.5
     try:
-        from src.database import get_pool
+        from src.database import get_worker_pool
 
-        pool = get_pool()
+        pool = get_worker_pool()
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT trust_score FROM documents WHERE id = %s", (doc_id,)
@@ -617,12 +692,51 @@ class SecureToolNode:
 
         self._inner = ToolNode(tools)
         self._tool_names = {t.name for t in tools}
+        # Alias map: underscore-stripped name → canonical name.
+        # qwen2.5 (and some other local models) sometimes emit tool call names
+        # without underscores (e.g. "spawnresearcher" instead of "spawn_researcher").
+        # We normalise before the registry check so a stripped name maps back to
+        # its canonical registered form — without loosening actual security checks.
+        self._alias_map: dict[str, str] = {
+            n.replace("_", ""): n for n in self._tool_names
+        }
 
     async def __call__(self, state: AgentState, config=None) -> dict:
         result: dict = {}
 
         # Extract tool calls from the last AI message
         last_msg = state["messages"][-1] if state["messages"] else None
+        raw_tool_calls = getattr(last_msg, "tool_calls", None) or []
+
+        # Normalise tool names: some local models (e.g. qwen2.5) emit tool call
+        # names without underscores ("spawnresearcher" vs "spawn_researcher").
+        # Rewrite to canonical names so both the security registry check and the
+        # inner ToolNode lookup succeed with the same name.
+        needs_rewrite = any(
+            (tc["name"] if isinstance(tc, dict) else tc.name) in self._alias_map
+            for tc in raw_tool_calls
+        )
+        if needs_rewrite:
+            normalised_tcs = []
+            for tc in raw_tool_calls:
+                raw_name = tc["name"] if isinstance(tc, dict) else tc.name
+                canonical = self._alias_map.get(raw_name, raw_name)
+                if canonical != raw_name:
+                    logger.warning(
+                        "[SecureToolNode] Normalised tool name %r → %r "
+                        "(model dropped underscores)",
+                        raw_name,
+                        canonical,
+                    )
+                    tc = dict(tc) if isinstance(tc, dict) else tc
+                    if isinstance(tc, dict):
+                        tc = {**tc, "name": canonical}
+                    else:
+                        tc = tc.model_copy(update={"name": canonical})
+                normalised_tcs.append(tc)
+            last_msg = last_msg.model_copy(update={"tool_calls": normalised_tcs})
+            state = {**state, "messages": [*state["messages"][:-1], last_msg]}
+
         tool_calls = getattr(last_msg, "tool_calls", None) or []
 
         # Sequence tracking for Guardian

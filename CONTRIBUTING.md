@@ -106,7 +106,7 @@ implementation. The count should trend upward over time.
 | Phase 3 complete | 55+ |
 | v1.0.0 (Phase 7) | 242 ✅ |
 | v1.0.1 (Phase 16) | 492 ✅ |
-| **Current baseline (v0.7.0-alpha, Guardian G4 published)** | **2054 ✅** — floor; never goes down |
+| **Current baseline (v0.7.1-alpha, post-hallucination hardening)** | **2125 ✅** — floor; never goes down |
 
 ---
 
