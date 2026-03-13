@@ -208,6 +208,12 @@ stop:
 	@echo "✅ All services stopped."
 	@echo "   → Full restart:               make start"
 	@echo "   → App servers only:           make db-start && make servers-start"
+	@if [ -n "$$POSTGRES_PASSWORD" ]; then \
+	  echo ""; \
+	  echo "⚠️  POSTGRES_PASSWORD is set in your shell (value: $${POSTGRES_PASSWORD:0:4}...)."; \
+	  echo "   Run: unset POSTGRES_PASSWORD"; \
+	  echo "   Otherwise make start will use the stale value instead of Keychain."; \
+	fi
 
 .PHONY: restart
 restart:  ## Full stop + start with confirmation prompt (stops and restarts DB + Ollama)
@@ -239,7 +245,8 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@sleep 1
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
-	  POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || echo "")} \
+	  POSTGRES_PASSWORD=$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || \
+	    awk -F: '/^\*:5432:\*:jp:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
 	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
