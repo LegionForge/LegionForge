@@ -1179,6 +1179,35 @@ async def check(
         )
         return _record_check_metrics(resp)
 
+    # Canary check: guardian_canary should never be called by legitimate code.
+    # Passing check 1 means it IS in the approved registry (seeded by init.sql).
+    # Any call to it is immediate evidence of a probing attack or hallucination.
+    if request.tool_id == "guardian_canary":
+        logger.warning(
+            f"[guardian/check] CANARY_TRIGGERED agent={request.agent_id!r} "
+            f"run={request.run_id!r}"
+        )
+        asyncio.create_task(
+            _write_threat_event_direct(
+                agent_id=request.agent_id,
+                run_id=request.run_id,
+                threat_type="CANARY_TRIGGERED",
+                confidence=1.0,
+                raw_input=str(request.args)[:500],
+                action_taken="halt",
+                metadata={"tool_id": request.tool_id},
+            )
+        )
+        return _record_check_metrics(
+            GuardianCheckResponse(
+                allowed=False,
+                tier="halt",
+                reason="canary_triggered",
+                threat_type="CANARY_TRIGGERED",
+                confidence=1.0,
+            )
+        )
+
     # 2. Capability boundary (Gap 2 fix: also pass tool_id)
     resp = _check_2_capability_boundary(request.action, request.tool_id)
     if resp:
