@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Hexagon background -->
+  <polygon points="32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5"
+           fill="#0d1117" stroke="#58a6ff" stroke-width="2.5"/>
+  <!-- Forge flame — amber base -->
+  <path d="M32 48 C24 44 20 36 22 28 C24 20 28 18 30 22 C28 26 30 30 32 28 C34 26 34 22 38 24 C42 26 44 34 40 42 C38 46 36 48 32 48 Z"
+        fill="#f0883e"/>
+  <!-- Inner flame tip — electric blue -->
+  <path d="M32 44 C28 40 27 34 29 30 C30 28 31 30 32 32 C33 30 34 28 36 30 C38 34 36 40 32 44 Z"
+        fill="#58a6ff"/>
+</svg>
