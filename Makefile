@@ -831,6 +831,41 @@ test-tool-all:  ## All tool accuracy tests (fast + LLM)
 	@cd $(BASE) && $(PYTEST) tests/tool_accuracy/ -v --tb=short --timeout=90
 	@echo "✅ All tool accuracy tests complete"
 
+.PHONY: test-hallucination
+test-hallucination:  ## Live hallucination detection tests (require Ollama + PostgreSQL + internet, ~120s/test)
+	@cd $(BASE) && $(PYTEST) tests/hallucination/ -v --tb=short --timeout=180 -s
+	@echo "✅ Live hallucination tests complete"
+
+.PHONY: test-tool-integrity
+test-tool-integrity:  ## All tool runtime integrity tests (schema, result injection, Guardian, sandbox, memory)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/ -v --tb=short --timeout=120 -s
+	@echo "✅ Tool integrity tests complete"
+
+.PHONY: test-tool-integrity-schema
+test-tool-integrity-schema:  ## Schema conformance tests — fast, no external services required
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_schema_conformance.py -v --tb=short
+	@echo "✅ Schema conformance tests complete"
+
+.PHONY: test-tool-integrity-injection
+test-tool-integrity-injection:  ## Result injection + PII scrubbing tests (require Ollama + PostgreSQL)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_result_injection.py -v --tb=short --timeout=120 -s
+	@echo "✅ Result injection tests complete"
+
+.PHONY: test-tool-integrity-guardian
+test-tool-integrity-guardian:  ## Guardian sidecar end-to-end tests (require make guardian-start)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_guardian_e2e.py -v --tb=short --timeout=30 -s
+	@echo "✅ Guardian e2e tests complete"
+
+.PHONY: test-tool-integrity-sandbox
+test-tool-integrity-sandbox:  ## code_execute Docker sandbox containment tests (require make sandbox-build)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_code_execute_sandbox.py -v --tb=short --timeout=120 -s
+	@echo "✅ Sandbox containment tests complete"
+
+.PHONY: test-tool-integrity-memory
+test-tool-integrity-memory:  ## memory_write/memory_recall isolation tests (require PostgreSQL)
+	@cd $(BASE) && $(PYTEST) tests/tool_integrity/test_memory_isolation.py -v --tb=short --timeout=60 -s
+	@echo "✅ Memory isolation tests complete"
+
 ## ── Gateway Docker (Phase 11) ─────────────────────────────────
 .PHONY: build-gateway
 build-gateway:  ## Build legionforge-gateway:latest Docker image

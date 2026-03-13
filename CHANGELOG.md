@@ -11,6 +11,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.7.1-alpha] — 2026-03-12 (chat UI + test suites)
+
+### Added — 2026-03-12 (post-#240 UAT session)
+
+- **Chat mode UI** (`src/gateway/static/index.html`) — toggle button (`💬`) converts the web UI into a persistent chat interface. Activating chat mode hides admin/config cards, scrolls conversation history into a full-viewport bubble view, pins the input bar at the bottom, auto-creates a session, and persists state to `localStorage`. SSE token streaming continues to work; `appendSpan()` calls `scrollChatToBottom()` automatically. Normal dashboard mode restored on toggle-off. No backend changes required.
+- **Hallucination test suite** (`tests/hallucination/`) — 12 manually-run tests (`pytest.mark.hallucination`). Covers: stable-content web fetch grounding (httpbin, PyPI, JSONPlaceholder), web search grounding (Python.org, FastAPI), runtime UUID nonce anti-fabrication (UUID must be fetched, not invented), sequential UUID distinctness, 404 non-fabrication, and source citation verification (`sources[]` must contain the exact fetched URL). Requires Ollama + PostgreSQL + internet access; excluded from `make test` and `make ci` by default.
+- **Tool integrity test suites** (`tests/tool_integrity/`) — 33 tests across 5 suites:
+  - **Schema conformance** (12 tests, `pytest.mark.tool_integrity`, no services) — input boundary rejection (empty content, oversized content, invalid enum scope/content_type) and return-type conformance on SSRF-blocked paths and feature-disabled paths for all 8 registered tools.
+  - **Result injection** (4 tests, `tool_integrity`) — end-to-end Tier 1 injection blocking via `run_researcher()` with a live injection server; control test for clean pages; `http_post` PII redaction verification before outbound send.
+  - **Guardian e2e** (5 tests, `pytest.mark.tool_integrity_guardian`) — health endpoint responsiveness, forbidden tool ID blocking (`register_tool`), destructive argument detection (`rm -rf /` in `file_write` content), legitimate tool allowance, unregistered tool denial.
+  - **Docker sandbox containment** (6 tests, `pytest.mark.tool_integrity_sandbox`) — network blocked (`--network=none`), `/etc/` write blocked (`--read-only`), `/tmp` writable, timeout enforcement (300s sleep), stderr captured, clean code executes.
+  - **Memory namespace isolation** (6 tests, `pytest.mark.tool_integrity_memory`) — same-agent recall, cross-agent isolation, scope isolation (agent vs user), fresh namespace emptiness, injection payload blocking, cross-user isolation.
+- **Makefile targets** (7 new): `test-hallucination`, `test-tool-integrity`, `test-tool-integrity-schema`, `test-tool-integrity-injection`, `test-tool-integrity-guardian`, `test-tool-integrity-sandbox`, `test-tool-integrity-memory`.
+- **`pytest.ini` marks** (6 new): `hallucination`, `live_web`, `tool_integrity`, `tool_integrity_guardian`, `tool_integrity_sandbox`, `tool_integrity_memory`.
+
+### Fixed — 2026-03-12
+
+- `test_memory_write_rejects_oversized_content` / `_invalid_scope` / `test_memory_recall_rejects_invalid_scope` — tests now `monkeypatch` `settings.agent_memory.enabled = True` so size/scope checks are reached before the disabled guard fires.
+- `test_http_post_rejects_invalid_content_type` — Pydantic `Literal` constraint raises `ValidationError` before the function body; test correctly uses `pytest.raises((ValidationError, Exception))` instead of asserting on return value.
+
+---
+
 ## [0.7.1-alpha] — 2026-03-10 (ongoing)
 
 ### Added — 2026-03-10 (post-#239 bug-fix session)

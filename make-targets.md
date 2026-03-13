@@ -164,6 +164,13 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `test-tool-accuracy` | Tool unit tests — web_fetch/web_search accuracy, no LLM | — |
 | `test-researcher-accuracy` | Researcher anti-hallucination tests (requires Ollama + PostgreSQL, ~90s) | — |
 | `test-tool-all` | All tool accuracy tests (fast + LLM) | — |
+| `test-hallucination` | Live hallucination tests — real internet + LLM stack (~2min/test, manually run) | — |
+| `test-tool-integrity` | All tool runtime integrity tests (schema, injection, Guardian, sandbox, memory) | — |
+| `test-tool-integrity-schema` | Schema conformance only — fast, no services required | — |
+| `test-tool-integrity-injection` | Result injection + PII scrubbing tests (requires Ollama + PostgreSQL) | — |
+| `test-tool-integrity-guardian` | Guardian sidecar e2e tests (requires `make guardian-start`) | — |
+| `test-tool-integrity-sandbox` | code_execute sandbox containment (requires `make sandbox-build`) | — |
+| `test-tool-integrity-memory` | memory_write/memory_recall isolation tests (requires PostgreSQL) | — |
 
 ---
 
