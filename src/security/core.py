@@ -469,6 +469,36 @@ def sanitize_output(text: str) -> tuple[str, dict]:
     return sanitize_text(text, redact_pii=True, check_injection=True)
 
 
+# ── Log injection prevention ───────────────────────────────────────────────────
+# User-controlled strings logged verbatim can smuggle fake log lines (log
+# injection) or ANSI escape sequences that manipulate terminals and log viewers.
+
+_ANSI_RE: re.Pattern = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\x1b[()][AB]")
+_CTRL_RE: re.Pattern = re.compile(r"[\r\n\t\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def sanitize_log_value(value: object, max_len: int = 200) -> str:
+    """Strip ANSI codes and control chars from user-controlled log values.
+
+    Prevents log injection (fake log lines) and terminal escape attacks.
+    Call on any user-supplied string before it reaches logger.*().
+
+    Args:
+        value:   The value to sanitize (any type — converted via str()).
+        max_len: Maximum length of the returned string (default 200).
+                 Longer values are truncated with a trailing '…'.
+
+    Returns:
+        A clean, printable string safe for use in log messages.
+    """
+    s = value if isinstance(value, str) else str(value)
+    s = _ANSI_RE.sub("", s)
+    s = _CTRL_RE.sub(" ", s)
+    if len(s) > max_len:
+        s = s[:max_len] + "…"
+    return s
+
+
 def sanitize_messages(messages: list) -> list:
     """
     Sanitize a list of messages before outbound LLM calls (PII redaction on send).
@@ -924,6 +954,26 @@ def validate_fetch_url(url: str) -> None:
         pass  # DNS resolution failed — let httpx handle that gracefully
 
     logger.debug(f"[ssrf-check] URL validated: {url!r}")
+
+
+def is_ssrf_url(url: str) -> bool:
+    """Return True if *url* targets a private/internal address (SSRF risk).
+
+    Lightweight boolean wrapper around validate_fetch_url().  Use this when
+    you want to gate on SSRF without raising an exception — e.g. webhook
+    callback_url validation where we log-and-skip rather than 500.
+
+    Returns:
+        True  — URL should be BLOCKED (private/internal target detected).
+        False — URL appears safe (public address, passes all checks).
+    """
+    try:
+        validate_fetch_url(url)
+        return False  # passed all checks — not an SSRF target
+    except (SecurityError, ValueError):
+        return True  # blocked
+    except Exception:
+        return True  # fail-safe: block on unexpected errors
 
 
 # ── Outbound Tool Input Sanitization ─────────────────────────────────────────

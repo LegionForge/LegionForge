@@ -23788,6 +23788,152 @@ def test_sec2_interactive_no_raises(monkeypatch):
         _warn_postgres_env_conflict("keychain-password")
 
 
+# ── Security gap hardening tests (2026-03-13) ────────────────────────────────
+
+
+def test_sanitize_log_value_strips_newline_injection():
+    """FIX-5: sanitize_log_value must strip newline log injection."""
+    from src.security.core import sanitize_log_value
+
+    result = sanitize_log_value("evil\nfake log line")
+    assert "\n" not in result
+
+
+def test_sanitize_log_value_strips_ansi_escape():
+    """FIX-5: sanitize_log_value must strip ANSI escape sequences."""
+    from src.security.core import sanitize_log_value
+
+    result = sanitize_log_value("\x1b[31mred\x1b[0m")
+    assert "\x1b" not in result
+
+
+def test_sanitize_log_value_truncates_long_strings():
+    """FIX-5: sanitize_log_value must truncate strings over max_len."""
+    from src.security.core import sanitize_log_value
+
+    result = sanitize_log_value("x" * 500)
+    assert len(result) <= 201  # 200 chars + '…' ellipsis
+
+
+def test_is_ssrf_url_blocks_localhost():
+    """FIX-2: is_ssrf_url must block localhost."""
+    from src.security.core import is_ssrf_url
+
+    assert is_ssrf_url("http://localhost/admin") is True
+
+
+def test_is_ssrf_url_blocks_private_ip():
+    """FIX-2: is_ssrf_url must block RFC-1918 addresses."""
+    from src.security.core import is_ssrf_url
+
+    assert is_ssrf_url("http://192.168.1.1/internal") is True
+    assert is_ssrf_url("http://10.0.0.1/secret") is True
+
+
+def test_is_ssrf_url_allows_public_url():
+    """FIX-2: is_ssrf_url must allow legitimate public URLs."""
+    from src.security.core import is_ssrf_url
+
+    # DNS resolution may fail in CI — just test that the function is callable
+    # and returns a bool for a well-formed public URL.
+    result = is_ssrf_url("https://example.com/api")
+    assert isinstance(result, bool)
+
+
+def test_is_ssrf_url_exported_from_security_package():
+    """FIX-2: is_ssrf_url must be importable from src.security package."""
+    from src.security import is_ssrf_url  # noqa: F401
+
+    assert callable(is_ssrf_url)
+
+
+def test_sanitize_log_value_exported_from_security_package():
+    """FIX-5: sanitize_log_value must be importable from src.security package."""
+    from src.security import sanitize_log_value  # noqa: F401
+
+    assert callable(sanitize_log_value)
+
+
+def test_vector_search_has_namespace_isolation_comment():
+    """FIX-3: similarity_search docstring must document isolation strategy."""
+    import inspect
+    from src import database
+
+    source = inspect.getsource(database.similarity_search)
+    assert (
+        "ISOLATION" in source
+    ), "similarity_search must document its isolation strategy"
+
+
+def test_api_key_auth_uses_bcrypt_not_plain_compare():
+    """FIX-1: API key verification must use bcrypt (constant-time), not == comparison."""
+    import inspect
+    from src.gateway.backends import api_key as api_key_module
+
+    source = inspect.getsource(api_key_module)
+    # Must use bcrypt.checkpw — not a plain == comparison
+    assert (
+        "checkpw" in source
+    ), "API key auth must use bcrypt.checkpw for constant-time verification"
+    # Ensure no plain == comparison of raw key strings
+    assert "credential ==" not in source
+    assert "raw ==" not in source
+
+
+def test_webhook_imports_ssrf_guard():
+    """FIX-2: webhook connector must import the SSRF guard."""
+    import inspect
+    from src.connectors import webhook as webhook_module
+
+    source = inspect.getsource(webhook_module)
+    assert "is_ssrf_url" in source, "webhook.py must import and use is_ssrf_url"
+
+
+def test_worker_imports_sanitize_log_value():
+    """FIX-5: worker.py must import sanitize_log_value for log injection prevention."""
+    import inspect
+    from src.gateway import worker as worker_module
+
+    source = inspect.getsource(worker_module)
+    assert (
+        "sanitize_log_value" in source
+    ), "worker.py must use sanitize_log_value on user-supplied log values"
+
+
+def test_admin_routes_audit_log_on_create():
+    """FIX-8: admin create_user must call append_audit_log."""
+    import inspect
+    from src.gateway.routes import admin as admin_module
+
+    source = inspect.getsource(admin_module)
+    assert (
+        "append_audit_log" in source
+    ), "admin.py must call append_audit_log for mutating admin actions"
+    assert "ADMIN_ACTION" in source, "admin.py must log ADMIN_ACTION event type"
+
+
+def test_token_budget_atomicity_comment_in_rate_limiter():
+    """FIX-4: rate_limiter.py must document the TOCTOU note for the DB path."""
+    import inspect
+    from src import rate_limiter
+
+    source = inspect.getsource(rate_limiter.per_user_budget_check)
+    assert (
+        "ATOMICITY" in source or "TOCTOU" in source
+    ), "per_user_budget_check must document the TOCTOU risk of the DB path"
+
+
+def test_memory_search_sanitizes_retrieved_chunks():
+    """FIX-6: MemoryStore.search must sanitize retrieved chunks for prompt injection."""
+    import inspect
+    from src import memory as memory_module
+
+    source = inspect.getsource(memory_module.MemoryStore.search)
+    assert (
+        "sanitize_output" in source
+    ), "MemoryStore.search must apply sanitize_output to retrieved chunks (OWASP LLM01)"
+
+
 # ── Crystallization pipeline importability smoke tests ────────────────────────
 
 

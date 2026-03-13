@@ -161,10 +161,30 @@ class MemoryStore:
         _min_sim = min_similarity if min_similarity is not None else cfg.min_similarity
 
         embedding = await self.embed(query)
-        results = await similarity_search(
+        raw_results = await similarity_search(
             embedding, namespace, _limit, _min_sim, temporal_decay=temporal_decay
         )
-        return results
+
+        # OWASP LLM01: scan retrieved chunks for indirect prompt injection.
+        # Stored documents may have been ingested from untrusted sources.
+        # Sanitize content before it re-enters the agent context — do NOT block,
+        # just sanitize (detected patterns become [REDACTED]) and log.
+        from src.security.core import sanitize_output
+
+        sanitized_results = []
+        for chunk in raw_results:
+            raw_content = chunk.get("content", "")
+            clean_content, meta = sanitize_output(raw_content)
+            if meta.get("injection_detected"):
+                logger.warning(
+                    "[rag] Injection pattern in retrieved document chunk "
+                    "(doc_id=%s namespace=%s) — sanitized",
+                    chunk.get("id"),
+                    namespace,
+                )
+            sanitized_results.append({**chunk, "content": clean_content})
+
+        return sanitized_results
 
     # ── Get all ───────────────────────────────────────────────────────────────
 

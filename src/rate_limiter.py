@@ -432,7 +432,14 @@ async def per_user_budget_check(
     except ImportError:
         pass  # state module not available in non-gateway contexts
 
-    # DB fallback path (two reads, single-instance safe).
+    # DB fallback path: two separate SELECT queries.
+    # ATOMICITY NOTE: This path has an inherent TOCTOU window — two concurrent
+    # task submissions for the same user can both pass the check if both read
+    # the same actual_used value before either increments it.  This is
+    # acceptable for single-instance deployments where task submission is
+    # synchronous under the request/response cycle (low burst probability).
+    # For multi-instance or high-concurrency deployments, ensure Redis is
+    # configured (redis_mode() returns True above) which uses an atomic INCRBY.
     from src.database import get_user_actual_usage_today, get_user_inflight_tokens
 
     actual_used = await get_user_actual_usage_today(user_id, provider)

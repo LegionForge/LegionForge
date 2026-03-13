@@ -2467,6 +2467,13 @@ async def similarity_search(
     Find documents similar to query_embedding using cosine similarity.
     Returns list of {id, content, metadata, similarity, created_at} dicts.
 
+    ISOLATION: Multi-tenant isolation is enforced via the `namespace` parameter.
+    Callers MUST use a user-scoped namespace (e.g. "user:<user_id>") for any
+    user-owned data.  The MemoryStore.search() caller is responsible for setting
+    the correct namespace — see src/memory.py namespace conventions.
+    RLS on the gateway pool (app.user_id session variable) provides DB-layer
+    defence-in-depth when documents are accessed via the gateway role.
+
     temporal_decay: if True, blends cosine similarity with a recency factor
         using the STAR algorithm's gravity formula:
             final_score = similarity × e^(-λ · age_hours)

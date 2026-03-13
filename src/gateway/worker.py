@@ -54,6 +54,7 @@ from src.database import (
     purge_expired_stream_tokens,
     get_user_webhooks_for_event,
 )
+from src.security.core import sanitize_log_value
 from src.gateway.events import (
     build_sse_event,
     build_task_complete_event,
@@ -315,7 +316,10 @@ async def run_task(task: dict) -> None:
     agent_type = task.get("agent_type", "base_agent")
     session_id = task.get("session_id")
     logger.info(
-        f"[worker] Starting task_id={task_id} agent={agent_type} " f"user={user_id}"
+        "[worker] Starting task_id=%s agent=%s user=%s",
+        task_id,
+        sanitize_log_value(agent_type),
+        user_id,
     )
 
     from src.tools.code_tools import pop_charts
@@ -418,7 +422,10 @@ async def run_task(task: dict) -> None:
     except Exception as exc:
         error_msg = str(exc)
         logger.error(
-            f"[worker] Task failed task_id={task_id}: {error_msg}", exc_info=True
+            "[worker] Task failed task_id=%s: %s",
+            task_id,
+            sanitize_log_value(error_msg),
+            exc_info=True,
         )
         # Flush any partial chart store entries so they don't leak across tasks.
         pop_charts(task_id)
