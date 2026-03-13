@@ -64,8 +64,12 @@ _chart_task_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 _chart_store: dict[str, list[dict[str, Any]]] = {}
 
+# Sentinel format (figure ID is optional):
+#   %%LF_CHART_SVG%%         — ungrouped SVG
+#   %%LF_CHART_SVG:fig1%%    — SVG belonging to figure group "fig1"
+# Closing tag does NOT repeat the figure ID:  %%/LF_CHART_SVG%%
 _CHART_RE = re.compile(
-    r"%%LF_CHART_(SVG|PNG|PLOTLY)%%(.*?)%%/LF_CHART_(?:SVG|PNG|PLOTLY)%%",
+    r"%%LF_CHART_(SVG|PNG|PLOTLY)(?::([^%\s]+))?%%(.*?)%%/LF_CHART_(?:SVG|PNG|PLOTLY)%%",
     re.DOTALL,
 )
 
@@ -94,7 +98,8 @@ def _extract_charts(
 
     def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
         chart_type = m.group(1).lower()
-        data = m.group(2).strip()
+        figure_id = m.group(2) or None  # e.g. "fig1", or None if no group tag
+        data = m.group(3).strip()
         size_kb = len(data.encode()) // 1024
         if len(data.encode()) > max_chart_bytes:
             return (
@@ -103,8 +108,12 @@ def _extract_charts(
             )
         if len(data) < 64:
             return "[Chart rendering failed — no data in sentinel block.]"
-        charts.append({"type": chart_type, "data": data})
-        return f"[Chart generated: {chart_type.upper()}, {size_kb} KB — rendered in UI]"
+        entry: dict[str, Any] = {"type": chart_type, "data": data}
+        if figure_id:
+            entry["figure"] = figure_id
+        charts.append(entry)
+        group_note = f" (group {figure_id})" if figure_id else ""
+        return f"[Chart generated: {chart_type.upper()}{group_note}, {size_kb} KB — rendered in UI]"
 
     clean = _CHART_RE.sub(_replace, text)
     return clean, charts
@@ -228,9 +237,13 @@ CODE_TOOL_MANIFEST = ToolManifest(
         "Returns stdout + stderr (max 10 KB). "
         "matplotlib, numpy, and plotly are available. "
         "To render charts in the UI, print sentinel blocks: "
-        "%%LF_CHART_SVG%%<svg...>%%/LF_CHART_SVG%% for matplotlib SVG, "
-        "%%LF_CHART_PNG%%<base64>%%/LF_CHART_PNG%% for PNG, or "
-        "%%LF_CHART_PLOTLY%%<fig.to_json()>%%/LF_CHART_PLOTLY%% for interactive Plotly. "
+        "%%LF_CHART_SVG%%...%%/LF_CHART_SVG%% for matplotlib SVG, "
+        "%%LF_CHART_PNG%%...%%/LF_CHART_PNG%% for PNG (base64), or "
+        "%%LF_CHART_PLOTLY%%...%%/LF_CHART_PLOTLY%% for interactive Plotly JSON. "
+        "Add an optional figure group ID to show A/B/C toggle tabs for the same figure: "
+        "%%LF_CHART_SVG:fig1%%...%%/LF_CHART_SVG%% "
+        "%%LF_CHART_PNG:fig1%%...%%/LF_CHART_PNG%% "
+        "%%LF_CHART_PLOTLY:fig1%%...%%/LF_CHART_PLOTLY%%. "
         "Use plt.rcParams['svg.fonttype']='none' to keep SVG compact."
     ),
     input_schema={"code": "str"},
