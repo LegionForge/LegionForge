@@ -121,6 +121,13 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
     set_agent_memory_context(agent_id, user_id)
 
+    # Charts: set task context so code_execute can store chart payloads keyed
+    # by task_id.  The caller (run_task) reads them via pop_charts() after
+    # _stream_agent() returns, regardless of success or failure.
+    from src.tools.code_tools import set_chart_task_id
+
+    set_chart_task_id(task_id)
+
     # Seed all safeguard fields (step_count, action_history, token_count, …)
     # using the same run_id that was recorded in the tasks table for this run.
     # Include the agent-specific SystemMessage so it is persisted in the
@@ -311,8 +318,14 @@ async def run_task(task: dict) -> None:
         f"[worker] Starting task_id={task_id} agent={agent_type} " f"user={user_id}"
     )
 
+    from src.tools.code_tools import pop_charts
+
+    charts: list[dict] = []
     try:
         result_text, steps, tokens = await _stream_agent(task)
+        # Collect any charts produced by code_execute during this task.
+        # Must happen before mark_task_complete so charts reach the event.
+        charts = pop_charts(task_id)
         await mark_task_complete(
             task_id,
             result=result_text,
@@ -343,10 +356,16 @@ async def run_task(task: dict) -> None:
                 logger.warning(f"[worker] Failed to record user usage: {usage_err}")
 
         # Phase 69: include result + tokens inline so browsers render without
-        # a second REST round-trip.
+        # a second REST round-trip.  Charts (if any) are passed through the
+        # same event; they are ephemeral and not stored in the DB.
         await publish_event(
             task_id,
-            build_task_complete_event(task_id, result=result_text, tokens=tokens),
+            build_task_complete_event(
+                task_id,
+                result=result_text,
+                tokens=tokens,
+                charts=charts or None,
+            ),
         )
         logger.info(f"[worker] Completed task_id={task_id} steps={steps}")
 
@@ -401,6 +420,8 @@ async def run_task(task: dict) -> None:
         logger.error(
             f"[worker] Task failed task_id={task_id}: {error_msg}", exc_info=True
         )
+        # Flush any partial chart store entries so they don't leak across tasks.
+        pop_charts(task_id)
         await mark_task_failed(task_id, error=error_msg)
         await publish_event(task_id, build_task_error_event(task_id, error_msg))
 

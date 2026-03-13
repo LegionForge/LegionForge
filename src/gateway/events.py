@@ -114,6 +114,7 @@ def build_task_complete_event(
     task_id: str,
     result: str = "",
     tokens: dict | None = None,
+    charts: list[dict] | None = None,
 ) -> dict:
     """
     Build a task_complete SSE event.
@@ -123,6 +124,10 @@ def build_task_complete_event(
     Both fields remain optional for backward-compat with callers that don't
     have the result yet (e.g. the fast-path DB read in stream.py already
     populates them directly from task_row).
+
+    ``charts`` carries chart payloads extracted by code_execute — each entry
+    is {"type": "svg"|"png"|"plotly", "data": "<raw>"}. Charts are ephemeral:
+    they are NOT stored in the DB and will NOT appear on stream reconnect.
     """
     data: dict = {
         "task_id": task_id,
@@ -134,6 +139,8 @@ def build_task_complete_event(
         data["result"] = result
     if tokens:
         data["tokens"] = tokens
+    if charts:
+        data["charts"] = charts
     return {"event": "task_complete", "data": data}
 
 

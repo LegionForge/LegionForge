@@ -26,8 +26,11 @@ Pre-requisite:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
+import re
 import shutil
+from typing import Any
 
 from langchain_core.tools import tool
 
@@ -42,6 +45,78 @@ from src.security import (
 logger = logging.getLogger(__name__)
 
 _PYTHON_HEADER = "# LegionForge sandbox — Python 3\n"
+
+# ── Chart output channel ───────────────────────────────────────────────────────
+# When agent code prints %%LF_CHART_SVG%%, %%LF_CHART_PNG%%, or
+# %%LF_CHART_PLOTLY%% sentinel blocks to stdout, code_execute strips them
+# from the text returned to the LLM (keeping only a compact summary) and
+# stores the raw chart data here, keyed by the current task_id.
+#
+# The worker reads and clears the store after _stream_agent() returns, then
+# passes the charts list through the task_complete SSE event to the browser.
+#
+# Charts are excluded from the text output cap and from sanitize_output so
+# that large SVG / base64 PNG / Plotly JSON payloads don't trigger false
+# positives in the injection scanner.
+
+_chart_task_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "_chart_task_id", default=""
+)
+_chart_store: dict[str, list[dict[str, Any]]] = {}
+
+# Sentinel format (figure ID is optional):
+#   %%LF_CHART_SVG%%         — ungrouped SVG
+#   %%LF_CHART_SVG:fig1%%    — SVG belonging to figure group "fig1"
+# Closing tag does NOT repeat the figure ID:  %%/LF_CHART_SVG%%
+_CHART_RE = re.compile(
+    r"%%LF_CHART_(SVG|PNG|PLOTLY)(?::([^%\s]+))?%%(.*?)%%/LF_CHART_(?:SVG|PNG|PLOTLY)%%",
+    re.DOTALL,
+)
+
+
+def set_chart_task_id(task_id: str) -> None:
+    """Call once per task in the worker before running the agent graph."""
+    _chart_task_ctx.set(task_id)
+
+
+def pop_charts(task_id: str) -> list[dict[str, Any]]:
+    """Return and clear all charts produced by code_execute for *task_id*."""
+    return _chart_store.pop(task_id, [])
+
+
+def _extract_charts(
+    text: str, max_chart_bytes: int
+) -> tuple[str, list[dict[str, Any]]]:
+    """
+    Strip %%LF_CHART_*%% sentinel blocks from *text*.
+
+    Returns (clean_text, charts) where *clean_text* has each block replaced by
+    a compact human-readable summary, and *charts* is a list of
+    {"type": "svg"|"png"|"plotly", "data": "<raw data>"} dicts.
+    """
+    charts: list[dict[str, Any]] = []
+
+    def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
+        chart_type = m.group(1).lower()
+        figure_id = m.group(2) or None  # e.g. "fig1", or None if no group tag
+        data = m.group(3).strip()
+        size_kb = len(data.encode()) // 1024
+        if len(data.encode()) > max_chart_bytes:
+            return (
+                f"[Chart too large — {size_kb} KB exceeds "
+                f"{max_chart_bytes // 1024} KB limit. Reduce figure size or DPI.]"
+            )
+        if len(data) < 64:
+            return "[Chart rendering failed — no data in sentinel block.]"
+        entry: dict[str, Any] = {"type": chart_type, "data": data}
+        if figure_id:
+            entry["figure"] = figure_id
+        charts.append(entry)
+        group_note = f" (group {figure_id})" if figure_id else ""
+        return f"[Chart generated: {chart_type.upper()}{group_note}, {size_kb} KB — rendered in UI]"
+
+    clean = _CHART_RE.sub(_replace, text)
+    return clean, charts
 
 
 def _docker_available() -> bool:
@@ -68,6 +143,7 @@ async def code_execute(code: str) -> str:
     mem_mb = cfg.sandbox_memory_mb
     cpus = cfg.sandbox_cpus
     max_out = cfg.sandbox_max_output_bytes
+    max_chart = cfg.sandbox_max_chart_bytes
 
     script = _PYTHON_HEADER + clean_code
 
@@ -81,8 +157,14 @@ async def code_execute(code: str) -> str:
         "--memory-swap=0",  # disable swap — keep the memory cap hard
         f"--cpus={cpus}",
         "--pids-limit=20",
-        "--tmpfs=/tmp:size=10m,noexec",
+        "--tmpfs=/tmp:size=64m,noexec",  # 64 MB — matplotlib font cache needs space
         "--security-opt=no-new-privileges",
+        # Matplotlib/Plotly environment — MPLBACKEND and MPLCONFIGDIR are also
+        # baked into the image, but explicit -e flags survive image rebuilds.
+        "-e",
+        "MPLBACKEND=Agg",
+        "-e",
+        "MPLCONFIGDIR=/tmp",
         image,
         "python3",
         "-c",
@@ -109,6 +191,26 @@ async def code_execute(code: str) -> str:
         return f"[code_execute] Failed to start container: {type(exc).__name__}"
 
     combined = (stdout_b + b"\n" + stderr_b).decode("utf-8", errors="replace")
+
+    # ── Chart extraction (must happen BEFORE the output cap and sanitizer) ─────
+    # Strip %%LF_CHART_*%% blocks from the text so they don't consume the 10 KB
+    # text quota or pass through the injection scanner.  Extracted charts are
+    # stored in _chart_store under the current task_id; the worker reads them
+    # after the agent graph completes and delivers them via the task_complete
+    # SSE event so the browser can render them.
+    text_out, charts = _extract_charts(combined, max_chart)
+    if charts:
+        task_id = _chart_task_ctx.get("")
+        if task_id:
+            _chart_store.setdefault(task_id, []).extend(charts)
+        else:
+            logger.warning(
+                "[code_execute] Chart produced but no task_id in context — "
+                "chart will not reach the UI."
+            )
+
+    combined = text_out  # LLM sees only the compact summaries
+
     if len(combined.encode()) > max_out:
         combined = (
             combined[:max_out]
@@ -132,7 +234,17 @@ CODE_TOOL_MANIFEST = ToolManifest(
     description=(
         "Execute Python 3 code in an air-gapped Docker sandbox "
         "(--network none, --read-only, memory+CPU capped, 30s timeout). "
-        "Returns stdout + stderr (max 10 KB)."
+        "Returns stdout + stderr (max 10 KB). "
+        "matplotlib, numpy, and plotly are available. "
+        "To render charts in the UI, print sentinel blocks: "
+        "%%LF_CHART_SVG%%...%%/LF_CHART_SVG%% for matplotlib SVG, "
+        "%%LF_CHART_PNG%%...%%/LF_CHART_PNG%% for PNG (base64), or "
+        "%%LF_CHART_PLOTLY%%...%%/LF_CHART_PLOTLY%% for interactive Plotly JSON. "
+        "Add an optional figure group ID to show A/B/C toggle tabs for the same figure: "
+        "%%LF_CHART_SVG:fig1%%...%%/LF_CHART_SVG%% "
+        "%%LF_CHART_PNG:fig1%%...%%/LF_CHART_PNG%% "
+        "%%LF_CHART_PLOTLY:fig1%%...%%/LF_CHART_PLOTLY%%. "
+        "Use plt.rcParams['svg.fonttype']='none' to keep SVG compact."
     ),
     input_schema={"code": "str"},
     declared_side_effects=["spawns_docker_container", "executes_arbitrary_code"],

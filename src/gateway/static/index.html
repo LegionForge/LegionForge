@@ -857,6 +857,20 @@
     /* Chat-mode toggle button state */
     #chat-mode-btn.active { color: var(--blue); border-color: var(--blue); }
 
+    /* ── Chart output ───────────────────────────────────────────── */
+    .chart-container { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .chart-item { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: hidden; }
+    .chart-item svg { max-width: 100%; height: auto; display: block; }
+    .chart-item img { max-width: 100%; height: auto; display: block; border-radius: 3px; }
+    .chart-item .plotly-chart { min-height: 380px; }
+    .chart-label { font-size: 10px; color: var(--text-xdim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .chart-loading { color: var(--text-dim); font-size: 12px; padding: 20px; text-align: center; }
+    .chart-tab-bar { display: flex; gap: 4px; margin-bottom: 8px; }
+    .chart-tab { font-size: 11px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel); color: var(--text-dim); cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .chart-tab:hover { background: var(--panel2); color: var(--text); }
+    .chart-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .chart-panel-tab { display: none; }
+    .chart-panel-tab.visible { display: block; }
     /* ── Version footer ─────────────────────────────────────────── */
     #version-footer {
       text-align: center;
@@ -910,11 +924,11 @@
   <div id="header">
     <h1>LegionForge</h1>
     <span class="subtitle">agent gateway</span>
-    <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion">🔕</button>
-    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
-    <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">💬</button>
-    <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts (Phase 91)" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
-    <div id="conn-dot" title="Stream connection status"></div>
+    <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion" aria-label="Enable browser notifications for task completion"><span aria-hidden="true">🔕</span></button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark theme"><span aria-hidden="true">🌙</span></button>
+    <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" aria-label="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px"><span aria-hidden="true">💬</span> Chat</button>
+    <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
+    <div id="conn-dot" title="Stream connection status" aria-label="Stream connection status" role="status"></div>
   </div>
 
   <!-- ── Service health banner ──────────────────────────────── -->
@@ -930,8 +944,8 @@
     <div class="field-row" id="config-apikey-row">
       <label for="api-key">API Key</label>
       <input type="password" id="api-key" placeholder="Paste your API key" autocomplete="off" spellcheck="false">
-      <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key">👁</button>
-      <button class="btn ghost icon" onclick="clearApiKey()" title="Clear saved key">✕</button>
+      <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key" aria-label="Show or hide API key"><span aria-hidden="true">👁</span></button>
+      <button class="btn ghost icon" onclick="clearApiKey()" title="Clear saved key" aria-label="Clear saved API key">✕</button>
     </div>
 
     <div class="field-row">
@@ -955,8 +969,8 @@
       <select id="session-picker" onchange="onSessionChange(this.value)" title="Run within a persistent conversation session so the agent remembers prior turns">
         <option value="">— Standalone (no session) —</option>
       </select>
-      <button class="btn ghost icon" onclick="newSession()" title="Create new session">＋</button>
-      <button class="btn ghost icon" id="del-session-btn" onclick="deleteCurrentSession()" title="Delete this session" style="display:none">✕</button>
+      <button class="btn ghost icon" onclick="newSession()" title="Create new session" aria-label="Create new session">＋</button>
+      <button class="btn ghost icon" id="del-session-btn" onclick="deleteCurrentSession()" title="Delete this session" aria-label="Delete this session" style="display:none">✕</button>
     </div>
   </div>
 
@@ -993,7 +1007,7 @@
         <span id="status-detail"></span>
         <span id="elapsed"></span>
       </div>
-      <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" style="margin-left:8px">⎘</button>
+      <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" aria-label="Copy output to clipboard" style="margin-left:8px"><span aria-hidden="true">⎘</span></button>
     </div>
     <div id="chat-history"></div>
     <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
@@ -5614,6 +5628,8 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
         // Remove the streaming accumulator — replace with markdown-rendered final answer
         if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
         appendResult(resultText.trim());
+        // Render any charts produced by code_execute during this task
+        if (Array.isArray(d.charts) && d.charts.length) renderCharts(d.charts);
         const tokens = (d.tokens && (d.tokens.input || 0) + (d.tokens.output || 0)) || 0;
         finishRun('complete', '', taskId, agent, taskInput, tokens);
         return;
@@ -13567,11 +13583,296 @@ async function toggleStar(idx, event) {
   } catch(_) {}
 }
 
+// ── Chart rendering ───────────────────────────────────────────────
+// Charts flow from code_execute (in the sandbox) → worker → task_complete SSE
+// event → here.  They never pass through the LLM context.
+//
+// Three formats are supported:
+//   svg     — matplotlib SVG (inline, sanitized)
+//   png     — matplotlib PNG (base64, rendered as <img>)
+//   plotly  — Plotly JSON (rendered via plotly.js, loaded lazily from CDN)
+
+let _plotlyLoadPromise = null;
+
+function _loadPlotlyJs() {
+  if (window.Plotly) return Promise.resolve();
+  if (_plotlyLoadPromise) return _plotlyLoadPromise;
+  _plotlyLoadPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.plot.ly/plotly-basic-2.35.2.min.js';
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = () => {
+      _plotlyLoadPromise = null; // allow retry on next chart
+      reject(new Error('Failed to load Plotly from CDN'));
+    };
+    document.head.appendChild(s);
+  });
+  return _plotlyLoadPromise;
+}
+
+function _sanitizeSvg(svgStr) {
+  // Parse and strip dangerous elements / attributes before inline rendering.
+  // This guards against SVG-embedded scripts and event handlers.
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgStr, 'image/svg+xml');
+    const root = doc.documentElement;
+    if (root.nodeName === 'parsererror') return null; // malformed SVG
+    const DANGEROUS_TAGS = ['script', 'foreignObject', 'animate', 'set'];
+    DANGEROUS_TAGS.forEach(tag => root.querySelectorAll(tag).forEach(el => el.remove()));
+    const DANGEROUS_ATTRS = [
+      'onload','onerror','onclick','onmouseover','onmouseenter',
+      'onmouseleave','onfocus','onblur','onscroll','onwheel',
+    ];
+    root.querySelectorAll('*').forEach(el => {
+      DANGEROUS_ATTRS.forEach(attr => el.removeAttribute(attr));
+      ['href','xlink:href'].forEach(attr => {
+        const val = el.getAttribute(attr) || '';
+        if (/^\s*javascript:/i.test(val)) el.removeAttribute(attr);
+      });
+    });
+    return root.outerHTML;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Build a single chart panel (SVG / PNG / Plotly) and return the DOM element.
+// figIdx is used for aria labels.
+function _buildChartPanel(chart, figIdx) {
+  const panel = document.createElement('div');
+  panel.className = 'chart-panel';
+
+  if (chart.type === 'svg') {
+    const safe = _sanitizeSvg(chart.data);
+    if (safe) {
+      panel.innerHTML = safe;
+      const svgEl = panel.querySelector('svg');
+      if (svgEl) {
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+        svgEl.style.cssText = 'max-width:100%;height:auto;display:block';
+        svgEl.setAttribute('role', 'img');
+        svgEl.setAttribute('aria-label', 'SVG chart ' + figIdx);
+      }
+    } else {
+      panel.textContent = '[Chart: SVG parse error]';
+    }
+
+  } else if (chart.type === 'png') {
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + chart.data;
+    img.alt = 'PNG chart ' + figIdx;
+    img.style.cssText = 'max-width:100%;height:auto;display:block;border-radius:3px';
+    img.onerror = () => { img.alt = '[Chart: PNG decode error]'; };
+    panel.appendChild(img);
+
+  } else if (chart.type === 'plotly') {
+    const plotDiv = document.createElement('div');
+    plotDiv.className = 'plotly-chart';
+    plotDiv.setAttribute('role', 'img');
+    plotDiv.setAttribute('aria-label', 'Interactive Plotly chart ' + figIdx);
+    plotDiv.innerHTML = '<div class="chart-loading">Loading interactive chart…</div>';
+    panel.appendChild(plotDiv);
+    _loadPlotlyJs().then(() => {
+      try {
+        const spec = JSON.parse(chart.data);
+        spec.layout = Object.assign({
+          paper_bgcolor: 'transparent',
+          plot_bgcolor: '#1c2128',
+          font: { color: '#c9d1d9', family: 'system-ui, sans-serif' },
+          margin: { t: 40, r: 20, b: 40, l: 50 },
+        }, spec.layout || {});
+        plotDiv.innerHTML = '';
+        Plotly.newPlot(plotDiv, spec.data || [], spec.layout, {
+          responsive: true, displaylogo: false,
+          modeBarButtonsToRemove: ['sendDataToCloud'],
+        });
+      } catch (e) {
+        plotDiv.textContent = '[Chart: invalid Plotly JSON — ' + escapeHtml(e.message) + ']';
+      }
+    }).catch(e => {
+      plotDiv.textContent = '[Chart: could not load Plotly — ' + escapeHtml(e.message) + ']';
+    });
+
+  } else {
+    panel.textContent = '[Chart: unknown type "' + escapeHtml(chart.type) + '"]';
+  }
+
+  return panel;
+}
+
+// Labels and keys for the three chart types.
+const _CHART_TAB_META = {
+  svg:    { key: 'A', label: 'A — SVG',         title: 'Vector SVG (crisp at any size)' },
+  png:    { key: 'B', label: 'B — PNG',         title: 'Raster PNG (good for complex plots)' },
+  plotly: { key: 'C', label: 'C — Interactive', title: 'Interactive Plotly chart (zoom, hover, export)' },
+};
+
+// Build a grouped chart widget with A / B / C toggle tabs.
+// typedCharts: { svg?: chartObj, png?: chartObj, plotly?: chartObj }
+function _buildGroupedChartWidget(typedCharts, figIdx) {
+  const types = Object.keys(typedCharts);
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chart-item chart-grouped';
+
+  if (types.length === 1) {
+    // Single type — no tabs needed, just a label
+    const type = types[0];
+    const meta = _CHART_TAB_META[type] || { label: type.toUpperCase(), title: type };
+    const lbl = document.createElement('div');
+    lbl.className = 'chart-label';
+    lbl.textContent = 'Chart (' + meta.label + ')';
+    lbl.setAttribute('aria-hidden', 'true');
+    wrapper.appendChild(lbl);
+    wrapper.appendChild(_buildChartPanel(typedCharts[type], figIdx));
+    return wrapper;
+  }
+
+  // Multiple types — render tabs
+  const tabBar = document.createElement('div');
+  tabBar.className = 'chart-tab-bar';
+  tabBar.setAttribute('role', 'tablist');
+  tabBar.setAttribute('aria-label', 'Chart rendering options');
+
+  const panels = {};
+  let firstTab = null;
+
+  types.forEach(type => {
+    const meta = _CHART_TAB_META[type] || { key: type[0].toUpperCase(), label: type.toUpperCase(), title: type };
+    const tab = document.createElement('button');
+    tab.className = 'chart-tab';
+    tab.textContent = meta.label;
+    tab.title = meta.title;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-label', meta.title);
+    tab.dataset.chartType = type;
+
+    const panel = _buildChartPanel(typedCharts[type], figIdx);
+    panel.className += ' chart-panel-tab';
+    panel.style.display = 'none';
+    panel.setAttribute('role', 'tabpanel');
+    panels[type] = panel;
+
+    tab.addEventListener('click', () => {
+      // Deactivate all tabs and hide all panels in this widget
+      tabBar.querySelectorAll('.chart-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      Object.values(panels).forEach(p => { p.style.display = 'none'; });
+      // Activate clicked tab
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      panel.style.display = '';
+      // Trigger Plotly resize if switching to an interactive chart
+      if (type === 'plotly' && window.Plotly) {
+        const pd = panel.querySelector('.plotly-chart');
+        if (pd && pd.data) Plotly.relayout(pd, {});
+      }
+    });
+
+    tabBar.appendChild(tab);
+    wrapper.appendChild(panel);
+
+    if (!firstTab) firstTab = { tab, panel, type };
+  });
+
+  wrapper.prepend(tabBar);
+
+  // Activate the first tab by default
+  if (firstTab) {
+    firstTab.tab.classList.add('active');
+    firstTab.tab.setAttribute('aria-selected', 'true');
+    firstTab.panel.style.display = '';
+  }
+
+  return wrapper;
+}
+
+function renderCharts(charts) {
+  if (!charts || !charts.length) return;
+
+  // ── Group charts by figure ID ──────────────────────────────────────────────
+  // Charts with the same .figure value are rendered as a single widget with
+  // A/B/C toggle tabs.  Charts without a figure ID are rendered individually.
+  const figureMap = {};   // figureId → { svg?, png?, plotly? }
+  const figureOrder = []; // preserves output order
+  const ungrouped = [];
+
+  charts.forEach(chart => {
+    if (chart.figure) {
+      if (!figureMap[chart.figure]) {
+        figureMap[chart.figure] = {};
+        figureOrder.push({ kind: 'grouped', id: chart.figure });
+      }
+      figureMap[chart.figure][chart.type] = chart;
+    } else {
+      ungrouped.push(chart);
+      figureOrder.push({ kind: 'single', chart });
+    }
+  });
+
+  const container = document.createElement('div');
+  container.className = 'chart-container';
+  container.setAttribute('aria-label', 'Generated charts');
+
+  let figIdx = 1;
+  figureOrder.forEach(entry => {
+    if (entry.kind === 'grouped') {
+      container.appendChild(_buildGroupedChartWidget(figureMap[entry.id], figIdx));
+    } else {
+      // Ungrouped — wrap in a plain chart-item
+      const wrapper = document.createElement('div');
+      wrapper.className = 'chart-item';
+      const meta = _CHART_TAB_META[entry.chart.type] || { label: entry.chart.type.toUpperCase() };
+      const lbl = document.createElement('div');
+      lbl.className = 'chart-label';
+      lbl.textContent = 'Chart (' + meta.label + ')';
+      lbl.setAttribute('aria-hidden', 'true');
+      wrapper.appendChild(lbl);
+      wrapper.appendChild(_buildChartPanel(entry.chart, figIdx));
+      container.appendChild(wrapper);
+    }
+    figIdx++;
+  });
+
+  el.output().appendChild(container);
+  if (document.body.classList.contains('chat-mode')) scrollChatToBottom();
+}
+
 // ── Chat Mode ─────────────────────────────────────────────────────
 
 function scrollChatToBottom() {
   const card = $('chat-output-card');
   if (card) card.scrollTop = card.scrollHeight;
+}
+
+// Silently create a session for chat mode — no prompt, date-based default name.
+// Skips quietly if no API key is set yet (user can create one manually later).
+async function _autoCreateChatSession() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const name = 'Chat ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  try {
+    const res = await fetch('/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ name, agent_type: el.agentType().value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendSpan('\n[session] ' + escapeHtml(err.detail || 'Could not create session — enter your API key and use the + button to start one.') + '\n', 'o-status');
+      return;
+    }
+    const sess = await res.json();
+    await loadSessions();
+    el.sessionPicker().value = sess.session_id;
+    onSessionChange(sess.session_id);
+  } catch (_) {
+    // Network error — chat mode still works, just without session persistence
+  }
 }
 
 function toggleChatMode() {
@@ -13582,7 +13883,7 @@ function toggleChatMode() {
 
   if (isChat) {
     // Auto-create a session if none is active so conversation is persisted
-    if (!S.sessionId) newSession();
+    if (!S.sessionId) _autoCreateChatSession();
     scrollChatToBottom();
     // Focus the input so the user can type immediately
     setTimeout(() => el.taskInput().focus(), 80);
