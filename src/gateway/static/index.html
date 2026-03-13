@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LegionForge</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.svg">
   <style>
     /* ── Reset & base ───────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -170,7 +172,8 @@
     #op-dashboard[open] > summary { border-radius:var(--radius) var(--radius) 0 0; border-bottom:1px solid var(--border2); }
     #op-dashboard-body { display:flex; flex-direction:column; gap:16px; padding-top:16px; }
         /* ── Light mode override (Phase 72) ─────────────────────────── */
-    body.light-mode {
+    body.light-mode,
+    [data-theme="light"] {
       --bg:        #f6f8fa;
       --panel:     #ffffff;
       --panel2:    #f0f2f5;
@@ -186,11 +189,103 @@
       --purple:    #8250df;
       --yellow:    #9a6700;
     }
-    body.light-mode .syn-kw  { color: #8250df; }
-    body.light-mode .syn-str { color: #0a3069; }
-    body.light-mode .syn-cmt { color: #656d76; }
-    body.light-mode .syn-num { color: #bc4c00; }
-    body.light-mode .syn-bi  { color: #0969da; }
+    body.light-mode .syn-kw,  [data-theme="light"] .syn-kw  { color: #8250df; }
+    body.light-mode .syn-str, [data-theme="light"] .syn-str { color: #0a3069; }
+    body.light-mode .syn-cmt, [data-theme="light"] .syn-cmt { color: #656d76; }
+    body.light-mode .syn-num, [data-theme="light"] .syn-num { color: #bc4c00; }
+    body.light-mode .syn-bi,  [data-theme="light"] .syn-bi  { color: #0969da; }
+    /* ── Solarized Dark (Phase UI-themes) ────────────────────────── */
+    [data-theme="solarized"] {
+      --bg:        #002b36;
+      --panel:     #073642;
+      --panel2:    #0a4050;
+      --border:    #586e75;
+      --border2:   #3d5a62;
+      --text:      #839496;
+      --text-dim:  #657b83;
+      --text-xdim: #4a6068;
+      --blue:      #268bd2;
+      --green:     #859900;
+      --orange:    #cb4b16;
+      --red:       #dc322f;
+      --purple:    #6c71c4;
+      --yellow:    #b58900;
+      --radius:    6px;
+    }
+    [data-theme="solarized"] .syn-kw  { color: #268bd2; }
+    [data-theme="solarized"] .syn-str { color: #2aa198; }
+    [data-theme="solarized"] .syn-cmt { color: #586e75; }
+    [data-theme="solarized"] .syn-num { color: #d33682; }
+    [data-theme="solarized"] .syn-bi  { color: #859900; }
+    /* ── Warm / Forge Amber (Phase UI-themes) ────────────────────── */
+    [data-theme="warm"] {
+      --bg:        #1a1008;
+      --panel:     #241808;
+      --panel2:    #2e2010;
+      --border:    #5a3e18;
+      --border2:   #3e2a0e;
+      --text:      #e8c88a;
+      --text-dim:  #b89060;
+      --text-xdim: #7a5c30;
+      --blue:      #f0b040;
+      --green:     #a8c030;
+      --orange:    #e87820;
+      --red:       #d04020;
+      --purple:    #c080e0;
+      --yellow:    #f0c820;
+      --radius:    6px;
+    }
+    [data-theme="warm"] .syn-kw  { color: #f0b040; }
+    [data-theme="warm"] .syn-str { color: #a8c030; }
+    [data-theme="warm"] .syn-cmt { color: #7a5c30; }
+    [data-theme="warm"] .syn-num { color: #e87820; }
+    [data-theme="warm"] .syn-bi  { color: #c080e0; }
+    /* ── Nord (Phase UI-themes) ──────────────────────────────────── */
+    [data-theme="nord"] {
+      --bg:        #2e3440;
+      --panel:     #3b4252;
+      --panel2:    #434c5e;
+      --border:    #4c566a;
+      --border2:   #3b4252;
+      --text:      #eceff4;
+      --text-dim:  #d8dee9;
+      --text-xdim: #677591;
+      --blue:      #81a1c1;
+      --green:     #a3be8c;
+      --orange:    #d08770;
+      --red:       #bf616a;
+      --purple:    #b48ead;
+      --yellow:    #ebcb8b;
+      --radius:    6px;
+    }
+    [data-theme="nord"] .syn-kw  { color: #81a1c1; }
+    [data-theme="nord"] .syn-str { color: #a3be8c; }
+    [data-theme="nord"] .syn-cmt { color: #677591; }
+    [data-theme="nord"] .syn-num { color: #b48ead; }
+    [data-theme="nord"] .syn-bi  { color: #88c0d0; }
+    /* ── High Contrast / Accessibility (Phase UI-themes) ─────────── */
+    [data-theme="contrast"] {
+      --bg:        #000000;
+      --panel:     #0a0a0a;
+      --panel2:    #111111;
+      --border:    #ffffff;
+      --border2:   #cccccc;
+      --text:      #ffffff;
+      --text-dim:  #e0e0e0;
+      --text-xdim: #b0b0b0;
+      --blue:      #4fc3f7;
+      --green:     #69f0ae;
+      --orange:    #ffcc02;
+      --red:       #ff5252;
+      --purple:    #ea80fc;
+      --yellow:    #ffff00;
+      --radius:    4px;
+    }
+    [data-theme="contrast"] .syn-kw  { color: #ffff00; }
+    [data-theme="contrast"] .syn-str { color: #69f0ae; }
+    [data-theme="contrast"] .syn-cmt { color: #b0b0b0; }
+    [data-theme="contrast"] .syn-num { color: #ffcc02; }
+    [data-theme="contrast"] .syn-bi  { color: #4fc3f7; }
     /* theme toggle button */
     #theme-toggle {
       background: none;
@@ -925,7 +1020,7 @@
     <h1>LegionForge</h1>
     <span class="subtitle">agent gateway</span>
     <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion" aria-label="Enable browser notifications for task completion"><span aria-hidden="true">🔕</span></button>
-    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark theme"><span aria-hidden="true">🌙</span></button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Cycle theme (Dark → Light → Solarized → Warm → Nord → Contrast)" aria-label="Cycle color theme"><span aria-hidden="true">🌙</span></button>
     <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" aria-label="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px"><span aria-hidden="true">💬</span> Chat</button>
     <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
     <div id="conn-dot" title="Stream connection status" aria-label="Stream connection status" role="status"></div>
@@ -4659,26 +4754,54 @@ function notifyTaskComplete(taskInput, elapsed) {
   const preview = (taskInput || "Task").slice(0, 60);
   new Notification("LegionForge — Task Complete", {
     body: "✓ " + preview + "... (" + elapsed + "s)",
-    icon: "/favicon.ico",
+    icon: "/static/favicon.svg",
     tag: "lf-task-complete",
   });
 }
 
-// ── Phase 72: Light/Dark Mode ──────────────────────────────────────────────
-function toggleTheme() {
-  const light = document.body.classList.toggle('light-mode');
-  localStorage.setItem('lf-theme', light ? 'light' : 'dark');
-  document.getElementById('theme-toggle').textContent = light ? '☀️' : '🌙';
-}
-function initTheme() {
-  const saved = localStorage.getItem('lf-theme');
-  // If no preference saved, use system preference
-  const preferLight = saved ? saved === 'light'
-    : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-  if (preferLight) {
-    document.body.classList.add('light-mode');
-    document.getElementById('theme-toggle').textContent = '☀️';
+// ── Phase 72: Multi-Theme Cycler ───────────────────────────────────────────
+var _THEMES = ['dark', 'light', 'solarized', 'warm', 'nord', 'contrast'];
+var _THEME_ICONS = {
+  dark: '🌙', light: '☀️', solarized: '🌅', warm: '🔥', nord: '❄️', contrast: '◑'
+};
+var _THEME_NAMES = {
+  dark: 'Dark', light: 'Light', solarized: 'Solarized', warm: 'Warm', nord: 'Nord', contrast: 'Contrast'
+};
+
+function _applyTheme(theme) {
+  // Remove legacy light-mode class
+  document.body.classList.remove('light-mode');
+  // Apply data-theme attribute (dark = no attribute, uses :root)
+  if (theme === 'dark') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'light') document.body.classList.add('light-mode');
   }
+  localStorage.setItem('lf-theme', theme);
+  var btn = document.getElementById('theme-toggle');
+  if (btn) {
+    var icon = _THEME_ICONS[theme] || '🌙';
+    var name = _THEME_NAMES[theme] || theme;
+    btn.innerHTML = '<span aria-hidden="true">' + icon + '</span>';
+    btn.title = 'Theme: ' + name + ' (click to cycle)';
+    btn.setAttribute('aria-label', 'Current theme: ' + name + '. Click to cycle.');
+  }
+}
+
+function toggleTheme() {
+  var current = localStorage.getItem('lf-theme') || 'dark';
+  var idx = _THEMES.indexOf(current);
+  var next = _THEMES[(idx + 1) % _THEMES.length];
+  _applyTheme(next);
+}
+
+function initTheme() {
+  var saved = localStorage.getItem('lf-theme');
+  var preferLight = !saved && window.matchMedia &&
+    window.matchMedia('(prefers-color-scheme: light)').matches;
+  var theme = saved || (preferLight ? 'light' : 'dark');
+  _applyTheme(theme);
 }
 
 function toggleKeyVisibility() {

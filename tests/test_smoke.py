@@ -11628,18 +11628,14 @@ def test_p72_ui_has_light_mode_css_class():
 
 
 def test_p72_ui_toggle_theme_function_defined():
-    """toggleTheme() JS function is defined in the UI."""
+    """toggleTheme() JS function is defined in the UI and cycles through themes."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "function toggleTheme(" in html
-    assert (
-        "light-mode"
-        in html[
-            html.find("function toggleTheme(") : html.find("function toggleTheme(")
-            + 300
-        ]
-    )
+    # Multi-theme cycler: function delegates to _applyTheme which manages light-mode
+    assert "_applyTheme" in html
+    assert "light-mode" in html  # light-mode class still supported for backward compat
 
 
 def test_p72_ui_init_theme_called_in_init():
@@ -11653,14 +11649,15 @@ def test_p72_ui_init_theme_called_in_init():
 
 
 def test_p72_ui_theme_persisted_in_localstorage():
-    """toggleTheme() stores preference in localStorage."""
+    """Theme preference is stored in localStorage (via _applyTheme helper)."""
     import pathlib
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
-    fn_start = html.find("function toggleTheme(")
-    fn_body = html[fn_start : fn_start + 300]
-    assert "localStorage.setItem" in fn_body
-    assert "lf-theme" in fn_body
+    # _applyTheme() is called by toggleTheme() and handles localStorage persistence
+    apply_start = html.find("function _applyTheme(")
+    apply_body = html[apply_start : apply_start + 700]
+    assert "localStorage.setItem" in apply_body
+    assert "lf-theme" in apply_body
 
 
 def test_p72_ui_respects_system_preference():
@@ -23789,3 +23786,36 @@ def test_sec2_interactive_no_raises(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Startup aborted"):
         _warn_postgres_env_conflict("keychain-password")
+
+
+# ── Crystallization pipeline importability smoke tests ────────────────────────
+
+
+def test_crystallization_observer_importable():
+    """Observer agent run_observer function is importable."""
+    from src.agents.observer import run_observer
+
+    assert callable(run_observer)
+
+
+def test_crystallization_crystallizer_importable():
+    """Crystallizer agent run_crystallizer function is importable."""
+    from src.agents.crystallizer import run_crystallizer
+
+    assert callable(run_crystallizer)
+
+
+def test_crystallization_analyzer_importable():
+    """Pre-HITL Analyzer analyze_package function is importable."""
+    from src.tools.crystallization_analyzer import analyze_package
+
+    assert callable(analyze_package)
+
+
+def test_crystallization_test_suite_has_all_modules():
+    """All crystallization test modules are importable."""
+    import tests.crystallization.test_analyzer
+    import tests.crystallization.test_crystallizer
+    import tests.crystallization.test_hitl_api
+    import tests.crystallization.test_observer
+    import tests.crystallization.test_pipeline_security
