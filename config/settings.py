@@ -556,9 +556,12 @@ class ToolsConfig(BaseModel):
     # ── code_execute ────────────────────────────────────────────
     sandbox_image: str = "legionforge-sandbox:latest"
     sandbox_timeout_seconds: int = 30
-    sandbox_memory_mb: int = 256
+    sandbox_memory_mb: int = 512  # raised — matplotlib needs ~200 MB
     sandbox_cpus: float = 0.5
-    sandbox_max_output_bytes: int = 10240  # 10 KB
+    sandbox_max_output_bytes: int = 10240  # 10 KB — text only; charts bypass this cap
+    sandbox_max_chart_bytes: int = (
+        1048576  # 1 MB per chart (SVG / PNG base64 / Plotly JSON)
+    )
 
 
 # ── Search Provider Config (Phase 56) ─────────────────────────────────────────

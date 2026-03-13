@@ -216,9 +216,10 @@ tools:
   # code_execute Docker sandbox
   sandbox_image: "legionforge-sandbox:latest"
   sandbox_timeout_seconds: 30
-  sandbox_memory_mb: 256
+  sandbox_memory_mb: 512           # raised from 256 — matplotlib needs ~200 MB
   sandbox_cpus: 0.5
-  sandbox_max_output_bytes: 10240  # 10 KB
+  sandbox_max_output_bytes: 10240  # 10 KB — applies to TEXT only; charts bypass this cap
+  sandbox_max_chart_bytes: 1048576 # 1 MB per chart (SVG/PNG/Plotly JSON)
 
 # ── Gateway (Phase 10/12 — Multi-User + Auth Backends) ───────────────────────
 gateway:
