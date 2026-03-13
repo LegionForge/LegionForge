@@ -1,7 +1,7 @@
 VERSION: 0.7.1-alpha
 UPDATE: 320
 BRANCH: dev
-COMMIT: pending
+COMMIT: 19afdaa
 TIMESTAMP: 2026-03-12T08:00Z
 LAST_OP: feat: chat-mode UI toggle + hallucination/tool-integrity test suites (45 new tests across 6 files)
 SMOKE_TESTS: 2192/2192
