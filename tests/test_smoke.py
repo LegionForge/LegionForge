@@ -23965,3 +23965,47 @@ def test_crystallization_test_suite_has_all_modules():
     import tests.crystallization.test_hitl_api
     import tests.crystallization.test_observer
     import tests.crystallization.test_pipeline_security
+
+
+# ── Phase H: Session Sidebar smoke tests ──────────────────────────────────────
+
+
+def test_phase_h_session_sidebar_present():
+    """Phase H: session sidebar element is in the UI."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="session-sidebar"' in html
+
+
+def test_phase_h_new_conversation_button_present():
+    """Phase H: New Conversation button is present."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "newConversation" in html
+
+
+def test_phase_h_session_indicator_present():
+    """Phase H: session indicator element is present."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert 'id="session-indicator"' in html
+
+
+def test_phase_h_load_sessions_function_defined():
+    """Phase H: loadSessions() function is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "function loadSessions(" in html
+
+
+def test_phase_h_submit_includes_session_id():
+    """Phase H: submitTask sends session_id when active session is set."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "_ACTIVE_SESSION" in html
+    assert "session_id" in html
