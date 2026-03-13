@@ -188,3 +188,115 @@ async def test_sandbox_stderr_captured_in_output():
     result = await code_execute.ainvoke({"code": code})
     assert "stdout_signal" in result, f"stdout not captured: {result!r}"
     assert "stderr_signal" in result, f"stderr not captured: {result!r}"
+
+
+# ── Chart extraction tests ────────────────────────────────────────────────────
+# These tests target _extract_charts() directly — no Docker required.
+# They verify the sentinel parsing, figure grouping, size cap, and
+# that chart data is stripped from the text returned to the LLM.
+
+
+from src.tools.code_tools import _extract_charts  # noqa: E402
+
+
+class TestChartExtraction:
+    def test_svg_sentinel_extracted(self):
+        """SVG block is stripped from text and returned as chart dict."""
+        svg = "<svg><rect width='10' height='10'/></svg>"
+        # Pad to meet 64-char threshold
+        svg = "<svg>" + "x" * 100 + "</svg>"
+        text = f"Before\n%%LF_CHART_SVG%%{svg}%%/LF_CHART_SVG%%\nAfter"
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert svg not in clean
+        assert "Before" in clean
+        assert "After" in clean
+        assert len(charts) == 1
+        assert charts[0]["type"] == "svg"
+        assert charts[0]["data"] == svg
+
+    def test_png_sentinel_extracted(self):
+        """PNG base64 block is stripped and returned."""
+        b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" + "A" * 30
+        text = f"%%LF_CHART_PNG%%{b64}%%/LF_CHART_PNG%%"
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert b64 not in clean
+        assert len(charts) == 1
+        assert charts[0]["type"] == "png"
+
+    def test_plotly_sentinel_extracted(self):
+        """Plotly JSON block is stripped and returned."""
+        # Must be >= 64 chars after strip so the threshold passes
+        json_data = '{"data":[{"type":"bar","x":[1,2,3,4,5],"y":[10,20,30,40,50],"name":"test_series"}]}'
+        assert len(json_data) >= 64
+        text = f"%%LF_CHART_PLOTLY%%{json_data}%%/LF_CHART_PLOTLY%%"
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert json_data not in clean
+        assert len(charts) == 1
+        assert charts[0]["type"] == "plotly"
+
+    def test_figure_group_id_captured(self):
+        """Charts with :figID suffix have the figure field set."""
+        svg = "<svg><circle r='5'/></svg>" + "x" * 40
+        text = f"%%LF_CHART_SVG:fig1%%{svg}%%/LF_CHART_SVG%%"
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert len(charts) == 1
+        assert charts[0].get("figure") == "fig1"
+
+    def test_ungrouped_chart_has_no_figure_field(self):
+        """Charts without :figID have no figure key."""
+        svg = "<svg><line x1='0' y1='0' x2='10' y2='10'/></svg>" + "x" * 20
+        text = f"%%LF_CHART_SVG%%{svg}%%/LF_CHART_SVG%%"
+        _, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert len(charts) == 1
+        assert "figure" not in charts[0]
+
+    def test_multiple_charts_same_figure_group(self):
+        """Multiple chart types with same figID are all extracted."""
+        svg = "<svg><rect/></svg>" + "x" * 50
+        b64 = "a" * 64
+        # Plotly data must be >= 64 chars after strip (spaces are stripped)
+        plotly = (
+            '{"data":[{"type":"scatter","x":[1,2,3],"y":[4,5,6],"name":"series_one"}]}'
+        )
+        text = (
+            f"%%LF_CHART_SVG:fig1%%{svg}%%/LF_CHART_SVG%%"
+            f"%%LF_CHART_PNG:fig1%%{b64}%%/LF_CHART_PNG%%"
+            f"%%LF_CHART_PLOTLY:fig1%%{plotly}%%/LF_CHART_PLOTLY%%"
+        )
+        _, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert len(charts) == 3
+        assert all(c.get("figure") == "fig1" for c in charts)
+        types = {c["type"] for c in charts}
+        assert types == {"svg", "png", "plotly"}
+
+    def test_chart_too_large_returns_error_summary(self):
+        """Charts exceeding max_chart_bytes return an error summary, not data."""
+        large_data = "x" * 1000
+        text = f"%%LF_CHART_SVG%%{large_data}%%/LF_CHART_SVG%%"
+        clean, charts = _extract_charts(text, max_chart_bytes=100)
+        assert len(charts) == 0
+        assert "exceeds" in clean or "too large" in clean.lower()
+
+    def test_empty_chart_block_returns_error_summary(self):
+        """Sentinel blocks with < 64 chars of data return a failure summary."""
+        text = "%%LF_CHART_SVG%%tiny%%/LF_CHART_SVG%%"
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert len(charts) == 0
+        assert "failed" in clean.lower()
+
+    def test_chart_summary_replaces_block_in_llm_text(self):
+        """The LLM sees a compact summary, not the raw chart data."""
+        svg = "<svg>" + "x" * 100 + "</svg>"
+        text = f"Result:\n%%LF_CHART_SVG%%{svg}%%/LF_CHART_SVG%%\nDone."
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert "Result:" in clean
+        assert "Done." in clean
+        assert "[Chart generated:" in clean
+        assert svg not in clean
+
+    def test_non_chart_text_unchanged(self):
+        """Text with no sentinel blocks passes through unchanged."""
+        text = "This is a normal response with no charts."
+        clean, charts = _extract_charts(text, max_chart_bytes=1_000_000)
+        assert clean == text
+        assert charts == []

@@ -243,6 +243,7 @@ _BLOCK_REASON_LABELS: dict[str, str] = {
     "hitl_required": "This action requires human approval before it can proceed",
     "injection_detected": "Security pattern detected in tool arguments — run halted",
     "toctou_violation": "Tool call tampering detected — run halted for safety",
+    "canary_triggered": "Canary tool invoked — possible probe or hallucination; run halted",
 }
 
 

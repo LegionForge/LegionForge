@@ -11,6 +11,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.7.1-alpha] — 2026-03-13 (Guardian v0.2.0 + security hardening)
+
+### Added — 2026-03-13
+
+- **Guardian `/health` enhancement** — response now includes `status: ok|degraded`, `cache_age_seconds`, `db_reachable`, `tools_registered`, `rules_active`, `uptime_seconds`. Status is `degraded` if DB is unreachable or cache is stale > 30s.
+- **Guardian `/metrics` endpoint** — Prometheus text format; counters for `guardian_checks_total{result}`, `guardian_threat_events_total{type}`, and `guardian_cache_refresh_age_seconds` gauge. No auth required (consistent with main app `/metrics`).
+- **Guardian canary tool** — `guardian_canary` seeded in `tool_registry` at init. Any call to this tool halts immediately with `CANARY_TRIGGERED` threat event (confidence 1.0). Tripwire for probing attacks and hallucinating models.
+- **Guardian INFRA-1** — `GUARDIAN_HOST` now defaults to `127.0.0.1` (localhost only). Docker deployments must explicitly set `GUARDIAN_HOST=0.0.0.0`. Closes INFRA-1 post-v1.0 gate.
+- **Guardian `/invalidate-cache`** — admin-only endpoint that forces immediate cache refresh, bypassing the 10s TTL. Enables instant tool revocation propagation during incidents.
+- **Chart extraction tests** — 10 unit tests for `_extract_charts()` in `tests/tool_integrity/test_code_execute_sandbox.py`. Covers SVG/PNG/Plotly sentinel extraction, figure group ID capture, size cap enforcement, empty block handling, and LLM summary replacement. No Docker required.
+- **GitHub Actions Node.js 24** — `sync-guardian.yml` upgraded to `actions/checkout@v4.2.2` + `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`. Resolves Node 20 deprecation warning ahead of June 2026 enforcement.
+
+---
+
 ## [0.7.1-alpha] — 2026-03-12 (chat UI + test suites)
 
 ### Added — 2026-03-12 (post-#240 UAT session)
