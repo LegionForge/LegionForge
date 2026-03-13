@@ -808,6 +808,11 @@ test-cve:  ## CVE-based tests from NVD API (requires network + Ollama)
 	@cd $(BASE) && $(PYTEST) tests/testlab_suite/test_cve.py -v --tb=short
 	@echo "✅ CVE tests complete"
 
+.PHONY: test-crystallization
+test-crystallization:  ## Run crystallization pipeline tests (no services required)
+	@cd $(BASE) && $(PYTEST) tests/crystallization/ -v --tb=short
+	@echo "✅ Crystallization pipeline tests complete"
+
 .PHONY: test-testlab-all
 test-testlab-all:  ## All 110+ testlab_suite tests (excludes LLM/CVE tests)
 	@cd $(BASE) && $(PYTEST) tests/testlab_suite/ -v --tb=short \
