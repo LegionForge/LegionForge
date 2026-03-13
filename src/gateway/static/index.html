@@ -910,11 +910,11 @@
   <div id="header">
     <h1>LegionForge</h1>
     <span class="subtitle">agent gateway</span>
-    <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion">🔕</button>
-    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
-    <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">💬</button>
-    <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts (Phase 91)" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
-    <div id="conn-dot" title="Stream connection status"></div>
+    <button id="notif-toggle" onclick="requestNotifPermission()" title="Enable browser notifications for task completion" aria-label="Enable browser notifications for task completion"><span aria-hidden="true">🔕</span></button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle light/dark theme"><span aria-hidden="true">🌙</span></button>
+    <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" aria-label="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px"><span aria-hidden="true">💬</span> Chat</button>
+    <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
+    <div id="conn-dot" title="Stream connection status" aria-label="Stream connection status" role="status"></div>
   </div>
 
   <!-- ── Service health banner ──────────────────────────────── -->
@@ -930,8 +930,8 @@
     <div class="field-row" id="config-apikey-row">
       <label for="api-key">API Key</label>
       <input type="password" id="api-key" placeholder="Paste your API key" autocomplete="off" spellcheck="false">
-      <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key">👁</button>
-      <button class="btn ghost icon" onclick="clearApiKey()" title="Clear saved key">✕</button>
+      <button class="btn ghost icon" id="key-toggle" onclick="toggleKeyVisibility()" title="Show/hide key" aria-label="Show or hide API key"><span aria-hidden="true">👁</span></button>
+      <button class="btn ghost icon" onclick="clearApiKey()" title="Clear saved key" aria-label="Clear saved API key">✕</button>
     </div>
 
     <div class="field-row">
@@ -955,8 +955,8 @@
       <select id="session-picker" onchange="onSessionChange(this.value)" title="Run within a persistent conversation session so the agent remembers prior turns">
         <option value="">— Standalone (no session) —</option>
       </select>
-      <button class="btn ghost icon" onclick="newSession()" title="Create new session">＋</button>
-      <button class="btn ghost icon" id="del-session-btn" onclick="deleteCurrentSession()" title="Delete this session" style="display:none">✕</button>
+      <button class="btn ghost icon" onclick="newSession()" title="Create new session" aria-label="Create new session">＋</button>
+      <button class="btn ghost icon" id="del-session-btn" onclick="deleteCurrentSession()" title="Delete this session" aria-label="Delete this session" style="display:none">✕</button>
     </div>
   </div>
 
@@ -993,7 +993,7 @@
         <span id="status-detail"></span>
         <span id="elapsed"></span>
       </div>
-      <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" style="margin-left:8px">⎘</button>
+      <button class="btn ghost icon" onclick="copyOutput()" title="Copy output" aria-label="Copy output to clipboard" style="margin-left:8px"><span aria-hidden="true">⎘</span></button>
     </div>
     <div id="chat-history"></div>
     <div id="output"><span class="o-ready">Ready. Enter a task above and press Submit.</span></div>
@@ -13574,6 +13574,32 @@ function scrollChatToBottom() {
   if (card) card.scrollTop = card.scrollHeight;
 }
 
+// Silently create a session for chat mode — no prompt, date-based default name.
+// Skips quietly if no API key is set yet (user can create one manually later).
+async function _autoCreateChatSession() {
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) return;
+  const name = 'Chat ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  try {
+    const res = await fetch('/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ name, agent_type: el.agentType().value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendSpan('\n[session] ' + escapeHtml(err.detail || 'Could not create session — enter your API key and use the + button to start one.') + '\n', 'o-status');
+      return;
+    }
+    const sess = await res.json();
+    await loadSessions();
+    el.sessionPicker().value = sess.session_id;
+    onSessionChange(sess.session_id);
+  } catch (_) {
+    // Network error — chat mode still works, just without session persistence
+  }
+}
+
 function toggleChatMode() {
   const isChat = document.body.classList.toggle('chat-mode');
   localStorage.setItem('lf_chat_mode', isChat ? '1' : '');
@@ -13582,7 +13608,7 @@ function toggleChatMode() {
 
   if (isChat) {
     // Auto-create a session if none is active so conversation is persisted
-    if (!S.sessionId) newSession();
+    if (!S.sessionId) _autoCreateChatSession();
     scrollChatToBottom();
     // Focus the input so the user can type immediately
     setTimeout(() => el.taskInput().focus(), 80);
