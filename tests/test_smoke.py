@@ -24009,3 +24009,70 @@ def test_phase_h_submit_includes_session_id():
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "_ACTIVE_SESSION" in html
     assert "session_id" in html
+
+
+# ── Phase I: Multi-Modal Image Input ──────────────────────────────────────────
+
+
+def test_phase_i_task_request_has_image_b64_field():
+    """Phase I: TaskRequest model has image_b64 field."""
+    import inspect
+
+    from src.gateway.routes import tasks as tasks_module
+
+    source = inspect.getsource(tasks_module.TaskRequest)
+    assert "image_b64" in source
+
+
+def test_phase_i_image_mime_validation_present():
+    """Phase I: image MIME type validation exists in task submission."""
+    import inspect
+
+    from src.gateway.routes import tasks as tasks_module
+
+    source = inspect.getsource(tasks_module)
+    assert "image/jpeg" in source
+    assert "image/png" in source
+
+
+def test_phase_i_magic_byte_validation_present():
+    """Phase I: magic byte validation exists for image uploads."""
+    import inspect
+
+    from src.gateway.routes import tasks as tasks_module
+
+    source = inspect.getsource(tasks_module)
+    assert (
+        "xff\\xd8\\xff" in source
+        or "xd8" in source
+        or "magic" in source.lower()
+        or "\\xff\\xd8" in source
+    )
+
+
+def test_phase_i_worker_builds_vision_message():
+    """Phase I: worker.py handles image_b64 in task payload."""
+    import inspect
+
+    from src.gateway import worker as worker_module
+
+    source = inspect.getsource(worker_module)
+    assert "image_b64" in source
+    assert "image_url" in source
+
+
+def test_phase_i_ui_has_image_paste_handler():
+    """Phase I: UI has image paste handler."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "_handleImagePaste" in html or "handleImagePaste" in html
+    assert "_PENDING_IMAGE" in html or "pendingImage" in html
+
+
+def test_phase_i_ui_has_img_preview():
+    """Phase I: UI has image preview element."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "img-preview" in html

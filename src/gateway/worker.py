@@ -136,12 +136,39 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     # where the LLM needs the instruction context during synthesis (step 2+).
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    # Phase I: extract image payload from task config (stored there by gateway)
+    _image_b64 = task_config.get("image_b64")
+    _image_mime = task_config.get("image_mime")
+
+    def _build_human_content(text: str) -> list | str:
+        """Return vision content list if image present, else plain string."""
+        if _image_b64:
+            from config.settings import settings
+
+            _model_name = (settings.llm.primary_model or "").lower()
+            _is_local = any(kw in _model_name for kw in ("qwen", "llama", "ollama"))
+            if _is_local:
+                logger.warning(
+                    "[worker] Vision input ignored — local model %r does not support "
+                    "image inputs. Falling back to text-only.",
+                    _model_name,
+                )
+                return text
+            return [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{_image_mime};base64,{_image_b64}"},
+                },
+                {"type": "text", "text": text},
+            ]
+        return text
+
     if agent_type == "researcher":
         from src.agents.researcher import _RESEARCHER_SYSTEM_CONTENT
 
         initial_messages = [
             SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT),
-            HumanMessage(content=input_text),
+            HumanMessage(content=_build_human_content(input_text)),
         ]
         agent_extra: dict = {}
     elif agent_type == "orchestrator":
@@ -149,7 +176,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
         initial_messages = [
             SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT),
-            HumanMessage(content=input_text),
+            HumanMessage(content=_build_human_content(input_text)),
         ]
         agent_extra = {
             "sub_agent_results": [],
@@ -158,7 +185,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
             "verify_rounds": 0,
         }
     else:
-        initial_messages = [HumanMessage(content=input_text)]
+        initial_messages = [HumanMessage(content=_build_human_content(input_text))]
         agent_extra = {}
 
     initial_state = {

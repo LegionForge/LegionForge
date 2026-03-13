@@ -17,6 +17,7 @@ Core task API:
 
 from __future__ import annotations
 
+import base64
 import logging
 from typing import Any
 
@@ -219,6 +220,14 @@ class TaskRequest(BaseModel):
         max_length=255,
         description="Original filename for the attached content (display only).",
     )
+    image_b64: str | None = Field(
+        default=None,
+        description="Base64-encoded image (JPEG/PNG/GIF/WEBP only, max 4MB after decode)",
+    )
+    image_mime: str | None = Field(
+        default=None,
+        description="MIME type of the image (image/jpeg, image/png, image/gif, image/webp)",
+    )
 
     @field_validator("model_preference")
     @classmethod
@@ -308,6 +317,42 @@ async def submit_task(
             detail="Task rejected: invalid input",
         )
 
+    # Phase I: validate image attachment if present
+    _ALLOWED_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    _MAGIC = {
+        "image/jpeg": lambda b: b[:3] == b"\xff\xd8\xff",
+        "image/png": lambda b: b[:4] == b"\x89PNG",
+        "image/gif": lambda b: b[:4] == b"GIF8",
+        "image/webp": lambda b: b[8:12] == b"WEBP",
+    }
+    if body.image_b64 is not None:
+        if not body.image_mime or body.image_mime not in _ALLOWED_MIMES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "image_mime is required and must be one of: "
+                    + ", ".join(sorted(_ALLOWED_MIMES))
+                ),
+            )
+        try:
+            _img_bytes = base64.b64decode(body.image_b64 + "==")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="image_b64 is not valid base64",
+            )
+        if len(_img_bytes) > 4 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Image exceeds 4 MB size limit",
+            )
+        _magic_check = _MAGIC.get(body.image_mime)
+        if _magic_check and not _magic_check(_img_bytes):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Image magic bytes do not match declared MIME type {body.image_mime!r}",
+            )
+
     # Phase 36: dry_run — return cost estimate without queuing
     if body.dry_run:
         from src.cost_estimator import estimate_task_cost
@@ -388,11 +433,16 @@ async def submit_task(
                 detail=f"Session {body.session_id!r} not found",
             )
 
+    _task_config = body.config.model_dump()
+    if body.image_b64 is not None:
+        _task_config["image_b64"] = body.image_b64
+        _task_config["image_mime"] = body.image_mime
+
     row = await create_task(
         user_id=user["user_id"],
         input_text=sanitized,
         agent_type=body.agent_type,
-        config=body.config.model_dump(),
+        config=_task_config,
         estimated_tokens=estimated_tokens,
         callback_url=body.callback_url,
         priority=body.priority,
