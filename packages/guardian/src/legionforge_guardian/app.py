@@ -1000,6 +1000,35 @@ def _check_6_adaptive_rules(
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
+@app.post("/invalidate-cache")
+async def invalidate_cache(http_request: Request) -> JSONResponse:
+    """
+    Force an immediate cache refresh — bypasses the 10s TTL.
+    Admin-only: requires the same Bearer token as /check.
+    Use after revoking a tool to propagate revocation instantly.
+    """
+    _auth = _check_bearer_auth(http_request)
+    if _auth == "misconfigured":
+        return JSONResponse(
+            {
+                "detail": "Guardian misconfigured: TASK_TOKEN_SECRET not set",
+                "error": "misconfigured",
+            },
+            status_code=503,
+        )
+    if not _auth:
+        return _unauthorized("Bearer token required for /invalidate-cache")
+
+    await _refresh_caches()
+    return JSONResponse(
+        {
+            "status": "ok",
+            "message": "Cache refreshed",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     """
