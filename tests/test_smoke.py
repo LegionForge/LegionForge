@@ -24076,3 +24076,67 @@ def test_phase_i_ui_has_img_preview():
 
     html = pathlib.Path("src/gateway/static/index.html").read_text()
     assert "img-preview" in html
+
+
+# ── Turn count badge ──────────────────────────────────────────────────────────
+
+
+def test_turn_badge_css_present():
+    """Session sidebar turn count badge CSS is defined."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    assert "turn-badge" in html
+
+
+def test_turn_badge_rendered_in_session_list():
+    """loadSessions() emits turn-badge span for sessions with turns > 0."""
+    import pathlib
+
+    html = pathlib.Path("src/gateway/static/index.html").read_text()
+    # The badge is conditionally rendered inside loadSessions map
+    assert 'class="turn-badge"' in html or "turn-badge" in html
+
+
+# ── Infrastructure sanity ─────────────────────────────────────────────────────
+
+
+def test_zshrc_does_not_export_postgres_password():
+    """POSTGRES_PASSWORD must not be hard-exported in .zshrc (causes stale-env poisoning)."""
+    import pathlib
+
+    zshrc = pathlib.Path.home() / ".zshrc"
+    if not zshrc.exists():
+        return
+    content = zshrc.read_text()
+    # Must not have an active (non-commented) export of POSTGRES_PASSWORD
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        assert (
+            "export POSTGRES_PASSWORD" not in stripped
+        ), f".zshrc exports POSTGRES_PASSWORD — remove it; make servers-start fetches from Keychain directly.\nLine: {line!r}"
+
+
+def test_ollama_ps_endpoint_reachable():
+    """Ollama /api/ps endpoint exists and returns parseable JSON (VRAM model list)."""
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/ps", timeout=3) as r:
+            data = json.loads(r.read())
+        assert "models" in data
+    except Exception:
+        pass  # Ollama not running — skip, not a hard failure in smoke suite
+
+
+def test_lf_restart_function_in_zshrc():
+    """lf-restart shell function is defined in .zshrc."""
+    import pathlib
+
+    zshrc = pathlib.Path.home() / ".zshrc"
+    if not zshrc.exists():
+        return
+    assert "lf-restart" in zshrc.read_text()

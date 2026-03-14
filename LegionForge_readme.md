@@ -27,8 +27,8 @@ LegionForge is an open-source framework for running hardened AI agent systems on
 
 | Metric | Value |
 |---|---|
-| Smoke tests (no services required) | **2125 / 2125 passing** (~21s) |
-| Integration tests (PostgreSQL) | **38 / 38 passing** |
+| Smoke tests (no services required) | **2227 / 2227 passing** (~21s) |
+| Integration tests (PostgreSQL) | **41 / 41 passing** |
 | Kerberos live-KDC tests | **5 / 5 passing** |
 | UI tests (Playwright) | **40 / 40 passing** |
 | Tool accuracy tests | **79 / 79 passing** |
@@ -153,8 +153,11 @@ All phases complete.
 | **Security sprint** | Extended exfiltration detection, NFKC normalization, DESTRUCTIVE_PATTERN DB logging, PostgreSQL scram-sha-256 |
 | **Web + Browser tools** | `web_fetch_js` Playwright headless browser tool for JS-rendered sites; two-layer SSRF guard; private-IP PII regex fix |
 | **Lazy-load Dashboard** | 296 operator tool cards moved into `<template>` — injected on first click; eliminates startup parse cost |
-| **Guardian spinoff G1–G3** | `packages/legionforge_guardian` standalone package; `src/security/guardian.py` → backward-compat shim; `python -m legionforge_guardian` entry point |
+| **Guardian spinoff G1–G4** | `packages/legionforge_guardian` standalone package; `python -m legionforge_guardian` entry point; `legionforge-guardian` v0.2.0 on PyPI; public repo at [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) with auto-sync Action |
 | **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) — OpenClaw parity |
+| **UI polish** | 4 color themes (Solarized, Warm, Nord, High-Contrast) + multi-theme cycler + favicon; session continuity sidebar with per-session turn count badge |
+| **Phase I — Multi-modal input** | Paste or drag images directly into the task input; vision API routing to Ollama vision models or Anthropic Claude (auto-detected by model capability) |
+| **Security hardening** | 8 targeted fixes: timing oracle, SSRF hardening, log injection guard, prompt injection tightening, pgvector isolation, budget atomicity, concurrency fix, admin audit trail |
 
 ---
 
@@ -201,7 +204,7 @@ make setup-signing-key
 
 # 6. Run smoke tests (no services required)
 make test-smoke
-# Expected: 2125 passed in ~21s
+# Expected: 2227 passed in ~21s
 
 # 7. Start services (three terminals)
 make health-server   # Operator API at :8765
@@ -260,8 +263,8 @@ make start             # Full startup (Ollama + PostgreSQL + model warmup)
 make stop              # Graceful shutdown
 
 # Testing
-make test-smoke        # 2125 smoke tests, ~21s, no services required
-make test-integration  # 38 integration tests (requires PostgreSQL)
+make test-smoke        # 2227 smoke tests, ~21s, no services required
+make test-integration  # 41 integration tests (requires PostgreSQL)
 make test-kerberos     # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui           # 40 UI tests (Playwright)
 make test-fast         # All tests except slow ones
@@ -336,8 +339,8 @@ Copyright 2026 John Paul "Jp" Cruz. Commercial licensing available — contact v
 | | |
 |---|---|
 | **Version** | v0.7.1-alpha |
-| **Smoke tests** | 2125/2125 passing |
-| **Integration tests** | 38/38 |
+| **Smoke tests** | 2227/2227 passing |
+| **Integration tests** | 41/41 |
 | **Kerberos tests** | 5/5 |
 | **UI tests** | 40/40 |
 | **Pre-v1.0 security blockers** | All resolved |

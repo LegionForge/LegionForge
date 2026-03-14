@@ -8,6 +8,7 @@ VENV    := $(BASE)/venv
 PYTHON  := $(VENV)/bin/python
 PIP     := $(VENV)/bin/pip
 PYTEST  := $(VENV)/bin/pytest
+KEYCHAIN := $(HOME)/Library/Keychains/login.keychain-db
 
 # ── Inline Python scripts ──────────────────────────────────────
 # Used by targets that need async code with nested blocks.
@@ -245,14 +246,19 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@sleep 1
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
-	  POSTGRES_PASSWORD=$$(security find-generic-password -s postgres -a api_key -w 2>/dev/null || \
+	  POSTGRES_PASSWORD=$$(security find-generic-password -s postgres -a api_key -w $(KEYCHAIN) 2>/dev/null || \
 	    awk -F: '/^\*:5432:\*:jp:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
-	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w 2>/dev/null || echo "") \
+	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  TASK_TOKEN_SECRET=$$(security find-generic-password -s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  LEGIONFORGE_HEALTH_TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  TAVILY_API_KEY=$$(security find-generic-password -s legionforge_tavily_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  BRAVE_API_KEY=$$(security find-generic-password -s legionforge_brave_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  POSTGRES_APP_PASSWORD=$$(security find-generic-password -s legionforge_db_app -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
 	@cd $(BASE) && \
-	  TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null)} \
+	  TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null)} \
 	  $(PYTHON) -m uvicorn src.testlab.app:app --host 0.0.0.0 --port 8090 &
 	@sleep 1
 	@echo ""
@@ -280,7 +286,7 @@ health:
 
 .PHONY: status
 status:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/status | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
 
@@ -288,6 +294,44 @@ status:
 health-server:
 	@echo "Starting health server at http://localhost:8765 ..."
 	@cd $(BASE) && $(PYTHON) -m src.health
+
+.PHONY: health-all
+health-all:  ## Structured liveness check: all 6 services + Ollama VRAM
+	@echo "🩺 LegionForge full health check..."
+	@fail=0; \
+	for port_label in "8765:Health server" "8080:Gateway" "8090:TestLab" "9766:Guardian" "5432:PostgreSQL" "11434:Ollama"; do \
+	  port=$$(echo $$port_label | cut -d: -f1); \
+	  label=$$(echo $$port_label | cut -d: -f2); \
+	  if lsof -i :$$port -sTCP:LISTEN -t >/dev/null 2>&1; then \
+	    echo "  ✅  $$label (:$$port)"; \
+	  else \
+	    echo "  ❌  $$label (:$$port) — not listening"; fail=1; \
+	  fi; \
+	done; \
+	echo ""; \
+	echo "   HTTP liveness:"; \
+	curl -sf http://localhost:8765/health >/dev/null 2>&1 && echo "  ✅  Health API"   || { echo "  ❌  Health API"; fail=1; }; \
+	curl -sf http://localhost:8080/health >/dev/null 2>&1 && echo "  ✅  Gateway"      || { echo "  ❌  Gateway"; fail=1; }; \
+	curl -sf http://localhost:9766/health >/dev/null 2>&1 && echo "  ✅  Guardian"     || { echo "  ❌  Guardian"; fail=1; }; \
+	echo ""; \
+	echo "   Ollama VRAM:"; \
+	loaded=$$(curl -sf http://localhost:11434/api/ps 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  ✅  '+m['name']) for m in d.get('models',[])] or print('  ⚠️   No models loaded in VRAM')"); \
+	echo "$$loaded"; \
+	echo ""; \
+	[ $$fail -eq 0 ] && echo "✅ All services healthy." || { echo "❌ One or more services unhealthy."; exit 1; }
+
+.PHONY: keychain-check
+keychain-check:  ## Verify all required Keychain entries are present (no secret values shown)
+	@echo "🔐 Checking Keychain entries..."
+	@ok=1; \
+	for svc in postgres legionforge_task_tokens legionforge_tool_signer legionforge_health legionforge_tavily_api_key legionforge_brave_api_key legionforge_db_app; do \
+	  if security find-generic-password -s "$$svc" -a api_key -w >/dev/null 2>&1; then \
+	    echo "  ✅  $$svc"; \
+	  else \
+	    echo "  ❌  $$svc — NOT FOUND"; ok=0; \
+	  fi; \
+	done; \
+	if [ $$ok -eq 1 ]; then echo "✅ All Keychain entries present."; else echo "❌ Some entries missing — run make setup-* targets or add via Keychain Access."; exit 1; fi
 
 # ── Gateway (Phase 8) ──────────────────────────────────────────
 .PHONY: gateway-start
@@ -385,13 +429,13 @@ webhook-start:
 
 .PHONY: health-token
 health-token:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	echo "Health server Bearer token:" && echo "  $$TOKEN" \
 		|| echo "⚠️  Token not found in Keychain. Start health server once to generate it: make health-server"
 
 .PHONY: usage
 usage:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/usage | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
 
@@ -1148,9 +1192,9 @@ guardian-start: docker-start
 	@# compose always creates a fresh container with the current env vars.
 	@docker rm -f legionforge-guardian 2>/dev/null || true
 	@export TASK_TOKEN_SECRET=$$(security find-generic-password \
-		-s legionforge_task_tokens -a api_key -w 2>/dev/null || echo "") && \
+		-s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
 	export POSTGRES_PASSWORD=$$(security find-generic-password \
-		-s legionforge_guardian -a api_key -w 2>/dev/null || echo "") && \
+		-s legionforge_guardian -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
 	docker-compose up -d guardian && \
 	sleep 2 && \
 	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
@@ -1278,13 +1322,13 @@ print(f'  Errors: {result[\"errors\"]}')"
 
 .PHONY: bom
 bom:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/bom | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
 
 .PHONY: pending-rules
 pending-rules:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -H "Authorization: Bearer $$TOKEN" http://localhost:8765/rules | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing."
 
@@ -1374,7 +1418,7 @@ run-crystallizer:
 # ── Phase 5: Crystallization review ──────────────────────────
 .PHONY: pending-packages
 pending-packages:
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -H "Authorization: Bearer $$TOKEN" \
 		http://localhost:8765/crystallization/candidates | python3 -m json.tool 2>/dev/null \
 		|| echo "⚠️  Health server not running or token missing. Start with: make health-server"
@@ -1387,7 +1431,7 @@ approve-package:
 		echo "❌ PACKAGE_ID is required: make approve-package PACKAGE_ID=<id>"; \
 		exit 1; \
 	fi
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
 		http://localhost:8765/crystallization/candidates/$(PACKAGE_ID)/approve \
 		| python3 -m json.tool 2>/dev/null \
@@ -1400,7 +1444,7 @@ reject-package:
 		echo "❌ PACKAGE_ID is required: make reject-package PACKAGE_ID=<id>"; \
 		exit 1; \
 	fi
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
 		-H "Content-Type: application/json" \
 		-d '{"reason": "Rejected via make reject-package"}' \
@@ -1482,7 +1526,7 @@ build-analyzer:
 .PHONY: revoke-tool
 revoke-tool:
 	@test -n "$(TOOL_ID)" || (echo "❌ Usage: make revoke-tool TOOL_ID=<tool_id>"; exit 1)
-	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w 2>/dev/null) && \
+	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
 	REASON=$${REASON:-"Revoked via make revoke-tool"}; \
 	curl -s -X POST -H "Authorization: Bearer $$TOKEN" \
 		-H "Content-Type: application/json" \

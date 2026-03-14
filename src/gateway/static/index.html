@@ -214,6 +214,7 @@
       border-radius: 4px;
       margin: 1px 6px;
       border-left: 2px solid transparent;
+      position: relative;
     }
     .sidebar-session-item:hover { background: var(--panel2); }
     .sidebar-session-item.active {
@@ -226,11 +227,28 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      padding-right: 28px;
     }
     .sidebar-session-meta {
       font-size: 11px;
       color: var(--text-dim);
       margin-top: 2px;
+    }
+    .turn-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 18px;
+      text-align: center;
+      font-family: var(--mono);
     }
     #session-indicator {
       display: none;
@@ -4756,6 +4774,15 @@ const el = {
   tmplSummary:   () => $('tmpl-summary'),
 };
 
+// ── Phase 72: Multi-Theme Cycler data (must be declared before init IIFE) ────
+var _THEMES = ['dark', 'light', 'solarized', 'warm', 'nord', 'contrast'];
+var _THEME_ICONS = {
+  dark: '🌙', light: '☀️', solarized: '🌅', warm: '🔥', nord: '❄️', contrast: '◑'
+};
+var _THEME_NAMES = {
+  dark: 'Dark', light: 'Light', solarized: 'Solarized', warm: 'Warm', nord: 'Nord', contrast: 'Contrast'
+};
+
 // ── Init ─────────────────────────────────────────────────────────
 (function init() {
   initTheme();  // Phase 72: apply saved/system light-dark preference
@@ -4878,13 +4905,6 @@ function notifyTaskComplete(taskInput, elapsed) {
 }
 
 // ── Phase 72: Multi-Theme Cycler ───────────────────────────────────────────
-var _THEMES = ['dark', 'light', 'solarized', 'warm', 'nord', 'contrast'];
-var _THEME_ICONS = {
-  dark: '🌙', light: '☀️', solarized: '🌅', warm: '🔥', nord: '❄️', contrast: '◑'
-};
-var _THEME_NAMES = {
-  dark: 'Dark', light: 'Light', solarized: 'Solarized', warm: 'Warm', nord: 'Nord', contrast: 'Contrast'
-};
 
 function _applyTheme(theme) {
   // Remove legacy light-mode class
@@ -5379,7 +5399,8 @@ async function loadSessions() {
           return '<div class="sidebar-session-item' + (isActive ? ' active' : '') + '" ' +
             'onclick="sidebarActivateSession(' + JSON.stringify(s) + ')">' +
             '<div class="sidebar-session-name">' + name + '</div>' +
-            '<div class="sidebar-session-meta">' + turns + ' turn' + (turns !== 1 ? 's' : '') + (ago ? ' \u00b7 ' + ago : '') + '</div>' +
+            '<div class="sidebar-session-meta">' + (ago || 'just now') + '</div>' +
+            (turns > 0 ? '<span class="turn-badge">' + turns + '</span>' : '') +
             '</div>';
         }).join('');
       }

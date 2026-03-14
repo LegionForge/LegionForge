@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 322
-BRANCH: dev
-COMMIT: 4024aa8
-TIMESTAMP: 2026-03-13T14:00Z
-LAST_OP: UI favicon + 6-theme cycler (PR #244) + crystallization 114-test suite (PR #245); security hardening PR in progress
-SMOKE_TESTS: 2196/2196
+UPDATE: 325
+BRANCH: feat/phase-i-multimodal
+COMMIT: 76a7b1e
+TIMESTAMP: 2026-03-14T05:35Z
+LAST_OP: fix 3 infra bugs: keep_alive=-1 integer (Ollama 400), Makefile KEYCHAIN explicit path (all security CLI calls), Guardian DB credentials (legionforge_guardian keychain)
+SMOKE_TESTS: 2227/2227
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

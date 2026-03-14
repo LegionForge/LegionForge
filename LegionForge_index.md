@@ -322,7 +322,7 @@ permalink: /
   <div class="badge" style="border-color: #f9c74f; color: #f9c74f; background: rgba(249,199,79,0.05);">v0.7.1-alpha · Active Development · Not Yet Stable</div>
   <h1><span>Legion</span>Forge</h1>
   <p class="tagline">A security-native AI agent framework built on LangGraph.<br>Security enforced in the execution path — not layered on afterward.</p>
-  <p class="subtagline">// local-first · deterministic controls · human gates · 2151/2151 tests passing</p>
+  <p class="subtagline">// local-first · deterministic controls · human gates · 2227/2227 tests passing</p>
   <div class="cta-group">
     <a class="btn btn-primary" href="https://github.com/LegionForge/LegionForge">
       View on GitHub →
@@ -342,7 +342,7 @@ permalink: /
 <div class="container">
   <div class="stats">
     <div class="stat">
-      <span class="stat-value">2125</span>
+      <span class="stat-value">2227</span>
       <span class="stat-label">Tests Passing</span>
     </div>
     <div class="stat">
@@ -659,13 +659,33 @@ permalink: /
       <div class="status-done">✓ complete</div>
     </div>
     <div class="phase-row">
-      <div class="phase-num">Guardian G1–G3</div>
-      <div class="phase-desc">legionforge_guardian standalone package; src/security/guardian.py is now a backward-compat shim; python -m legionforge_guardian entry point</div>
+      <div class="phase-num">Guardian G1–G4</div>
+      <div class="phase-desc">legionforge_guardian standalone package; backward-compat shim; python -m legionforge_guardian; v0.2.0 on PyPI with /health, /metrics, canary, /invalidate-cache; public repo at LegionForge/LegionForge-Guardian with auto-sync Action</div>
       <div class="status-done">✓ complete</div>
     </div>
     <div class="phase-row">
       <div class="phase-num">Memory — all 5 gaps</div>
       <div class="phase-desc">DB-backed SOUL.md persona (Gap 1), user prefs bootstrap (Gap 5), memory_write/memory_recall tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) — full OpenClaw parity</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">UI polish</div>
+      <div class="phase-desc">4 color themes (Solarized, Warm, Nord, High-Contrast) + multi-theme cycler + favicon; session continuity sidebar with per-session turn count badge</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">Phase H</div>
+      <div class="phase-desc">Session continuity sidebar — collapsible session list, per-session turn count badge, resume prior conversations with full context</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">Phase I</div>
+      <div class="phase-desc">Multi-modal image input — paste or drag images into the task input; vision API routing to Ollama vision models or Anthropic Claude (auto-detected by model capability)</div>
+      <div class="status-done">✓ complete</div>
+    </div>
+    <div class="phase-row">
+      <div class="phase-num">Security sprint</div>
+      <div class="phase-desc">8 targeted hardening fixes — timing oracle, SSRF guard, log injection, prompt injection tightening, pgvector isolation, budget atomicity, concurrency, admin audit trail</div>
       <div class="status-done">✓ complete</div>
     </div>
   </div>
@@ -718,8 +738,8 @@ permalink: /
   </p>
   <p style="color: var(--dim);">
     The security stack, gateway, and operator dashboard are functionally complete and tested.
-    <strong style="color: var(--text);">2151/2151 tests passing.</strong>
-    Phases 0–381 complete, plus web browser tools, Guardian package spinoff, full agent memory model (all 5 gaps — OpenClaw parity), and 2026-03-11 DB security hardening (RLS fail-closed, pool hard-fail, log-bomb cap, Prometheus label normalization — 6 CVE-class issues resolved).
+    <strong style="color: var(--text);">2227/2227 tests passing.</strong>
+    Phases 0–381 + G1–G4 complete, plus web browser tools, Guardian v0.2.0 on PyPI, full agent memory model (all 5 gaps — OpenClaw parity), multi-modal image input (Phase I), session continuity sidebar (Phase H), 4 UI themes, and targeted security hardening (8 fixes — timing oracle, SSRF, log injection, budget atomicity).
     Active development toward v1.0.0 public release.
   </p>
   <p style="color: var(--dim);">
