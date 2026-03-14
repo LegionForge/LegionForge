@@ -124,8 +124,10 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **Dual License** | AGPLv3 open source + commercial license; `COMMERCIAL_LICENSE.md` + `CLA.md` added (PR #229) | ✅ Complete |
 
 | **DB security hardening** | RLS fail-closed (empty user_id sees zero rows), pool hard-fail (no silent privilege escalation), log-bomb cap on threat events, Prometheus label normalization, rate-limit memory leak fix — 17 regression tests | ✅ Complete |
+| **Phase H** | Session continuity UI — persistent conversation sidebar, turn count badge, New Conversation button, session resume across page reloads | ✅ Complete |
+| **Phase I** | Multi-modal image input — paste/drag image into prompt, MIME + magic-byte validation, vision API routing, Ollama text-only fallback | ✅ Complete |
 
-**2151/2151 smoke tests passing.** 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
+**2222/2222 smoke tests passing.** 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -157,6 +159,20 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 
 ---
 
+## Demo
+
+> **Screenshot** *(add GIF or screenshot here before v1.0 release — `docs/assets/demo.gif`)*
+
+The web UI at `http://localhost:8080/ui` streams agent output token-by-token as it reasons, calls tools, and returns results. A persistent session sidebar tracks conversation history and turn counts. Paste or drag an image directly into the prompt for multi-modal tasks.
+
+Key UI surfaces:
+- **Task panel** — submit any prompt; watch tool calls expand inline as they execute
+- **Session sidebar** — resume past conversations; turn count badge per session
+- **Operator dashboard** — 381 live API tools for admin/monitoring (gear icon)
+- **Chat mode** — toggle to a conversational layout for back-and-forth exchanges
+
+---
+
 ## Quick Start
 
 **→ Full setup guide:** [`docs/quick-start.md`](./docs/quick-start.md)
@@ -182,7 +198,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 2125 passed in ~21s
+# Expected: 2222 passed in ~21s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -303,6 +319,6 @@ Copyright 2026 John Paul "Jp" Cruz.
 
 ## Status
 
-**v0.7.1-alpha** — Phases 0–381 + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2125/2125 smoke tests. 38/38 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
+**v0.7.1-alpha** — Phases 0–381 + H + I + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2222/2222 smoke tests. 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

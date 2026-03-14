@@ -196,8 +196,9 @@ def _get_ollama(
         base_url=base_url,
         temperature=temperature,
         streaming=streaming,
-        # Keep-alive: hold model in memory for 10 minutes after last call
-        keep_alive="10m",
+        # Keep-alive: hold model in VRAM indefinitely on this dedicated machine.
+        # Models are evicted only when Ollama restarts (make stop/start).
+        keep_alive=-1,
         **kwargs,
     )
 
@@ -272,7 +273,11 @@ async def warmup_local_models() -> dict[str, bool]:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
                     f"{base_url}/api/generate",
-                    json={"model": model_id, "prompt": "hi", "stream": False},
+                    json={
+                        "model": model_id,
+                        "prompt": "hi",
+                        "stream": False,
+                    },
                 )
                 resp.raise_for_status()
                 results[model_id] = True

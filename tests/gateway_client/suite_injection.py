@@ -83,7 +83,6 @@ from tests.gateway_client import config
 from tests.gateway_client.client import GatewayClient, Timer
 from tests.gateway_client.report import SuiteResult, TestResult
 
-
 NAME = "injection"
 
 

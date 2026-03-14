@@ -54,6 +54,7 @@ from src.database import (
     purge_expired_stream_tokens,
     get_user_webhooks_for_event,
 )
+from src.security.core import sanitize_log_value
 from src.gateway.events import (
     build_sse_event,
     build_task_complete_event,
@@ -135,12 +136,39 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     # where the LLM needs the instruction context during synthesis (step 2+).
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    # Phase I: extract image payload from task config (stored there by gateway)
+    _image_b64 = task_config.get("image_b64")
+    _image_mime = task_config.get("image_mime")
+
+    def _build_human_content(text: str) -> list | str:
+        """Return vision content list if image present, else plain string."""
+        if _image_b64:
+            from config.settings import settings
+
+            _model_name = (settings.llm.primary_model or "").lower()
+            _is_local = any(kw in _model_name for kw in ("qwen", "llama", "ollama"))
+            if _is_local:
+                logger.warning(
+                    "[worker] Vision input ignored — local model %r does not support "
+                    "image inputs. Falling back to text-only.",
+                    _model_name,
+                )
+                return text
+            return [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{_image_mime};base64,{_image_b64}"},
+                },
+                {"type": "text", "text": text},
+            ]
+        return text
+
     if agent_type == "researcher":
         from src.agents.researcher import _RESEARCHER_SYSTEM_CONTENT
 
         initial_messages = [
             SystemMessage(content=_RESEARCHER_SYSTEM_CONTENT),
-            HumanMessage(content=input_text),
+            HumanMessage(content=_build_human_content(input_text)),
         ]
         agent_extra: dict = {}
     elif agent_type == "orchestrator":
@@ -148,7 +176,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
         initial_messages = [
             SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT),
-            HumanMessage(content=input_text),
+            HumanMessage(content=_build_human_content(input_text)),
         ]
         agent_extra = {
             "sub_agent_results": [],
@@ -157,7 +185,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
             "verify_rounds": 0,
         }
     else:
-        initial_messages = [HumanMessage(content=input_text)]
+        initial_messages = [HumanMessage(content=_build_human_content(input_text))]
         agent_extra = {}
 
     initial_state = {
@@ -315,7 +343,10 @@ async def run_task(task: dict) -> None:
     agent_type = task.get("agent_type", "base_agent")
     session_id = task.get("session_id")
     logger.info(
-        f"[worker] Starting task_id={task_id} agent={agent_type} " f"user={user_id}"
+        "[worker] Starting task_id=%s agent=%s user=%s",
+        task_id,
+        sanitize_log_value(agent_type),
+        user_id,
     )
 
     from src.tools.code_tools import pop_charts
@@ -418,7 +449,10 @@ async def run_task(task: dict) -> None:
     except Exception as exc:
         error_msg = str(exc)
         logger.error(
-            f"[worker] Task failed task_id={task_id}: {error_msg}", exc_info=True
+            "[worker] Task failed task_id=%s: %s",
+            task_id,
+            sanitize_log_value(error_msg),
+            exc_info=True,
         )
         # Flush any partial chart store entries so they don't leak across tasks.
         pop_charts(task_id)

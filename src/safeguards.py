@@ -60,6 +60,12 @@ class SafeguardedState(dict):
         "token_count": 0,  # Running token total
         "run_id": None,  # UUID for this run
         "tracing_enabled": True,  # Per-run LangSmith toggle
+        # Phase 2 HITL fields — populated by check_hitl_required() on HALT tier
+        "hitl_pending": False,  # True when awaiting operator approval
+        "hitl_run_id": None,  # run_id of the paused run
+        "hitl_action": None,  # The action that triggered HITL
+        "hitl_categories": [],  # HALT-tier categories matched
+        "hitl_request_id": None,  # UUID of the hitl_pending DB row
     }
 
     @classmethod
@@ -105,6 +111,12 @@ class SafeguardedState(dict):
             "tracing_enabled": tracing_enabled,
             "messages": [],
             "agent_id": agent_id,
+            # Phase 2 HITL fields — populated by check_hitl_required() on HALT tier
+            "hitl_pending": False,
+            "hitl_run_id": None,
+            "hitl_action": None,
+            "hitl_categories": [],
+            "hitl_request_id": None,
         }
 
 
@@ -332,14 +344,18 @@ def check_token_budget(state: dict, tokens_used: int) -> dict:
 def check_safeguards(state: dict) -> str:
     """
     Master safeguard check for use as a conditional edge.
-    Returns "end" if any safeguard is triggered, "continue" otherwise.
+    Returns "end" if any hard safeguard is triggered, "hitl" if a HALT-tier
+    HITL approval is pending, or "continue" otherwise.
 
     Usage:
         graph.add_conditional_edges(
             "agent_node",
             check_safeguards,
-            {"end": END, "continue": "next_node"},
+            {"end": END, "hitl": "hitl_gate", "continue": "next_node"},
         )
+
+    Note: graphs that do not implement a hitl_gate node should map "hitl"
+    to END in the edge map (graceful degradation to Phase 1 behaviour).
     """
     if state.get("force_end"):
         return "end"
@@ -352,6 +368,8 @@ def check_safeguards(state: dict) -> str:
             f"🚨 Max errors reached: {state['error_count']} errors. Terminating."
         )
         return "end"
+    if state.get("hitl_pending"):
+        return "hitl"
     return "continue"
 
 
@@ -379,19 +397,23 @@ async def check_hitl_required(
       HALT tier → logger.warning() + return {"force_end": True}
       LOG tier  → logger.warning() + return {} (run continues)
 
-    Phase 2 behaviour (TODO): use LangGraph interrupt_before to pause the graph
-    and wait for operator approval via the approval API. The 'hitl_pending' flag
-    in state will be checked by the routing function.
+    Phase 2 behaviour: persist the pending action to hitl_pending DB table and
+    return {"hitl_pending": True, ...} so the routing function can route to the
+    hitl_gate node (compiled with interrupt_before).  The graph is paused at
+    the checkpoint; execution resumes only when an operator calls
+    POST /hitl/{request_id}/approve via the gateway API.
 
     Args:
         action:     The tool or action being attempted (for logging).
         input_text: The text that triggered the HITL check (sanitized excerpt).
-        state:      Current agent state (for run_id).
+        state:      Current agent state (for run_id and thread_id).
         categories: List of matched DESTRUCTIVE_PATTERN category names.
 
     Returns:
         {} if no HITL required, or only LOG-tier categories matched.
-        {"force_end": True} if any HALT-tier category matched.
+        {"hitl_pending": True, "hitl_run_id": ..., "hitl_action": ...,
+         "hitl_categories": [...], "hitl_request_id": ...}
+        if any HALT-tier category matched (Phase 2: pause for approval).
     """
     if not categories:
         return {}
@@ -421,11 +443,14 @@ async def check_hitl_required(
         except Exception as exc:
             logger.warning(f"[hitl] DB log_threat_event failed (log tier): {exc}")
 
-    # HALT tier: unambiguously adversarial — force-end immediately
+    # HALT tier: unambiguously adversarial — pause for operator approval (Phase 2).
+    # Phase 1 behaviour was: return {"force_end": True} (immediate termination).
+    # Phase 2 behaviour: persist the approval request and signal hitl_pending so
+    # the routing function routes to the hitl_gate node (interrupt_before target).
     if halt_cats:
         logger.warning(
             f"[hitl] HITL HALT — action='{action}' categories={halt_cats} "
-            f"run={run_prefix}... Forcing termination."
+            f"run={run_prefix}... Pausing for operator approval."
         )
         try:
             await log_threat_event(
@@ -439,7 +464,35 @@ async def check_hitl_required(
             )
         except Exception as exc:
             logger.warning(f"[hitl] DB log_threat_event failed (halt tier): {exc}")
-        return {"force_end": True}
+
+        # Persist the approval request — thread_id is needed for graph resumption.
+        # Fall back gracefully if DB is unavailable (test environments).
+        thread_id = state.get("thread_id", run_id)
+        request_id: str | None = None
+        try:
+            from src.database import create_hitl_request
+
+            request_id = await create_hitl_request(
+                run_id=run_id,
+                thread_id=thread_id,
+                action=action,
+                categories=halt_cats,
+                input_excerpt=input_text[:200],
+            )
+            logger.info(
+                f"[hitl] HITL request created: request_id={request_id} "
+                f"run={run_prefix}... action='{action}'"
+            )
+        except Exception as exc:
+            logger.warning(f"[hitl] create_hitl_request failed (non-fatal): {exc}")
+
+        return {
+            "hitl_pending": True,
+            "hitl_run_id": run_id,
+            "hitl_action": action,
+            "hitl_categories": halt_cats,
+            "hitl_request_id": request_id,
+        }
 
     # Only LOG-tier categories matched — run continues
     return {}

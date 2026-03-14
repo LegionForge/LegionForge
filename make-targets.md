@@ -154,6 +154,7 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `test-novel` | LLM-generated tests (requires Ollama) | — |
 | `test-cve` | CVE-based tests from NVD API (requires network + Ollama) | — |
 | `test-testlab-all` | All 110+ testlab_suite tests (excludes LLM/CVE tests) | — |
+| `test-crystallization` | Crystallization pipeline tests — Observer, Crystallizer, Analyzer, HITL, security invariants (no services required) | — |
 
 ---
 

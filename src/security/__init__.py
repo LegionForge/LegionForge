@@ -57,10 +57,13 @@ from src.security.core import (
     check_capability_boundary,
     # SSRF prevention
     validate_fetch_url,
+    is_ssrf_url,
     _ALLOWED_SCHEMES,
     _BLOCKED_HOSTS,
     _PRIVATE_IP_PATTERNS,
     _is_private_ip,
+    # Log injection prevention
+    sanitize_log_value,
     # Destructive pattern detection / HITL
     detect_destructive_pattern,
     _DESTRUCTIVE_PATTERNS,
@@ -112,10 +115,12 @@ __all__ = [
     "FORBIDDEN_CAPABILITIES",
     "check_capability_boundary",
     "validate_fetch_url",
+    "is_ssrf_url",
     "_ALLOWED_SCHEMES",
     "_BLOCKED_HOSTS",
     "_PRIVATE_IP_PATTERNS",
     "_is_private_ip",
+    "sanitize_log_value",
     "detect_destructive_pattern",
     "_DESTRUCTIVE_PATTERNS",
     "HITL_HALT_CATEGORIES",

@@ -388,3 +388,28 @@ make bom
 *This document is updated after every change to database roles, auth layers, or Guardian checks.*
 *When adding a new database function: check Section 4.1 for pool routing rules.*
 *When adding a new grant: update Section 2.2 grant matrix.*
+
+---
+
+## Security Gap Tracker (2026-03-13)
+
+All 16 gaps identified in the pre-v1.0 security review. Status updated as fixes land.
+
+| # | Gap | Severity | Status |
+|---|-----|----------|--------|
+| 1 | Indirect prompt injection (web_fetch/RAG) | Critical | ✅ Fixed — http_get/web_fetch_js already apply sanitize_output(); MemoryStore.search() now sanitizes retrieved chunks |
+| 2 | Webhook callback SSRF | High | ✅ Fixed — is_ssrf_url() added to security/core.py; applied to callback_url in webhook.py |
+| 3 | API key timing oracle | High | ✅ Fixed — auth uses bcrypt.checkpw (inherently constant-time); documented in test |
+| 4 | Guardian sidecar reachability (INFRA-1) | Medium | 📋 Post-v1.0 — localhost binding by design for single-host deployments |
+| 5 | Multi-turn memory poisoning | Medium | 📋 Post-v1.0 — scan memory at retrieval time (partial: search() now sanitizes) |
+| 6 | RAG document poisoning | High | ✅ Fixed — MemoryStore.search() applies sanitize_output() to all retrieved chunks |
+| 7 | Multi-tenant vector store isolation | Critical | ✅ Verified — namespace-based isolation documented; gateway role uses RLS (app.user_id) as DB-layer defence |
+| 8 | Pipeline step injection | Medium | 📋 Post-v1.0 — sanitize step outputs in pipeline runner |
+| 9 | Token budget race condition | High | ✅ Verified/Fixed — Redis path is atomic (INCRBY); DB path TOCTOU risk documented in per_user_budget_check |
+| 10 | Slow-task queue starvation | Medium | ✅ Fixed (pre-existing) — _check_queue_depth() enforces max_queued_tasks_per_user |
+| 11 | Audit log truncation alert | Medium | 📋 Post-v1.0 — anchor seq checkpoint externally |
+| 12 | Log injection | Medium | ✅ Fixed — sanitize_log_value() added to security/core.py; applied in worker.py |
+| 13 | Signing key rotation schedule | Low | 📋 Post-v1.0 |
+| 14 | Admin action audit trail | Medium | ✅ Fixed — create_user, deactivate_user, set_quota, set_admin all write ADMIN_ACTION to audit_log |
+| 15 | Dependency confusion | Low | 📋 Post-v1.0 — package name allowlist in dep-audit |
+| 16 | Connector bot anomaly detection | Low | 📋 Post-v1.0 |

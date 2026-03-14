@@ -280,18 +280,18 @@ async def register_researcher_tools() -> None:
     """
     Register all researcher tools in the tool registry.
     Call once at startup or via: make register-researcher-tools
-    """
-    from src.tools.browser_tools import register_browser_tools
-    from src.tools.memory_tools import register_memory_tools
 
+    RESEARCHER_TOOL_MANIFESTS already spreads *BROWSER_TOOL_MANIFESTS and
+    *MEMORY_TOOL_MANIFESTS, so the single loop below covers all tools.
+    Calling register_browser_tools()/register_memory_tools() separately would
+    register web_fetch_js, memory_write, and memory_recall a second time.
+    """
     for manifest in RESEARCHER_TOOL_MANIFESTS:
         await register_tool(
             manifest,
             approved_by="operator",
             approval_notes="Phase 1 researcher agent tools",
         )
-    await register_browser_tools()
-    await register_memory_tools()
     logger.info("[researcher] All tools registered.")
 
 

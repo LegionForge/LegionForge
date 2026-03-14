@@ -122,6 +122,16 @@ class AgentState(TypedDict):
     # per-user memory namespaces. None for headless/internal runs.
     user_id: str | None
 
+    # ── Phase 2 HITL fields ────────────────────────────────────────────────────
+    # Populated by check_hitl_required() when a HALT-tier destructive pattern is
+    # detected.  The graph pauses at hitl_gate (interrupt_before); the operator
+    # approves/rejects via POST /hitl/{request_id}/approve|reject.
+    hitl_pending: bool
+    hitl_run_id: str | None
+    hitl_action: str | None
+    hitl_categories: list[str]
+    hitl_request_id: str | None
+
 
 # ── Node functions ────────────────────────────────────────────────────────────
 
@@ -293,6 +303,39 @@ def _describe_llm_error(exc: Exception) -> str:
     return f"[Agent error] {cls}: {msg[:200]}"
 
 
+async def hitl_gate_node(state: AgentState) -> dict:
+    """
+    Phase 2 HITL gate node — the target of interrupt_before.
+
+    This node is compiled into the graph with interrupt_before=["hitl_gate"].
+    When check_safeguards() returns "hitl" (hitl_pending=True in state),
+    the routing function routes here.  LangGraph raises GraphInterrupt before
+    the node body executes, pausing the graph at the checkpoint.
+
+    If somehow the interrupt is bypassed (e.g. in tests without a checkpointer),
+    the node body returns a graceful "pending approval" result so the run does
+    not silently continue past the HITL gate.
+
+    On operator approval, the gateway calls:
+        graph.ainvoke(None, config={"configurable": {"thread_id": thread_id}})
+    which resumes from this checkpoint with hitl_pending reset to False.
+    """
+    action = state.get("hitl_action", "unknown action")
+    categories = state.get("hitl_categories", [])
+    request_id = state.get("hitl_request_id")
+    logger.warning(
+        f"[hitl_gate] Paused for operator approval — action='{action}' "
+        f"categories={categories} request_id={request_id}"
+    )
+    return {
+        "result": (
+            f"[HITL PENDING] Action '{action}' requires operator approval before "
+            f"it can proceed (categories: {', '.join(categories)}). "
+            f"Request ID: {request_id}"
+        ),
+    }
+
+
 async def finalizer_node(state: AgentState) -> dict:
     """
     Terminal node. Extracts the final result from the last message.
@@ -389,9 +432,16 @@ def route_after_agent(state: AgentState) -> str:
     """
     Decide what to do after the agent node runs.
     Checks all safeguards first, then applies agent-specific logic.
+
+    Returns:
+        "finalize"   — hard safeguard triggered (force_end / loop / step limit)
+        "hitl_gate"  — HALT-tier HITL approval required (hitl_pending=True)
+        "agent"      — continue the loop
     """
     # Safeguards always take priority
     safeguard_result = check_safeguards(state)
+    if safeguard_result == "hitl":
+        return "hitl_gate"
     if safeguard_result == "end":
         return "finalize"
 
@@ -1068,14 +1118,26 @@ class SecureToolNode:
                 # 4c. Destructive / HITL pattern detection
                 requires_hitl, categories = detect_destructive_pattern(clean_arg)
                 if requires_hitl:
+                    # Pass thread_id from config so hitl_pending row has correct
+                    # thread_id for checkpoint resumption on approval.
+                    _thread_id = (
+                        config.get("configurable", {}).get("thread_id")
+                        if config
+                        else None
+                    )
+                    _state_with_thread = (
+                        {**state, "thread_id": _thread_id} if _thread_id else state
+                    )
                     hitl_updates = await check_hitl_required(
                         action=f"{tool_id}.{arg_name}",
                         input_text=clean_arg[:200],
-                        state=state,
+                        state=_state_with_thread,
                         categories=categories,
                     )
                     result.update(hitl_updates)
-                    if result.get("force_end"):
+                    # Phase 2: HALT tier now returns hitl_pending=True instead of
+                    # force_end=True.  Both cases stop tool execution here.
+                    if result.get("force_end") or result.get("hitl_pending"):
                         logger.warning(
                             f"[SecureToolNode] HITL halt on '{tool_id}' "
                             f"arg='{arg_name}' categories={categories}"
@@ -1319,25 +1381,42 @@ def build_base_graph() -> StateGraph:
     """
     Build and return the base graph (uncompiled).
     Use this as a pattern for all your agents.
+
+    HITL gate (Phase 2):
+    The graph is compiled with interrupt_before=["hitl_gate"] so that when
+    check_safeguards() returns "hitl" the run is paused at the checkpoint.
+    The operator then calls POST /hitl/{request_id}/approve which resumes
+    execution via graph.ainvoke(None, config={"configurable":
+    {"thread_id": thread_id}}).
+
+    To disable HITL (e.g. in tests without a checkpointer), compile without
+    interrupt_before:
+        graph = build_base_graph().compile()
     """
     graph = StateGraph(AgentState)
 
     # Add nodes
     graph.add_node("agent", agent_node)
+    graph.add_node("hitl_gate", hitl_gate_node)
     graph.add_node("finalize", finalizer_node)
 
     # Entry point
     graph.set_entry_point("agent")
 
-    # Conditional edges from agent node
+    # Conditional edges from agent node — includes "hitl" route for Phase 2
     graph.add_conditional_edges(
         "agent",
         route_after_agent,
         {
             "agent": "agent",  # Loop back for more processing
             "finalize": "finalize",  # Done — collect result
+            "hitl_gate": "hitl_gate",  # HALT-tier HITL pause for operator approval
         },
     )
+
+    # hitl_gate always goes to END (it either paused via interrupt_before,
+    # or if resumed after approval, the result is already collected)
+    graph.add_edge("hitl_gate", END)
 
     # Finalize always goes to END
     graph.add_edge("finalize", END)
@@ -1438,11 +1517,18 @@ async def run_agent(
         run_id=state["run_id"],
     )
 
-    # Compile graph with PostgreSQL checkpointer
+    # Compile graph with PostgreSQL checkpointer.
+    # interrupt_before=["hitl_gate"] causes LangGraph to raise GraphInterrupt
+    # before the hitl_gate node body executes when routing returns "hitl_gate".
+    # The run is then paused at the checkpoint and can be resumed after operator
+    # approval via POST /hitl/{request_id}/approve.
     from src.database import get_checkpointer
 
     async with get_checkpointer() as checkpointer:
-        graph = build_base_graph().compile(checkpointer=checkpointer)
+        graph = build_base_graph().compile(
+            checkpointer=checkpointer,
+            interrupt_before=["hitl_gate"],
+        )
         final_state = await graph.ainvoke(state, config)
 
     return {

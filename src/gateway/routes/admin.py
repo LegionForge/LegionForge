@@ -24,7 +24,7 @@ import logging
 import secrets
 import string
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from src.gateway.auth import require_admin
@@ -85,6 +85,7 @@ async def list_users(admin: dict = Depends(require_admin)):
 @router.post("/users", status_code=201)
 async def create_user(
     req: CreateUserRequest,
+    request: Request,
     admin: dict = Depends(require_admin),
 ):
     """
@@ -124,6 +125,25 @@ async def create_user(
                 status_code=409, detail=f"Username '{req.username}' already exists"
             )
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # Audit trail — record admin mutation to tamper-evident log
+    try:
+        from src.database import append_audit_log
+
+        await append_audit_log(
+            event_type="ADMIN_ACTION",
+            agent_id=f"admin:{admin['username']}",
+            payload={
+                "action": "create_user",
+                "target": req.username,
+                "performed_by": admin["username"],
+                "is_admin": req.is_admin,
+                "daily_token_limit": req.daily_token_limit,
+                "ip": request.client.host if request.client else "unknown",
+            },
+        )
+    except Exception as audit_err:
+        logger.warning("admin audit_log write failed (create_user): %s", audit_err)
 
     return {
         "user_id": user["user_id"],
@@ -176,7 +196,11 @@ async def get_user(username: str, admin: dict = Depends(require_admin)):
 
 
 @router.delete("/users/{username}")
-async def deactivate_user(username: str, admin: dict = Depends(require_admin)):
+async def deactivate_user(
+    username: str,
+    request: Request,
+    admin: dict = Depends(require_admin),
+):
     """
     Deactivate a gateway user.  They can no longer authenticate.
 
@@ -201,6 +225,23 @@ async def deactivate_user(username: str, admin: dict = Depends(require_admin)):
     if not deactivated:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
 
+    # Audit trail — record admin mutation to tamper-evident log
+    try:
+        from src.database import append_audit_log
+
+        await append_audit_log(
+            event_type="ADMIN_ACTION",
+            agent_id=f"admin:{admin['username']}",
+            payload={
+                "action": "deactivate_user",
+                "target": username,
+                "performed_by": admin["username"],
+                "ip": request.client.host if request.client else "unknown",
+            },
+        )
+    except Exception as audit_err:
+        logger.warning("admin audit_log write failed (deactivate_user): %s", audit_err)
+
     return {"username": username, "status": "deactivated"}
 
 
@@ -208,6 +249,7 @@ async def deactivate_user(username: str, admin: dict = Depends(require_admin)):
 async def set_user_quota(
     username: str,
     req: SetQuotaRequest,
+    request: Request,
     admin: dict = Depends(require_admin),
 ):
     """Set the per-user daily token budget."""
@@ -222,6 +264,24 @@ async def set_user_quota(
     if not updated:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
 
+    # Audit trail — record admin mutation to tamper-evident log
+    try:
+        from src.database import append_audit_log
+
+        await append_audit_log(
+            event_type="ADMIN_ACTION",
+            agent_id=f"admin:{admin['username']}",
+            payload={
+                "action": "set_quota",
+                "target": username,
+                "performed_by": admin["username"],
+                "daily_token_limit": req.daily_token_limit,
+                "ip": request.client.host if request.client else "unknown",
+            },
+        )
+    except Exception as audit_err:
+        logger.warning("admin audit_log write failed (set_quota): %s", audit_err)
+
     return {"username": username, "daily_token_limit": req.daily_token_limit}
 
 
@@ -229,6 +289,7 @@ async def set_user_quota(
 async def set_user_admin(
     username: str,
     req: SetAdminRequest,
+    request: Request,
     admin: dict = Depends(require_admin),
 ):
     """Grant or revoke admin privilege for a user."""
@@ -249,6 +310,24 @@ async def set_user_admin(
 
     if not updated:
         raise HTTPException(status_code=404, detail=f"User '{username}' not found")
+
+    # Audit trail — record admin mutation to tamper-evident log
+    try:
+        from src.database import append_audit_log
+
+        await append_audit_log(
+            event_type="ADMIN_ACTION",
+            agent_id=f"admin:{admin['username']}",
+            payload={
+                "action": "promoted" if req.is_admin else "demoted",
+                "target": username,
+                "performed_by": admin["username"],
+                "is_admin": req.is_admin,
+                "ip": request.client.host if request.client else "unknown",
+            },
+        )
+    except Exception as audit_err:
+        logger.warning("admin audit_log write failed (set_admin): %s", audit_err)
 
     return {
         "username": username,

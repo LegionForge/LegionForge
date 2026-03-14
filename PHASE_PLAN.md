@@ -2207,3 +2207,146 @@ must precede extraction. See `jp_todo.md` for full pre-extraction checklist.
 **Branding:** Icon + marketing blurb needed. See `jp_todo.md → LEGIONFORGE-ANNEAL`.
 
 **License:** AGPLv3 + commercial dual license (same as main framework).
+
+---
+
+## Phase H — Session Continuity in Web UI (PLANNED — pre-v1.0)
+
+**Problem:** The web UI submits standalone tasks with no visible thread history.
+The backend already has full session support — `AsyncPostgresSaver` checkpoints
+every graph run, Phase 54 added the session API, and `user_id` is threaded
+through the worker. But the UI never surfaces this: there is no conversation
+sidebar, no "continue last session" affordance, and no turn counter.
+
+OpenClaw's most praised UX feature was the sense that the agent *remembered*
+the conversation. LegionForge has the memory — the UI just doesn't show it.
+
+**Scope (frontend-only — no new backend required):**
+
+1. **Session sidebar** — left-panel list of recent sessions (title = first
+   task text, truncated to 60 chars; timestamp; turn count badge). Fetched from
+   `GET /sessions` on load and after each task completes.
+2. **Active session indicator** — current session highlighted; turn count
+   increments live as SSE events arrive.
+3. **"New conversation" button** — clears the active `session_id`; next
+   submission starts a fresh LangGraph thread.
+4. **Session resume** — clicking a past session sets `session_id` in the
+   submit payload; the worker resumes from that checkpoint.
+5. **Turn count badge** — small pill next to session title showing `N turns`.
+
+**API changes needed:** `GET /sessions?user_id=<uid>&limit=20` endpoint (returns
+session_id, created_at, turn_count, last_message_preview). Worker already
+accepts `session_id` in task payload.
+
+**Security considerations:** Session list must be scoped to the authenticated
+user — no cross-user session enumeration. Gateway pool (`legionforge_gateway`)
+already has SELECT on `tasks` table.
+
+**Test plan:**
+- Smoke tests: session sidebar HTML structure present, New Conversation button
+  present, turn count badge element present.
+- Integration test: submit two tasks with same session_id, verify checkpoint
+  thread has 2 entries.
+- UI (Playwright): click past session → session_id appears in submit payload.
+
+---
+
+## Phase I — Multi-Modal Input: Image Attachments (PLANNED — pre-v1.0)
+
+**Problem:** If a user pastes a screenshot into the Discord bot, uploads an
+image in the web UI, or sends a photo via Telegram, there is no pipeline to
+handle it. The gateway drops non-text content silently.
+
+OpenClaw routed images to Claude's vision API. LegionForge has the cloud
+provider path (`llm_factory.py` supports Anthropic/OpenAI) but no image
+ingestion layer.
+
+**Scope:**
+
+1. **Gateway — multipart upload** — `POST /tasks` accepts optional
+   `image` field (base64-encoded or binary multipart). Validated: MIME type
+   must be `image/jpeg`, `image/png`, `image/gif`, or `image/webp`; size cap
+   4MB; no SVG (XSS vector). Stored as base64 blob in task payload.
+2. **Worker — vision message construction** — if task has `image_b64`, the
+   HumanMessage content becomes a list: `[{"type": "image_url", ...}, {"type":
+   "text", ...}]` (Anthropic/OpenAI vision format). Falls back gracefully if
+   active model is Ollama-only (no vision) — logs warning, strips image,
+   proceeds with text only.
+3. **Web UI — drag-and-drop / paste** — paste or drag an image onto the
+   task input area; thumbnail preview appears; image sent with the next
+   submission. Cancel (×) removes it.
+4. **Discord connector** — if a message has an attachment that is an image,
+   download it, base64-encode, include in the gateway task payload.
+5. **Telegram connector** — same pattern; Telegram Bot API `getFile` →
+   download → base64.
+
+**Security considerations:**
+- MIME type validated server-side (not just Content-Type header — inspect magic
+  bytes).
+- Images are never written to disk — held in memory for the duration of the
+  task then discarded.
+- No image stored in `tasks` table long-term — only the text summary/response
+  is persisted.
+- Rate limit image uploads separately (1 image per task, max 4MB) to prevent
+  memory bombs.
+
+**Test plan:**
+- Smoke: gateway rejects oversized image, rejects SVG, accepts valid PNG.
+- Integration: task with image_b64 reaches worker, HumanMessage has list
+  content.
+- Smoke: Ollama fallback path logs warning and proceeds with text only.
+
+---
+
+## Phase J — WhatsApp Connector (PLANNED — pre-v1.0)
+
+**Problem:** WhatsApp is the world's most-used messaging app. OpenClaw's
+connector model ("agents as contacts in your messaging app") resonates most
+strongly with WhatsApp users. LegionForge has Discord, Telegram, Slack, and
+Webhook — but not WhatsApp.
+
+**Approach — Meta Cloud API (official, no unofficial bridges):**
+
+Meta's WhatsApp Business Cloud API is free-tier available, webhook-based, and
+does not require a dedicated phone number running on hardware. This matches
+LegionForge's self-hosted philosophy better than unofficial bridges (which are
+fragile and violate ToS).
+
+**Scope:**
+
+1. **`src/connectors/whatsapp.py`** — FastAPI sub-app or standalone ASGI app
+   at `:8085`. Handles:
+   - `GET /webhook` — Meta verification challenge (hub.verify_token check).
+   - `POST /webhook` — inbound message webhook. Validates `X-Hub-Signature-256`
+     HMAC (same pattern as existing `webhook.py` SSRF guard). Extracts sender
+     phone, message text (and image if media message). Submits to gateway
+     `POST /tasks`. Streams SSE response back and sends reply via
+     `POST /messages` to Meta API.
+2. **Keychain secret** — `legionforge_whatsapp_token` stores the WhatsApp
+   Business API bearer token. `legionforge_whatsapp_verify_token` stores the
+   hub verify token.
+3. **`make whatsapp-start`** — launch connector; add to `servers-start` if
+   configured.
+4. **Rate limiting** — per sender-phone rate limit (reuse existing
+   `per_user_budget_check` with phone as user key).
+5. **Image passthrough** — if inbound message is `type: image`, download media
+   from Meta CDN, base64-encode, include in gateway task payload (Phase I
+   required first).
+
+**Prerequisites:** Phase I (multi-modal) should land before this — WhatsApp
+photo messages are a core use case.
+
+**Security considerations:**
+- `X-Hub-Signature-256` HMAC verification before any message processing
+  (same pattern as `webhook.py`; use `hmac.compare_digest`).
+- Phone numbers treated as user identifiers — PII; never logged raw.
+- Meta API token stored in Keychain, injected as env var at startup (same
+  pattern as `TOOL_SIGNING_PRIVATE_KEY`).
+- Webhook endpoint exposed to the internet — must sit behind SSRF guard and
+  rate limiter.
+
+**Test plan:**
+- Smoke: verify token challenge handler returns correct response.
+- Smoke: invalid HMAC signature rejected with 403.
+- Smoke: valid inbound text message routed to gateway.
+- Integration: end-to-end with Meta test number (manual UAT).

@@ -79,6 +79,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.connectors.base import _load_secret, _run_task
+from src.security.core import is_ssrf_url
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,14 @@ def build_app(api_key: str, inbound_secret: str) -> FastAPI:
             raise HTTPException(
                 status_code=422,
                 detail="callback_url must start with http:// or https://",
+            )
+        if is_ssrf_url(callback_url):
+            logger.warning(
+                "[webhook] Blocked SSRF callback_url attempt: %.80s", callback_url
+            )
+            raise HTTPException(
+                status_code=422,
+                detail="callback_url targets a private or internal address.",
             )
 
         logger.info(
