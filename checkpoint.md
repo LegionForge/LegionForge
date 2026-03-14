@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 325
-BRANCH: feat/phase-i-multimodal
-COMMIT: 76a7b1e
-TIMESTAMP: 2026-03-14T05:35Z
-LAST_OP: fix 3 infra bugs: keep_alive=-1 integer (Ollama 400), Makefile KEYCHAIN explicit path (all security CLI calls), Guardian DB credentials (legionforge_guardian keychain)
-SMOKE_TESTS: 2227/2227
+UPDATE: 326
+BRANCH: feat/phase-j-whatsapp
+COMMIT: 0caf119
+TIMESTAMP: 2026-03-14T17:30Z
+LAST_OP: Phase J WhatsApp connector + HITL approval flow + black CVE fix — PRs #253 #254 open
+SMOKE_TESTS: 2247/2247
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

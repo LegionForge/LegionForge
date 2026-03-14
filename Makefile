@@ -427,6 +427,22 @@ webhook-start:
 	@echo "Starting Webhook connector (port=$(WEBHOOK_PORT:-8081) gateway=$(WEBHOOK_GATEWAY_URL:-http://localhost:8080)) ..."
 	@cd $(BASE) && $(PYTHON) -m src.connectors.webhook
 
+.PHONY: whatsapp-start
+whatsapp-start:
+	@[ -n "$(WHATSAPP_PHONE_NUMBER_ID)" ] || { echo "❌ WHATSAPP_PHONE_NUMBER_ID not set — export it before starting"; exit 1; }
+	@WHATSAPP_API_TOKEN=$$(security find-generic-password -s legionforge_whatsapp_api_token -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
+	WHATSAPP_VERIFY_TOKEN=$$(security find-generic-password -s legionforge_whatsapp_verify_token -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
+	WHATSAPP_GW_KEY=$$(security find-generic-password -s legionforge_whatsapp_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
+	echo "Starting WhatsApp connector (port=$(WHATSAPP_PORT:-8085) gateway=$(WHATSAPP_GATEWAY_URL:-http://localhost:8080)) ..." && \
+	cd $(BASE) && WHATSAPP_API_TOKEN="$$WHATSAPP_API_TOKEN" WHATSAPP_VERIFY_TOKEN="$$WHATSAPP_VERIFY_TOKEN" \
+		WHATSAPP_GW_KEY="$$WHATSAPP_GW_KEY" $(PYTHON) -m src.connectors.whatsapp \
+		>> /tmp/whatsapp.log 2>&1 &
+
+.PHONY: whatsapp-stop
+whatsapp-stop:
+	@lsof -ti :$(WHATSAPP_PORT:-8085) | xargs kill -9 2>/dev/null || true
+	@echo "✅ WhatsApp connector stopped"
+
 .PHONY: health-token
 health-token:
 	@TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null) && \
