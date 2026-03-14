@@ -12,7 +12,6 @@ from playwright.sync_api import Page, expect
 
 from tests.ui.mock_server import MockGateway
 
-
 pytestmark = pytest.mark.ui
 
 

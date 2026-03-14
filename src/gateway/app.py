@@ -21,6 +21,10 @@ Endpoints:
     GET    /mcp/tools
     POST   /mcp/tools/invoke               (501 stub in Phase 8)
     GET    /ui                             (minimal HTML streaming demo)
+    GET    /hitl/pending                   (Phase 2 HITL — admin only)
+    GET    /hitl/{request_id}              (Phase 2 HITL — admin only)
+    POST   /hitl/{request_id}/approve      (Phase 2 HITL — admin only)
+    POST   /hitl/{request_id}/reject       (Phase 2 HITL — admin only)
 """
 
 from __future__ import annotations
@@ -58,6 +62,7 @@ from src.gateway.routes import (
     sessions as sessions_route,
     annotations as annotations_route,
     models as models_route,
+    hitl as hitl_route,
 )
 from src.gateway.worker import task_worker
 
@@ -253,6 +258,7 @@ app.include_router(models_route.router, tags=["models"])
 app.include_router(
     annotations_route.admin_router, prefix="/admin", tags=["annotations"]
 )
+app.include_router(hitl_route.router, prefix="/hitl", tags=["hitl"])
 
 
 # ── Agent Capabilities Registry (Phase 37) ────────────────────────────────────

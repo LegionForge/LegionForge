@@ -8,7 +8,6 @@ All fixtures are no-services-required (no PostgreSQL, no Ollama).
 
 import pytest
 
-
 # ── Candidate fixtures ────────────────────────────────────────────────────────
 
 

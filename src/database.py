@@ -801,6 +801,13 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
                 uid=pgsql.Identifier(DB_ROLE_WORKER)
             )
         )
+        # hitl_pending: worker may INSERT new requests (triggered from SecureToolNode)
+        # and SELECT to check status. UPDATE (resolve) belongs only to gateway (operator).
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT ON hitl_pending TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_WORKER)
+            )
+        )
     except Exception as e:
         logger.debug("[db-roles] worker extra grants skipped: %s", e)
 
@@ -855,6 +862,13 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
         # Worker (agent processes) may only INSERT (propose) PENDING rows.  SEC-1.
         await admin_conn.execute(
             pgsql.SQL("GRANT SELECT, UPDATE ON threat_rules TO {uid}").format(
+                uid=pgsql.Identifier(DB_ROLE_GATEWAY)
+            )
+        )
+        # hitl_pending: gateway may SELECT, INSERT, and UPDATE (to resolve requests).
+        # Worker may only INSERT + SELECT; UPDATE (approve/reject) requires gateway.
+        await admin_conn.execute(
+            pgsql.SQL("GRANT SELECT, INSERT, UPDATE ON hitl_pending TO {uid}").format(
                 uid=pgsql.Identifier(DB_ROLE_GATEWAY)
             )
         )
@@ -2207,6 +2221,33 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
+    )
+
+    # ── Phase 2 HITL: pending approval requests ────────────────────────────────
+    # Stores HALT-tier tool calls that are paused awaiting operator approval.
+    # The graph is interrupted via LangGraph interrupt_before; on approval the
+    # run resumes from the checkpoint stored by AsyncPostgresSaver.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hitl_pending (
+            id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            run_id        TEXT NOT NULL,
+            thread_id     TEXT NOT NULL,
+            action        TEXT NOT NULL,
+            categories    TEXT[] NOT NULL,
+            input_excerpt TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'pending',
+            operator_note TEXT,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            resolved_at   TIMESTAMPTZ
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hitl_pending_status ON hitl_pending (status)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_hitl_pending_run_id ON hitl_pending (run_id)"
     )
 
     logger.info("Application tables verified")
@@ -6834,6 +6875,148 @@ async def list_annotations_admin(
             )
             cur = await conn.execute(sql, (limit, offset))
         return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Phase 2 HITL: approval request management ────────────────────────────────
+
+
+async def create_hitl_request(
+    run_id: str,
+    thread_id: str,
+    action: str,
+    categories: list[str],
+    input_excerpt: str,
+) -> str:
+    """
+    Insert a new HITL pending approval request.
+
+    Called by check_hitl_required() when a HALT-tier destructive pattern is
+    detected.  The graph is interrupted (LangGraph interrupt_before) at the
+    hitl_gate node; the run resumes only after an operator calls the approval
+    endpoint which invokes resolve_hitl_request() + graph.ainvoke(None, config).
+
+    Uses the worker pool because this is called from inside the agent graph
+    execution path (SecureToolNode → check_hitl_required).
+
+    Returns:
+        request_id (UUID string) of the newly created row.
+    """
+    pool = get_worker_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            INSERT INTO hitl_pending
+                (run_id, thread_id, action, categories, input_excerpt)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id::text
+            """,
+            (run_id, thread_id, action, categories, input_excerpt),
+        )
+        row = await cur.fetchone()
+        return row["id"]
+
+
+async def get_hitl_request(request_id: str) -> dict | None:
+    """
+    Fetch a single HITL request by its UUID.
+
+    Returns None if the request_id does not exist or the pool is unavailable.
+    Uses the gateway pool (RLS-enforced read — operators are gateway users).
+    """
+    pool = get_gateway_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT id::text, run_id, thread_id, action, categories,
+                   input_excerpt, status, operator_note,
+                   created_at, resolved_at
+            FROM hitl_pending
+            WHERE id = %s::uuid
+            """,
+            (request_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        for ts_col in ("created_at", "resolved_at"):
+            if d.get(ts_col) and hasattr(d[ts_col], "isoformat"):
+                d[ts_col] = d[ts_col].isoformat()
+        return d
+
+
+async def resolve_hitl_request(
+    request_id: str,
+    decision: str,
+    operator_note: str = "",
+) -> bool:
+    """
+    Mark a HITL request as approved or rejected.
+
+    Args:
+        request_id:    UUID string of the hitl_pending row.
+        decision:      "approved" or "rejected".
+        operator_note: Optional human-readable note from the operator.
+
+    Returns:
+        True if the row was updated (found + status was 'pending').
+        False if request_id not found or already resolved.
+
+    Uses get_gateway_pool() — legionforge_worker has no UPDATE on hitl_pending,
+    enforcing that only the operator endpoint (gateway role) can resolve.
+    """
+    if decision not in ("approved", "rejected"):
+        raise ValueError(
+            f"Invalid decision {decision!r} — must be 'approved' or 'rejected'"
+        )
+
+    pool = get_gateway_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE hitl_pending
+               SET status        = %s,
+                   operator_note = %s,
+                   resolved_at   = NOW()
+             WHERE id = %s::uuid
+               AND status = 'pending'
+            """,
+            (decision, operator_note or None, request_id),
+        )
+        return cur.rowcount == 1
+
+
+async def list_pending_hitl_requests() -> list[dict]:
+    """
+    Return all HITL requests with status='pending', newest first.
+
+    Uses the gateway pool.  Operators poll this endpoint to see what
+    actions require approval before agent runs can resume.
+    """
+    pool = get_gateway_pool()
+    async with pool.connection() as conn:
+        conn.row_factory = dict_row
+        cur = await conn.execute(
+            """
+            SELECT id::text, run_id, thread_id, action, categories,
+                   input_excerpt, status, operator_note,
+                   created_at, resolved_at
+            FROM hitl_pending
+            WHERE status = 'pending'
+            ORDER BY created_at DESC
+            """
+        )
+        rows = await cur.fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            for ts_col in ("created_at", "resolved_at"):
+                if d.get(ts_col) and hasattr(d[ts_col], "isoformat"):
+                    d[ts_col] = d[ts_col].isoformat()
+            result.append(d)
+        return result
 
 
 # ── Module-level guard for removed names ─────────────────────────────────────

@@ -17,7 +17,6 @@ from playwright.sync_api import Page, expect
 
 from tests.ui.mock_server import MockGateway
 
-
 pytestmark = pytest.mark.ui
 
 TASK_ID = "ui-test-task-001"

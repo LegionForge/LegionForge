@@ -11,7 +11,6 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from starlette.testclient import TestClient
 
-
 # ── Test client fixture ───────────────────────────────────────────────────────
 
 _TEST_TOKEN = "test-health-token-crystallization"

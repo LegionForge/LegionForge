@@ -10,7 +10,6 @@ These tests do NOT submit tasks — they verify static structure and initial JS 
 import pytest
 from playwright.sync_api import Page, expect
 
-
 pytestmark = pytest.mark.ui
 
 
