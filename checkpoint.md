@@ -1,9 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 326
-BRANCH: feat/phase-j-whatsapp
-COMMIT: 0caf119
-TIMESTAMP: 2026-03-14T17:30Z
-LAST_OP: Phase J WhatsApp connector + HITL approval flow + black CVE fix — PRs #253 #254 open
+UPDATE: 327
+BRANCH: main
+COMMIT: 6148fb9
+TIMESTAMP: 2026-03-14T18:30Z
+LAST_OP: PRs #253 #254 merged — HITL approval flow + WhatsApp connector + black CVE fix landed
+NEXT_OP: sync dev→main; fix .env tracking; rename jp PostgreSQL superuser; live UAT for HITL
 SMOKE_TESTS: 2247/2247
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

@@ -152,11 +152,35 @@ help:
 	@echo "  make guardian-logs  — tail Guardian container logs"
 	@echo "  make docker-build   — build all Docker images"
 	@echo "  make docker-up      — start all Docker services"
+	@echo "  make briefing     — session re-orientation: branch, open PRs, NEXT.md"
 	@echo "  make git-status   — show git status"
 	@echo "  make dev-branch   — create and switch to dev branch"
 	@echo "  make logs         — tail the agent log"
 	@echo "  make clean-logs   — remove logs older than 30 days"
 	@echo "  make usage        — show API usage for last 24h"
+	@echo ""
+
+# ── Session Briefing ──────────────────────────────────────────
+.PHONY: briefing
+briefing:
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
+	@echo "  LegionForge — Session Briefing"
+	@echo "════════════════════════════════════════════════════"
+	@echo ""
+	@echo "── Git ──────────────────────────────────────────────"
+	@echo "  Branch : $$(git branch --show-current)"
+	@echo "  HEAD   : $$(git log --oneline -1)"
+	@echo "  Dirty  : $$(git status --short | wc -l | tr -d ' ') uncommitted file(s)"
+	@echo ""
+	@echo "── Open PRs ─────────────────────────────────────────"
+	@gh pr list --state open -R LegionForge/LegionForge 2>/dev/null || echo "  (gh not configured or no open PRs)"
+	@echo ""
+	@echo "── What's Next ──────────────────────────────────────"
+	@if [ -f $(BASE)/NEXT.md ]; then cat $(BASE)/NEXT.md | grep -A 50 "## Do these in order" | head -30; \
+	else echo "  (no NEXT.md — ask Claude to write one)"; fi
+	@echo ""
+	@echo "════════════════════════════════════════════════════"
 	@echo ""
 
 # ── Startup / Shutdown ────────────────────────────────────────
