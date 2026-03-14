@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
 UPDATE: 327
-BRANCH: main
+BRANCH: dev
 COMMIT: 6148fb9
 TIMESTAMP: 2026-03-14T18:30Z
 LAST_OP: PRs #253 #254 merged — HITL approval flow + WhatsApp connector + black CVE fix landed
-NEXT_OP: sync dev→main; fix .env tracking; rename jp PostgreSQL superuser; live UAT for HITL
+NEXT_OP: rename jp PostgreSQL superuser → legionforge_admin; live UAT for HITL pause/resume
 SMOKE_TESTS: 2247/2247
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

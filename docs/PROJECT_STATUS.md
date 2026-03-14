@@ -20,8 +20,8 @@
 All phases through 381 are complete. The full security stack, gateway, tool library, parallel agent fan-out, multi-user auth, integration tests, modular auth backend, containerized gateway, multi-provider auth registry, Redis-backed state layer, Prometheus metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors, comprehensive UI tool library (381 tools), and PostgreSQL scram-sha-256 auth are operational.
 
 ```
-make test-smoke        → 2125/2125 passing (~21s, no external services required)
-make test-integration  → 38/38 passed (requires PostgreSQL)
+make test-smoke        → 2247/2247 passing (~21s, no external services required)
+make test-integration  → 41/41 passed (requires PostgreSQL)
 make test-kerberos     → 5/5 passed (requires live KDC + PostgreSQL)
 make test-ui           → 40/40 passed (Playwright)
 make health-server     → localhost:8765 all components green (Redis health when configured)
@@ -124,7 +124,7 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 
 ### Tests
 
-- `tests/test_smoke.py` — **2125 tests**, no running services required, ~17s
+- `tests/test_smoke.py` — **2247 tests**, no running services required, ~17s
 - `tests/test_integration.py` — **38 tests**, `@pytest.mark.integration`, requires PostgreSQL + Ollama (`make test-integration`)
 - `tests/test_kerberos_integration.py` — **5 tests**, requires live KDC + PostgreSQL (`make test-kerberos`); tests SPNEGO round-trip + DB user provisioning
 - `tests/conftest.py` — pytest configuration, shared fixtures, async integration fixtures (db, test_user, auth_headers, gateway_client)
@@ -214,7 +214,7 @@ cd /Volumes/MAC_MINI_1TB/LegionForge
 source venv/bin/activate
 make check                               # verify drive + config + keychain
 make verify-tool-registry               # fail if any loaded tool is unregistered
-make test-smoke                          # 2125 tests, ~17s
+make test-smoke                          # 2247 tests, ~17s
 make health-server                       # start status endpoint (keep terminal open)
 ```
 

@@ -126,8 +126,10 @@ Set `gateway.auth_provider` in `config/hardware_profiles/mac_m4_mini_16gb.yaml`.
 | **DB security hardening** | RLS fail-closed (empty user_id sees zero rows), pool hard-fail (no silent privilege escalation), log-bomb cap on threat events, Prometheus label normalization, rate-limit memory leak fix — 17 regression tests | ✅ Complete |
 | **Phase H** | Session continuity UI — persistent conversation sidebar, turn count badge, New Conversation button, session resume across page reloads | ✅ Complete |
 | **Phase I** | Multi-modal image input — paste/drag image into prompt, MIME + magic-byte validation, vision API routing, Ollama text-only fallback | ✅ Complete |
+| **HITL approval flow** | LangGraph `interrupt_before` operator gate — destructive tasks pause for human approval; `GET /hitl/pending` + `POST /hitl/{id}/approve` (PR #253) | ✅ Complete |
+| **Phase J — WhatsApp** | WhatsApp Business Cloud API connector — webhook ingestion, HMAC verification, message routing to gateway (PR #254) | ✅ Complete |
 
-**2222/2222 smoke tests passing.** 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. Smoke suite runs in ~21 seconds (no external services required).
+**2247/2247 smoke tests passing.** 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 104/104 TestLab tests. 79/79 tool accuracy tests. 114/114 crystallization tests. Smoke suite runs in ~21 seconds (no external services required).
 
 ---
 
@@ -198,7 +200,7 @@ make setup-signing-key
 
 # 5. Run smoke tests (no services required)
 make test-smoke
-# Expected: 2222 passed in ~21s
+# Expected: 2247 passed in ~21s
 
 # 6. Start services (three separate terminals)
 make health-server   # Operator API at :8765
@@ -251,8 +253,8 @@ open http://localhost:8080/ui
 ```bash
 make check           # Verify environment before starting
 make start           # Full startup (drive → Ollama → PostgreSQL → model warmup)
-make test-smoke      # 2125 smoke tests, ~21s, no services required
-make test-integration  # 38 integration tests (requires PostgreSQL)
+make test-smoke      # 2247 smoke tests, ~21s, no services required
+make test-integration  # 41 integration tests (requires PostgreSQL)
 make test-kerberos   # 5 Kerberos live-KDC tests (requires KDC)
 make test-ui         # 40 UI tests (Playwright)
 make lint            # Black formatter check
@@ -319,6 +321,6 @@ Copyright 2026 John Paul "Jp" Cruz.
 
 ## Status
 
-**v0.7.1-alpha** — Phases 0–381 + H + I + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2222/2222 smoke tests. 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
+**v0.7.1-alpha** — Phases 0–381 + H + I + J (WhatsApp) + HITL approval flow + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2247/2247 smoke tests. 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 114/114 crystallization tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).

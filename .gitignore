@@ -1,8 +1,7 @@
 # ── SECRETS — NEVER COMMIT ───────────────────────────────────
 .env
-.env.secrets
-.env.local
-.env.production
+.env.*
+!.env.example
 *.key
 *.pem
 secrets/
@@ -11,9 +10,12 @@ secrets/
 __pycache__/
 *.py[cod]
 *.so
+*.pyc
+*.pyo
 build/
 dist/
 *.egg-info/
+.python-version
 
 # ── Virtual Environments ─────────────────────────────────────
 venv/
@@ -33,65 +35,51 @@ venv/
 # ── Logs & Runtime Data ──────────────────────────────────────
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
 checkpoints/
 *.db
 *.sqlite
 vector_store/
+reports/
 
-# ── macOS ────────────────────────────────────────────────────
+# ── PostgreSQL data directories ───────────────────────────────
+postgres/
+*.dylib
+
+# ── macOS ─────────────────────────────────────────────────────
 .DS_Store
 .Spotlight-V100
 .Trashes
 
-# ── IDEs ─────────────────────────────────────────────────────
+# ── IDEs ──────────────────────────────────────────────────────
 .vscode/
 .idea/
 .cursor/
-
-# PostgreSQL data directories — never commit these
-postgres/
-*.dylib
-*.so
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-*.egg-info/
-
-# Environment
-.env
-.env.*
-!.env.example
-
-# macOS
-.DS_Store
-
-# Editor
-.vscode/
-.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 *.swp
 
-# Test artifacts
+# ── Node ──────────────────────────────────────────────────────
+node_modules/
+
+# ── Test artifacts ────────────────────────────────────────────
 .pytest_cache/
 htmlcov/
 .coverage
 
 # Agent quality transcripts — generated at runtime, not committed
-# Keep the directory (tracked via .gitkeep) but not its contents
 tests/agent_quality_transcripts/*.json
 
-# Logs
-logs/
-*.log
-
-# pyenv
-.python-version
-
-# jp git notes
-GITFLOW.md
+# TestLab novel-test scratch files
+tests/testlab_suite/_novel_general_tmp.py
+tests/testlab_suite/_novel_security_tmp.py
+tests/testlab_suite/novel_findings.json
 
 # ── Claude Code Infrastructure ────────────────────────────────
 .claude/
@@ -103,39 +91,17 @@ jp.md
 jp_todo.md
 jp_testing.md
 jp_codex_comparison.md
+GITFLOW.md
 
-# ── Session / Checkpoint Files (local dev sync, never commit) ─
+# ── Session / Checkpoint Files ────────────────────────────────
 session.md
 checkpoint.md
-tests/testlab_suite/_novel_general_tmp.py
-tests/testlab_suite/_novel_security_tmp.py
-tests/testlab_suite/novel_findings.json
 
-logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dev-debug.log
-# Dependency directories
-node_modules/
-# Environment variables
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-# OS specific
-
-# Task files
-# tasks.json
-# tasks/
-
-# TaskMaster AI tool
+# ── TaskMaster AI ─────────────────────────────────────────────
 .taskmaster/
-.env.example
 
-# Pentest / generated reports
-reports/
+# ── Public Preview Files (local-only; push via `make publish-preview`) ────
+# Landing page / README drafts for https://github.com/jp-cruz/LegionForge
+# Not committed to the private dev repo — pushed directly via PAT.
+# To fully automate on-push, promote these files to tracked and add a GitHub Action.
+docs/public/

@@ -1661,6 +1661,46 @@ register-agent-sequences:
 	@cd $(BASE) && echo "$$_REGISTER_SEQUENCES_PY" | $(PYTHON)
 	@echo "✅ All agent sequences registered"
 
+# ── Public Preview Publishing ─────────────────────────────────
+# Pushes docs/public/ landing page files to https://github.com/jp-cruz/LegionForge
+# These files are gitignored in the private dev repo — local-only pre-release drafts.
+#
+# One-time setup: store a jp-cruz PAT with repo scope in Keychain:
+#   security add-generic-password -A -s legionforge_preview_pat -a api_key -w <YOUR_PAT>
+#
+# LegionForge_readme.md  → published as README.md
+# LegionForge_index.md   → published as index.md (rename to index.html for GitHub Pages)
+PREVIEW_REPO    := https://github.com/jp-cruz/LegionForge
+PREVIEW_DIR     := /tmp/legionforge-preview
+PREVIEW_BRANCH  := main
+
+.PHONY: publish-preview
+publish-preview:
+	@PAT=$$(security find-generic-password -s legionforge_preview_pat -a api_key -w $(KEYCHAIN) 2>/dev/null); \
+	if [ -z "$$PAT" ]; then \
+		echo "❌ PAT not found. Run: security add-generic-password -A -s legionforge_preview_pat -a api_key -w <YOUR_PAT>"; \
+		exit 1; \
+	fi; \
+	REMOTE="https://jp-cruz:$$PAT@github.com/jp-cruz/LegionForge.git"; \
+	if [ -d "$(PREVIEW_DIR)/.git" ]; then \
+		git -C $(PREVIEW_DIR) fetch origin && git -C $(PREVIEW_DIR) reset --hard origin/$(PREVIEW_BRANCH); \
+	else \
+		rm -rf $(PREVIEW_DIR) && git clone "$$REMOTE" $(PREVIEW_DIR); \
+	fi; \
+	cp $(BASE)/docs/public/LegionForge_readme.md $(PREVIEW_DIR)/README.md; \
+	cp $(BASE)/docs/public/LegionForge_index.md  $(PREVIEW_DIR)/index.md; \
+	cd $(PREVIEW_DIR) && git add README.md index.md; \
+	if git diff --cached --quiet; then \
+		echo "✅ publish-preview: nothing changed, preview repo already up to date"; \
+	else \
+		git -C $(PREVIEW_DIR) \
+			-c user.name="Jp Cruz" \
+			-c user.email="jp@legionforge.org" \
+			commit -m "chore: sync preview landing page from LegionForge dev"; \
+		git -C $(PREVIEW_DIR) push "$$REMOTE" $(PREVIEW_BRANCH); \
+		echo "✅ Published to $(PREVIEW_REPO)"; \
+	fi
+
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status
 git-status:

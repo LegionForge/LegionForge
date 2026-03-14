@@ -19,10 +19,10 @@ make start          # Full startup (drive check → Ollama → PostgreSQL → mo
 make stop           # Graceful shutdown
 
 # Testing
-make test-smoke     # 2125 smoke tests, ~21s, no external services required
+make test-smoke     # 2247 smoke tests, ~21s, no external services required
 make test-critical  # smoke + security_attacks + UI page-load, ~35s — fast iteration gate
 make test           # Full suite: smoke → testlab → ui (separate sessions, ~70s)
-make test-integration  # 38 integration tests (requires PostgreSQL — make db-start first)
+make test-integration  # 41 integration tests (requires PostgreSQL — make db-start first)
 make test-fast      # smoke + testlab(not slow) + ui
 
 # CI gate — run this before every commit, not just test-smoke
@@ -93,12 +93,12 @@ Security violations are logged to the `threat_events` table with structured type
 ## Phase Status
 
 - **Phases 0–16** ✅ Complete: Full security stack, multi-user gateway, integration tests, modular auth, containerized gateway, multi-provider auth registry, Redis-backed state layer, real Kerberos GSSAPI backend, multi-instance docker-compose, Redis global budget counters, Prometheus /metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors. 492/492 smoke tests, 38/38 integration tests, 5/5 Kerberos live-KDC tests.
-- **Phases 60–381 + G1–G4** ✅ Complete: 381-tool operator dashboard, web_fetch_js headless browser, Guardian G4 (published to PyPI as `legionforge-guardian`, public repo live at LegionForge/LegionForge-Guardian, auto-sync Action), agent memory all 5 gaps, dual license (AGPLv3 + commercial). 2125/2125 smoke tests, 79/79 tool accuracy tests.
+- **Phases 60–381 + G1–G4 + H + I + J + HITL** ✅ Complete: 381-tool operator dashboard, web_fetch_js headless browser, Guardian G4 (published to PyPI as `legionforge-guardian`, public repo live at LegionForge/LegionForge-Guardian, auto-sync Action), agent memory all 5 gaps, dual license (AGPLv3 + commercial), session continuity UI, multi-modal image input, HITL approval gate, WhatsApp connector. 2247/2247 smoke tests, 79/79 tool accuracy tests, 114/114 crystallization tests.
 
 ## Branch & Commit Conventions
 
 - `main` ← `dev` ← `feature/xxx` / `fix/xxx` / `refactor/xxx`
-- Smoke test count must never decrease; current baseline: 2125 (v0.7.1-alpha, post-G4)
+- Smoke test count must never decrease; current baseline: 2247 (v0.7.1-alpha, post-WhatsApp + HITL)
 - **Gate before every commit: `make ci`** (smoke → testlab → ui + bandit + URI scan). `make test-smoke` alone is not sufficient — cross-suite event loop issues only appear in the full run.
 - One concern per commit/PR. Do not bundle UI changes, agent logic changes, and test changes in a single commit. If a fix touches more than two files, ask whether it should be split.
 - Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `security:`, `docs:`)

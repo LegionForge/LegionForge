@@ -14,20 +14,14 @@
 
 ## Do these in order next session
 
-1. **Delete stale local branches** (1 min)
-   ```bash
-   git branch -D chore/session-context-system feat/hitl-approval-flow feat/phase-j-whatsapp
-   git fetch --prune
-   ```
-
-2. **Rename PostgreSQL `jp` superuser** (30 min, needs `make db-start` first)
+1. **Rename PostgreSQL `jp` superuser** (30 min, needs `make db-start` first)
    ```sql
    ALTER USER jp RENAME TO legionforge_admin;
    ```
    Then update `~/.pgpass` and Makefile `pg_isready` calls.
    Then remove TEMPORARY test `test_jp_not_hardcoded_in_production_configs`.
 
-3. **Live UAT — HITL pause/resume** (needs `make start`)
+2. **Live UAT — HITL pause/resume** (needs `make start`)
    Submit a task with `rm -rf /` → check `GET /hitl/pending` → approve via
    `POST /hitl/{id}/approve` → confirm run resumes.
 
