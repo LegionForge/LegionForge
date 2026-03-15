@@ -1,11 +1,11 @@
 VERSION: 0.7.1-alpha
-UPDATE: 327
+UPDATE: 329
 BRANCH: dev
-COMMIT: 6148fb9
-TIMESTAMP: 2026-03-14T18:30Z
-LAST_OP: PRs #253 #254 merged — HITL approval flow + WhatsApp connector + black CVE fix landed
-NEXT_OP: rename jp PostgreSQL superuser → legionforge_admin; live UAT for HITL pause/resume
-SMOKE_TESTS: 2247/2247
+COMMIT: 4479e12
+TIMESTAMP: 2026-03-15T14:40Z
+LAST_OP: T0.1 — renamed PostgreSQL superuser jp → legionforge_admin; scrubbed all jp DB user references; fixed pre-existing bandit nosec; added post_uat_review/ docs
+NEXT_OP: T9 observability sanity checks, then T1.1–T1.5 core task flow UAT
+SMOKE_TESTS: 2246/2246
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

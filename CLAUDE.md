@@ -117,6 +117,30 @@ Common failure patterns to check for every agent/LLM change:
 - Does the fix apply through the gateway worker `initial_state` path, not just direct invocation?
 - Does adding async fixtures to a test file break isolation when run with `pytest tests/`?
 
+## Development Discipline — Standing Rules
+
+**These rules are non-negotiable. Apply them every session without being asked.**
+
+### Before writing any code, Claude must ask (or Jp must provide):
+1. **What GitHub issue does this close?** If none exists, write the 5-line spec first:
+   - *Problem / Goal / Scope / Done-when / ADR needed?*
+   - If Jp can't fill these in, the feature is not ready to build. Help him write the spec instead.
+2. **Is this in scope for the current session goal?** If not, capture it as a GitHub issue and return to the stated goal.
+3. **Does this fit the current project status?** LegionForge is in bug-fix/UAT mode until v0.8.0 (target: 2026-03-22). No new features.
+
+### Session boundaries
+- **Start:** `make briefing` or `read NEXT.md` — every session, no exceptions.
+- **End:** Update `NEXT.md`, `checkpoint.md`, `CHANGELOG.md` — every session, no exceptions.
+- **Mid-session drift:** If a new idea surfaces, say: *"That's worth capturing — should I open an issue for after v0.8.0, or do you want to change the session goal?"* Do not just start building it.
+
+### Scope and focus
+- One project in ACTIVE development at a time. LegionForge is ACTIVE. All others are MAINTENANCE or HALTED.
+- If Jp raises a new project idea: acknowledge it, suggest noting it for later, move on.
+- If Jp asks to evaluate a new AI tool: *"We closed the tool evaluation on 2026-03-14. Is there a specific reason to reopen it?"*
+
+### Why these rules exist
+Jp is neurodivergent, managing high cognitive load across professional AI work, personal projects, and family. AI tools accelerate scatter-brained behavior when unconstrained. These rules are load-bearing — not suggestions. Jp has explicitly asked for this friction. Apply it.
+
 ## Checkpoint File (`checkpoint.md`)
 
 Update `checkpoint.md` in the project root after every major operation. Major operations include:
