@@ -271,7 +271,7 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
 	  POSTGRES_PASSWORD=$$(security find-generic-password -s postgres -a api_key -w $(KEYCHAIN) 2>/dev/null || \
-	    awk -F: '/^\*:5432:\*:jp:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
+	    awk -F: '/^\*:5432:\*:legionforge_admin:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
 	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  TASK_TOKEN_SECRET=$$(security find-generic-password -s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  LEGIONFORGE_HEALTH_TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
@@ -485,7 +485,7 @@ db-start:
 	@brew services start postgresql@17 2>/dev/null || true
 	@printf "   Waiting for PostgreSQL to accept connections"; \
 	for i in $$(seq 1 20); do \
-		if pg_isready -U "$${POSTGRES_USER:-jp}" -d legionforge -q 2>/dev/null; then \
+		if pg_isready -U "$${POSTGRES_USER:-legionforge_admin}" -d legionforge -q 2>/dev/null; then \
 			printf " ✅\n"; break; \
 		fi; \
 		printf "."; sleep 1; \

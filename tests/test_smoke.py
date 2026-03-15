@@ -22351,67 +22351,6 @@ def test_guardian_start_makefile_removes_stale_container():
     ), "guardian-start must export POSTGRES_PASSWORD from Keychain as a safety net"
 
 
-# ── TEMPORARY: jp-scrub verification ──────────────────────────────────────────
-# Verify personal username references have been removed from production configs.
-# REMOVE THIS TEST once the jp PostgreSQL superuser has been fully retired
-# (OS user renamed or PostgreSQL re-initialized with a generic admin account).
-
-
-def test_jp_not_hardcoded_in_production_configs():
-    """
-    TEMPORARY — remove after jp PostgreSQL user is retired.
-
-    Checks that 'jp' does not appear as a hardcoded default username in
-    production configuration and infrastructure files. Personal usernames
-    have no place in a production security framework.
-
-    Files checked:
-      - docker-compose.yml          (POSTGRES_USER default)
-      - config/hardware_profiles/   (Keychain -a flag examples)
-      - src/database.py             (conninfo builder string literals)
-
-    Files intentionally excluded:
-      - memory/, jp_todo.md, checkpoint.md  (personal dev notes)
-      - tests/                              (this file)
-      - CONTRIBUTING.md                     (may reference jp as example committer)
-      - Comments / docstrings               (non-executable, explanatory only)
-    """
-    import pathlib
-    import re
-
-    failures = []
-
-    # docker-compose.yml — must not have :-jp as a shell default
-    dc = pathlib.Path("docker-compose.yml").read_text()
-    if re.search(r":-jp[\"'}\s]", dc):
-        failures.append("docker-compose.yml: contains ':-jp' as a default value")
-
-    # hardware profiles — must not have -a jp in security CLI examples
-    for yml in pathlib.Path("config/hardware_profiles").glob("*.yaml"):
-        text = yml.read_text()
-        if re.search(r"-a\s+jp\b", text):
-            failures.append(f"{yml.name}: contains '-a jp' in Keychain CLI examples")
-
-    # src/database.py — must not have 'jp' as a string literal in conninfo builders
-    db_src = pathlib.Path("src/database.py").read_text()
-    for match in re.finditer(r"[\"']jp[\"']", db_src):
-        ctx = db_src[max(0, match.start() - 60) : match.end() + 60]
-        # Skip if the match is inside a comment (line starts with #)
-        line_start = db_src.rfind("\n", 0, match.start()) + 1
-        line = db_src[line_start : match.start()]
-        if "#" not in line:
-            failures.append(
-                f"src/database.py: string literal 'jp' at char {match.start()}: "
-                f"...{ctx.strip()}..."
-            )
-
-    assert not failures, (
-        "Personal username 'jp' found in production files:\n"
-        + "\n".join(f"  - {f}" for f in failures)
-        + "\n\nRemove these references, then delete this test."
-    )
-
-
 # ── DOS rate-limit + queue-depth smoke tests ───────────────────────────────────
 
 

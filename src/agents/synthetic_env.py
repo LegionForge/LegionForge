@@ -245,8 +245,8 @@ class SyntheticEnvironment:
                     SELECT pg_terminate_backend(pid)
                     FROM pg_stat_activity
                     WHERE datname = '{self._db_name}' AND pid <> pg_backend_pid()
-                    """
-                )  # nosec B608
+                    """  # nosec B608
+                )
                 await conn.execute(
                     f"DROP DATABASE IF EXISTS {self._db_name}"  # noqa: S608
                 )

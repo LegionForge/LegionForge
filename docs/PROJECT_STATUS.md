@@ -139,7 +139,7 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 - **Version:** 17 (Homebrew)
 - **Data directory:** Homebrew default
 - **Database:** `legionforge`
-- **Admin user:** `jp` (superuser — DDL/startup only); password in `~/.pgpass` + Keychain (`service: postgres`)
+- **Admin user:** `legionforge_admin` (superuser — DDL/startup only); password in `~/.pgpass` + Keychain (`service: postgres`)
 - **App roles (5):** `legionforge_worker` · `legionforge_gateway` · `legionforge_maintenance` · `legionforge_guardian` · `legionforge_readonly` — each with minimum required privileges; Row-Level Security enforced on key tables
 - **Auto-start:** via `brew services`
 
