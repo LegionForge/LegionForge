@@ -66,7 +66,7 @@ def get_llm(
     Create an LLM instance for the given provider and model.
 
     Args:
-        provider:    "ollama", "openai", or "anthropic"
+        provider:    "ollama", "openai", "anthropic", or "openrouter"
         model:       Model ID. If None, uses the profile's primary model.
         temperature: Sampling temperature (0.0 = deterministic)
         max_tokens:  Max output tokens. If None, uses profile safeguard limit.
@@ -84,10 +84,12 @@ def get_llm(
         return _get_openai(model, temperature, max_tokens, streaming, **kwargs)
     elif provider == "anthropic":
         return _get_anthropic(model, temperature, max_tokens, streaming, **kwargs)
+    elif provider == "openrouter":
+        return _get_openrouter(model, temperature, max_tokens, streaming, **kwargs)
     else:
         raise ValueError(
             f"Unknown provider '{provider}'. "
-            f"Supported: 'ollama', 'openai', 'anthropic'"
+            f"Supported: 'ollama', 'openai', 'anthropic', 'openrouter'"
         )
 
 
@@ -210,6 +212,40 @@ def _get_ollama(
         # Models are evicted only when Ollama restarts (make stop/start).
         keep_alive=-1,
         **ollama_kwargs,
+        **kwargs,
+    )
+
+
+def _get_openrouter(
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    streaming: bool,
+    **kwargs,
+) -> BaseChatModel:
+    """OpenRouter — OpenAI-compatible API aggregator.
+
+    Uses ChatOpenAI with base_url override. Supports any model listed at
+    openrouter.ai/models, including free-tier models (suffix :free).
+    Key stored in Keychain under service 'openrouter'.
+    """
+    from langchain_openai import ChatOpenAI
+    from src.security import get_api_key
+
+    model = model or "meta-llama/llama-3.3-70b-instruct:free"
+    api_key = get_api_key("openrouter")
+
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+        temperature=temperature,
+        max_tokens=max_tokens,
+        streaming=streaming,
+        default_headers={
+            "HTTP-Referer": "https://github.com/LegionForge/LegionForge",
+            "X-Title": "LegionForge",
+        },
         **kwargs,
     )
 

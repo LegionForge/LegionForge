@@ -91,18 +91,18 @@ local_services:
 # The framework uses these defaults; override per-agent in agent config
 models:
   primary:
-    provider: "ollama"
-    model_id: "qwen2.5:7b"
-    estimated_size_gb: 4.7
+    provider: "openrouter"
+    model_id: "mistralai/mistral-small-3.1-24b-instruct:free"
+    # Upgrade to llama-3.3-70b-instruct:free when free tier congestion clears
+    estimated_size_gb: 0.0   # cloud — no local memory cost
     use_cases:
       - general_reasoning
       - writing
       - analysis
       - tool_calling
-    quantization: "q4_K_M"
-    gguf_sha256: "2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730"
-    # Issue #260: 16384 gives research tasks room for system prompt + 3-5 tool results
-    # without Ollama truncating mid-page. Memory budget: ~9.4GB total (cap=10GB ✅).
+    # Issue #260: switched from qwen2.5:7b (local, 4096 ctx) to llama-3.3-70b via
+    # OpenRouter (cloud, 128k ctx). Testing whether tool-calling failures were model
+    # capability vs context headroom. Phase 1 (num_ctx=16384) left as fallback config.
     num_ctx: 16384
 
   router:
@@ -435,9 +435,9 @@ search:
 # Users can select fast/balanced/powerful per task submission.
 # Upgrade "powerful" to a 70b+ quantized model when hardware allows.
 model_preferences:
-  fast:     "qwen2.5:3b"      # Router model — much faster, less capable
-  balanced: "qwen2.5:7b"     # Primary model — default for all agents
-  powerful: "qwen2.5:7b"     # Same as balanced on M4 Mini (no 70b+ loaded)
+  fast:     "qwen2.5:3b"                              # local, fast, routing only
+  balanced: "mistralai/mistral-small-3.1-24b-instruct:free"  # OpenRouter free tier
+  powerful: "meta-llama/llama-3.3-70b-instruct:free"         # upgrade when congestion clears
 
 # ── DB Maintenance — nightly pruning with per-table retention ─────────────────
 # Runs once per 24h via the gateway scheduler (src/scheduler.py).
