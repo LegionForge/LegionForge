@@ -191,6 +191,16 @@ def _get_ollama(
     model = model or settings.models.primary.model_id
     base_url = _get_ollama_url()
 
+    # Issue #260: pass num_ctx from hardware profile if set; lets operator control
+    # context window size without code changes (16384 recommended for research tasks).
+    num_ctx = kwargs.pop("num_ctx", None)
+    if num_ctx is None and model == (settings.models.primary.model_id):
+        num_ctx = settings.models.primary.num_ctx
+
+    ollama_kwargs: dict = {}
+    if num_ctx is not None:
+        ollama_kwargs["num_ctx"] = num_ctx
+
     return ChatOllama(
         model=model,
         base_url=base_url,
@@ -199,6 +209,7 @@ def _get_ollama(
         # Keep-alive: hold model in VRAM indefinitely on this dedicated machine.
         # Models are evicted only when Ollama restarts (make stop/start).
         keep_alive=-1,
+        **ollama_kwargs,
         **kwargs,
     )
 

@@ -184,6 +184,9 @@ class ModelEntry(BaseModel):
     quantization: Optional[str] = None
     # Phase 6: SHA256 of the GGUF file for integrity verification. Empty = skip.
     gguf_sha256: str = ""
+    # Issue #260: context window override. None = use Ollama default (4096 for most models).
+    # Research tasks need ≥16384 to hold system prompt + tool results without truncation.
+    num_ctx: Optional[int] = None
 
 
 class CloudModel(BaseModel):

@@ -101,6 +101,9 @@ models:
       - tool_calling
     quantization: "q4_K_M"
     gguf_sha256: "2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730"
+    # Issue #260: 16384 gives research tasks room for system prompt + 3-5 tool results
+    # without Ollama truncating mid-page. Memory budget: ~9.4GB total (cap=10GB ✅).
+    num_ctx: 16384
 
   router:
     provider: "ollama"
