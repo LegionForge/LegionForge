@@ -4,18 +4,55 @@
 ---
 
 ## Last updated
-2026-03-15 — overnight codebase review complete (7 agents, read-only). Discipline rules added
-to CLAUDE.md. jp_testing.md updated with T0.1, T_HITL, T8.3, and 8-day UAT schedule.
-JP_CONTEXT.md template drafted. MCP memory server evaluated. No code changes made.
+2026-03-16 — UAT Day 2 complete. Three orchestrator/research pipeline bugs fixed and committed.
+Fan-out working end-to-end. Primary switched to llama3.1:8b (local, reliable tool calling).
+InceptionLabs API key available — integration planned for Day 3.
 
 ## State
-- **Branch:** `dev` — 1 commit ahead of main (doc consolidation 99af2e0, not yet PR'd)
-- **Smoke tests:** 2247/2247
+- **Branch:** `dev` — 4 commits ahead of main
+- **Smoke tests:** 2246/2246
 - **Open PRs:** none
 - **Ship target:** v0.8.0 — Sunday 2026-03-22
-- **Mode:** UAT only — no new features
+- **Mode:** UAT + bug fixes
 
-## Overnight review findings
+## Day 2 fixes (2026-03-16) — all committed
+| Commit | Fix |
+|--------|-----|
+| f31d8c1 | `fan_out_researchers` accepts native list from llama3.1; worker reads profile recursion limit (was 25, now 40) |
+| c3501ce | Primary → llama3.1:8b local; model dropdown shows presets with full model ID labels |
+
+## UAT Day 3 — start here
+
+### Priority 1: InceptionLabs provider integration
+Jp has a **paid** InceptionLabs API key (mercury-coder-small or similar).
+InceptionLabs uses an OpenAI-compatible API. Integration path mirrors OpenRouter:
+1. Store key: `security add-generic-password -s inceptionlabs -a api_key -w "KEY" -A ~/Library/Keychains/login.keychain-db`
+2. Add `"inceptionlabs": "INCEPTIONLABS_API_KEY"` to `credentials.py` `_SERVICE_TO_ENV`
+3. Add `_get_inceptionlabs()` in `llm_factory.py` (ChatOpenAI with base_url override)
+4. Add `"inceptionlabs"` provider routing in `get_llm()`
+5. Add to Makefile `servers-start` env block
+6. Add as `powerful` preset in `model_preferences` (yaml)
+7. Test: researcher task via "powerful" preset
+
+### Priority 2: Comparison test batch
+Goal: validate llama3.1:8b (local) vs InceptionLabs (paid cloud) on research quality.
+Run same 3 prompts through both, compare:
+- Did tools get called? (check logs)
+- Are results grounded in live data or training data?
+- Token count and latency difference
+
+Suggested test prompts (use researcher agent directly, not orchestrator):
+1. `What are the top 3 stories on https://news.ycombinator.com right now?`
+2. `What is the current BTC price according to https://coinmarketcap.com?`
+3. `What is today's weather in New York according to weather.gov?`
+
+These are good benchmarks because the correct answer is known and changes daily —
+making hallucination immediately detectable.
+
+### Priority 3: Continue UAT T1.x
+See jp_testing.md for full test matrix.
+
+## Overnight review findings (still open)
 Full reports in `docs/post_uat_review/`. Read before starting Day 1 UAT.
 Summary of what must be fixed before v0.8.0 goes public:
 
