@@ -34,20 +34,49 @@ InceptionLabs uses an OpenAI-compatible API. Integration path mirrors OpenRouter
 6. Add as `powerful` preset in `model_preferences` (yaml)
 7. Test: researcher task via "powerful" preset
 
-### Priority 2: Comparison test batch
+### Priority 2: Manual comparison test batch (Day 3 — no new code needed)
 Goal: validate llama3.1:8b (local) vs InceptionLabs (paid cloud) on research quality.
-Run same 3 prompts through both, compare:
-- Did tools get called? (check logs)
-- Are results grounded in live data or training data?
-- Token count and latency difference
 
-Suggested test prompts (use researcher agent directly, not orchestrator):
+Run each prompt once through `balanced (llama3.1:8b)` and once through `powerful (inceptionlabs)`.
+For each run, note in a comment or scratch file:
+- Did tools actually get called? (check gateway.log for web_fetch_js/web_search events)
+- Is the response grounded in live data or training data? (verify 1 fact manually)
+- Wall-clock time (shown in UI)
+- Estimated token count (shown in UI)
+
+**Test prompts** (correct answer is verifiable and changes daily — hallucination is obvious):
 1. `What are the top 3 stories on https://news.ycombinator.com right now?`
 2. `What is the current BTC price according to https://coinmarketcap.com?`
-3. `What is today's weather in New York according to weather.gov?`
+3. `What is today's weather in New York according to https://forecast.weather.gov?`
+4. `What are the latest earthquakes from https://earthquake.usgs.gov/earthquakes/map/`
+5. `What is currently trending on https://github.com/trending?`
 
-These are good benchmarks because the correct answer is known and changes daily —
-making hallucination immediately detectable.
+Use **researcher** agent for prompts 1-3. Use **orchestrator** for prompt 4-5 to test fan-out.
+
+### Priority 3 (post-v0.8.0): Automated benchmark harness
+> Jp's idea from UAT Day 2: "Is there a way to dynamically run 3-5 live-web queries
+> in an automated fashion and measure how model/context/provider adjustments affect
+> quality across multiple dimensions?"
+
+**Answer: Yes. Design captured in jp.md "Automated Benchmark Harness" section.**
+
+Dimensions to measure automatically (no human judgment needed):
+- Tool call success rate (did step 1 call a tool, or did retry/fallback fire?)
+- Grounding rate (did response cite URLs from fetched sources, not invented domains?)
+- Fan-out completion rate (N/N researchers returned)
+- Latency (wall clock, task submit → complete)
+- Token count + estimated cost per provider
+- Retry count (tool_call_retry events)
+
+Dimensions requiring 1-min human scoring per run:
+- Correctness (verify 1 fact against the actual source)
+- Completeness (did it answer all sub-questions?)
+- Quality (coherent, non-repetitive, well-organized)
+
+Variables to sweep: model × context_size × provider
+
+**GitHub issue to open:** `feat: benchmark eval harness for model/provider comparison`
+**Milestone: v0.9.0** — not a blocker for v0.8.0
 
 ### Priority 3: Continue UAT T1.x
 See jp_testing.md for full test matrix.
