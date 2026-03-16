@@ -1145,10 +1145,13 @@ _DESTRUCTIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
-# ── HITL tier classification ─────────────────────────────────────────────────
-# HALT tier: high-confidence, unambiguously adversarial in any tool-call context.
-# Run is force-ended immediately. No legitimate task should trigger these.
-HITL_HALT_CATEGORIES: frozenset[str] = frozenset(
+# ── Destructive pattern tier classification ───────────────────────────────────
+# FORCE-END tier: high-confidence, unambiguously adversarial in any tool-call
+# context. Guardian (sidecar) intercepts these first and returns force_end=True.
+# SecureToolNode also force-ends as a fallback if Guardian is unavailable.
+# No legitimate task should ever produce these in a tool argument.
+# No human gate — there is no valid approve path for these categories.
+FORCE_END_CATEGORIES: frozenset[str] = frozenset(
     {
         "CMD_INJECTION",  # Shell metacharacters — clear attempt to escape tool sandbox
         "SELF_PROBE",  # Agent learning its own config — sign of successful injection
@@ -1157,14 +1160,15 @@ HITL_HALT_CATEGORIES: frozenset[str] = frozenset(
     }
 )
 
-# LOG tier: ambiguous — may be adversarial OR legitimate research.
-# Event is logged and run continues. Operator reviews in threat_events table.
+# HITL-REVIEW tier: ambiguous — may be adversarial OR legitimate research.
+# In "team" / "enterprise" hitl_mode: task pauses for operator approval.
+# In "permissive" hitl_mode: event is logged and run continues (see #264).
 # Examples of legitimate triggers:
 #   CREDENTIAL_PROBE:  "best practices for API key rotation"
 #   RECONNAISSANCE:    "how to enumerate Python package dependencies"
 #   INTERNAL_PROBE:    article mentioning "localhost" in a Docker tutorial
 #   BULK_DESTRUCTIVE:  "delete all old log records" (legitimate admin task)
-HITL_LOG_CATEGORIES: frozenset[str] = frozenset(
+HITL_REVIEW_CATEGORIES: frozenset[str] = frozenset(
     {
         "CREDENTIAL_PROBE",
         "RECONNAISSANCE",
@@ -1180,17 +1184,17 @@ def detect_destructive_pattern(text: str) -> tuple[bool, list[str]]:
     Scan text for patterns that require human-in-the-loop review or immediate halt.
     Returns (any_matched, list_of_matched_categories).
 
-    Callers should check each category against HITL_HALT_CATEGORIES to decide
-    whether to force-end or log-and-continue. check_hitl_required() does this
+    Callers should check each category against FORCE_END_CATEGORIES to decide
+    whether to force-end or review. check_hitl_required() does this
     automatically.
 
-    HALT categories (force_end=True):
+    FORCE-END categories (force_end=True — Guardian hard stop, no human gate):
       CMD_INJECTION        — shell metacharacters in tool arguments
       SELF_PROBE           — agent probing its own config or identity
       DATA_STAGING         — webhook dead-drops, encode-and-send setup
       PRIVILEGE_ESCALATION — bypass/disable security controls
 
-    LOG categories (log + continue):
+    HITL-REVIEW categories (operator review — log+continue until #266 UI lands):
       CREDENTIAL_PROBE     — queries containing password/key/token vocabulary
       RECONNAISSANCE       — systematic enumeration requests
       INTERNAL_PROBE       — localhost, admin panels, internal service refs

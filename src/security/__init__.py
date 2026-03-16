@@ -67,8 +67,8 @@ from src.security.core import (
     # Destructive pattern detection / HITL
     detect_destructive_pattern,
     _DESTRUCTIVE_PATTERNS,
-    HITL_HALT_CATEGORIES,
-    HITL_LOG_CATEGORIES,
+    FORCE_END_CATEGORIES,
+    HITL_REVIEW_CATEGORIES,
     # Guardian stub (Phase 1 — replaced in Phase 2 but kept for fallback)
     Guardian,
     # PII patterns (used in tests)
@@ -123,8 +123,8 @@ __all__ = [
     "sanitize_log_value",
     "detect_destructive_pattern",
     "_DESTRUCTIVE_PATTERNS",
-    "HITL_HALT_CATEGORIES",
-    "HITL_LOG_CATEGORIES",
+    "FORCE_END_CATEGORIES",
+    "HITL_REVIEW_CATEGORIES",
     "Guardian",
     "_PII_PATTERNS",
     "_MAX_FIELD_LENGTH",

@@ -21299,15 +21299,15 @@ def test_guardian_inlined_forbidden_capabilities_match_core():
     )
 
 
-def test_guardian_inlined_hitl_halt_categories_match_core():
-    """Phase G1 drift guard: guardian's HITL_HALT_CATEGORIES must match core.py."""
-    from src.security.guardian import HITL_HALT_CATEGORIES as guardian_hc
-    from src.security.core import HITL_HALT_CATEGORIES as core_hc
+def test_guardian_inlined_force_end_categories_match_core():
+    """Phase G1 drift guard: guardian's FORCE_END_CATEGORIES must match core.py."""
+    from src.security.guardian import FORCE_END_CATEGORIES as guardian_fc
+    from src.security.core import FORCE_END_CATEGORIES as core_fc
 
-    assert guardian_hc == core_hc, (
-        f"HITL_HALT_CATEGORIES mismatch:\n"
-        f"  guardian only: {guardian_hc - core_hc}\n"
-        f"  core only: {core_hc - guardian_hc}"
+    assert guardian_fc == core_fc, (
+        f"FORCE_END_CATEGORIES mismatch:\n"
+        f"  guardian only: {guardian_fc - core_fc}\n"
+        f"  core only: {core_fc - guardian_fc}"
     )
 
 
@@ -24111,8 +24111,13 @@ class TestHITLApprovalFlow:
             hitl_gate_node
         ), "hitl_gate_node must be async"
 
-    def test_hitl_pending_returned_on_halt_tier(self):
-        """check_hitl_required returns hitl_pending=True (not force_end) on HALT tier."""
+    def test_force_end_returned_on_halt_tier(self):
+        """check_hitl_required returns force_end=True (not hitl_pending) on FORCE-END tier.
+
+        FORCE-END categories are unambiguously adversarial — no human gate.
+        Guardian intercepts these first; this path fires as a fallback.
+        See issue #263 for the design rationale.
+        """
         import asyncio
         from unittest.mock import AsyncMock, patch
 
@@ -24129,11 +24134,11 @@ class TestHITLApprovalFlow:
                 )
             )
         assert (
-            result.get("hitl_pending") is True
-        ), "Phase 2: HALT tier must return hitl_pending=True, not force_end"
+            result.get("force_end") is True
+        ), "#263: FORCE-END tier must return force_end=True, not hitl_pending"
         assert (
-            "force_end" not in result
-        ), "Phase 2: force_end should no longer be returned for HALT tier"
+            "hitl_pending" not in result
+        ), "#263: hitl_pending must not be set for FORCE-END tier categories"
 
     def test_hitl_log_tier_still_returns_empty(self):
         """LOG-tier categories must still return {} (run continues unchanged)."""
