@@ -5055,7 +5055,7 @@ async function loadModels() {
     const defaultModel = data.default || '';
     const presets = data.presets || {};
     sel.innerHTML = models.map(m => {
-      const label = presets[m] ? `${m} (cloud)` : m;
+      const label = (presets[m] && presets[m].includes('/')) ? `${m} (cloud)` : m;
       return `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${label}</option>`;
     }).join('');
     // Set state to current selection
