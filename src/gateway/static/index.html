@@ -4734,7 +4734,7 @@ const S = {
   toolsCompleted: 0,      // tool_end events received this run
   toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
   sessionId:      null,   // string | null — active conversation session_id (Phase 57)
-  modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
+  modelPref:      null,   // set by loadModels() from /models default; null = primary
   templates:      [],     // cached template list (Phase 61)
   streamEl:       null,   // single accumulator element for live token streaming (Phase 69)
   attachText:     null,   // plain-text content of attached file (Phase 70)
@@ -5055,7 +5055,7 @@ async function loadModels() {
     const defaultModel = data.default || '';
     const presets = data.presets || {};
     sel.innerHTML = models.map(m => {
-      const label = presets[m] ? `${m} (${presets[m]})` : m;
+      const label = presets[m] ? `${m} (cloud)` : m;
       return `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${label}</option>`;
     }).join('');
     // Set state to current selection
@@ -5919,7 +5919,7 @@ async function submitTask() {
         'Authorization': 'Bearer ' + apiKey,
       },
       body: JSON.stringify({
-        task, agent_type: agent, model_preference: S.modelPref,
+        task, agent_type: agent, model_preference: S.modelPref || null,
         ...((_ACTIVE_SESSION ? _ACTIVE_SESSION.session_id : null) || S.sessionId ? { session_id: (_ACTIVE_SESSION ? _ACTIVE_SESSION.session_id : null) || S.sessionId } : {}),
         ...(S.attachText  ? { attachment_text: S.attachText,
                               attachment_filename: S.attachName }  : {}),

@@ -3,10 +3,10 @@ src/gateway/routes/models.py
 ─────────────────────────────
 GET /models — list selectable models for the web UI.
 
-Returns named presets (fast/balanced/powerful) from the hardware profile
-PLUS any locally installed Ollama chat models.  Named presets let users
-route to cloud providers (OpenRouter, Anthropic, OpenAI) without knowing
-the underlying model ID.  Auth required (Bearer token).
+Returns named cloud presets from the hardware profile's ``model_preferences``
+PLUS any locally installed Ollama chat models.  Cloud presets use
+"provider/model" values (e.g. "inceptionlabs/mercury-2") so the factory
+can route them without knowing the provider up front.  Auth required.
 """
 
 from __future__ import annotations
@@ -32,15 +32,14 @@ async def list_models(user: dict = Depends(require_user)) -> dict:
     Response::
 
         {
-            "models": ["balanced", "fast", "powerful", "llama3.1:8b", ...],
-            "default": "balanced",
-            "presets": {"balanced": "mistralai/mistral-small-3.1-24b-instruct:free", ...}
+            "models": ["mercury-2", "llama3.1:8b", ...],
+            "default": "llama3.1:8b",
+            "presets": {"mercury-2": "inceptionlabs/mercury-2"}
         }
 
-    Named presets come first (from ``settings.model_preferences``), followed
+    Cloud presets come first (from ``settings.model_preferences``), followed
     by locally installed Ollama chat models.  The ``default`` field is the
-    preset name whose model_id matches the hardware profile's primary model,
-    or the primary model_id itself when no preset matches.
+    primary model ID (or a preset name if one matches the primary).
     """
     # ── Named presets from hardware profile ──────────────────────────────────
     presets: dict[str, str] = dict(settings.model_preferences or {})

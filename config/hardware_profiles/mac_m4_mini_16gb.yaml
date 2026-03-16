@@ -434,14 +434,14 @@ search:
     url: http://localhost:8888
     engines: []           # empty = SearXNG default; e.g. [google, bing, ddg]
 
-# ── Phase 58: Model preferences (named speed presets) ────────────────────────
-# Maps preference names to specific Ollama model IDs.
-# Users can select fast/balanced/powerful per task submission.
-# Upgrade "powerful" to a 70b+ quantized model when hardware allows.
+# ── Model preferences (named cloud presets) ──────────────────────────────────
+# Maps display names to "provider/model-id" for cloud providers only.
+# Local Ollama models appear in the UI dropdown automatically — no entry needed.
+# Convention: values use "provider/model" format; factory splits on first "/"
+# to route to the correct provider. See issue #262.
+# Re-add OpenRouter here when a paid key is available.
 model_preferences:
-  fast:     "qwen2.5:3b"                                     # local, fast, routing only
-  balanced: "llama3.1:8b"                                    # local, reliable tool calling
-  powerful: "mistralai/mistral-small-3.1-24b-instruct:free"  # OpenRouter (free, when available)
+  mercury-2: "inceptionlabs/mercury-2"  # InceptionLabs cloud (paid)
 
 # ── DB Maintenance — nightly pruning with per-table retention ─────────────────
 # Runs once per 24h via the gateway scheduler (src/scheduler.py).

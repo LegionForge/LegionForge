@@ -92,7 +92,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     await publish_event(task_id, build_task_start_event(task_id, agent_type))
 
     # Phase 58: set model preference for this async task context so
-    # get_primary_llm() returns the correct model (fast/balanced/powerful).
+    # get_primary_llm() returns the correct model for this task.
     from src.llm_factory import set_task_model_preference
 
     set_task_model_preference(task.get("model_preference"))

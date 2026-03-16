@@ -197,11 +197,11 @@ class TaskRequest(BaseModel):
     model_preference: str | None = Field(
         default=None,
         description=(
-            "Model to use for this task.  Accepts a named speed preset "
-            "('fast', 'balanced', 'powerful') or any Ollama model ID installed "
-            "on the server (e.g. 'qwen2.5:7b', 'llama3.1:8b').  "
+            "Model to use for this task.  Accepts any named preset from the hardware "
+            "profile (e.g. 'mercury-2') or any Ollama model ID installed on the server "
+            "(e.g. 'qwen2.5:7b', 'llama3.1:8b').  "
             "Null uses the hardware profile's primary model.  "
-            "GET /models returns the list of available model IDs.  "
+            "GET /models returns the full list of available options.  "
             "Phase 58 — Model Selection per Task."
         ),
     )
@@ -241,8 +241,8 @@ class TaskRequest(BaseModel):
 
         if not re.fullmatch(r"[a-zA-Z0-9_.:\-/]+", v):
             raise ValueError(
-                "model_preference must be a named preset ('fast', 'balanced', "
-                "'powerful') or a valid Ollama model ID (e.g. 'qwen2.5:7b')"
+                "model_preference must be a named preset (see GET /models) "
+                "or a valid Ollama model ID (e.g. 'qwen2.5:7b')"
             )
         return v
 
