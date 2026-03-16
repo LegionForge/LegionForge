@@ -65,6 +65,7 @@ DEFAULT_CREDENTIALS_FILE = Path.home() / ".config" / "legionforge" / "credential
 _SERVICE_TO_ENV: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
     "langsmith": "LANGSMITH_API_KEY",
     "postgres": "POSTGRES_PASSWORD",
     "legionforge_health": "LEGIONFORGE_HEALTH_TOKEN",
@@ -78,6 +79,8 @@ _SERVICE_TO_ENV: dict[str, str] = {
     "legionforge_exa_api_key": "EXA_API_KEY",
     "legionforge_perplexity_api_key": "PERPLEXITY_API_KEY",
     "legionforge_firecrawl_api_key": "FIRECRAWL_API_KEY",
+    # InceptionLabs cloud LLM provider (mercury-2, OpenAI-compatible)
+    "legionforge_inceptionlabs_api_key": "INCEPTIONLABS_API_KEY",
 }
 
 # All environment variable names that contain secrets.

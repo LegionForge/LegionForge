@@ -16,15 +16,15 @@ A **local-first, open-source, security-native AI agent framework** built on Lang
 
 ## Current Status
 
-✅ **Phases 0–381 complete. v0.7.1-alpha — active development toward v1.0.0.**
+✅ **Phases 0–381 + H + I + J + HITL complete. v0.7.1-alpha — active development toward v1.0.0.**
 
-The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, and much more.
+The full security stack is operational, plus a comprehensive task management API, multi-turn conversation sessions, configurable search providers, WhatsApp connector, and HITL approval gate.
 
-**2227/2227 smoke tests passing** (~21s, no external services required).
+**2247/2247 smoke tests passing** (~21s, no external services required).
 **41/41 integration tests** (PostgreSQL required — `make test-integration`).
 **40/40 UI tests** (`make test-ui`).
 **79/79 tool accuracy tests** (`make test-tool-accuracy`).
-**104/104 TestLab tests** · **5/5 Kerberos live-KDC tests**.
+**104/104 TestLab tests** · **5/5 Kerberos live-KDC tests** · **114/114 crystallization tests**.
 
 ### Core Security Stack (Phases 0–16)
 ✅ Guardian sidecar (7 deterministic checks, hot-reload every 10s), immutable SHA-256 audit log (halt-on-tamper), crystallization pipeline (Observer→Crystallizer→Pre-HITL→Ed25519 signature), air-gapped PentestAgent (24 attack functions, 0 bypasses on clean deploy), pentest→Guardian feedback loop, multi-user gateway (:8080), five production tools, `AuthBackend` protocol with 5 backends (ApiKey, OIDC, GitHub, LDAP, Kerberos), Redis-backed stream tokens, Prometheus /metrics, web UI, Discord/Telegram/Slack/Webhook connectors, multi-instance docker-compose + Nginx.
@@ -110,6 +110,17 @@ The full security stack is operational, plus a comprehensive task management API
 | **55** | Anti-hallucination hardening (system prompt, HTML stripping, DDG error safety) | ✅ Done |
 | **56** | Configurable search providers (DDG/Tavily/Brave/Exa/Perplexity/SearXNG; primary+fallback) | ✅ Done |
 
+### Post-Phase-56 Additions
+
+| Addition | What Got Built | Status |
+|---|---|---|
+| **Agent Memory — all 5 gaps** | Persona bootstrap (Gap 1, DB-backed SOUL.md), user prefs (Gap 5), `memory_write`/`memory_recall` tools (Gap 3), daily episodic summaries (Gap 2), pre-compaction flush (Gap 4) | ✅ Done |
+| **Guardian G4** | Public repo [LegionForge/LegionForge-Guardian](https://github.com/LegionForge/LegionForge-Guardian) live; `pip install legionforge-guardian`; auto-sync Action | ✅ Done |
+| **Phase H** | Session continuity UI — persistent conversation sidebar, turn count badge, New Conversation button, session resume across page reloads | ✅ Done |
+| **Phase I** | Multi-modal image input — paste/drag image into prompt, MIME + magic-byte validation, vision API routing, Ollama text-only fallback | ✅ Done |
+| **HITL approval flow** | LangGraph `interrupt_before` operator gate — destructive tasks pause for human approval; `GET /hitl/pending` + `POST /hitl/{id}/approve` | ✅ Done |
+| **Phase J — WhatsApp** | WhatsApp Business Cloud API connector — webhook ingestion, HMAC verification, message routing to gateway | ✅ Done |
+
 **→ Full details:** [`PHASE_PLAN.md`](./PHASE_PLAN.md)
 
 ---
@@ -184,7 +195,7 @@ These are the real attack classes against LLM agent frameworks in 2026, and wher
 
 **OAuth / LDAP not wired by default.** `OIDCBackend`, `GitHubOAuthBackend`, `LDAPBackend`, and `KerberosBackend` are all implemented (Phase 12–13). Activate by setting `gateway.auth_provider` in the hardware profile YAML — default remains `api_key`.
 
-**Conversation sessions not yet integrated in web UI.** Phase 54 added the backend API. The web UI still submits tasks as standalone runs (no thread persistence). Planned for Phase 57.
+~~**Conversation sessions not yet integrated in web UI.**~~ — **Closed (Phase H).** Persistent conversation sidebar, turn count badge, New Conversation button, and session resume across page reloads are all live in the web UI.
 
 ---
 

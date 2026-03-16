@@ -69,6 +69,14 @@ from src.rate_limiter import preflight_budget_check, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
+# Sliding window size for Guardian sequence checks (issue #256).
+# Guardian sees only the last (_GUARDIAN_SEQ_WINDOW - 1) calls + the candidate
+# tool, matching the length of the longest registered sequence (currently 4).
+# The full cumulative sequence_so_far is preserved in state for audit purposes.
+# ADR: window=4 catches all registered attack patterns (max sequence length = 4)
+# while allowing multi-round research loops. See docs/post_uat_review/01_security.md.
+_GUARDIAN_SEQ_WINDOW: int = 4
+
 
 # ── State definition ──────────────────────────────────────────────────────────
 
@@ -906,7 +914,15 @@ class SecureToolNode:
             # 2b. Guardian capability boundary + sequence check (Phase 3)
             # Now returns GuardianCheckResponse so we can branch on tier.
             # Pass real tool_input so checks 3, 5, 6 see actual arguments (Gap 1 fix).
-            state_with_seq = {**state, "sequence_so_far": sequence_so_far}
+            # Sliding window: Guardian sees only the last (_GUARDIAN_SEQ_WINDOW - 1)
+            # calls so multi-round research loops aren't blocked by cumulative history.
+            # Full sequence_so_far is preserved in state for audit. (issue #256)
+            seq_window = (
+                sequence_so_far[-(_GUARDIAN_SEQ_WINDOW - 1) :]
+                if sequence_so_far
+                else []
+            )
+            state_with_seq = {**state, "sequence_so_far": seq_window}
             guardian_resp = await guardian_check(tool_id, tool_input, state_with_seq)
 
             if not guardian_resp.allowed:
@@ -927,7 +943,8 @@ class SecureToolNode:
                             confidence=guardian_resp.confidence,
                             metadata={
                                 "tool_id": tool_id,
-                                "sequence": sequence_so_far,
+                                "sequence_window": seq_window,
+                                "sequence_full": sequence_so_far,
                                 "reason": guardian_resp.reason,
                             },
                         )

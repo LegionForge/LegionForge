@@ -22,7 +22,7 @@ import uuid
 from typing import Annotated, Any
 import operator
 
-from src.security import HITL_HALT_CATEGORIES, HITL_LOG_CATEGORIES
+from src.security import FORCE_END_CATEGORIES, HITL_REVIEW_CATEGORIES
 from src.database import log_threat_event
 
 from langchain_core.messages import BaseMessage
@@ -421,14 +421,15 @@ async def check_hitl_required(
     run_id = state.get("run_id", "unknown")
     run_prefix = run_id[:8] if run_id != "unknown" else run_id
 
-    halt_cats = [c for c in categories if c in HITL_HALT_CATEGORIES]
-    log_cats = [c for c in categories if c in HITL_LOG_CATEGORIES]
+    force_end_cats = [c for c in categories if c in FORCE_END_CATEGORIES]
+    review_cats = [c for c in categories if c in HITL_REVIEW_CATEGORIES]
 
-    # LOG tier: suspicious but ambiguous — record and continue
-    if log_cats:
+    # HITL-REVIEW tier: ambiguous — log and continue for now.
+    # TODO (#266): when HITL UI lands, route to hitl_pending in team/enterprise mode.
+    if review_cats:
         logger.warning(
             f"[hitl] Suspicious pattern (log-and-continue) — "
-            f"action='{action}' categories={log_cats} run={run_prefix}..."
+            f"action='{action}' categories={review_cats} run={run_prefix}..."
         )
         try:
             await log_threat_event(
@@ -438,63 +439,35 @@ async def check_hitl_required(
                 action_taken="LOGGED",
                 confidence=0.6,
                 raw_input=input_text[:200],
-                metadata={"action": action, "categories": log_cats},
+                metadata={"action": action, "categories": review_cats},
             )
         except Exception as exc:
-            logger.warning(f"[hitl] DB log_threat_event failed (log tier): {exc}")
+            logger.warning(f"[hitl] DB log_threat_event failed (review tier): {exc}")
 
-    # HALT tier: unambiguously adversarial — pause for operator approval (Phase 2).
-    # Phase 1 behaviour was: return {"force_end": True} (immediate termination).
-    # Phase 2 behaviour: persist the approval request and signal hitl_pending so
-    # the routing function routes to the hitl_gate node (interrupt_before target).
-    if halt_cats:
+    # FORCE-END tier: unambiguously adversarial — hard stop, no human gate.
+    # Guardian (sidecar) intercepts these first. This path fires as a fallback
+    # when Guardian is unavailable. No approval path exists for these categories.
+    if force_end_cats:
         logger.warning(
-            f"[hitl] HITL HALT — action='{action}' categories={halt_cats} "
-            f"run={run_prefix}... Pausing for operator approval."
+            f"[hitl] FORCE-END — action='{action}' categories={force_end_cats} "
+            f"run={run_prefix}... Terminating run immediately."
         )
         try:
             await log_threat_event(
                 agent_id="safeguards",
                 run_id=run_id,
                 threat_type="DESTRUCTIVE_PATTERN",
-                action_taken="HITL_REQUIRED",
+                action_taken="FORCE_END",
                 confidence=1.0,
                 raw_input=input_text[:200],
-                metadata={"action": action, "categories": halt_cats},
+                metadata={"action": action, "categories": force_end_cats},
             )
         except Exception as exc:
-            logger.warning(f"[hitl] DB log_threat_event failed (halt tier): {exc}")
+            logger.warning(f"[hitl] DB log_threat_event failed (force-end tier): {exc}")
 
-        # Persist the approval request — thread_id is needed for graph resumption.
-        # Fall back gracefully if DB is unavailable (test environments).
-        thread_id = state.get("thread_id", run_id)
-        request_id: str | None = None
-        try:
-            from src.database import create_hitl_request
+        return {"force_end": True}
 
-            request_id = await create_hitl_request(
-                run_id=run_id,
-                thread_id=thread_id,
-                action=action,
-                categories=halt_cats,
-                input_excerpt=input_text[:200],
-            )
-            logger.info(
-                f"[hitl] HITL request created: request_id={request_id} "
-                f"run={run_prefix}... action='{action}'"
-            )
-        except Exception as exc:
-            logger.warning(f"[hitl] create_hitl_request failed (non-fatal): {exc}")
-
-        return {
-            "hitl_pending": True,
-            "hitl_run_id": run_id,
-            "hitl_action": action,
-            "hitl_categories": halt_cats,
-            "hitl_request_id": request_id,
-        }
-
-    # Only LOG-tier categories matched — run continues
+    # Only HITL-REVIEW categories matched — run continues (logged above)
     return {}
 
 

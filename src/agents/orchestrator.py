@@ -22,7 +22,7 @@ Startup:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Union
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -225,12 +225,13 @@ async def spawn_researcher(sub_task: str) -> str:
 
 
 @tool
-async def fan_out_researchers(sub_tasks_json: str) -> str:
+async def fan_out_researchers(sub_tasks_json: Union[str, list]) -> str:
     """
     Dispatch multiple independent research tasks to Researcher sub-agents IN PARALLEL.
 
     sub_tasks_json: JSON array of task strings (max 10), e.g.:
         '["Summarize LangGraph docs", "Find LangChain changelog", "Check httpx API"]'
+    Also accepts a Python list directly (some models pass a list instead of a JSON string).
 
     Use this instead of sequential spawn_researcher calls when tasks are independent.
     Each branch runs concurrently (up to 5 at a time) and receives its own derived
@@ -240,10 +241,14 @@ async def fan_out_researchers(sub_tasks_json: str) -> str:
     from src.agents.fan_out import SubTask, fan_out, aggregate_results
     from src.agents.researcher import RESEARCHER_TOOL_MANIFESTS
 
-    try:
-        raw = json.loads(sub_tasks_json)
-    except json.JSONDecodeError as exc:
-        return f"[fan_out_researchers] Invalid JSON: {exc}"
+    # Coerce list → JSON string (LLMs often pass a native list instead of serialising)
+    if isinstance(sub_tasks_json, list):
+        raw = sub_tasks_json
+    else:
+        try:
+            raw = json.loads(sub_tasks_json)
+        except json.JSONDecodeError as exc:
+            return f"[fan_out_researchers] Invalid JSON: {exc}"
 
     if not isinstance(raw, list) or not raw:
         return "[fan_out_researchers] Expected a non-empty JSON array of task strings."

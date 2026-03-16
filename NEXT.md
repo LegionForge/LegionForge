@@ -4,47 +4,219 @@
 ---
 
 ## Last updated
-2026-03-14 — PRs #253 (HITL), #254 (WhatsApp), #255 (briefing system) all open and green.
+2026-03-16 — UAT Day 2 complete. Three orchestrator/research pipeline bugs fixed and committed.
+Fan-out working end-to-end. Primary switched to llama3.1:8b (local, reliable tool calling).
+InceptionLabs API key available — integration planned for Day 3.
 
 ## State
-- **Branch:** `chore/session-context-system` (working). `main` is at PR #254.
-- **Smoke tests:** 2247/2247
-- **Open PRs:** #255 — `chore: session context system` — CI green, ready to merge
+- **Branch:** `dev` — 4 commits ahead of main
+- **Smoke tests:** 2246/2246
+- **Open PRs:** none
+- **Ship target:** v0.8.0 — Sunday 2026-03-22
+- **Mode:** UAT + bug fixes
 
-## Do these in order next session
+## Day 2 fixes (2026-03-16) — all committed
+| Commit | Fix |
+|--------|-----|
+| f31d8c1 | `fan_out_researchers` accepts native list from llama3.1; worker reads profile recursion limit (was 25, now 40) |
+| c3501ce | Primary → llama3.1:8b local; model dropdown shows presets with full model ID labels |
 
-1. **Merge PR #255** — CI green, no review needed (docs/Makefile only)
-   Then: `git checkout main && git pull && git branch -D chore/session-context-system feat/hitl-approval-flow feat/phase-j-whatsapp`
+## UAT Day 3 — start here
 
-2. **Sync dev with main** (2 min)
-   ```
-   git checkout dev && git merge origin/main && git push origin dev
-   ```
+### Priority 1: InceptionLabs provider integration
+Jp has a **paid** InceptionLabs API key (mercury-coder-small or similar).
+InceptionLabs uses an OpenAI-compatible API. Integration path mirrors OpenRouter:
+1. Store key: `security add-generic-password -s inceptionlabs -a api_key -w "KEY" -A ~/Library/Keychains/login.keychain-db`
+2. Add `"inceptionlabs": "INCEPTIONLABS_API_KEY"` to `credentials.py` `_SERVICE_TO_ENV`
+3. Add `_get_inceptionlabs()` in `llm_factory.py` (ChatOpenAI with base_url override)
+4. Add `"inceptionlabs"` provider routing in `get_llm()`
+5. Add to Makefile `servers-start` env block
+6. Add as `powerful` preset in `model_preferences` (yaml)
+7. Test: researcher task via "powerful" preset
 
-3. **Fix `.env` tracked in git** — must do before v1.0 public release
-   ```
-   git rm --cached .env
-   # verify .env is already in .gitignore, add it if not
-   git commit -m "chore: stop tracking .env"
-   ```
+### Priority 2: Manual comparison test batch (Day 3 — no new code needed)
+Goal: validate llama3.1:8b (local) vs InceptionLabs (paid cloud) on research quality.
 
-4. **Rename PostgreSQL `jp` superuser** (30 min, needs `make db-start`)
-   ```sql
-   ALTER USER jp RENAME TO legionforge_admin;
-   ```
-   Update `~/.pgpass`, Makefile `pg_isready` calls, then remove the
-   TEMPORARY test `test_jp_not_hardcoded_in_production_configs`.
+Run each prompt once through `balanced (llama3.1:8b)` and once through `powerful (inceptionlabs)`.
+For each run, note in a comment or scratch file:
+- Did tools actually get called? (check gateway.log for web_fetch_js/web_search events)
+- Is the response grounded in live data or training data? (verify 1 fact manually)
+- Wall-clock time (shown in UI)
+- Estimated token count (shown in UI)
 
-5. **Live UAT — HITL pause/resume** (needs `make start`)
-   Submit a task containing `rm -rf` or similar → confirm it appears at
-   `GET /hitl/pending` → approve via `POST /hitl/{id}/approve` → confirm run resumes.
+**Test prompts** (correct answer is verifiable and changes daily — hallucination is obvious):
+1. `What are the top 3 stories on https://news.ycombinator.com right now?`
+2. `What is the current BTC price according to https://coinmarketcap.com?`
+3. `What is today's weather in New York according to https://forecast.weather.gov?`
+4. `What are the latest earthquakes from https://earthquake.usgs.gov/earthquakes/map/`
+5. `What is currently trending on https://github.com/trending?`
 
-## On deck (no urgency, pre-v1.0)
+Use **researcher** agent for prompts 1-3. Use **orchestrator** for prompt 4-5 to test fan-out.
+
+### Priority 3 (post-v0.8.0): Automated benchmark harness
+> Jp's idea from UAT Day 2: "Is there a way to dynamically run 3-5 live-web queries
+> in an automated fashion and measure how model/context/provider adjustments affect
+> quality across multiple dimensions?"
+
+**Answer: Yes. Design captured in jp.md "Automated Benchmark Harness" section.**
+
+Dimensions to measure automatically (no human judgment needed):
+- Tool call success rate (did step 1 call a tool, or did retry/fallback fire?)
+- Grounding rate (did response cite URLs from fetched sources, not invented domains?)
+- Fan-out completion rate (N/N researchers returned)
+- Latency (wall clock, task submit → complete)
+- Token count + estimated cost per provider
+- Retry count (tool_call_retry events)
+
+Dimensions requiring 1-min human scoring per run:
+- Correctness (verify 1 fact against the actual source)
+- Completeness (did it answer all sub-questions?)
+- Quality (coherent, non-repetitive, well-organized)
+
+Variables to sweep: model × context_size × provider
+
+**GitHub issue to open:** `feat: benchmark eval harness for model/provider comparison`
+**Milestone: v0.9.0** — not a blocker for v0.8.0
+
+### Priority 3: Continue UAT T1.x
+See jp_testing.md for full test matrix.
+
+## Overnight review findings (still open)
+Full reports in `docs/post_uat_review/`. Read before starting Day 1 UAT.
+Summary of what must be fixed before v0.8.0 goes public:
+
+| Priority | Finding | File |
+|----------|---------|------|
+| 🔴 Critical | `/docs` + `/redoc` live in production | `01_security.md` |
+| 🔴 Critical | SSRF via `callback_url` — no IP validation | `01_security.md` |
+| 🔴 Critical | Zero security response headers (CSP/HSTS/X-Frame) | `01_security.md` |
+| 🔴 Critical | Plotly CDN load without SRI hash | `01_security.md` |
+| 🔴 Critical | `smoke.yml` CI misses testlab/UI/bandit | `05_cicd.md` |
+| 🔴 Critical | `--input-bg` CSS var undefined — inputs transparent | `06_uiux.md` |
+| 🔴 Critical | HITL has no UI — safety flow requires raw curl | `06_uiux.md` |
+| 🔴 Critical | WhatsApp HMAC uses wrong signing key | `02_stability.md` |
+| 🟠 Blocker | `jp-cruz` identity in A2A Agent Card | `01_security.md` |
+| 🟠 Blocker | `make briefing` hardcodes LegionForge/LegionForge | `05_cicd.md` |
+| 🟠 Bug | `get_maintenance_pool()` undefined — bulk_delete crashes | `03_efficiency.md` |
+| 🟠 Bug | Orchestrator JWT cross-contamination under concurrency | `02_stability.md` |
+| 🟠 Bug | Auth does full table scan on every request | `03_efficiency.md` |
+
+## Do these in order — Day 1 (today, 2026-03-15)
+
+1. **Read `docs/post_uat_review/README.md`** — 5 min skim of all 7 findings files ✅ Done (session start)
+2. ~~**T0.1 — Rename PostgreSQL `jp` → `legionforge_admin`**~~ ✅ **DONE (2026-03-15)**
+   - PG user renamed via `jpc` superuser over TCP
+   - `~/.pgpass` updated, `POSTGRES_USER=legionforge_admin` added to `.env`
+   - Makefile updated (pgpass awk pattern + pg_isready fallback)
+   - TEMPORARY test removed from test_smoke.py; baseline now 2246
+   - All `jp` DB user references scrubbed from docs and source
+3. **T9 — Observability sanity checks** (5 min, baseline before anything else)
+4. **T1.1–T1.5 — Core task flow** (jp_testing.md Priority 1)
+
+See jp_testing.md for full 8-day schedule. Fill in the Test Run Log as you go.
+
+## Pre-v0.8.0 fix queue (open GitHub issues for each before acting)
+
+From overnight review — these need issues before any code is written:
+- Fix `/docs`/`/redoc` disable in gateway/app.py (1-liner)
+- Add `validate_fetch_url()` at callback_url submission time
+- Add security response headers middleware (CSP, HSTS, X-Frame-Options, etc.)
+- Add SRI hash to Plotly CDN script tag
+- Fix WhatsApp HMAC to use app secret, not bearer token
+- Add `--input-bg` CSS variable to all themes
+- Add basic HITL approve/reject UI panel
+- Fix `get_maintenance_pool()` missing function
+- Fix orchestrator module-level JWT dicts (concurrent task contamination)
+- Fix auth full-table scan (add `WHERE username = $1`)
+- Remove jp-cruz from A2A Agent Card
+- Fix `make briefing` hardcoded repo reference
+- Fix `smoke.yml` to run full `make ci` suite
+
+## On deck (post-UAT, pre-v0.8.0)
 - Telegram connector: bot token + gateway user not yet configured
 - Cloud API keys: Anthropic + OpenAI in Keychain (waiting on keys)
-- Demo/README: screenshot or short GIF for public README
-- After jp rename: remove TEMPORARY test from test_smoke.py
+- Demo/README: screenshot or GIF for public README
+- MCP memory server setup: `@modelcontextprotocol/server-memory` pointed at shared JSONL
+- JP_CONTEXT.md: finalize and store in Obsidian
+
+## Post-v0.8.0 backlog (do not act on before ship)
+- Agent/skill marketplace architecture (see `07_agent_marketplace.md` — 600 lines)
+- HITL UI panel (full workflow, not just approve/reject buttons)
+- bcrypt async in auth handlers (blocks event loop 100–300ms)
+- Missing index on `api_usage.user_id`
+- LangGraph graph compilation caching
+- Property-based/fuzzing tests for security core (Hypothesis)
+- HITL automated test (LangGraph halt → approve → resume)
+- 6 proposed GitHub Actions workflows (see `05_cicd.md`)
+- Mobile/responsive UI pass
+- 381-panel admin search/filter
+
+## At v0.8.0 — Public Release Prep (do in order, before transfer)
+
+1. **Install git-filter-repo**
+   ```bash
+   pip install git-filter-repo
+   ```
+
+2. **Create safety backup branch**
+   ```bash
+   git branch backup-pre-rewrite
+   ```
+
+3. **Rewrite history** — removes all jp-cruz / jp@legionforge.org identity traces
+   ```bash
+   git filter-repo \
+     --name-callback '
+   name_map = {
+       b"jp-cruz":  b"Jp Cruz",
+       b"Jp Cruz": b"Jp Cruz",
+       b"Jp":       b"Jp Cruz",
+   }
+   return name_map.get(name, name)
+   ' \
+     --email-callback '
+   email_map = {
+       b"jp@legionforge.org": b"jp@legionforge.org",
+       b"115298310+jp-cruz@users.noreply.github.com": b"jp@legionforge.org",
+   }
+   return email_map.get(email, email)
+   ' \
+     --message-callback '
+   return message.replace(b"jp-cruz/dev", b"dev").replace(b"jp-cruz/", b"")
+   ' \
+     --force
+   ```
+
+4. **Verify clean**
+   ```bash
+   git log --format="%an <%ae>" | sort -u
+   git log --format="%s" | grep -i "jp-cruz\|legacy"
+   # Expected: no output
+   ```
+
+5. **Re-add remote + force push**
+   ```bash
+   git remote add origin https://github.com/LegionForge/LegionForge.git
+   git push origin main dev --force
+   ```
+
+6. **Transfer repo on GitHub** — LegionForge/LegionForge → Settings → Transfer → LegionForge
+
+7. **Update local remote**
+   ```bash
+   git remote set-url origin https://github.com/LegionForge/LegionForge.git
+   git push origin main dev
+   ```
+
+8. **Re-add GitHub Actions secrets** in LegionForge/LegionForge → Settings → Secrets:
+   - `GUARDIAN_SYNC_PAT`
+
+9. **Cleanup**
+   ```bash
+   git branch -D backup-pre-rewrite
+   # Archive jp-cruz/LegionForge (teaser repo — now redundant)
+   ```
 
 ## How to use this file
-- **Start of session:** `make briefing`
-- **End of session:** tell Claude "update NEXT.md"
+- **Start of session:** `make briefing` → tell Claude: `read NEXT.md and tell me where we are`
+- **End of session:** tell Claude: `update NEXT.md`

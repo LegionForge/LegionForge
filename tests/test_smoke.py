@@ -10717,16 +10717,15 @@ def test_p57_ui_has_delete_current_session():
 
 
 def test_p58_settings_has_model_preferences():
-    """HardwareSettings exposes model_preferences with fast/balanced/powerful."""
+    """HardwareSettings exposes model_preferences as a dict of cloud presets."""
     from config.settings import settings
 
     mp = settings.model_preferences
-    assert hasattr(mp, "fast")
-    assert hasattr(mp, "balanced")
-    assert hasattr(mp, "powerful")
-    assert mp.fast  # non-empty string
-    assert mp.balanced
-    assert mp.powerful
+    assert isinstance(mp, dict)
+    # Each value must be a non-empty "provider/model" string
+    for name, model_id in mp.items():
+        assert isinstance(name, str) and name
+        assert isinstance(model_id, str) and model_id
 
 
 def test_p58_set_task_model_preference_importable():
@@ -21300,15 +21299,15 @@ def test_guardian_inlined_forbidden_capabilities_match_core():
     )
 
 
-def test_guardian_inlined_hitl_halt_categories_match_core():
-    """Phase G1 drift guard: guardian's HITL_HALT_CATEGORIES must match core.py."""
-    from src.security.guardian import HITL_HALT_CATEGORIES as guardian_hc
-    from src.security.core import HITL_HALT_CATEGORIES as core_hc
+def test_guardian_inlined_force_end_categories_match_core():
+    """Phase G1 drift guard: guardian's FORCE_END_CATEGORIES must match core.py."""
+    from src.security.guardian import FORCE_END_CATEGORIES as guardian_fc
+    from src.security.core import FORCE_END_CATEGORIES as core_fc
 
-    assert guardian_hc == core_hc, (
-        f"HITL_HALT_CATEGORIES mismatch:\n"
-        f"  guardian only: {guardian_hc - core_hc}\n"
-        f"  core only: {core_hc - guardian_hc}"
+    assert guardian_fc == core_fc, (
+        f"FORCE_END_CATEGORIES mismatch:\n"
+        f"  guardian only: {guardian_fc - core_fc}\n"
+        f"  core only: {core_fc - guardian_fc}"
     )
 
 
@@ -22349,67 +22348,6 @@ def test_guardian_start_makefile_removes_stale_container():
     assert (
         "POSTGRES_PASSWORD" in snippet
     ), "guardian-start must export POSTGRES_PASSWORD from Keychain as a safety net"
-
-
-# ── TEMPORARY: jp-scrub verification ──────────────────────────────────────────
-# Verify personal username references have been removed from production configs.
-# REMOVE THIS TEST once the jp PostgreSQL superuser has been fully retired
-# (OS user renamed or PostgreSQL re-initialized with a generic admin account).
-
-
-def test_jp_not_hardcoded_in_production_configs():
-    """
-    TEMPORARY — remove after jp PostgreSQL user is retired.
-
-    Checks that 'jp' does not appear as a hardcoded default username in
-    production configuration and infrastructure files. Personal usernames
-    have no place in a production security framework.
-
-    Files checked:
-      - docker-compose.yml          (POSTGRES_USER default)
-      - config/hardware_profiles/   (Keychain -a flag examples)
-      - src/database.py             (conninfo builder string literals)
-
-    Files intentionally excluded:
-      - memory/, jp_todo.md, checkpoint.md  (personal dev notes)
-      - tests/                              (this file)
-      - CONTRIBUTING.md                     (may reference jp as example committer)
-      - Comments / docstrings               (non-executable, explanatory only)
-    """
-    import pathlib
-    import re
-
-    failures = []
-
-    # docker-compose.yml — must not have :-jp as a shell default
-    dc = pathlib.Path("docker-compose.yml").read_text()
-    if re.search(r":-jp[\"'}\s]", dc):
-        failures.append("docker-compose.yml: contains ':-jp' as a default value")
-
-    # hardware profiles — must not have -a jp in security CLI examples
-    for yml in pathlib.Path("config/hardware_profiles").glob("*.yaml"):
-        text = yml.read_text()
-        if re.search(r"-a\s+jp\b", text):
-            failures.append(f"{yml.name}: contains '-a jp' in Keychain CLI examples")
-
-    # src/database.py — must not have 'jp' as a string literal in conninfo builders
-    db_src = pathlib.Path("src/database.py").read_text()
-    for match in re.finditer(r"[\"']jp[\"']", db_src):
-        ctx = db_src[max(0, match.start() - 60) : match.end() + 60]
-        # Skip if the match is inside a comment (line starts with #)
-        line_start = db_src.rfind("\n", 0, match.start()) + 1
-        line = db_src[line_start : match.start()]
-        if "#" not in line:
-            failures.append(
-                f"src/database.py: string literal 'jp' at char {match.start()}: "
-                f"...{ctx.strip()}..."
-            )
-
-    assert not failures, (
-        "Personal username 'jp' found in production files:\n"
-        + "\n".join(f"  - {f}" for f in failures)
-        + "\n\nRemove these references, then delete this test."
-    )
 
 
 # ── DOS rate-limit + queue-depth smoke tests ───────────────────────────────────
@@ -24173,8 +24111,13 @@ class TestHITLApprovalFlow:
             hitl_gate_node
         ), "hitl_gate_node must be async"
 
-    def test_hitl_pending_returned_on_halt_tier(self):
-        """check_hitl_required returns hitl_pending=True (not force_end) on HALT tier."""
+    def test_force_end_returned_on_halt_tier(self):
+        """check_hitl_required returns force_end=True (not hitl_pending) on FORCE-END tier.
+
+        FORCE-END categories are unambiguously adversarial — no human gate.
+        Guardian intercepts these first; this path fires as a fallback.
+        See issue #263 for the design rationale.
+        """
         import asyncio
         from unittest.mock import AsyncMock, patch
 
@@ -24191,11 +24134,11 @@ class TestHITLApprovalFlow:
                 )
             )
         assert (
-            result.get("hitl_pending") is True
-        ), "Phase 2: HALT tier must return hitl_pending=True, not force_end"
+            result.get("force_end") is True
+        ), "#263: FORCE-END tier must return force_end=True, not hitl_pending"
         assert (
-            "force_end" not in result
-        ), "Phase 2: force_end should no longer be returned for HALT tier"
+            "hitl_pending" not in result
+        ), "#263: hitl_pending must not be set for FORCE-END tier categories"
 
     def test_hitl_log_tier_still_returns_empty(self):
         """LOG-tier categories must still return {} (run continues unchanged)."""
@@ -24269,3 +24212,279 @@ class TestHITLApprovalFlow:
         assert (
             result == "hitl"
         ), f"check_safeguards must return 'hitl' when hitl_pending=True, got {result!r}"
+
+
+class TestWhatsAppConnector:
+    """Smoke tests for src/connectors/whatsapp.py (Phase J)."""
+
+    def test_whatsapp_connector_module_importable(self):
+        """from src.connectors.whatsapp import app succeeds without Keychain."""
+        from src.connectors.whatsapp import app  # noqa: F401
+
+        assert app is not None
+
+    def test_whatsapp_verify_token_challenge(self):
+        """GET /webhook with correct verify_token returns hub.challenge as plain text."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        _app = build_app(
+            api_key="test_key",
+            api_token="test_token",
+            verify_token="my_verify_token",
+            phone_number_id="1234567890",
+        )
+
+        async def run():
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get(
+                    "/webhook",
+                    params={
+                        "hub.mode": "subscribe",
+                        "hub.verify_token": "my_verify_token",
+                        "hub.challenge": "challenge_xyz",
+                    },
+                )
+                return resp.status_code, resp.text
+
+        status, body = asyncio.run(run())
+        assert status == 200
+        assert body == "challenge_xyz"
+
+    def test_whatsapp_verify_token_wrong_token(self):
+        """GET /webhook with wrong verify_token returns 403."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        _app = build_app(
+            api_key="test_key",
+            api_token="test_token",
+            verify_token="correct_token",
+            phone_number_id="1234567890",
+        )
+
+        async def run():
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get(
+                    "/webhook",
+                    params={
+                        "hub.mode": "subscribe",
+                        "hub.verify_token": "wrong_token",
+                        "hub.challenge": "challenge_abc",
+                    },
+                )
+                return resp.status_code
+
+        assert asyncio.run(run()) == 403
+
+    def test_whatsapp_hmac_invalid_signature(self):
+        """POST /webhook with bad X-Hub-Signature-256 returns 403."""
+        import asyncio
+        import json
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        _app = build_app(
+            api_key="test_key",
+            api_token="real_api_token",
+            verify_token="verify",
+            phone_number_id="1234567890",
+        )
+        body = json.dumps({"entry": []}).encode()
+
+        async def run():
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/webhook",
+                    content=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-hub-signature-256": "sha256=deadbeefdeadbeef",
+                    },
+                )
+                return resp.status_code
+
+        assert asyncio.run(run()) == 403
+
+    def test_whatsapp_hmac_no_secret_skips_validation(self):
+        """POST /webhook with no api_token configured accepts request (status 200)."""
+        import asyncio
+        import json
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        _app = build_app(
+            api_key="test_key",
+            api_token="",  # no token → skip HMAC
+            verify_token="verify",
+            phone_number_id="",
+        )
+        # Minimal payload that results in "ignored" (no messages key)
+        body = json.dumps(
+            {"entry": [{"changes": [{"value": {"statuses": []}}]}]}
+        ).encode()
+
+        async def run():
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/webhook",
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                return resp.status_code
+
+        assert asyncio.run(run()) == 200
+
+    def test_whatsapp_text_message_routes_to_gateway(self):
+        """Valid text message POST submits a task to the gateway (mocked)."""
+        import asyncio
+        import hashlib
+        import hmac as hmaclib
+        import json
+        from unittest.mock import AsyncMock, patch
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        api_token = "test_api_token_for_hmac"
+        body_dict = {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "messages": [
+                                    {
+                                        "from": "15551234567",
+                                        "type": "text",
+                                        "text": {"body": "Hello agent"},
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        body = json.dumps(body_dict).encode()
+        computed = hmaclib.new(api_token.encode(), body, hashlib.sha256).hexdigest()
+        sig_header = f"sha256={computed}"
+
+        _app = build_app(
+            api_key="gw_key",
+            api_token=api_token,
+            verify_token="verify",
+            phone_number_id="99988877766",
+        )
+
+        mock_run_task = AsyncMock()
+
+        async def run():
+            with patch("src.connectors.whatsapp._run_task", mock_run_task), patch(
+                "src.connectors.whatsapp._send_reply", AsyncMock()
+            ):
+                transport = ASGITransport(app=_app)
+                async with AsyncClient(
+                    transport=transport, base_url="http://test"
+                ) as client:
+                    resp = await client.post(
+                        "/webhook",
+                        content=body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-hub-signature-256": sig_header,
+                        },
+                    )
+                    return resp.status_code, resp.json()
+
+        status, data = asyncio.run(run())
+        assert status == 200
+        assert data.get("status") == "queued"
+
+    def test_whatsapp_phone_pii_not_logged(self):
+        """Raw phone number does not appear in _phone_log_safe output."""
+        from src.connectors.whatsapp import _phone_log_safe
+
+        phone = "15551234567"
+        safe = _phone_log_safe(phone)
+        assert phone not in safe
+        assert "4567" in safe
+        assert safe.startswith("****")
+
+    def test_whatsapp_health_endpoint(self):
+        """GET /health returns 200 with status ok."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from src.connectors.whatsapp import build_app
+
+        _app = build_app(
+            api_key="",
+            api_token="",
+            verify_token="",
+            phone_number_id="",
+        )
+
+        async def run():
+            transport = ASGITransport(app=_app)
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get("/health")
+                return resp.status_code, resp.json()
+
+        status, data = asyncio.run(run())
+        assert status == 200
+        assert data["status"] == "ok"
+
+    def test_whatsapp_verify_hmac_valid(self):
+        """_verify_hmac returns True for a correctly signed payload."""
+        import hashlib
+        import hmac as hmaclib
+        from src.connectors.whatsapp import _verify_hmac
+
+        secret = "test_secret"
+        body = b'{"test": "data"}'
+        computed = hmaclib.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        assert _verify_hmac(body, f"sha256={computed}", secret) is True
+
+    def test_whatsapp_verify_hmac_rejects_bad_signature(self):
+        """_verify_hmac returns False for an incorrect or malformed signature."""
+        from src.connectors.whatsapp import _verify_hmac
+
+        body = b'{"test": "data"}'
+        assert _verify_hmac(body, "sha256=deadbeef", "correct_secret") is False
+        assert _verify_hmac(body, "notsha256format", "correct_secret") is False
+
+    def test_whatsapp_phone_hash_stable(self):
+        """_phone_hash returns a consistent short hex string for PII tracking."""
+        from src.connectors.whatsapp import _phone_hash
+
+        h1 = _phone_hash("15551234567")
+        h2 = _phone_hash("15551234567")
+        h3 = _phone_hash("15559876543")
+        assert h1 == h2  # deterministic
+        assert h1 != h3  # different phones → different hashes
+        assert len(h1) == 16  # truncated to 16 hex chars
+
+    def test_whatsapp_module_exports(self):
+        """__all__ exports app, build_app, and main."""
+        import src.connectors.whatsapp as wa
+
+        assert "app" in wa.__all__
+        assert "build_app" in wa.__all__
+        assert "main" in wa.__all__
+        assert callable(wa.build_app)
+        assert callable(wa.main)

@@ -4734,7 +4734,7 @@ const S = {
   toolsCompleted: 0,      // tool_end events received this run
   toolsBlocked:   0,      // tool_blocked events (or client-detected hanging blocks)
   sessionId:      null,   // string | null — active conversation session_id (Phase 57)
-  modelPref:      'balanced', // 'fast' | 'balanced' | 'powerful' (Phase 58)
+  modelPref:      null,   // set by loadModels() from /models default; null = primary
   templates:      [],     // cached template list (Phase 61)
   streamEl:       null,   // single accumulator element for live token streaming (Phase 69)
   attachText:     null,   // plain-text content of attached file (Phase 70)
@@ -4905,6 +4905,13 @@ function notifyTaskComplete(taskInput, elapsed) {
 }
 
 // ── Phase 72: Multi-Theme Cycler ───────────────────────────────────────────
+var _THEMES = ['dark', 'light', 'solarized', 'warm', 'nord', 'contrast'];
+var _THEME_ICONS = {
+  dark: '🌙', light: '☀️', solarized: '🌅', warm: '🔥', nord: '❄️', contrast: '◑'
+};
+var _THEME_NAMES = {
+  dark: 'Dark', light: 'Light', solarized: 'Solarized', warm: 'Warm', nord: 'Nord', contrast: 'Contrast'
+};
 
 function _applyTheme(theme) {
   // Remove legacy light-mode class
@@ -5046,9 +5053,11 @@ async function loadModels() {
     const data = await resp.json();
     const models = data.models || [];
     const defaultModel = data.default || '';
-    sel.innerHTML = models.map(m =>
-      `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${m}</option>`
-    ).join('');
+    const presets = data.presets || {};
+    sel.innerHTML = models.map(m => {
+      const label = (presets[m] && presets[m].includes('/')) ? `${m} (cloud)` : m;
+      return `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${label}</option>`;
+    }).join('');
     // Set state to current selection
     S.modelPref = sel.value;
   } catch (e) {
@@ -5910,7 +5919,7 @@ async function submitTask() {
         'Authorization': 'Bearer ' + apiKey,
       },
       body: JSON.stringify({
-        task, agent_type: agent, model_preference: S.modelPref,
+        task, agent_type: agent, model_preference: S.modelPref || null,
         ...((_ACTIVE_SESSION ? _ACTIVE_SESSION.session_id : null) || S.sessionId ? { session_id: (_ACTIVE_SESSION ? _ACTIVE_SESSION.session_id : null) || S.sessionId } : {}),
         ...(S.attachText  ? { attachment_text: S.attachText,
                               attachment_filename: S.attachName }  : {}),

@@ -1,11 +1,11 @@
 VERSION: 0.7.1-alpha
-UPDATE: 327
-BRANCH: main
-COMMIT: 6148fb9
-TIMESTAMP: 2026-03-14T18:30Z
-LAST_OP: PRs #253 #254 merged — HITL approval flow + WhatsApp connector + black CVE fix landed
-NEXT_OP: sync dev→main; fix .env tracking; rename jp PostgreSQL superuser; live UAT for HITL
-SMOKE_TESTS: 2247/2247
+UPDATE: 331
+BRANCH: dev
+COMMIT: pending
+TIMESTAMP: 2026-03-16T23:00Z
+LAST_OP: fix: fan_out_researchers list coercion + worker recursion limit + llama3.1:8b primary + model dropdown presets (UAT Day 2)
+NEXT_OP: UAT Day 3 — InceptionLabs provider integration + OpenRouter vs local llama3.1 comparison test batch + T1.x continuation
+SMOKE_TESTS: 2246/2246
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

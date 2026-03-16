@@ -110,8 +110,8 @@ All commands assume the venv is active: `source venv/bin/activate`
 |--------|-------------|-----------|
 | `test` | Run all test suites (smoke → testlab → ui in separate sessions) | — |
 | `test-fast` | Smoke + TestLab + UI, excluding slow/LLM tests | — |
-| `test-smoke` | 2133 smoke tests, ~21s, no external services required | — |
-| `test-integration` | 38 integration tests (requires PostgreSQL — `make db-start` first) | — |
+| `test-smoke` | 2247 smoke tests, ~21s, no external services required | — |
+| `test-integration` | 41 integration tests (requires PostgreSQL — `make db-start` first) | — |
 | `test-kerberos` | 5 live-KDC Kerberos tests | `[KERBEROS_TEST_KDC=1]` `[KERBEROS_REALM=TEST.LOCAL]` `[KERBEROS_KEYTAB=/tmp/test.keytab]` `[KERBEROS_TEST_USER=testuser]` `[KERBEROS_TEST_PASS=testpass]` |
 | `test-all` | Single-session run of all tests (for CI/quick checks) | — |
 | `test-ui` | 40 Playwright UI tests headless (separate pytest session) | — |
@@ -340,4 +340,10 @@ All commands assume the venv is active: `source venv/bin/activate`
 | `dev-branch` | Create and switch to dev branch (or switch if exists) | — |
 | `logs` | Tail the agent log (live JSON streaming) | — |
 | `clean-logs` | Remove logs older than 30 days | — |
+
+## Public Preview Publishing
+
+| Target | Description | Arguments |
+|--------|-------------|-----------|
+| `publish-preview` | Push `docs/public/` landing page files to `jp-cruz/LegionForge` using PAT from Keychain (`legionforge_preview_pat`) | — |
 | `cluster-status` | Show Ollama cluster health across all configured nodes | — |

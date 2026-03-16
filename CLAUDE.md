@@ -19,10 +19,10 @@ make start          # Full startup (drive check → Ollama → PostgreSQL → mo
 make stop           # Graceful shutdown
 
 # Testing
-make test-smoke     # 2125 smoke tests, ~21s, no external services required
+make test-smoke     # 2247 smoke tests, ~21s, no external services required
 make test-critical  # smoke + security_attacks + UI page-load, ~35s — fast iteration gate
 make test           # Full suite: smoke → testlab → ui (separate sessions, ~70s)
-make test-integration  # 38 integration tests (requires PostgreSQL — make db-start first)
+make test-integration  # 41 integration tests (requires PostgreSQL — make db-start first)
 make test-fast      # smoke + testlab(not slow) + ui
 
 # CI gate — run this before every commit, not just test-smoke
@@ -93,12 +93,12 @@ Security violations are logged to the `threat_events` table with structured type
 ## Phase Status
 
 - **Phases 0–16** ✅ Complete: Full security stack, multi-user gateway, integration tests, modular auth, containerized gateway, multi-provider auth registry, Redis-backed state layer, real Kerberos GSSAPI backend, multi-instance docker-compose, Redis global budget counters, Prometheus /metrics endpoint, request trace ID middleware, polished web UI, Telegram/Slack/Webhook channel connectors. 492/492 smoke tests, 38/38 integration tests, 5/5 Kerberos live-KDC tests.
-- **Phases 60–381 + G1–G4** ✅ Complete: 381-tool operator dashboard, web_fetch_js headless browser, Guardian G4 (published to PyPI as `legionforge-guardian`, public repo live at LegionForge/LegionForge-Guardian, auto-sync Action), agent memory all 5 gaps, dual license (AGPLv3 + commercial). 2125/2125 smoke tests, 79/79 tool accuracy tests.
+- **Phases 60–381 + G1–G4 + H + I + J + HITL** ✅ Complete: 381-tool operator dashboard, web_fetch_js headless browser, Guardian G4 (published to PyPI as `legionforge-guardian`, public repo live at LegionForge/LegionForge-Guardian, auto-sync Action), agent memory all 5 gaps, dual license (AGPLv3 + commercial), session continuity UI, multi-modal image input, HITL approval gate, WhatsApp connector. 2247/2247 smoke tests, 79/79 tool accuracy tests, 114/114 crystallization tests.
 
 ## Branch & Commit Conventions
 
 - `main` ← `dev` ← `feature/xxx` / `fix/xxx` / `refactor/xxx`
-- Smoke test count must never decrease; current baseline: 2125 (v0.7.1-alpha, post-G4)
+- Smoke test count must never decrease; current baseline: 2247 (v0.7.1-alpha, post-WhatsApp + HITL)
 - **Gate before every commit: `make ci`** (smoke → testlab → ui + bandit + URI scan). `make test-smoke` alone is not sufficient — cross-suite event loop issues only appear in the full run.
 - One concern per commit/PR. Do not bundle UI changes, agent logic changes, and test changes in a single commit. If a fix touches more than two files, ask whether it should be split.
 - Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `security:`, `docs:`)
@@ -116,6 +116,30 @@ Common failure patterns to check for every agent/LLM change:
 - What does this code path do if the LLM returns no `tool_calls`? (use `mock_llm_no_tool_calls` fixture)
 - Does the fix apply through the gateway worker `initial_state` path, not just direct invocation?
 - Does adding async fixtures to a test file break isolation when run with `pytest tests/`?
+
+## Development Discipline — Standing Rules
+
+**These rules are non-negotiable. Apply them every session without being asked.**
+
+### Before writing any code, Claude must ask (or Jp must provide):
+1. **What GitHub issue does this close?** If none exists, write the 5-line spec first:
+   - *Problem / Goal / Scope / Done-when / ADR needed?*
+   - If Jp can't fill these in, the feature is not ready to build. Help him write the spec instead.
+2. **Is this in scope for the current session goal?** If not, capture it as a GitHub issue and return to the stated goal.
+3. **Does this fit the current project status?** LegionForge is in bug-fix/UAT mode until v0.8.0 (target: 2026-03-22). No new features.
+
+### Session boundaries
+- **Start:** `make briefing` or `read NEXT.md` — every session, no exceptions.
+- **End:** Update `NEXT.md`, `checkpoint.md`, `CHANGELOG.md` — every session, no exceptions.
+- **Mid-session drift:** If a new idea surfaces, say: *"That's worth capturing — should I open an issue for after v0.8.0, or do you want to change the session goal?"* Do not just start building it.
+
+### Scope and focus
+- One project in ACTIVE development at a time. LegionForge is ACTIVE. All others are MAINTENANCE or HALTED.
+- If Jp raises a new project idea: acknowledge it, suggest noting it for later, move on.
+- If Jp asks to evaluate a new AI tool: *"We closed the tool evaluation on 2026-03-14. Is there a specific reason to reopen it?"*
+
+### Why these rules exist
+Jp is neurodivergent, managing high cognitive load across professional AI work, personal projects, and family. AI tools accelerate scatter-brained behavior when unconstrained. These rules are load-bearing — not suggestions. Jp has explicitly asked for this friction. Apply it.
 
 ## Checkpoint File (`checkpoint.md`)
 

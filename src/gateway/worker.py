@@ -92,7 +92,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     await publish_event(task_id, build_task_start_event(task_id, agent_type))
 
     # Phase 58: set model preference for this async task context so
-    # get_primary_llm() returns the correct model (fast/balanced/powerful).
+    # get_primary_llm() returns the correct model for this task.
     from src.llm_factory import set_task_model_preference
 
     set_task_model_preference(task.get("model_preference"))
@@ -213,14 +213,18 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         lg_thread_id = run_id
         increment_session_turn = None  # no-op reference
 
+    from config.settings import settings as _settings
+
     config = {
         "configurable": {
             "thread_id": lg_thread_id,
             "tracing_enabled": task_config.get("tracing_enabled", True),
-        }
+        },
+        # Default to the profile's recursion limit so the graph doesn't hit
+        # LangGraph's built-in default of 25 on orchestrator fan-out tasks.
+        "recursion_limit": task_config.get("max_steps")
+        or _settings.safeguards.default_recursion_limit,
     }
-    if task_config.get("max_steps"):
-        config["recursion_limit"] = task_config["max_steps"]
 
     # ── Compile with checkpointer + stream events ──────────────────────────
     collected_events: list[dict] = []

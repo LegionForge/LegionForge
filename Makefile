@@ -270,14 +270,17 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	@sleep 1
 	@echo "Starting gateway on :8080..."
 	@cd $(BASE) && \
+	  POSTGRES_USER=legionforge_admin \
 	  POSTGRES_PASSWORD=$$(security find-generic-password -s postgres -a api_key -w $(KEYCHAIN) 2>/dev/null || \
-	    awk -F: '/^\*:5432:\*:jp:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
+	    awk -F: '/^\*:5432:\*:legionforge_admin:/{print $$5}' ~/.pgpass 2>/dev/null || echo "") \
 	  TOOL_SIGNING_PRIVATE_KEY=$$(security find-generic-password -s legionforge_tool_signer -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  TASK_TOKEN_SECRET=$$(security find-generic-password -s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  LEGIONFORGE_HEALTH_TOKEN=$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  TAVILY_API_KEY=$$(security find-generic-password -s legionforge_tavily_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  BRAVE_API_KEY=$$(security find-generic-password -s legionforge_brave_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  POSTGRES_APP_PASSWORD=$$(security find-generic-password -s legionforge_db_app -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  OPENROUTER_API_KEY=$$(security find-generic-password -s openrouter -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  INCEPTIONLABS_API_KEY=$$(security find-generic-password -s legionforge_inceptionlabs_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
@@ -485,7 +488,7 @@ db-start:
 	@brew services start postgresql@17 2>/dev/null || true
 	@printf "   Waiting for PostgreSQL to accept connections"; \
 	for i in $$(seq 1 20); do \
-		if pg_isready -U "$${POSTGRES_USER:-jp}" -d legionforge -q 2>/dev/null; then \
+		if pg_isready -U "$${POSTGRES_USER:-legionforge_admin}" -d legionforge -q 2>/dev/null; then \
 			printf " ✅\n"; break; \
 		fi; \
 		printf "."; sleep 1; \
@@ -1660,6 +1663,46 @@ register-agent-sequences:
 	@echo "Registering all agent expected sequences..."
 	@cd $(BASE) && echo "$$_REGISTER_SEQUENCES_PY" | $(PYTHON)
 	@echo "✅ All agent sequences registered"
+
+# ── Public Preview Publishing ─────────────────────────────────
+# Pushes docs/public/ landing page files to https://github.com/jp-cruz/LegionForge
+# These files are gitignored in the private dev repo — local-only pre-release drafts.
+#
+# One-time setup: store a jp-cruz PAT with repo scope in Keychain:
+#   security add-generic-password -A -s legionforge_preview_pat -a api_key -w <YOUR_PAT>
+#
+# LegionForge_readme.md  → published as README.md
+# LegionForge_index.md   → published as index.md (rename to index.html for GitHub Pages)
+PREVIEW_REPO    := https://github.com/jp-cruz/LegionForge
+PREVIEW_DIR     := /tmp/legionforge-preview
+PREVIEW_BRANCH  := main
+
+.PHONY: publish-preview
+publish-preview:
+	@PAT=$$(security find-generic-password -s legionforge_preview_pat -a api_key -w $(KEYCHAIN) 2>/dev/null); \
+	if [ -z "$$PAT" ]; then \
+		echo "❌ PAT not found. Run: security add-generic-password -A -s legionforge_preview_pat -a api_key -w <YOUR_PAT>"; \
+		exit 1; \
+	fi; \
+	REMOTE="https://jp-cruz:$$PAT@github.com/jp-cruz/LegionForge.git"; \
+	if [ -d "$(PREVIEW_DIR)/.git" ]; then \
+		git -C $(PREVIEW_DIR) fetch origin && git -C $(PREVIEW_DIR) reset --hard origin/$(PREVIEW_BRANCH); \
+	else \
+		rm -rf $(PREVIEW_DIR) && git clone "$$REMOTE" $(PREVIEW_DIR); \
+	fi; \
+	cp $(BASE)/docs/public/LegionForge_readme.md $(PREVIEW_DIR)/README.md; \
+	cp $(BASE)/docs/public/LegionForge_index.md  $(PREVIEW_DIR)/index.md; \
+	cd $(PREVIEW_DIR) && git add README.md index.md; \
+	if git diff --cached --quiet; then \
+		echo "✅ publish-preview: nothing changed, preview repo already up to date"; \
+	else \
+		git -C $(PREVIEW_DIR) \
+			-c user.name="Jp Cruz" \
+			-c user.email="jp@legionforge.org" \
+			commit -m "chore: sync preview landing page from LegionForge dev"; \
+		git -C $(PREVIEW_DIR) push "$$REMOTE" $(PREVIEW_BRANCH); \
+		echo "✅ Published to $(PREVIEW_REPO)"; \
+	fi
 
 # ── Git ───────────────────────────────────────────────────────
 .PHONY: git-status

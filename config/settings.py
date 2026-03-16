@@ -184,6 +184,9 @@ class ModelEntry(BaseModel):
     quantization: Optional[str] = None
     # Phase 6: SHA256 of the GGUF file for integrity verification. Empty = skip.
     gguf_sha256: str = ""
+    # Issue #260: context window override. None = use Ollama default (4096 for most models).
+    # Research tasks need ≥16384 to hold system prompt + tool results without truncation.
+    num_ctx: Optional[int] = None
 
 
 class CloudModel(BaseModel):
@@ -638,24 +641,6 @@ class SearchSettings(BaseModel):
     searxng: SearXNGSearchConfig = SearXNGSearchConfig()
 
 
-class ModelPreferencesConfig(BaseModel):
-    """
-    Phase 58 — Named model speed presets for per-task model selection.
-
-    Maps preference names (fast / balanced / powerful) to specific model IDs.
-    Referenced by ``set_task_model_preference()`` in ``src/llm_factory.py``.
-    Override in your hardware YAML profile under ``model_preferences:``.
-    """
-
-    fast: str = "qwen2.5:3b"
-    balanced: str = "qwen2.5:7b"
-    powerful: str = "qwen2.5:7b"
-
-    def get(self, pref: str) -> str | None:
-        """Return the model_id for a named preference, or None if unknown."""
-        return getattr(self, pref, None)
-
-
 class DatabaseConfig(BaseModel):
     """
     Connection-level behaviour for worker pool connections.
@@ -721,7 +706,9 @@ class HardwareSettings(BaseModel):
     connectors: ConnectorsConfig = ConnectorsConfig()
     agent_memory: AgentMemoryConfig = AgentMemoryConfig()
     search: SearchSettings = SearchSettings()
-    model_preferences: ModelPreferencesConfig = ModelPreferencesConfig()
+    # Cloud presets: arbitrary name → "provider/model" string.
+    # Local Ollama models need no entry here — they appear in the dropdown automatically.
+    model_preferences: dict[str, str] = {}
     db_maintenance: DbMaintenanceSettings = DbMaintenanceSettings()
     database: DatabaseConfig = DatabaseConfig()
 
