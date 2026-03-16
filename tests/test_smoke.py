@@ -10717,16 +10717,15 @@ def test_p57_ui_has_delete_current_session():
 
 
 def test_p58_settings_has_model_preferences():
-    """HardwareSettings exposes model_preferences with fast/balanced/powerful."""
+    """HardwareSettings exposes model_preferences as a dict of cloud presets."""
     from config.settings import settings
 
     mp = settings.model_preferences
-    assert hasattr(mp, "fast")
-    assert hasattr(mp, "balanced")
-    assert hasattr(mp, "powerful")
-    assert mp.fast  # non-empty string
-    assert mp.balanced
-    assert mp.powerful
+    assert isinstance(mp, dict)
+    # Each value must be a non-empty "provider/model" string
+    for name, model_id in mp.items():
+        assert isinstance(name, str) and name
+        assert isinstance(model_id, str) and model_id
 
 
 def test_p58_set_task_model_preference_importable():
