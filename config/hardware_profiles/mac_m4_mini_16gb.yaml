@@ -91,18 +91,22 @@ local_services:
 # The framework uses these defaults; override per-agent in agent config
 models:
   primary:
-    provider: "openrouter"
-    model_id: "mistralai/mistral-small-3.1-24b-instruct:free"
-    # Upgrade to llama-3.3-70b-instruct:free when free tier congestion clears
-    estimated_size_gb: 0.0   # cloud — no local memory cost
+    provider: "ollama"
+    model_id: "llama3.1:8b"
+    # Issue #260: switched from qwen2.5:7b to llama3.1:8b (local).
+    # llama3.1 was Meta's first model explicitly fine-tuned for tool calling.
+    # OpenRouter free tier (mistral-small, llama-3.3-70b) consistently 429s
+    # under back-to-back UAT load — local is more reliable for dev/UAT.
+    # num_ctx=16384 gives ~13k of usable context for web_fetch_js responses.
+    # KV cache at 16384 ctx: ~5.5GB total (model 4.7GB + cache) — within 10GB budget.
+    estimated_size_gb: 4.7
     use_cases:
       - general_reasoning
       - writing
       - analysis
       - tool_calling
-    # Issue #260: switched from qwen2.5:7b (local, 4096 ctx) to llama-3.3-70b via
-    # OpenRouter (cloud, 128k ctx). Testing whether tool-calling failures were model
-    # capability vs context headroom. Phase 1 (num_ctx=16384) left as fallback config.
+    quantization: "q4_K_M"
+    gguf_sha256: ""
     num_ctx: 16384
 
   router:
@@ -435,9 +439,9 @@ search:
 # Users can select fast/balanced/powerful per task submission.
 # Upgrade "powerful" to a 70b+ quantized model when hardware allows.
 model_preferences:
-  fast:     "qwen2.5:3b"                              # local, fast, routing only
-  balanced: "mistralai/mistral-small-3.1-24b-instruct:free"  # OpenRouter free tier
-  powerful: "meta-llama/llama-3.3-70b-instruct:free"         # upgrade when congestion clears
+  fast:     "qwen2.5:3b"                                     # local, fast, routing only
+  balanced: "llama3.1:8b"                                    # local, reliable tool calling
+  powerful: "mistralai/mistral-small-3.1-24b-instruct:free"  # OpenRouter (free, when available)
 
 # ── DB Maintenance — nightly pruning with per-table retention ─────────────────
 # Runs once per 24h via the gateway scheduler (src/scheduler.py).

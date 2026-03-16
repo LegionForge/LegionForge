@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 329
+UPDATE: 331
 BRANCH: dev
-COMMIT: 4479e12
-TIMESTAMP: 2026-03-15T14:40Z
-LAST_OP: T0.1 — renamed PostgreSQL superuser jp → legionforge_admin; scrubbed all jp DB user references; fixed pre-existing bandit nosec; added post_uat_review/ docs
-NEXT_OP: T9 observability sanity checks, then T1.1–T1.5 core task flow UAT
+COMMIT: pending
+TIMESTAMP: 2026-03-16T23:00Z
+LAST_OP: fix: fan_out_researchers list coercion + worker recursion limit + llama3.1:8b primary + model dropdown presets (UAT Day 2)
+NEXT_OP: UAT Day 3 — InceptionLabs provider integration + OpenRouter vs local llama3.1 comparison test batch + T1.x continuation
 SMOKE_TESTS: 2246/2246
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

@@ -5053,9 +5053,11 @@ async function loadModels() {
     const data = await resp.json();
     const models = data.models || [];
     const defaultModel = data.default || '';
-    sel.innerHTML = models.map(m =>
-      `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${m}</option>`
-    ).join('');
+    const presets = data.presets || {};
+    sel.innerHTML = models.map(m => {
+      const label = presets[m] ? `${m} (${presets[m]})` : m;
+      return `<option value="${m}"${m === defaultModel ? ' selected' : ''}>${label}</option>`;
+    }).join('');
     // Set state to current selection
     S.modelPref = sel.value;
   } catch (e) {
