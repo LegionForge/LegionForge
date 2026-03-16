@@ -79,6 +79,8 @@ _SERVICE_TO_ENV: dict[str, str] = {
     "legionforge_exa_api_key": "EXA_API_KEY",
     "legionforge_perplexity_api_key": "PERPLEXITY_API_KEY",
     "legionforge_firecrawl_api_key": "FIRECRAWL_API_KEY",
+    # InceptionLabs cloud LLM provider (mercury-2, OpenAI-compatible)
+    "legionforge_inceptionlabs_api_key": "INCEPTIONLABS_API_KEY",
 }
 
 # All environment variable names that contain secrets.

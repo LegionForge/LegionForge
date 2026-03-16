@@ -280,6 +280,7 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	  BRAVE_API_KEY=$$(security find-generic-password -s legionforge_brave_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  POSTGRES_APP_PASSWORD=$$(security find-generic-password -s legionforge_db_app -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  OPENROUTER_API_KEY=$$(security find-generic-password -s openrouter -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  INCEPTIONLABS_API_KEY=$$(security find-generic-password -s legionforge_inceptionlabs_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."

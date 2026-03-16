@@ -30,7 +30,7 @@ from src.rate_limiter import get_limiter
 # without touching global state or changing any agent code.
 #
 # Usage (worker sets before running agent):
-#   set_task_model_preference("fast")   # or "balanced" / "powerful" / None
+#   set_task_model_preference("mercury-2")  # or any preset/model-id / None
 #   llm = get_primary_llm()            # returns model for that preference
 _task_model_pref: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "task_model_pref", default=None
@@ -46,7 +46,7 @@ def set_task_model_preference(pref: str | None) -> None:
     task runs are fully isolated from each other.
 
     Args:
-        pref: "fast", "balanced", "powerful", or None (= default primary model).
+        pref: a named preset from model_preferences, a direct Ollama model ID, or None (= primary).
     """
     _task_model_pref.set(pref)
 
@@ -66,7 +66,7 @@ def get_llm(
     Create an LLM instance for the given provider and model.
 
     Args:
-        provider:    "ollama", "openai", "anthropic", or "openrouter"
+        provider:    "ollama", "openai", "anthropic", "openrouter", or "inceptionlabs"
         model:       Model ID. If None, uses the profile's primary model.
         temperature: Sampling temperature (0.0 = deterministic)
         max_tokens:  Max output tokens. If None, uses profile safeguard limit.
@@ -86,10 +86,12 @@ def get_llm(
         return _get_anthropic(model, temperature, max_tokens, streaming, **kwargs)
     elif provider == "openrouter":
         return _get_openrouter(model, temperature, max_tokens, streaming, **kwargs)
+    elif provider == "inceptionlabs":
+        return _get_inceptionlabs(model, temperature, max_tokens, streaming, **kwargs)
     else:
         raise ValueError(
             f"Unknown provider '{provider}'. "
-            f"Supported: 'ollama', 'openai', 'anthropic', 'openrouter'"
+            f"Supported: 'ollama', 'openai', 'anthropic', 'openrouter', 'inceptionlabs'"
         )
 
 
@@ -105,6 +107,12 @@ def get_primary_llm(**kwargs) -> BaseChatModel:
     if pref:
         model_id = settings.model_preferences.get(pref)
         if model_id:
+            # Cloud presets use "provider/model" format (e.g. "inceptionlabs/mercury-2").
+            # Local presets are bare Ollama model IDs (e.g. "llama3.1:8b").
+            if "/" in model_id:
+                provider, model = model_id.split("/", 1)
+                logger.info(f"Loading cloud preset '{pref}': {provider}/{model}")
+                return get_llm(provider, model, **kwargs)
             logger.info(
                 f"Loading model by preset '{pref}': "
                 f"{settings.models.primary.provider}/{model_id}"
@@ -261,6 +269,36 @@ def _get_openrouter(
             "HTTP-Referer": "https://github.com/LegionForge/LegionForge",
             "X-Title": "LegionForge",
         },
+        **kwargs,
+    )
+
+
+def _get_inceptionlabs(
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    streaming: bool,
+    **kwargs,
+) -> BaseChatModel:
+    """InceptionLabs — OpenAI-compatible diffusion LLM API.
+
+    Uses ChatOpenAI with base_url override. Primary model: mercury-2.
+    Key stored in Keychain under service 'legionforge_inceptionlabs_api_key'.
+    Docs: https://api.inceptionlabs.ai/v1
+    """
+    from langchain_openai import ChatOpenAI
+    from src.security import get_api_key
+
+    model = model or "mercury-2"
+    api_key = get_api_key("legionforge_inceptionlabs_api_key")
+
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url="https://api.inceptionlabs.ai/v1",
+        temperature=temperature,
+        max_tokens=max_tokens,
+        streaming=streaming,
         **kwargs,
     )
 
