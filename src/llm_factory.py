@@ -110,12 +110,27 @@ def get_primary_llm(**kwargs) -> BaseChatModel:
                 f"{settings.models.primary.provider}/{model_id}"
             )
             return get_llm(settings.models.primary.provider, model_id, **kwargs)
-        # Not a named preset — treat as a direct Ollama model ID
-        logger.info(
-            f"Loading model by direct ID '{pref}': "
-            f"{settings.models.primary.provider}/{pref}"
-        )
-        return get_llm(settings.models.primary.provider, pref, **kwargs)
+        # Not a named preset.
+        # For ollama: treat as a direct model ID (e.g. "qwen2.5:7b").
+        # For cloud providers: Ollama model IDs are meaningless — fall back to
+        # the configured primary so stale UI preferences don't cause 400 errors.
+        if settings.models.primary.provider == "ollama":
+            logger.info(
+                f"Loading model by direct ID '{pref}': "
+                f"{settings.models.primary.provider}/{pref}"
+            )
+            return get_llm(settings.models.primary.provider, pref, **kwargs)
+        else:
+            logger.warning(
+                f"Model preference '{pref}' is not a named preset and provider is "
+                f"'{settings.models.primary.provider}' — ignoring stale model ID, "
+                f"using configured primary '{settings.models.primary.model_id}'"
+            )
+            return get_llm(
+                settings.models.primary.provider,
+                settings.models.primary.model_id,
+                **kwargs,
+            )
     m = settings.models.primary
     logger.info(f"Loading primary model: {m.provider}/{m.model_id}")
     return get_llm(m.provider, m.model_id, **kwargs)
