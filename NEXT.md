@@ -4,29 +4,49 @@
 ---
 
 ## Last updated
-2026-03-17 22:30 UTC — UAT Day 4. Guardian DB connectivity fixed. Alias normalization confirmed working. New pre-v0.8.0 blocker found: orchestrator synthesis bug (system prompt contradicts step-2). T4.1 still blocked.
+2026-03-17 23:00 UTC — Session close. PR #280 open (guardian-start POSTGRES_USER fix). New pre-v0.8.0 blocker: orchestrator synthesis bug. T4.1 still blocked. All docs current.
 
 ## State
-- **Branch:** `dev` — 7 commits ahead of main + 1 uncommitted change (Makefile)
+- **Branch:** `dev` — 8 commits ahead of main
 - **Smoke tests:** 2251/2251
-- **Open PRs:** none (PR #279 merged)
-- **Uncommitted:** `Makefile` — `guardian-start` POSTGRES_USER fix (needs commit + PR)
+- **Open PRs:** #280 (guardian-start POSTGRES_USER fix — ready to merge)
 - **Ship target:** v0.8.0 — Sunday 2026-03-22
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
 ## UAT Day 5 — start here (2026-03-18)
 
-### 🔴 Priority 1: Commit Makefile guardian-start fix + open synthesis issue
-Two things before any testing:
-1. Commit the Makefile change (`export POSTGRES_USER=legionforge_guardian` in `guardian-start`)
-2. Open a GitHub issue for the orchestrator synthesis bug. Spec is ready:
-   - **Problem:** System prompt says "MUST call a tool on every response" — contradicts step-2 synthesis. After `fan_out_researchers` returns results, the LLM produces "I've called all the necessary tools..." instead of synthesizing.
-   - **Fix:** On step 2+, when last message is a ToolMessage, inject a synthesis HumanMessage overriding the tool-call mandate before the LLM call.
-   - **Scope:** One targeted block in `agent_node` in `src/agents/orchestrator.py`.
-   - **Done when:** HackerNews prompt returns actual analysis, not placeholder.
+### 🔴 Priority 1: Merge PR #280
+PR is green. Merge it, re-sync dev.
 
-### 🔴 Priority 2: Fix orchestrator synthesis bug (pre-v0.8.0 blocker)
-After opening the issue, implement the fix. See spec in Priority 1. Run `make test-critical` before committing.
+### 🔴 Priority 2: Open GitHub issue for orchestrator synthesis bug
+Spec is ready — open the issue before touching code:
+- **Problem:** `_ORCHESTRATOR_SYSTEM_CONTENT` says "MUST call a tool on every response" — on step 2+, after tools return results, the LLM obeys the mandate and produces "I've called all the necessary tools..." instead of synthesizing.
+- **Fix:** On step 2+, when the last message in history is a ToolMessage, inject a synthesis HumanMessage before the LLM call that overrides the tool-call mandate: *"Research complete. You have the results above. DO NOT call any more tools. Write your complete, detailed answer now."*
+- **File:** `src/agents/orchestrator.py` → `agent_node` function, step > 1 path
+- **Done when:** HackerNews prompt returns actual headline analysis, not placeholder.
+
+### 🔴 Priority 3: Fix orchestrator synthesis bug (pre-v0.8.0 blocker)
+After opening the issue: implement the fix, run `make test-critical`, commit, PR.
+
+### 🔴 Priority 4: Retest T4.1
+After synthesis fix: resubmit HackerNews headlines task. Should return real analysis.
+
+### 🔴 Priority 5: Fix #266 — HITL UI (pre-v0.8.0 blocker)
+Header badge + admin queue panel + approve/reject modal.
+
+### Priority 6: Fix #268 — persist tool call events
+Agent events not written to task_events table. Fix steps counter for sub-agent calls.
+
+### Priority 7: `make sanity` / runtime health target
+30s real checks: gateway /health, DB ping, valid API key round-trip, Ollama model loaded.
+
+### Priority 8: Fix postgres Keychain item missing
+`security find-generic-password -s postgres -a api_key` returns not found. CLI tools fail without manual env export.
+
+### Priority 9: Continue UAT T4 block (after synthesis fix)
+- T4.1: researcher end-to-end — **blocked on synthesis fix**
+- T4.2: document ingestion + RAG retrieval
+- T4.3: memory clear
 
 ### 🔴 Priority 3: Retest T4.1 after synthesis fix
 Resubmit the HackerNews headlines task. Should complete with actual research output.

@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 336
+UPDATE: 337
 BRANCH: dev
-COMMIT: dcf2530 (+ 1 uncommitted — Makefile guardian-start POSTGRES_USER fix)
-TIMESTAMP: 2026-03-17T22:30Z
-LAST_OP: UAT Day 4 (session 2) — Guardian DB connectivity fixed (POSTGRES_USER override from .env) — alias normalization confirmed end-to-end — new pre-v0.8.0 blocker: orchestrator synthesis bug (system prompt contradicts step-2 LLM call)
-NEXT_OP: Commit Makefile change → open synthesis issue → fix synthesis bug → retest T4.1 → fix #266 (HITL UI) → fix #268 (tool call events)
+COMMIT: 724a998
+TIMESTAMP: 2026-03-17T23:00Z
+LAST_OP: UAT Day 4 (session close) — fix: guardian-start POSTGRES_USER override (PR #280 open) — session closed cleanly
+NEXT_OP: Merge PR #280 → open synthesis issue → fix synthesis bug (orchestrator step-2) → retest T4.1 → fix #266 (HITL UI) → fix #268 (tool call events)
 SMOKE_TESTS: 2251/2251
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
