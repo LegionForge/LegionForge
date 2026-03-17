@@ -23026,7 +23026,6 @@ def test_secure_tool_node_normalises_before_registry_check():
 
     src = pathlib.Path("src/base_graph.py").read_text()
     # Normalisation must happen before the tool_calls loop (at message level)
-    alias_pos = src.index("_alias_map")
     norm_pos = src.index("needs_rewrite")
     loop_pos = src.index("for tc in tool_calls:")
     assert (
@@ -23035,6 +23034,43 @@ def test_secure_tool_node_normalises_before_registry_check():
     assert (
         "model_copy" in src[norm_pos:loop_pos]
     ), "message must be rewritten with canonical names"
+    # tool_calls must be assigned from normalised_tcs directly (not via model_copy
+    # round-trip) so Guardian always receives the canonical name (issue #276).
+    assert (
+        "tool_calls = normalised_tcs" in src[norm_pos:loop_pos]
+    ), "tool_calls must be assigned from normalised_tcs directly, not via model_copy"
+
+
+def test_secure_tool_node_alias_map_contains_fan_out_researchers():
+    """Runtime check: SecureToolNode built with ORCHESTRATOR_TOOLS must have
+    'fanoutresearchers' → 'fan_out_researchers' in its alias map (issue #276).
+    """
+    from src.base_graph import SecureToolNode
+    from src.agents.orchestrator import ORCHESTRATOR_TOOLS
+
+    node = SecureToolNode(ORCHESTRATOR_TOOLS)
+    assert (
+        "fanoutresearchers" in node._alias_map
+    ), "alias map must contain 'fanoutresearchers' key"
+    assert (
+        node._alias_map["fanoutresearchers"] == "fan_out_researchers"
+    ), "fanoutresearchers must map to fan_out_researchers"
+
+
+def test_verify_tool_before_invocation_has_alias_fallback():
+    """verify_tool_before_invocation must have a defensive alias fallback so that
+    dropped-underscore names (e.g. fanoutresearchers) are resolved to their canonical
+    form even if SecureToolNode normalisation was bypassed (issue #276).
+    """
+    import pathlib
+
+    src = pathlib.Path("src/security/core.py").read_text()
+    assert (
+        'replace("_", "")' in src or "replace('_', '')" in src
+    ), "core.py must contain underscore-strip alias lookup"
+    assert (
+        "Alias fallback" in src
+    ), "verify_tool_before_invocation must log alias fallback warning"
 
 
 # ── RBAC pool-routing static analysis ────────────────────────────────────────
