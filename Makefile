@@ -189,6 +189,10 @@ briefing:
 	@if [ -f $(BASE)/NEXT.md ]; then head -45 $(BASE)/NEXT.md; \
 	else echo "  (no NEXT.md — ask Claude to write one)"; fi
 	@echo ""
+	@echo "── End of session reminders ─────────────────────────"
+	@echo "  • Update NEXT.md — timestamp format: YYYY-MM-DD HH:MM UTC"
+	@echo "  • Update checkpoint.md"
+	@echo "  • Post-merge re-sync: git merge origin/main --no-edit && git push origin dev"
 	@echo "════════════════════════════════════════════════════"
 	@echo ""
 
