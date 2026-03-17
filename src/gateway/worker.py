@@ -15,6 +15,17 @@ FOR UPDATE SKIP LOCKED claim query is already safe for concurrent use.
 Phase 46 adds a watchdog heartbeat (every 5 min) that reaps tasks stuck in
 'running' for longer than TASK_WATCHDOG_TIMEOUT seconds (default 1800 / 30 min).
 
+Issue #272 adds:
+  - WORKER_NODE_ID: stable identity for this process (env var or generated UUID).
+    Stamped on every claimed task row so startup reap only targets this node's
+    orphans — safe in future multi-node deployments (see issue #273).
+  - Startup reap: on first loop iteration, reap_stale_running_tasks() fails all
+    'running' tasks previously owned by this worker_id before accepting new work.
+  - _in_flight registry: maps task_id → asyncio.Task so the watchdog can cancel
+    in-process coroutines when it reaps a task from the DB.
+  - LLM request timeout (llm_factory.py): prevents ainvoke() from holding Ollama
+    connections open indefinitely after a reap.
+
 Usage (started by app.py lifespan):
     asyncio.create_task(task_worker())
 """
@@ -39,6 +50,19 @@ TASK_WATCHDOG_TIMEOUT: int = max(
 _WATCHDOG_INTERVAL_SECONDS = 300  # run watchdog every 5 minutes
 _last_watchdog: float = 0.0
 
+# ── Worker identity (#272 / #273) ─────────────────────────────────────────────
+# Stable identity for this process — stamped on every claimed task row.
+# Allows startup reap to target only this node's orphaned tasks without
+# disturbing tasks owned by other live worker nodes (multi-node safe).
+# Override via WORKER_NODE_ID env var for deterministic IDs in tests/config.
+WORKER_NODE_ID: str = os.environ.get("WORKER_NODE_ID") or str(uuid.uuid4())
+
+# In-flight asyncio.Task registry: task_id → asyncio.Task.
+# Populated by task_worker when a task is created; cleared in _run_task_tracked
+# finally block.  Used by the watchdog to cancel coroutines whose DB row has
+# been reaped — prevents Ollama from holding connections open indefinitely.
+_in_flight: dict[str, "asyncio.Task[None]"] = {}
+
 # Tracks how many tasks are currently executing (incremented before run,
 # decremented in a finally block — always consistent).
 _active_tasks: int = 0
@@ -50,6 +74,7 @@ from src.database import (
     mark_task_complete,
     mark_task_failed,
     reap_stuck_tasks,
+    reap_stale_running_tasks,
     record_api_usage,
     purge_expired_stream_tokens,
     get_user_webhooks_for_event,
@@ -500,13 +525,15 @@ async def run_task(task: dict) -> None:
 
 
 async def _run_task_tracked(task: dict) -> None:
-    """Wrap run_task() with active-task counter bookkeeping."""
+    """Wrap run_task() with active-task counter and in-flight registry bookkeeping."""
     global _active_tasks
     _active_tasks += 1
+    task_id = task["task_id"]
     try:
         await run_task(task)
     finally:
         _active_tasks -= 1
+        _in_flight.pop(task_id, None)
 
 
 async def task_worker() -> None:
@@ -525,13 +552,34 @@ async def task_worker() -> None:
     in 'running' for longer than TASK_WATCHDOG_TIMEOUT seconds.
     """
     global _last_purge, _last_watchdog
-    logger.info("[worker] Task worker started (concurrency=%d)", WORKER_CONCURRENCY)
+    logger.info(
+        "[worker] Task worker started (concurrency=%d, worker_id=%s)",
+        WORKER_CONCURRENCY,
+        WORKER_NODE_ID,
+    )
+
+    # Startup reap (#272): fail any 'running' tasks from our previous process
+    # before accepting new work.  All such rows are guaranteed orphans — this
+    # process hasn't started any tasks yet.  Multi-node safe: filtered by
+    # worker_id so other live nodes' tasks are never touched.
+    try:
+        orphans = await reap_stale_running_tasks(WORKER_NODE_ID)
+        if orphans:
+            logger.warning(
+                "[worker] Startup reap: failed %d orphaned task(s) from previous run: %s",
+                len(orphans),
+                orphans,
+            )
+    except Exception as startup_reap_err:
+        logger.error("[worker] Startup reap failed: %s", startup_reap_err)
+
     while True:
         try:
             if _active_tasks < WORKER_CONCURRENCY:
-                task = await claim_next_queued_task()
+                task = await claim_next_queued_task(WORKER_NODE_ID)
                 if task:
-                    asyncio.create_task(_run_task_tracked(task))
+                    t = asyncio.create_task(_run_task_tracked(task))
+                    _in_flight[task["task_id"]] = t
                     # Don't sleep — immediately check for more queued tasks
                     # so we can fill all concurrency slots quickly.
                 else:
@@ -552,14 +600,24 @@ async def task_worker() -> None:
             # Watchdog: reap tasks stuck in 'running' (every 5 min, Phase 46)
             if now - _last_watchdog >= _WATCHDOG_INTERVAL_SECONDS:
                 try:
-                    reaped = await reap_stuck_tasks(TASK_WATCHDOG_TIMEOUT)
-                    if reaped:
+                    reaped_ids = await reap_stuck_tasks(TASK_WATCHDOG_TIMEOUT)
+                    if reaped_ids:
                         logger.warning(
                             "[worker] Watchdog reaped %d stuck task(s) "
                             "(timeout=%ds)",
-                            reaped,
+                            len(reaped_ids),
                             TASK_WATCHDOG_TIMEOUT,
                         )
+                        # Cancel any in-flight asyncio coroutines for reaped tasks
+                        # so Ollama connections are released promptly (#272).
+                        for tid in reaped_ids:
+                            t = _in_flight.pop(tid, None)
+                            if t and not t.done():
+                                t.cancel()
+                                logger.info(
+                                    "[worker] Cancelled in-flight coroutine for reaped task %s",
+                                    tid,
+                                )
                     _last_watchdog = now
                 except Exception as watchdog_err:
                     logger.warning(f"[worker] Watchdog error: {watchdog_err}")
