@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-17 (UAT Day 4)
+
+- **`fanoutresearchers` Guardian HALT** — `SecureToolNode` was re-extracting `tool_calls` via `getattr(last_msg)` after `model_copy`, which does not reliably propagate updates in all LangChain versions. Un-normalised name flowed into Guardian, which correctly rejected it. Fix: assign `tool_calls = normalised_tcs` directly; add defensive reverse alias lookup in `verify_tool_before_invocation` as a second layer. Closes #276.
+- **`copyOutput` copies only status lines** — `appendResult()` renders via `appendHTML()` which bypasses `outputBuffer`. `copyOutput()` now prefers `.o-result` `innerText` when present, falling back to the buffer for in-progress/error states.
+- **`make briefing` stale NEXT.md section** — was grepping for `## Do these in order` (Day 1 content); replaced with `head -45` so the current day's "start here" block is always shown.
+- **`make briefing` hardcoded repo** — removed `-R LegionForge/LegionForge` from `gh pr list`; uses `gh` default, survives org transfer.
+- **`make briefing` origin/main sync check** — fetches remote and warns with re-sync command if dev is behind. Catches missed post-merge re-syncs.
+- **`make briefing` end-of-session reminder block** — timestamp format (`YYYY-MM-DD HH:MM UTC`), checkpoint.md, and post-merge re-sync now printed at every session start.
+
 ---
 
 ## [0.7.1-alpha] — 2026-03-13 (Guardian v0.2.0 + security hardening)
