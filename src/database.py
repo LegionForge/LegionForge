@@ -2250,6 +2250,33 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_hitl_pending_run_id ON hitl_pending (run_id)"
     )
 
+    # ── #272 / #273: Worker identity + multi-node stubs ──────────────────────
+    # worker_id on tasks: stamps which worker node claimed this task.
+    # Used by startup reap to target only this node's orphaned tasks — safe
+    # in multi-node deployments where other live nodes own their own rows.
+    await conn.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS worker_id TEXT")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_worker_id ON tasks (worker_id) "
+        "WHERE status = 'running'"
+    )
+
+    # worker_nodes: registry for multi-node deployments (stub — no routing logic yet).
+    # Populated by worker startup; used for capability-based task routing (post-v1.0).
+    # See GitHub issue #273 for full LISTEN/NOTIFY dispatch implementation plan.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS worker_nodes (
+            worker_id      TEXT PRIMARY KEY,
+            hostname       TEXT NOT NULL,
+            capabilities   JSONB NOT NULL DEFAULT '{}',
+            last_heartbeat TIMESTAMPTZ,
+            status         TEXT NOT NULL DEFAULT 'online'
+                               CHECK (status IN ('online', 'offline', 'draining')),
+            registered_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+        """
+    )
+
     logger.info("Application tables verified")
 
 
@@ -4750,11 +4777,19 @@ async def delete_task_note(note_id: int, task_id: str, user_id: str) -> bool:
         return cur.rowcount > 0
 
 
-async def claim_next_queued_task() -> dict | None:
+async def claim_next_queued_task(worker_id: str | None = None) -> dict | None:
     """
     Atomically claim the oldest queued task by setting status='running'.
     Returns the claimed task row, or None if queue is empty.
     Uses UPDATE ... RETURNING with FOR UPDATE SKIP LOCKED for safe concurrent access.
+
+    worker_id: identifier of the claiming worker node (WORKER_NODE_ID env var).
+    Stamped on the row so startup reap can target only this node's orphans.
+
+    Multi-node upgrade path: replace the polling loop in task_worker() with
+    PostgreSQL LISTEN/NOTIFY — workers LISTEN on 'task_queued', wake on NOTIFY,
+    then call this function to claim.  The FOR UPDATE SKIP LOCKED is already
+    safe for concurrent callers across nodes.  See issue #273.
     """
     pool = get_worker_pool()
     async with pool.connection() as conn:
@@ -4762,7 +4797,7 @@ async def claim_next_queued_task() -> dict | None:
         cur = await conn.execute(
             """
             UPDATE tasks
-            SET status = 'running', updated_at = now()
+            SET status = 'running', updated_at = now(), worker_id = %s
             WHERE task_id = (
                 SELECT t.task_id FROM tasks t
                 WHERE t.status = 'queued'
@@ -4780,7 +4815,8 @@ async def claim_next_queued_task() -> dict | None:
                 LIMIT 1
             )
             RETURNING *
-            """
+            """,
+            (worker_id,),
         )
         row = await cur.fetchone()
     return dict(row) if row else None
@@ -6004,15 +6040,18 @@ async def get_task_stats(user_id: str) -> dict:
 # ── Phase 46: Task Watchdog ────────────────────────────────────────────────────
 
 
-async def reap_stuck_tasks(timeout_seconds: int = 1800) -> int:
+async def reap_stuck_tasks(timeout_seconds: int = 1800) -> list[str]:
     """
     Find tasks stuck in 'running' state for longer than timeout_seconds and
     mark them 'failed' with an automated error message.
 
-    Returns the number of tasks reaped.
+    Returns the list of reaped task_id strings (empty list if none).
 
     A task is considered stuck if its updated_at timestamp is older than
     timeout_seconds ago.  This catches worker crashes mid-task.
+
+    The caller (task_worker watchdog) uses the returned IDs to cancel any
+    corresponding in-flight asyncio.Task objects for this process.
 
     Phase 46 — Task Watchdog.
     """
@@ -6048,7 +6087,53 @@ async def reap_stuck_tasks(timeout_seconds: int = 1800) -> int:
                 )
             except Exception:
                 pass  # best-effort
-        return len(rows)
+        return [row[0] for row in rows]
+
+
+async def reap_stale_running_tasks(worker_id: str) -> list[str]:
+    """
+    Startup-time reap: fail all tasks in 'running' state that were claimed
+    by this worker node.  Called once at worker startup before accepting new
+    tasks — all such rows are guaranteed orphans from the previous process.
+
+    Multi-node safe: the worker_id filter ensures tasks owned by other live
+    nodes are never touched.  No age filter needed here (unlike the periodic
+    watchdog) — if this process just started, it has not yet run anything, so
+    every 'running' row stamped with our worker_id is definitively an orphan.
+
+    Returns the list of reaped task_id strings.
+    """
+    pool = get_worker_pool()
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            UPDATE tasks
+            SET status       = 'failed',
+                error        = 'Worker restarted — task orphaned and reaped at startup',
+                completed_at = now(),
+                updated_at   = now()
+            WHERE status    = 'running'
+              AND worker_id = %s
+            RETURNING task_id::text
+            """,
+            (worker_id,),
+        )
+        rows = await cur.fetchall()
+        for row in rows:
+            try:
+                await conn.execute(
+                    "INSERT INTO task_events (task_id, event_type, metadata) "
+                    "VALUES (%s::uuid, 'failed', %s::jsonb)",
+                    (
+                        row[0],
+                        json.dumps(
+                            {"error": "Worker restarted — orphan reaped at startup"}
+                        ),
+                    ),
+                )
+            except Exception:
+                pass  # best-effort
+        return [row[0] for row in rows]
 
 
 # ── Phase 48: Webhook Registry ────────────────────────────────────────────────

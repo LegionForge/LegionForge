@@ -234,6 +234,10 @@ def _get_ollama(
         # Keep-alive: hold model in VRAM indefinitely on this dedicated machine.
         # Models are evicted only when Ollama restarts (make stop/start).
         keep_alive=-1,
+        # Hard per-call timeout (#272): prevents ainvoke() from holding Ollama
+        # HTTP connections open indefinitely after a watchdog reap or restart.
+        # 5 min covers the longest realistic local inference runs.
+        request_timeout=300.0,
         **ollama_kwargs,
         **kwargs,
     )

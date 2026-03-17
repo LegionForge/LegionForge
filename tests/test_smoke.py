@@ -24488,3 +24488,37 @@ class TestWhatsAppConnector:
         assert "main" in wa.__all__
         assert callable(wa.build_app)
         assert callable(wa.main)
+
+
+# ── Issue #272: worker startup reap + in-flight registry + LLM timeout ────────
+
+
+def test_272_startup_reap_called_before_loop():
+    """task_worker calls reap_stale_running_tasks before entering the while loop."""
+    import inspect
+    import src.gateway.worker as w
+
+    src = inspect.getsource(w.task_worker)
+    reap_pos = src.index("reap_stale_running_tasks")
+    loop_pos = src.index("while True")
+    assert (
+        reap_pos < loop_pos
+    ), "reap_stale_running_tasks must be called before the while True loop"
+
+
+def test_272_worker_inflight_registry_exists():
+    """worker module exposes _in_flight dict and WORKER_NODE_ID string."""
+    import src.gateway.worker as w
+
+    assert isinstance(w._in_flight, dict)
+    assert isinstance(w.WORKER_NODE_ID, str)
+    assert len(w.WORKER_NODE_ID) > 0
+
+
+def test_272_llm_factory_ollama_request_timeout():
+    """ChatOllama is instantiated with request_timeout for hard per-call deadline."""
+    import inspect
+    import src.llm_factory as lf
+
+    src = inspect.getsource(lf._get_ollama)
+    assert "request_timeout" in src
