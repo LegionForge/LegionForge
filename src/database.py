@@ -2354,7 +2354,7 @@ async def get_user_connection(
     pool = get_gateway_pool()
     async with pool.connection() as conn:
         await conn.execute(
-            "SELECT set_config('app.user_id', $1, false),"
+            "SELECT set_config('app.user_id', %s, false),"
             " set_config('app.bypass_rls', 'off', false)",
             [user_id],
         )
