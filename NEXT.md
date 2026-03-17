@@ -4,54 +4,80 @@
 ---
 
 ## Last updated
-2026-03-16 — UAT Day 2 complete. Three orchestrator/research pipeline bugs fixed and committed.
-Fan-out working end-to-end. Primary switched to llama3.1:8b (local, reliable tool calling).
-InceptionLabs API key available — integration planned for Day 3.
+2026-03-17 — UAT Day 3 complete. T2.5 ✅ T3.1–T3.5 ✅. 2 bugs fixed, 4 issues opened.
 
 ## State
-- **Branch:** `dev` — 4 commits ahead of main
-- **Smoke tests:** 2246/2246
-- **Open PRs:** none
+- **Branch:** `dev` — 2 commits ahead of main (PRs #274 #278 open)
+- **Smoke tests:** 2249/2249
+- **Open PRs:** #274 (worker startup reap — closes #272), #278 (get_user_connection $1→%s)
 - **Ship target:** v0.8.0 — Sunday 2026-03-22
-- **Mode:** UAT + bug fixes
+- **Mode:** UAT + pre-v0.8.0 bug fixes
 
-## Day 2 fixes (2026-03-16) — all committed
-| Commit | Fix |
-|--------|-----|
-| f31d8c1 | `fan_out_researchers` accepts native list from llama3.1; worker reads profile recursion limit (was 25, now 40) |
-| c3501ce | Primary → llama3.1:8b local; model dropdown shows presets with full model ID labels |
+## UAT Day 3 issues opened (2026-03-17)
+| Issue | Title | Priority |
+|-------|-------|----------|
+| #273 | Multi-node worker architecture — PostgreSQL LISTEN/NOTIFY + worker_nodes | post-v1.0 |
+| #275 | Bump actions/checkout to Node.js 24 compatible version | post-v0.8.0 (deadline Jun 2026) |
+| **#276** | **fanoutresearchers alias normalization bypassed — Guardian HALT on fan-out tasks** | **pre-v0.8.0 blocker** |
+| #277 | Show logged-in username in UI header | pre-v0.8.0 |
 
-## UAT Day 3 — start here
+## UAT Day 4 — start here (2026-03-18)
 
-### Priority 1: InceptionLabs provider integration
-Jp has a **paid** InceptionLabs API key (mercury-coder-small or similar).
-InceptionLabs uses an OpenAI-compatible API. Integration path mirrors OpenRouter:
-1. Store key: `security add-generic-password -s inceptionlabs -a api_key -w "KEY" -A ~/Library/Keychains/login.keychain-db`
-2. Add `"inceptionlabs": "INCEPTIONLABS_API_KEY"` to `credentials.py` `_SERVICE_TO_ENV`
-3. Add `_get_inceptionlabs()` in `llm_factory.py` (ChatOpenAI with base_url override)
-4. Add `"inceptionlabs"` provider routing in `get_llm()`
-5. Add to Makefile `servers-start` env block
-6. Add as `powerful` preset in `model_preferences` (yaml)
-7. Test: researcher task via "powerful" preset
+### 🔴 Priority 1: Merge PRs #274 + #278
+Both are green. Merge, re-sync dev.
 
-### Priority 2: Manual comparison test batch (Day 3 — no new code needed)
-Goal: validate llama3.1:8b (local) vs InceptionLabs (paid cloud) on research quality.
+### 🔴 Priority 2: Fix #276 — fanoutresearchers alias normalization
+`SecureToolNode._alias_map` builds `fanoutresearchers → fan_out_researchers` correctly,
+but un-normalized name reaches Guardian. Investigate why `needs_rewrite` branch silently
+fails, then add defensive fallback in `verify_tool_before_invocation`. Fix in `src/base_graph.py`
++ `src/security/core.py`. This blocks all orchestrator fan-out tasks.
 
-Run each prompt once through `balanced (llama3.1:8b)` and once through `powerful (inceptionlabs)`.
-For each run, note in a comment or scratch file:
-- Did tools actually get called? (check gateway.log for web_fetch_js/web_search events)
-- Is the response grounded in live data or training data? (verify 1 fact manually)
-- Wall-clock time (shown in UI)
-- Estimated token count (shown in UI)
+### Priority 3: Fix #266 — HITL UI (pre-v0.8.0 blocker)
+Header badge + admin queue panel + approve/reject modal.
 
-**Test prompts** (correct answer is verifiable and changes daily — hallucination is obvious):
-1. `What are the top 3 stories on https://news.ycombinator.com right now?`
-2. `What is the current BTC price according to https://coinmarketcap.com?`
-3. `What is today's weather in New York according to https://forecast.weather.gov?`
-4. `What are the latest earthquakes from https://earthquake.usgs.gov/earthquakes/map/`
-5. `What is currently trending on https://github.com/trending?`
+### Priority 4: Fix #268 — persist tool call events
 
-Use **researcher** agent for prompts 1-3. Use **orchestrator** for prompt 4-5 to test fan-out.
+### Priority 5: Continue UAT T4 block (researcher + RAG)
+- T4.1: researcher agent end-to-end (single web search task)
+- T4.2: document ingestion + RAG retrieval
+- T4.3: memory clear
+
+## UAT Day 2 issues opened (2026-03-16)
+| Issue | Title | Priority |
+|-------|-------|----------|
+| #263 ✅ | HITL scope clarification — FORCE-END vs HITL-REVIEW tiers | merged |
+| #265 | False negative: leetspeak bypasses gateway injection filter | post-v0.8.0 |
+| #266 | HITL UI — badge + queue panel + approve/reject modal | pre-v0.8.0 blocker |
+| #268 | Persist tool call events to task_events + fix steps counter | pre-v0.8.0 |
+| #269 | UI call tree (i) badge — tool calls, steps, sources per task | pre-v0.8.0 |
+| #270 | Multi-model behavioral matrix — tool-block hallucination | research/post |
+| #271 | Researcher agent should return source citations | post-v0.8.0 |
+| #272 ✅ | Worker startup stale task reap + LLM call timeout + asyncio cancellation | PR #274 open |
+
+## UAT Day 3 — completed (2026-03-17)
+
+### ✅ T2.5 — token budget
+### ✅ T3.1–T3.5 — task management (list, notes, labels, cancel, sharing)
+
+### Bugs found and fixed
+- **get_user_connection `$1`→`%s`** — psycopg3 placeholder bug; caused HTTP 500 on all user-scoped writes (notes, annotations, sharing). PR #278.
+- **#276** — fanoutresearchers reaches Guardian un-normalized; HALT fires on any orchestrator fan-out task. Issue open, not yet fixed.
+
+### 🔴 Priority 1 (was): Fix #272 — worker startup stale task reap
+On restart, worker must auto-fail `running` tasks older than 5 min before accepting queue.
+This is a pre-v0.8.0 blocker — reproduced in UAT Day 2 via config change restart.
+Fix is in `src/gateway/worker.py` startup path. After fix, add UAT test T_RESILIENCE.1.
+
+### Priority 2: Fix #266 — HITL UI (pre-v0.8.0 blocker)
+Add header badge + admin queue panel + approve/reject modal to index.html.
+T_HITL.2 and T_HITL.3 are blocked on this.
+
+### Priority 3: Fix #268 — persist tool call events
+Agent events dispatched via `adispatch_custom_event` in base_graph.py are not written to task_events table. Also fix `steps` counter for sub-agent calls.
+
+### Priority 4: Continue UAT T2.5 + T3 block
+- T2.5: token budget check (one curl command — `GET /usage/me`)
+- T3.1–T3.5: task management (Day 3 schedule block)
 
 ### Priority 3 (post-v0.8.0): Automated benchmark harness
 > Jp's idea from UAT Day 2: "Is there a way to dynamically run 3-5 live-web queries
