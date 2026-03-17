@@ -5859,7 +5859,12 @@ function copyResultEl(btn) {
 // ── Copy output ───────────────────────────────────────────────────
 function copyOutput() {
   const btn = document.querySelector('[onclick="copyOutput()"]');
-  const text = S.outputBuffer || el.output().textContent;
+  // Prefer the final rendered result text — appendResult() uses appendHTML()
+  // which does not update outputBuffer, so the buffer only has status lines.
+  const resultEl = el.output().querySelector('.o-result');
+  const text = resultEl
+    ? (resultEl.innerText || resultEl.textContent || '').trim()
+    : (S.outputBuffer || el.output().textContent);
   _copyText(text, btn, el.output());
 }
 
