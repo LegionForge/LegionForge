@@ -786,16 +786,19 @@ class SecureToolNode:
                         raw_name,
                         canonical,
                     )
-                    tc = dict(tc) if isinstance(tc, dict) else tc
                     if isinstance(tc, dict):
                         tc = {**tc, "name": canonical}
                     else:
                         tc = tc.model_copy(update={"name": canonical})
                 normalised_tcs.append(tc)
+            # Assign directly — do not round-trip through model_copy to extract names.
+            # model_copy does not reliably update tool_calls in all LangChain versions,
+            # which caused the un-normalised name to reach Guardian (issue #276).
+            tool_calls = normalised_tcs
             last_msg = last_msg.model_copy(update={"tool_calls": normalised_tcs})
             state = {**state, "messages": [*state["messages"][:-1], last_msg]}
-
-        tool_calls = getattr(last_msg, "tool_calls", None) or []
+        else:
+            tool_calls = getattr(last_msg, "tool_calls", None) or []
 
         # Sequence tracking for Guardian
         sequence_so_far = list(state.get("sequence_so_far") or [])

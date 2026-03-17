@@ -757,6 +757,20 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
             logger.warning(f"[tool-registry] DB fallback failed for '{tool_id}': {e}")
 
         if not loaded:
+            # Defensive alias fallback: SecureToolNode normalises dropped-underscore
+            # names before this point, but guard against any bypass path (issue #276).
+            # If tool_id matches the underscore-stripped form of a registered tool,
+            # delegate to the canonical name rather than blocking.
+            _canonical = next(
+                (k for k in _TOOL_REGISTRY if k.replace("_", "") == tool_id),
+                None,
+            )
+            if _canonical:
+                logger.warning(
+                    f"[tool-registry] Alias fallback: '{tool_id}' resolved to "
+                    f"'{_canonical}' — SecureToolNode normalisation was bypassed."
+                )
+                return await verify_tool_before_invocation(_canonical)
             logger.error(
                 f"[tool-registry] CAPABILITY_VIOLATION — tool '{tool_id}' not registered."
             )

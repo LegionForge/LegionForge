@@ -172,14 +172,27 @@ briefing:
 	@echo "  Branch : $$(git branch --show-current)"
 	@echo "  HEAD   : $$(git log --oneline -1)"
 	@echo "  Dirty  : $$(git status --short | wc -l | tr -d ' ') uncommitted file(s)"
+	@git fetch origin --quiet 2>/dev/null; \
+	BEHIND=$$(git rev-list HEAD..origin/main --count 2>/dev/null); \
+	if [ "$$BEHIND" -gt 0 ] 2>/dev/null; then \
+		echo ""; \
+		echo "  ⚠️  dev is $$BEHIND commit(s) behind origin/main — post-merge re-sync needed:"; \
+		echo "     git merge origin/main --no-edit && git push origin dev"; \
+	else \
+		echo "  ✅ dev is in sync with origin/main"; \
+	fi
 	@echo ""
 	@echo "── Open PRs ─────────────────────────────────────────"
-	@gh pr list --state open -R LegionForge/LegionForge 2>/dev/null || echo "  (gh not configured or no open PRs)"
+	@gh pr list --state open 2>/dev/null || echo "  (gh not configured or no open PRs)"
 	@echo ""
 	@echo "── What's Next ──────────────────────────────────────"
-	@if [ -f $(BASE)/NEXT.md ]; then cat $(BASE)/NEXT.md | grep -A 50 "## Do these in order" | head -30; \
+	@if [ -f $(BASE)/NEXT.md ]; then head -45 $(BASE)/NEXT.md; \
 	else echo "  (no NEXT.md — ask Claude to write one)"; fi
 	@echo ""
+	@echo "── End of session reminders ─────────────────────────"
+	@echo "  • Update NEXT.md — timestamp format: YYYY-MM-DD HH:MM UTC"
+	@echo "  • Update checkpoint.md"
+	@echo "  • Post-merge re-sync: git merge origin/main --no-edit && git push origin dev"
 	@echo "════════════════════════════════════════════════════"
 	@echo ""
 
