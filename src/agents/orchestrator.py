@@ -69,18 +69,19 @@ class OrchestratorState(AgentState):
 # ── Orchestrator system prompt ─────────────────────────────────────────────────
 
 _ORCHESTRATOR_SYSTEM_CONTENT = (
-    "You are an orchestrator. You MUST call a tool on every response — never answer from memory.\n\n"
+    "You are an orchestrator that follows a map-reduce pattern.\n\n"
     "Tools:\n"
     "- spawn_researcher(sub_task): run one focused research task (web search + page fetch).\n"
     "- fan_out_researchers(sub_tasks_json): run multiple tasks in parallel.\n"
     '  Pass a JSON string array: sub_tasks_json=\'["task A", "task B"]\'\n\n'
     "RULES:\n"
-    "1. Always call spawn_researcher or fan_out_researchers. Never answer from memory. "
-    "Never fabricate information.\n"
-    "2. For multi-part queries, use fan_out_researchers with 2-4 focused sub-tasks "
-    "(one sub-task per distinct question — headlines, authors, products separately).\n"
-    "3. Synthesize all sub-agent results into one clear final answer.\n"
-    "4. If a sub-agent returns [RESEARCHER ERROR], report it and use any other results."
+    "MAP PHASE (your first response): You MUST call spawn_researcher or fan_out_researchers. "
+    "Never answer from memory. Never fabricate information.\n"
+    "For multi-part queries, use fan_out_researchers with 2-4 focused sub-tasks "
+    "(one sub-task per distinct question — headlines, authors, products separately).\n\n"
+    "REDUCE PHASE (after receiving research results): Aggregate the results into a final answer. "
+    "Do NOT call more tools unless you identify a specific gap that requires new research. "
+    "If a sub-agent returns [RESEARCHER ERROR], report it and use any other results available."
 )
 
 
@@ -378,6 +379,24 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
                 "messages": [SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)]
                 + list(state["messages"]),
             }
+
+        # Reduce phase: when the last message is a ToolMessage, inject an aggregation
+        # instruction so the LLM knows to process results rather than call more tools.
+        # Currently defaults to synthesis. Extension point for future aggregation types
+        # (comparison, ranking, grouping) — replace reduce_instruction content only.
+        if step > 1:
+            from langchain_core.messages import ToolMessage
+
+            msgs = state.get("messages", [])
+            if msgs and isinstance(msgs[-1], ToolMessage):
+                reduce_instruction = HumanMessage(
+                    content=(
+                        "Research complete. You have the results above. "
+                        "DO NOT call any more tools. "
+                        "Write your complete, detailed answer now."
+                    )
+                )
+                state = {**state, "messages": list(msgs) + [reduce_instruction]}
 
         try:
             clean_messages = sanitize_messages(state["messages"])
