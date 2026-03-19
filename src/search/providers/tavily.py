@@ -31,6 +31,7 @@ class TavilyProvider(SearchProvider):
         cfg = settings.search.tavily
         self._search_depth: str = cfg.search_depth
         self._max_tokens: int = cfg.max_tokens
+        self._days: int | None = cfg.days  # None = no recency filter
 
     def _key(self) -> str | None:
         return _get_cred(_SERVICE, _ENV)
@@ -61,11 +62,14 @@ class TavilyProvider(SearchProvider):
             from tavily import TavilyClient
 
             client = TavilyClient(api_key=key)
-            resp = client.search(
+            kwargs: dict = dict(
                 query=query,
                 search_depth=self._search_depth,
                 max_results=max_results,
             )
+            if self._days is not None:
+                kwargs["days"] = self._days
+            resp = client.search(**kwargs)
             results: list[SearchResult] = []
             for r in resp.get("results", []):
                 results.append(

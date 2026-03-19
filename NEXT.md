@@ -4,69 +4,68 @@
 ---
 
 ## Last updated
-2026-03-17 23:00 UTC — Session close. PR #280 open (guardian-start POSTGRES_USER fix). New pre-v0.8.0 blocker: orchestrator synthesis bug. T4.1 still blocked. All docs current.
+2026-03-19 03:30 UTC — Session close. UAT Day 5 complete. PR #282 open (5 commits). Orchestrator synthesis fixed. Research quality improved. Docker/web_fetch_js infrastructure gap documented.
 
 ## State
-- **Branch:** `dev` — 8 commits ahead of main
+- **Branch:** `dev` — 5 commits ahead of main (all in PR #282)
 - **Smoke tests:** 2251/2251
-- **Open PRs:** #280 (guardian-start POSTGRES_USER fix — ready to merge)
+- **Open PRs:** #282 (orchestrator synthesis + research quality — ready to merge)
 - **Ship target:** v0.8.0 — Sunday 2026-03-22
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
-## UAT Day 5 — start here (2026-03-18)
+## Infrastructure reminder — START OF EVERY SESSION
+```bash
+make start          # Ollama → PostgreSQL → model warmup → servers
+make guardian-start # Guardian Docker sidecar (:9766) — requires Docker Desktop running
+make health         # expect: {"status": "ok"}
+curl -s http://localhost:9766/health | jq .   # expect: {"status": "ok", ...}
+```
+**Docker must be running before `make guardian-start`.** Guardian is 1 of 2 containers in the compose file — verify both are up: `docker ps | grep legion`.
 
-### 🔴 Priority 1: Merge PR #280
-PR is green. Merge it, re-sync dev.
+**web_fetch_js also requires Docker** (headless Chromium). If Docker is down, JS-rendered sites (CBC, CNN, React SPAs) will fail to fetch. Static HTML sites (HackerNews, Wikipedia) use plain `web_fetch` and work without Docker.
 
-### 🔴 Priority 2: Open GitHub issue for orchestrator synthesis bug
-Spec is ready — open the issue before touching code:
-- **Problem:** `_ORCHESTRATOR_SYSTEM_CONTENT` says "MUST call a tool on every response" — on step 2+, after tools return results, the LLM obeys the mandate and produces "I've called all the necessary tools..." instead of synthesizing.
-- **Fix:** On step 2+, when the last message in history is a ToolMessage, inject a synthesis HumanMessage before the LLM call that overrides the tool-call mandate: *"Research complete. You have the results above. DO NOT call any more tools. Write your complete, detailed answer now."*
-- **File:** `src/agents/orchestrator.py` → `agent_node` function, step > 1 path
-- **Done when:** HackerNews prompt returns actual headline analysis, not placeholder.
+**jp's API key** was rotated this session. Retrieve fresh key via:
+```bash
+make rotate-key USERNAME=jp
+```
+(Requires POSTGRES_USER + POSTGRES_PASSWORD exported — see #283.)
 
-### 🔴 Priority 3: Fix orchestrator synthesis bug (pre-v0.8.0 blocker)
-After opening the issue: implement the fix, run `make test-critical`, commit, PR.
+**TestLab admin key** (port 8090): `legionforge_health` Keychain item — retrieve via:
+```bash
+security find-generic-password -s legionforge_health -a api_key -w
+```
 
-### 🔴 Priority 4: Retest T4.1
-After synthesis fix: resubmit HackerNews headlines task. Should return real analysis.
+## UAT Day 6 — start here (2026-03-19)
 
-### 🔴 Priority 5: Fix #266 — HITL UI (pre-v0.8.0 blocker)
-Header badge + admin queue panel + approve/reject modal.
+### 🔴 Priority 1: Merge PR #282
+PR is green (2251/2251). Merge it, re-sync dev.
+
+### 🔴 Priority 2: Fix #266 — HITL UI (pre-v0.8.0 blocker)
+Header badge + admin queue panel + approve/reject modal. T_HITL.2 and T_HITL.3 are blocked on this.
+
+### Priority 3: Retest T4.1 with new fixes
+Resubmit HackerNews headlines task. Should now:
+- Use `web_fetch` (not `web_fetch_js`) for HN — static HTML
+- Return only stories from last 3 days (Tavily `days=3`)
+- Say "not retrieved" for any positions not in research results (no hallucination)
+
+### Priority 4: Continue UAT T4 block
+- T4.2: document ingestion + RAG retrieval
+- T4.3: memory clear
+
+### Priority 5: UAT Day 6 block — Admin + Multi-user (T5.1–T5.4)
+RLS isolation, quota enforcement, deactivation, RBAC.
 
 ### Priority 6: Fix #268 — persist tool call events
 Agent events not written to task_events table. Fix steps counter for sub-agent calls.
 
-### Priority 7: `make sanity` / runtime health target
-30s real checks: gateway /health, DB ping, valid API key round-trip, Ollama model loaded.
+### Priority 7: Fix #283 — postgres Keychain item missing
+`security find-generic-password -s postgres -a api_key` returns not found.
+CLI tools (`make rotate-key`, `make create-user`) need manual env export workaround.
+Fix: store password in Keychain + add `make check` warning.
 
-### Priority 8: Fix postgres Keychain item missing
-`security find-generic-password -s postgres -a api_key` returns not found. CLI tools fail without manual env export.
-
-### Priority 9: Continue UAT T4 block (after synthesis fix)
-- T4.1: researcher end-to-end — **blocked on synthesis fix**
-- T4.2: document ingestion + RAG retrieval
-- T4.3: memory clear
-
-### 🔴 Priority 3: Retest T4.1 after synthesis fix
-Resubmit the HackerNews headlines task. Should complete with actual research output.
-
-### 🔴 Priority 4: Fix #266 — HITL UI (pre-v0.8.0 blocker)
-Header badge + admin queue panel + approve/reject modal.
-
-### Priority 5: Fix #268 — persist tool call events
-Agent events not written to task_events table. Fix steps counter for sub-agent calls.
-
-### Priority 6: `make sanity` / runtime health target
-30s real checks: gateway /health, DB ping, valid API key round-trip, Ollama model loaded. Catches infrastructure failures that smoke tests miss.
-
-### Priority 7: Fix postgres Keychain item missing
-`security find-generic-password -s postgres -a api_key` returns not found. Password only lives in `~/.pgpass`. CLI tools (`make rotate-key`, `make create-user`) fail unless `POSTGRES_USER` + `POSTGRES_PASSWORD` are manually exported.
-
-### Priority 8: Continue UAT T4 block (after synthesis fix)
-- T4.1: researcher agent end-to-end (single web search task) — **currently blocked**
-- T4.2: document ingestion + RAG retrieval
-- T4.3: memory clear
+### Priority 8: `make sanity` / runtime health target (#TBD)
+30s real checks: gateway /health, DB ping, API key round-trip, Ollama model loaded, Docker running.
 
 ---
 

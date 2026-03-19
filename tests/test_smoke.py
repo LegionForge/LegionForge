@@ -22763,22 +22763,25 @@ def test_finalizer_notes_partial_tool_block():
 
 
 def test_orchestrator_agent_node_uses_llm_forced_on_step_1():
-    """orchestrator agent_node uses tool_choice='required' LLM on step 1 to prevent memory hallucination."""
+    """orchestrator agent_node uses correct LLM binding per phase — enforcement at API level, not prompt level."""
     import pathlib
 
     src = pathlib.Path("src/agents/orchestrator.py").read_text()
     assert 'tool_choice="required"' in src
-    assert "llm_forced if step <= 1 else llm_free" in src
+    # map phase: tool call enforced; reduce phase: tool call impossible (no tools bound)
+    assert "llm_with_tools = llm_forced" in src
+    assert "llm_with_tools = llm_plain" in src
 
 
 def test_orchestrator_build_graph_creates_llm_forced_and_llm_free():
-    """build_orchestrator_graph creates both llm_forced and llm_free LLM bindings."""
+    """build_orchestrator_graph creates three LLM bindings: forced (map), plain (reduce), free (refine)."""
     import pathlib
 
     src = pathlib.Path("src/agents/orchestrator.py").read_text()
     assert "llm_forced = get_primary_llm" in src
     assert "llm_free = get_primary_llm" in src
-    assert "_build_orchestrator_agent_node(llm_forced, llm_free)" in src
+    assert "llm_plain = get_primary_llm" in src
+    assert "_build_orchestrator_agent_node(llm_forced, llm_free, llm_plain)" in src
 
 
 def test_spawn_researcher_handles_sub_agent_exceptions_gracefully():

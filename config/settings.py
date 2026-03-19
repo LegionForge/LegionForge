@@ -582,6 +582,7 @@ class TavilySearchConfig(BaseModel):
 
     search_depth: str = "basic"  # "basic" | "advanced"
     max_tokens: int = 4096
+    days: int | None = 3  # recency window; None = no filter; default 3 days
 
 
 class BraveSearchConfig(BaseModel):
