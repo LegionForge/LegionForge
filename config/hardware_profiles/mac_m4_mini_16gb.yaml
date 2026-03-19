@@ -418,6 +418,7 @@ search:
   tavily:
     search_depth: basic   # "basic" (faster) | "advanced" (deeper, more tokens)
     max_tokens: 4096
+    days: 3               # recency window — omit or set null for no filter
 
   brave:
     country: us

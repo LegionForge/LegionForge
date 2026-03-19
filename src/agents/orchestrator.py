@@ -414,7 +414,10 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any, llm_plain: An
                 content=(
                     "Research complete. You have the results above. "
                     "DO NOT call any more tools. "
-                    "Write your complete, detailed answer now."
+                    "Write your complete, detailed answer using ONLY the retrieved results. "
+                    "If specific information (a headline position, author, statistic, or URL) "
+                    "was not present in the research results, state explicitly that it was "
+                    "not retrieved. DO NOT substitute from memory or training data."
                 )
             )
             state = {**state, "messages": msgs + [reduce_instruction]}
