@@ -222,8 +222,12 @@ _RESEARCHER_SYSTEM_CONTENT = (
     "5. Always try web_fetch first. Only escalate to web_fetch_js if web_fetch returns\n"
     "   empty or JavaScript placeholder content (e.g. '<div id=\"root\"></div>').\n"
     "6. If asked for a URL, call web_fetch on it immediately.\n"
-    "7. If a tool returns an error or no results, say so clearly and synthesize from\n"
-    "   whatever data you have. Label approximate answers clearly."
+    "7. If a tool returns an error, empty content, or no results, you MUST say so\n"
+    "   explicitly. State what you attempted and what you retrieved.\n"
+    "   NEVER substitute from memory or training data when tools fail.\n"
+    "   NEVER fabricate headlines, authors, statistics, dates, or engagement numbers.\n"
+    "   If you could not retrieve the information, say: 'Could not retrieve [X] —\n"
+    "   tool returned [error/empty]. No data available.'"
 )
 
 
