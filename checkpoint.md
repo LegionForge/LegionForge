@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 337
+UPDATE: 338
 BRANCH: dev
-COMMIT: 724a998
-TIMESTAMP: 2026-03-17T23:00Z
-LAST_OP: UAT Day 4 (session close) — fix: guardian-start POSTGRES_USER override (PR #280 open) — session closed cleanly
-NEXT_OP: Merge PR #280 → open synthesis issue → fix synthesis bug (orchestrator step-2) → retest T4.1 → fix #266 (HITL UI) → fix #268 (tool call events)
+COMMIT: 078e6ab
+TIMESTAMP: 2026-03-19T03:30Z
+LAST_OP: UAT Day 5 — PR #280 merged; orchestrator synthesis fix (map/reduce + llm_plain enforcement); Tavily recency days=3; researcher no-hallucination clauses; web_fetch-first rule. PR #282 open (5 commits).
+NEXT_OP: Merge PR #282 → fix #266 (HITL UI badge + queue panel + modal) → retest T4.1 with new fixes → T4.2/T4.3 → Priority 5 admin/multi-user block
 SMOKE_TESTS: 2251/2251
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
