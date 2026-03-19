@@ -24,7 +24,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Union
 
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    BaseMessage,
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -335,13 +341,17 @@ async def register_orchestrator_tools() -> None:
 # ── Graph nodes ────────────────────────────────────────────────────────────────
 
 
-def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
+def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any, llm_plain: Any):
     """Build the orchestrator agent_node with pre-bound LLMs.
 
-    llm_forced: bound with tool_choice="required" — used on step 1 to prevent
-                the orchestrator from answering from training data instead of
-                delegating to a researcher sub-agent.
-    llm_free:   standard binding — used on step 2+ for synthesis.
+    llm_forced: tool_choice="required" — map phase (step 1). Tool call is
+                mandatory; the LLM cannot skip delegation.
+    llm_plain:  no tools bound — reduce phase (step 2+, last msg is ToolMessage).
+                Tool calls are impossible at the API level; enforces synthesis
+                deterministically regardless of prompt compliance.
+    llm_free:   tools bound, no forced choice — verify-loop refinement (step 2+,
+                last msg is not ToolMessage). May optionally call a tool if the
+                verifier identified a research gap.
     """
 
     async def agent_node(state: OrchestratorState) -> dict:
@@ -352,10 +362,24 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
         if state.get("force_end"):
             return updates
 
-        # After increment_step, step_count reflects the current step number.
-        # Use the forced LLM on the first step only.
         step = updates.get("step_count", state.get("step_count", 1))
-        llm_with_tools = llm_forced if step <= 1 else llm_free
+
+        # Determine phase from message history — must happen before LLM selection
+        # and before reduce_instruction injection so both use the same state snapshot.
+        msgs = list(state.get("messages", []))
+        in_reduce_phase = step > 1 and bool(msgs) and isinstance(msgs[-1], ToolMessage)
+
+        # Select LLM binding based on phase.
+        # Enforcement is at the API level, not prompt level:
+        #   map phase    → tool call enforced by tool_choice="required"
+        #   reduce phase → tool call impossible (no tools bound on llm_plain)
+        #   refinement   → tool call optional (verifier may have found a gap)
+        if step <= 1:
+            llm_with_tools = llm_forced  # map phase
+        elif in_reduce_phase:
+            llm_with_tools = llm_plain  # reduce phase — cannot call tools
+        else:
+            llm_with_tools = llm_free  # verify-loop refinement
 
         log_agent_event(
             "llm_call",
@@ -363,7 +387,9 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
             {
                 "step": state["step_count"],
                 "task": state.get("task", ""),
-                "forced": step <= 1,
+                "phase": (
+                    "map" if step <= 1 else ("reduce" if in_reduce_phase else "refine")
+                ),
             },
             run_id=state.get("run_id"),
         )
@@ -371,32 +397,27 @@ def _build_orchestrator_agent_node(llm_forced: Any, llm_free: Any):
         # Ensure the orchestrator system message is present.
         # The gateway worker initialises state with only [HumanMessage(task)] — no
         # SystemMessage — so we inject it here on step 1 if it is absent.
-        if step == 1 and not any(
-            isinstance(m, SystemMessage) for m in state.get("messages", [])
-        ):
+        if step == 1 and not any(isinstance(m, SystemMessage) for m in msgs):
             state = {
                 **state,
                 "messages": [SystemMessage(content=_ORCHESTRATOR_SYSTEM_CONTENT)]
-                + list(state["messages"]),
+                + msgs,
             }
+            msgs = list(state["messages"])
 
-        # Reduce phase: when the last message is a ToolMessage, inject an aggregation
-        # instruction so the LLM knows to process results rather than call more tools.
-        # Currently defaults to synthesis. Extension point for future aggregation types
-        # (comparison, ranking, grouping) — replace reduce_instruction content only.
-        if step > 1:
-            from langchain_core.messages import ToolMessage
-
-            msgs = state.get("messages", [])
-            if msgs and isinstance(msgs[-1], ToolMessage):
-                reduce_instruction = HumanMessage(
-                    content=(
-                        "Research complete. You have the results above. "
-                        "DO NOT call any more tools. "
-                        "Write your complete, detailed answer now."
-                    )
+        # Reduce phase: inject aggregation instruction so the LLM processes
+        # results rather than calling more tools. Defaults to synthesis now.
+        # Extension point for future aggregation types (comparison, ranking,
+        # grouping) — replace reduce_instruction content only; structure unchanged.
+        if in_reduce_phase:
+            reduce_instruction = HumanMessage(
+                content=(
+                    "Research complete. You have the results above. "
+                    "DO NOT call any more tools. "
+                    "Write your complete, detailed answer now."
                 )
-                state = {**state, "messages": list(msgs) + [reduce_instruction]}
+            )
+            state = {**state, "messages": msgs + [reduce_instruction]}
 
         try:
             clean_messages = sanitize_messages(state["messages"])
@@ -660,16 +681,17 @@ def route_after_verify(state: OrchestratorState) -> str:
 
 def build_orchestrator_graph() -> StateGraph:
     """Build the orchestrator graph (uncompiled). Bind tools to LLM here."""
-    # Step 1 uses tool_choice="required" so the orchestrator always delegates to
-    # a researcher sub-agent rather than answering from training data.
-    # Step 2+ uses the free binding for synthesis (no forced tool call).
+    # Three LLM bindings — enforcement is at the API level, not prompt level:
+    #   llm_forced: tool_choice="required" — map phase (step 1), must delegate
+    #   llm_plain:  no tools bound        — reduce phase, cannot call tools
+    #   llm_free:   tools optional        — verify-loop refinement
     llm_forced = get_primary_llm(temperature=0.1).bind_tools(
         ORCHESTRATOR_TOOLS, tool_choice="required"
     )
     llm_free = get_primary_llm(temperature=0.1).bind_tools(ORCHESTRATOR_TOOLS)
-    llm_plain = get_primary_llm(temperature=0.0)  # verifier — no tools needed
+    llm_plain = get_primary_llm(temperature=0.0)  # no tools bound
     tool_node = SecureToolNode(ORCHESTRATOR_TOOLS)
-    agent_node = _build_orchestrator_agent_node(llm_forced, llm_free)
+    agent_node = _build_orchestrator_agent_node(llm_forced, llm_free, llm_plain)
     verify_node = _build_verify_node(llm_plain)  # Phase 71
 
     graph = StateGraph(OrchestratorState)
