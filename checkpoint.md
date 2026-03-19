@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 335
+UPDATE: 337
 BRANCH: dev
-COMMIT: 8ac416f
-TIMESTAMP: 2026-03-17T03:45Z
-LAST_OP: UAT Day 4 (partial) — PRs #274 #278 merged + dev re-synced — fix #276 fanoutresearchers (PR #279 open) — fix copyOutput clobber bug — fix make briefing (hardcoded repo + stale NEXT.md grep + sync check + end-of-session reminders)
-NEXT_OP: Merge PR #279 + restart servers → Fix #266 (HITL UI) → Fix #268 (tool call events) → runtime sanity check target → T4 block (researcher + RAG)
+COMMIT: 724a998
+TIMESTAMP: 2026-03-17T23:00Z
+LAST_OP: UAT Day 4 (session close) — fix: guardian-start POSTGRES_USER override (PR #280 open) — session closed cleanly
+NEXT_OP: Merge PR #280 → open synthesis issue → fix synthesis bug (orchestrator step-2) → retest T4.1 → fix #266 (HITL UI) → fix #268 (tool call events)
 SMOKE_TESTS: 2251/2251
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

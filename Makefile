@@ -1251,6 +1251,7 @@ guardian-start: docker-start
 		-s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
 	export POSTGRES_PASSWORD=$$(security find-generic-password \
 		-s legionforge_guardian -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
+	export POSTGRES_USER=legionforge_guardian && \
 	docker-compose up -d guardian && \
 	sleep 2 && \
 	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
