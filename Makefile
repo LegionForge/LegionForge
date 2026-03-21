@@ -196,6 +196,60 @@ briefing:
 	@echo "════════════════════════════════════════════════════"
 	@echo ""
 
+.PHONY: preflight
+preflight:  ## Validate all Keychain secrets + stack health before starting a UAT session
+	@printf "\n════════════════════════════════════════════════════\n  LegionForge — Preflight Check\n════════════════════════════════════════════════════\n\n"
+	@FAIL=0; \
+	for svc in postgres legionforge_tool_signer legionforge_task_tokens legionforge_health \
+	           legionforge_tavily_api_key legionforge_brave_api_key legionforge_db_app \
+	           openrouter legionforge_inceptionlabs_api_key legionforge_webhook_inbound_secret; do \
+		val=$$(security find-generic-password -s "$$svc" -a api_key -w $(KEYCHAIN) 2>/dev/null); \
+		if [ -n "$$val" ]; then \
+			printf "  %-52s ✅\n" "Keychain: $$svc"; \
+		else \
+			printf "  %-52s ❌  NOT FOUND\n" "Keychain: $$svc"; \
+			FAIL=1; \
+		fi; \
+	done; \
+	echo ""; \
+	if pg_isready -U legionforge_admin -q 2>/dev/null; then \
+		printf "  %-52s ✅\n" "PostgreSQL (legionforge_admin)"; \
+	else \
+		printf "  %-52s ❌  (make db-start)\n" "PostgreSQL (legionforge_admin)"; \
+		FAIL=1; \
+	fi; \
+	if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then \
+		printf "  %-52s ✅\n" "Ollama (:11434)"; \
+		LOADED=$$(curl -s --max-time 3 http://localhost:11434/api/ps 2>/dev/null \
+		          | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('models',[])))" 2>/dev/null || echo 0); \
+		if [ "$$LOADED" -gt 1 ] 2>/dev/null; then \
+			printf "  %-52s ⚠️   $$LOADED models in VRAM — eviction may be needed\n" "Ollama VRAM"; \
+		fi; \
+	else \
+		printf "  %-52s ❌  (make ollama-start)\n" "Ollama (:11434)"; \
+		FAIL=1; \
+	fi; \
+	if curl -sf --max-time 3 http://localhost:8080/health 2>/dev/null | grep -q '"ok"'; then \
+		printf "  %-52s ✅\n" "Gateway (:8080)"; \
+	else \
+		printf "  %-52s ❌  (make gateway-start)\n" "Gateway (:8080)"; \
+		FAIL=1; \
+	fi; \
+	if curl -sf --max-time 3 http://localhost:9766/health 2>/dev/null | grep -q '"ok"'; then \
+		printf "  %-52s ✅\n" "Guardian (:9766)"; \
+	else \
+		printf "  %-52s ❌  (make guardian-start)\n" "Guardian (:9766)"; \
+		FAIL=1; \
+	fi; \
+	echo ""; \
+	if [ "$$FAIL" -eq 0 ]; then \
+		echo "  ✅ All checks passed — safe to proceed"; \
+	else \
+		echo "  ❌ One or more checks FAILED — fix above before running UAT"; \
+	fi; \
+	printf "════════════════════════════════════════════════════\n\n"; \
+	exit $$FAIL
+
 # ── Startup / Shutdown ────────────────────────────────────────
 .PHONY: check
 check:
@@ -294,6 +348,7 @@ servers-start:  ## Start health-server (:8765), gateway (:8080), and testlab (:8
 	  POSTGRES_APP_PASSWORD=$$(security find-generic-password -s legionforge_db_app -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  OPENROUTER_API_KEY=$$(security find-generic-password -s openrouter -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  INCEPTIONLABS_API_KEY=$$(security find-generic-password -s legionforge_inceptionlabs_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  LEGIONFORGE_WEBHOOK_INBOUND_SECRET=$$(security find-generic-password -s legionforge_webhook_inbound_secret -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app &
 	@sleep 1
 	@echo "Starting TestLab on :8090..."
@@ -389,6 +444,7 @@ gateway-start:
 	  POSTGRES_APP_PASSWORD=$$(security find-generic-password -s legionforge_db_app -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  OPENROUTER_API_KEY=$$(security find-generic-password -s openrouter -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  INCEPTIONLABS_API_KEY=$$(security find-generic-password -s legionforge_inceptionlabs_api_key -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
+	  LEGIONFORGE_WEBHOOK_INBOUND_SECRET=$$(security find-generic-password -s legionforge_webhook_inbound_secret -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") \
 	  $(PYTHON) -m src.gateway.app
 
 .PHONY: create-user
@@ -866,7 +922,7 @@ build-testlab:  ## Build legionforge-testlab:latest Docker image
 .PHONY: testlab-start
 testlab-start:  ## Start TestLab in Docker on :8090 (mounts live tests/ and src/)
 	@echo "🔑 Resolving admin key from TESTLAB_ADMIN_KEY or Keychain legionforge_health…"
-	@TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$($(PYTHON) -c "import keyring; print(keyring.get_password('legionforge_health','api_key') or '')" 2>/dev/null)} ; \
+	@TESTLAB_ADMIN_KEY=$${TESTLAB_ADMIN_KEY:-$$(security find-generic-password -s legionforge_health -a api_key -w $(KEYCHAIN) 2>/dev/null)} ; \
 	if [ -z "$$TESTLAB_ADMIN_KEY" ]; then echo "❌ Set TESTLAB_ADMIN_KEY or populate legionforge_health Keychain item"; exit 1; fi ; \
 	docker run --rm -d --name legionforge-testlab -p 8090:8090 \
 	  -e TESTLAB_ADMIN_KEY="$$TESTLAB_ADMIN_KEY" \

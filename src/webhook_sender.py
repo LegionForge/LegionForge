@@ -41,6 +41,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -52,14 +53,21 @@ _TIMEOUT = 10.0  # seconds per attempt
 
 
 def _get_hmac_secret() -> bytes | None:
-    """Return the webhook signing secret from Keychain, or None if unset."""
-    try:
-        from src.credentials import get_secret
+    """Return the webhook signing secret, or None if unset.
 
-        secret = get_secret("legionforge_webhook_inbound_secret")
-        return secret.encode() if secret else None
-    except Exception:
-        return None
+    Checks (in order):
+      1. ``LEGIONFORGE_WEBHOOK_INBOUND_SECRET`` env var (injected by gateway-start)
+      2. CredentialStore in-memory cache (populated at gateway startup)
+    """
+    secret: str | None = os.environ.get("LEGIONFORGE_WEBHOOK_INBOUND_SECRET") or None
+    if not secret:
+        try:
+            from src.credentials import creds
+
+            secret = creds.get("legionforge_webhook_inbound_secret")
+        except Exception:
+            pass
+    return secret.encode() if secret else None
 
 
 def _sign_body(body: bytes, secret: bytes) -> str:
