@@ -4,13 +4,13 @@
 ---
 
 ## Last updated
-2026-03-21 — Session close. UAT Day 7. PR #292 (secrets injection + Ollama eviction) and PR #293 (#266 HITL backend) both merged. Secrets audit completed: 2 remaining gaps (webhook_sender + testlab). CHANGELOG, checkpoint, NEXT all updated. Branch clean.
+2026-03-21 — Session close. UAT Day 7 (session 2). Guardian .guardian-creds SSH fallback + per-call alias hardening committed to dev. Strategic assessment of LegionForge vs OpenClaw/NemoClaw completed. Issues #295, #296, #297 filed. Branch clean.
 
 ## State
-- **Branch:** `dev` — clean (all changes committed + merged via PRs #292, #293)
+- **Branch:** `dev` — clean (commits 55b30a3 + 147ab0b on dev, not yet PR'd to main)
 - **Smoke tests:** 2255/2255
-- **Open PRs:** none
-- **Ship target:** v0.8.0 — Sunday 2026-03-22 (decision pending — see ⚠️ block below)
+- **Open PRs:** none (day 7 session 2 work is on dev, needs PR)
+- **Ship target:** v0.8.0 — date TBD (was Sun 2026-03-22; needs explicit decision)
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
 ## Infrastructure reminder — START OF EVERY SESSION
@@ -45,12 +45,15 @@ make briefing    # reads NEXT.md
 **Before writing the day's plan:** run `gh pr list --state open` — don't schedule a UAT test
 for a feature that isn't merged yet. That was the root cause of Day 6's wasted session.
 
-### ✅ Done this session (2026-03-21)
-- PR #292 merged — gateway-start secrets injection + Ollama eviction + num_ctx
-- PR #293 merged — #266 HITL backend (interrupt_before, mark_task_paused, hitl_required SSE)
-- Secrets audit completed — 2 remaining injection gaps identified (webhook_sender, testlab)
-- Retrospective + process optimizations added to NEXT.md and jp_todo.md
-- Diagnosed + partially fixed spawn_researcher SECURITY HALT (see ⚠️ Guardian section below)
+### ✅ Done this session (2026-03-21, session 2)
+- Diagnosed spawn_researcher SECURITY HALT root cause: `legionforge_guardian` Keychain entry null password → Guardian started with empty POSTGRES_PASSWORD → `_approved_tools={}` → all tools blocked
+- Fixed Guardian for this session: PG role password reset, container manually restarted with injected password, 13 tools now loading
+- Added `.guardian-creds` fallback to `guardian-start` (Makefile) + new `guardian-set-pw` target — works from SSH when Keychain locked
+- Added per-call alias hardening to `SecureToolNode` in `base_graph.py` (belt-and-suspenders for qwen3.5 underscore dropping)
+- Committed: commits 55b30a3 + 147ab0b on dev (not yet PR'd to main)
+- Strategic assessment: LegionForge vs OpenClaw vs NemoClaw — concluded Guardian + Anneal are the valuable primitives, not the full framework
+- Filed issues #295 (auto-generate infrastructure secrets), #296 (pluggable credential provider), #297 (Guardian+Anneal → OpenClaw/NemoClaw integration strategy post-v0.8.0)
+- Updated jp.md + jp_project-best-practices.md with strategic decisions and rules
 
 ### ⚠️ Guardian DB connection broken — MANUAL KEYCHAIN FIX REQUIRED before next restart
 
@@ -79,6 +82,13 @@ make docker-build   # requires Keychain unlock for Docker credential access
 This also needs to be done from Mac desktop (not SSH).
 
 ---
+
+### 🔴 Priority 0: Decide #295 scope (pre or post v0.8.0) — requires Jp decision
+Issue #295 removes the SSH/Keychain hard dependency by auto-generating infrastructure secrets at `make db-init`. This directly fixes the root cause of 3+ UAT sessions lost to Guardian/secrets failures. Two options:
+- **Pre-v0.8.0:** ~2–3h. Fixes the problem before public release. Recommended — the Keychain issue will block contributors the first day LegionForge goes public.
+- **Post-v0.8.0:** Ship with current workaround (`.guardian-creds`). Document manually in setup guide. Known risk: first-time users hit this wall.
+
+**Make this call before starting the next session.**
 
 ### 🔴 Priority 1: Build `make preflight` target (pre-v0.8.0, ~1h)
 The single highest-ROI improvement based on UAT Days 4-6. Every infrastructure issue we hit

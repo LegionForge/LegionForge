@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 342
+UPDATE: 343
 BRANCH: dev
-COMMIT: 3476adf
-TIMESTAMP: 2026-03-21T04:00Z
-LAST_OP: UAT Day 7 session close — CHANGELOG updated (#293 HITL backend + secrets audit retrospective); nightly shutdown complete
-NEXT_OP: make preflight target (~1h) → close 2 secret gaps → fix #291 cancel 404 → T_HITL.2 live UAT → T4/T5 blocks
+COMMIT: 147ab0b
+TIMESTAMP: 2026-03-21T18:00Z
+LAST_OP: UAT Day 7 (session 2) — Guardian .guardian-creds fallback + per-call alias hardening (PR on dev); strategic assessment of Guardian/Anneal vs OpenClaw/NemoClaw; issues #295 #296 #297 filed
+NEXT_OP: decide #295 pre/post v0.8.0 → if pre: implement auto-generated .secrets at db-init → then T_HITL.2 → T4/T5 UAT blocks
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
