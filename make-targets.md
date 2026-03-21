@@ -236,7 +236,8 @@ All commands assume the venv is active: `source venv/bin/activate`
 
 | Target | Description | Arguments |
 |--------|-------------|-----------|
-| `guardian-start` | Start Guardian sidecar container on :9766 | `[TASK_TOKEN_SECRET=...]` |
+| `guardian-start` | Start Guardian sidecar container on :9766; falls back to `.guardian-creds` when Keychain unavailable (SSH) | — |
+| `guardian-set-pw` | Write Guardian PG password to `.guardian-creds` (fallback for SSH sessions) | `PW=<password>` |
 | `guardian-stop` | Stop Guardian container | — |
 | `guardian-logs` | Tail Guardian container logs | — |
 
