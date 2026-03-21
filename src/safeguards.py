@@ -424,11 +424,13 @@ async def check_hitl_required(
     force_end_cats = [c for c in categories if c in FORCE_END_CATEGORIES]
     review_cats = [c for c in categories if c in HITL_REVIEW_CATEGORIES]
 
-    # HITL-REVIEW tier: ambiguous — log and continue for now.
-    # TODO (#266): when HITL UI lands, route to hitl_pending in team/enterprise mode.
+    # HITL-REVIEW tier: pause graph and surface approval request to operator.
+    # Phase 2 (#266): create hitl_pending row, return hitl_pending=True so the
+    # routing function sends the graph to the hitl_gate node (interrupt_before).
     if review_cats:
+        thread_id = state.get("thread_id") or "unknown"
         logger.warning(
-            f"[hitl] Suspicious pattern (log-and-continue) — "
+            f"[hitl] HITL-REVIEW — pausing run for operator approval — "
             f"action='{action}' categories={review_cats} run={run_prefix}..."
         )
         try:
@@ -436,13 +438,36 @@ async def check_hitl_required(
                 agent_id="safeguards",
                 run_id=run_id,
                 threat_type="DESTRUCTIVE_PATTERN",
-                action_taken="LOGGED",
+                action_taken="HITL_PENDING",
                 confidence=0.6,
                 raw_input=input_text[:200],
                 metadata={"action": action, "categories": review_cats},
             )
         except Exception as exc:
             logger.warning(f"[hitl] DB log_threat_event failed (review tier): {exc}")
+        try:
+            from src.database import create_hitl_request
+
+            request_id = await create_hitl_request(
+                run_id=run_id,
+                thread_id=thread_id,
+                action=action,
+                categories=review_cats,
+                input_excerpt=input_text[:200],
+            )
+            logger.info(f"[hitl] created hitl_pending row request_id={request_id}")
+            return {
+                "hitl_pending": True,
+                "hitl_run_id": run_id,
+                "hitl_action": action,
+                "hitl_categories": review_cats,
+                "hitl_request_id": request_id,
+            }
+        except Exception as exc:
+            # DB unavailable — fail safe: log and continue rather than silently block
+            logger.error(
+                f"[hitl] create_hitl_request failed, falling back to log-and-continue: {exc}"
+            )
 
     # FORCE-END tier: unambiguously adversarial — hard stop, no human gate.
     # Guardian (sidecar) intercepts these first. This path fires as a fallback

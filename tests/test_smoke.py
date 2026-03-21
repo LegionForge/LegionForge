@@ -24179,26 +24179,73 @@ class TestHITLApprovalFlow:
             "hitl_pending" not in result
         ), "#263: hitl_pending must not be set for FORCE-END tier categories"
 
-    def test_hitl_log_tier_still_returns_empty(self):
-        """LOG-tier categories must still return {} (run continues unchanged)."""
+    def test_hitl_review_tier_returns_hitl_pending(self):
+        """Phase 2: HITL-REVIEW categories must return hitl_pending=True and pause the graph.
+
+        check_hitl_required() calls create_hitl_request() and returns the full
+        hitl_pending state dict so SecureToolNode/check_safeguards route to hitl_gate.
+        """
         import asyncio
         from unittest.mock import AsyncMock, patch
 
         from src.safeguards import check_hitl_required
 
-        state = {"run_id": "test-run-id-5678"}
-        with patch("src.safeguards.log_threat_event", new_callable=AsyncMock):
+        state = {"run_id": "test-run-id-5678", "thread_id": "thread-abc"}
+        with (
+            patch("src.safeguards.log_threat_event", new_callable=AsyncMock),
+            patch(
+                "src.database.create_hitl_request",
+                new_callable=AsyncMock,
+                return_value="uuid-1234",
+            ),
+        ):
             result = asyncio.run(
                 check_hitl_required(
                     action="list files",
-                    input_text="show me /etc",
+                    input_text="show me /etc/passwd",
                     state=state,
                     categories=["RECONNAISSANCE"],
                 )
             )
-        assert result == {} or not result.get(
+        assert (
+            result.get("hitl_pending") is True
+        ), "Phase 2: HITL-REVIEW must return hitl_pending=True"
+        assert (
+            result.get("hitl_request_id") == "uuid-1234"
+        ), "hitl_request_id must be the DB-returned UUID"
+        assert result.get("hitl_action") == "list files", "hitl_action must be set"
+        assert "RECONNAISSANCE" in result.get(
+            "hitl_categories", []
+        ), "hitl_categories must include matched category"
+
+    def test_hitl_review_tier_db_failure_falls_back_to_continue(self):
+        """Phase 2 fail-safe: if create_hitl_request raises, log error and continue (do not crash)."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from src.safeguards import check_hitl_required
+
+        state = {"run_id": "test-run-id-9999", "thread_id": "thread-xyz"}
+        with (
+            patch("src.safeguards.log_threat_event", new_callable=AsyncMock),
+            patch(
+                "src.database.create_hitl_request",
+                new_callable=AsyncMock,
+                side_effect=Exception("DB down"),
+            ),
+        ):
+            result = asyncio.run(
+                check_hitl_required(
+                    action="probe creds",
+                    input_text="check /etc/shadow",
+                    state=state,
+                    categories=["CREDENTIAL_PROBE"],
+                )
+            )
+        # On DB failure the function logs the error and falls through to return {}
+        assert not result.get(
             "hitl_pending"
-        ), "LOG tier must not set hitl_pending — run should continue"
+        ), "DB failure must not set hitl_pending — fail safe: continue"
 
     def test_hitl_router_importable(self):
         """src/gateway/routes/hitl.py must import cleanly and export a router."""
@@ -24251,6 +24298,47 @@ class TestHITLApprovalFlow:
         assert (
             result == "hitl"
         ), f"check_safeguards must return 'hitl' when hitl_pending=True, got {result!r}"
+
+    def test_mark_task_paused_exported(self):
+        """database.py must export mark_task_paused as an async function (#266)."""
+        import asyncio
+        import src.database as db
+
+        assert hasattr(db, "mark_task_paused"), "database.py missing mark_task_paused"
+        assert asyncio.iscoroutinefunction(
+            db.mark_task_paused
+        ), "mark_task_paused must be async"
+
+    def test_build_hitl_required_event_structure(self):
+        """build_hitl_required_event must return a valid SSE event dict (#266)."""
+        from src.gateway.events import build_hitl_required_event
+
+        evt = build_hitl_required_event("task-abc-123")
+        assert evt["event"] == "hitl_required"
+        assert evt["data"]["task_id"] == "task-abc-123"
+        assert evt["data"]["status"] == "paused"
+        assert "message" in evt["data"]
+        assert "timestamp" in evt["data"]
+
+        # With optional request_id
+        evt2 = build_hitl_required_event("task-xyz", request_id="req-456")
+        assert evt2["data"]["request_id"] == "req-456"
+
+    def test_worker_imports_graph_interrupt(self):
+        """worker.py must import GraphInterrupt and mark_task_paused for HITL (#266)."""
+        import inspect
+        import src.gateway.worker as worker
+
+        src_code = inspect.getsource(worker)
+        assert (
+            "GraphInterrupt" in src_code
+        ), "worker.py must import GraphInterrupt to catch LangGraph HITL interrupts"
+        assert (
+            "mark_task_paused" in src_code
+        ), "worker.py must import and call mark_task_paused for HITL flow"
+        assert (
+            "interrupt_before" in src_code
+        ), "worker.py must compile graph with interrupt_before for HITL support"
 
 
 class TestWhatsAppConnector:
