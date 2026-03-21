@@ -65,6 +65,10 @@ _KEY_ENV_FALLBACKS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "langsmith": "LANGSMITH_API_KEY",
     "postgres": "POSTGRES_PASSWORD",
+    "legionforge_inceptionlabs_api_key": "INCEPTIONLABS_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "legionforge_tavily_api_key": "TAVILY_API_KEY",
+    "legionforge_brave_api_key": "BRAVE_API_KEY",
 }
 
 
