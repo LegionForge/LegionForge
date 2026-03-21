@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-20 (UAT Day 6)
+
+- **`gateway-start` missing secrets injection** — `make gateway-start` only set `POSTGRES_USER`; all Keychain-sourced secrets (Postgres password, tool signer, task token, Tavily, Brave, InceptionLabs, OpenRouter, health token, app password) were never injected. From SSH, login.keychain-db is not in the session search list so both `keyring` and `security` CLI fallbacks fail silently. Fix: `gateway-start` now injects all 10 secrets via `$(KEYCHAIN)` path, matching `servers-start`.
+- **`_KEY_ENV_FALLBACKS` missing provider mappings** — `get_api_key("legionforge_inceptionlabs_api_key")` generated env var `LEGIONFORGE_INCEPTIONLABS_API_KEY_API_KEY` (double suffix), never matching `INCEPTIONLABS_API_KEY` injected by `servers-start`. Added mappings for InceptionLabs, OpenRouter, Tavily, Brave.
+- **`num_ctx` only applied to primary Ollama model** — models loaded by direct ID (e.g. `qwen3.5:latest`) got Ollama's 4096-token default, causing context overflow and agent looping. Fix: profile `num_ctx` (16384) is now the default for all Ollama models.
+- **Ollama VRAM exhaustion on model switch** — `keep_alive=-1` means loaded models never self-evict. Switching from `qwen3.5:latest` (8.5GB) to `llama3.1:8b` (4.7GB) would hang indefinitely. Fix: `_get_ollama()` now checks `/api/ps` and evicts any loaded model that isn't the target before returning.
+
 ### Fixed — 2026-03-17 (UAT Day 4)
 
 - **`fanoutresearchers` Guardian HALT** — `SecureToolNode` was re-extracting `tool_calls` via `getattr(last_msg)` after `model_copy`, which does not reliably propagate updates in all LangChain versions. Un-normalised name flowed into Guardian, which correctly rejected it. Fix: assign `tool_calls = normalised_tcs` directly; add defensive reverse alias lookup in `verify_tool_before_invocation` as a second layer. Closes #276.

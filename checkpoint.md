@@ -1,11 +1,11 @@
 VERSION: 0.7.1-alpha
-UPDATE: 338
+UPDATE: 340
 BRANCH: dev
-COMMIT: 078e6ab
-TIMESTAMP: 2026-03-19T03:30Z
-LAST_OP: UAT Day 5 — PR #280 merged; orchestrator synthesis fix (map/reduce + llm_plain enforcement); Tavily recency days=3; researcher no-hallucination clauses; web_fetch-first rule. PR #282 open (5 commits).
-NEXT_OP: Merge PR #282 → fix #266 (HITL UI badge + queue panel + modal) → retest T4.1 with new fixes → T4.2/T4.3 → Priority 5 admin/multi-user block
-SMOKE_TESTS: 2251/2251
+COMMIT: 75cfa93 (uncommitted changes pending — see NEXT.md)
+TIMESTAMP: 2026-03-20T23:30Z
+LAST_OP: UAT Day 6 (session 2) — SSH keychain isolation root cause fixed; gateway-start now injects all 10 secrets; Ollama auto-eviction added; num_ctx=16384 for all Ollama models; issues #288–#291 opened; mercury-2 + llama3.1:8b weather/knowledge tests passed.
+NEXT_OP: Commit today's fixes (Makefile + core.py + llm_factory.py) → PR → complete #266 HITL backend → fix #291 cancel button 404 → T4 UAT block
+SMOKE_TESTS: 2252/2252
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40

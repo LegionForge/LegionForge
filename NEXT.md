@@ -4,12 +4,12 @@
 ---
 
 ## Last updated
-2026-03-19 03:30 UTC — Session close. UAT Day 5 complete. PR #282 open (5 commits). Orchestrator synthesis fixed. Research quality improved. Docker/web_fetch_js infrastructure gap documented.
+2026-03-20 — Session close. UAT Day 6 (second session). Infrastructure root cause found and fixed. 4 new issues opened (#288–#291). Sky-blue llama3.1:8b test passed (326s — slow but correct; routing issue captured in #290). mercury-2 test passed (20.8s, correct). qwen3.5 hangs resolved by Ollama eviction fix.
 
 ## State
-- **Branch:** `dev` — 5 commits ahead of main (all in PR #282)
-- **Smoke tests:** 2251/2251
-- **Open PRs:** #282 (orchestrator synthesis + research quality — ready to merge)
+- **Branch:** `dev` — uncommitted changes (today's fixes not yet committed; partial #266 work also staged-but-uncommitted from previous session)
+- **Smoke tests:** 2252/2252
+- **Open PRs:** none
 - **Ship target:** v0.8.0 — Sunday 2026-03-22
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
@@ -24,7 +24,7 @@ curl -s http://localhost:9766/health | jq .   # expect: {"status": "ok", ...}
 
 **web_fetch_js also requires Docker** (headless Chromium). If Docker is down, JS-rendered sites (CBC, CNN, React SPAs) will fail to fetch. Static HTML sites (HackerNews, Wikipedia) use plain `web_fetch` and work without Docker.
 
-**jp's API key** was rotated this session. Retrieve fresh key via:
+**jp's API key** — retrieve via:
 ```bash
 make rotate-key USERNAME=jp
 ```
@@ -35,54 +35,100 @@ make rotate-key USERNAME=jp
 security find-generic-password -s legionforge_health -a api_key -w
 ```
 
-## UAT Day 6 — start here (2026-03-19)
+## UAT Day 7 — start here
 
-### 🔴 Priority 1: Merge PR #282
-PR is green (2251/2251). Merge it, re-sync dev.
+### 🔴 Priority 1: Commit today's infrastructure fixes
+Today's code changes are **uncommitted**. Stage and commit before any other work:
+```bash
+git add Makefile src/security/core.py src/llm_factory.py .gitignore
+# Run make ci first
+make ci
+git commit -m "fix: gateway-start secrets injection + Ollama model eviction + num_ctx for all models"
+```
+**Do NOT stage** `src/gateway/static/index.html`, `src/safeguards.py`, `tests/test_smoke.py` — those are the partial #266 frontend work, incomplete, belong to that PR.
 
-### 🔴 Priority 2: Fix #266 — HITL UI (pre-v0.8.0 blocker)
-Header badge + admin queue panel + approve/reject modal. T_HITL.2 and T_HITL.3 are blocked on this.
+### 🔴 Priority 2: Complete #266 — HITL UI (pre-v0.8.0 blocker)
 
-### Priority 3: Retest T4.1 with new fixes
-Resubmit HackerNews headlines task. Should now:
-- Use `web_fetch` (not `web_fetch_js`) for HN — static HTML
-- Return only stories from last 3 days (Tavily `days=3`)
-- Say "not retrieved" for any positions not in research results (no hallucination)
+**Already done (uncommitted frontend, from previous session):**
+- `src/gateway/static/index.html` — modal HTML/CSS, header badge button, admin queue card, full JS (polling, badge update, queue load, modal open/close/resolve) — 181 lines
+- `src/safeguards.py` — HITL-REVIEW tier now calls `create_hitl_request()` and returns `hitl_pending: True`
+- `tests/test_smoke.py` — tests updated for Phase 2 HITL behavior
 
-### Priority 4: Continue UAT T4 block
-- T4.2: document ingestion + RAG retrieval
-- T4.3: memory clear
+**What's MISSING (backend — not yet written):**
+1. `src/database.py` — migration: add 'paused' to `tasks_status_check` constraint; add `mark_task_paused()` function
+2. `src/gateway/events.py` — add `build_hitl_required_event()`
+3. `src/gateway/worker.py` — compile graph with `interrupt_before=["hitl_gate"]`; catch `GraphInterrupt`; call `mark_task_paused()`; emit `hitl_required` SSE event
+4. `src/gateway/static/index.html` — add SSE `hitl_required` event handler; make modal non-dismissable when SSE-triggered
+5. `tests/test_smoke.py` — add smoke tests for `mark_task_paused`, `build_hitl_required_event`, worker interrupt path
 
-### Priority 5: UAT Day 6 block — Admin + Multi-user (T5.1–T5.4)
+### 🔴 Priority 3: Fix #291 — Cancel button 404 (pre-v0.8.0)
+`DELETE /tasks/:id` route does not exist. Cancel button silently fails. Two options:
+- **Option A:** Add route + worker abort signal (full fix)
+- **Option B:** Hide cancel button until Option A lands (fast: 1 line in index.html)
+
+### Priority 4: Retest T4.1 + continue T4 block
+Resubmit HackerNews headlines task. Should use `web_fetch` (static HTML), Tavily `days=3`, no hallucination.
+Then T4.2 (doc ingestion + RAG), T4.3 (memory clear).
+
+### Priority 5: UAT Day 5 block — Admin + Multi-user (T5.1–T5.4)
 RLS isolation, quota enforcement, deactivation, RBAC.
 
-### Priority 6: Fix #268 — persist tool call events
-Agent events not written to task_events table. Fix steps counter for sub-agent calls.
+### Priority 6: Fix #288 — Sequence registry missing multi-fetch patterns
+Mercury-2 UAT is degraded while `web_search→web_search` and `web_fetch→web_fetch` sequences are sandboxed.
 
-### Priority 7: Fix #283 — postgres Keychain item missing
-`security find-generic-password -s postgres -a api_key` returns not found.
-CLI tools (`make rotate-key`, `make create-user`) need manual env export workaround.
-Fix: store password in Keychain + add `make check` warning.
+---
 
-### Priority 8: `make sanity` / runtime health target (#TBD)
-30s real checks: gateway /health, DB ping, API key round-trip, Ollama model loaded, Docker running.
+## UAT Day 6 — completed (2026-03-20, second session)
+
+### ✅ Root cause: SSH keychain isolation broke all Keychain reads
+`make gateway-start` only set `POSTGRES_USER` — no secrets injected. From SSH, the login.keychain-db is not in the session search list, so both `keyring` and `security` CLI fallbacks fail silently. Every Keychain-sourced key returned not-found. This was the root cause of ALL provider failures (InceptionLabs, Tavily, tool signer, etc.).
+
+### ✅ Fixed today (code — uncommitted)
+- **`gateway-start` secrets injection** — now injects all 10 Keychain secrets at startup, matching `servers-start` pattern (Makefile)
+- **`_KEY_ENV_FALLBACKS` extended** — added InceptionLabs, OpenRouter, Tavily, Brave mappings; previously code generated `LEGIONFORGE_INCEPTIONLABS_API_KEY_API_KEY` (double suffix) which never matched (src/security/core.py)
+- **`num_ctx=16384` for all Ollama models** — was only applied to primary model; any model loaded by direct ID (e.g. qwen3.5) got Ollama's 4096 default → context overflow → infinite loops (src/llm_factory.py)
+- **Ollama model auto-eviction** — `_get_ollama()` now checks `/api/ps` on every load and evicts any loaded model that isn't the target. `keep_alive=-1` means models never self-evict; without this, qwen3.5 (8.5GB) blocked llama3.1:8b (4.7GB) indefinitely (src/llm_factory.py)
+
+### ✅ UAT results
+| Test | Model | Result | Time | Tokens |
+|------|-------|--------|------|--------|
+| T4.0: Weather (Birmingham, AL) | mercury-2 | ✅ Pass — correct date, highs/lows, hat advice | 20.8s | 71,423 |
+| T4.0: Weather (Birmingham, AL) | llama3.1:8b | ✅ Pass — correct, no hallucination | ~4min | ~17k |
+| T4.0: Sky blue (knowledge) | llama3.1:8b | ✅ Pass — excellent Rayleigh scattering explanation | 326s | 16,985 |
+
+### ⚠️ Issues observed
+- mercury-2 hit token budget (59,634/50,000 force-stop on one sub-researcher) — partial result gap
+- SEQUENCE_VIOLATION sandboxes on mercury-2 multi-fetch patterns — degraded quality
+- 326s for knowledge question (should be ~15s if direct-answer path existed)
+- qwen3.5 at 4096 context hung indefinitely (fixed by eviction + num_ctx fix)
+- Cancel button `DELETE /tasks/:id` → 404 (silent failure)
+
+### ✅ Issues opened
+| Issue | Title | Priority |
+|-------|-------|----------|
+| #288 | Researcher sequence registry missing multi-fetch patterns | pre-v0.8.0 |
+| #289 | Cloud model token budget: separate cap needed for paid providers | pre-v0.8.0 |
+| #290 | Orchestrator: direct-answer routing for knowledge questions | post-v0.8.0 |
+| #291 | UI cancel button calls DELETE /tasks/:id — 404 | pre-v0.8.0 |
+
+---
+
+## UAT Day 6 — completed (2026-03-19, first session)
+
+### ✅ Done this session
+- PR #282 confirmed merged (was already merged before session)
+- `dev` re-synced with `main` — clean
+- #266 HITL UI fully analyzed — see plan above
 
 ---
 
 ## UAT Day 4 — completed (2026-03-17, second session)
 
 ### ✅ Fixed
-- **Guardian POSTGRES_USER override** — `.env` sets `POSTGRES_USER=legionforge_admin` which docker-compose was substituting into `${POSTGRES_USER:-legionforge_guardian}`, connecting Guardian as the wrong role. Fixed: `guardian-start` now explicitly exports `POSTGRES_USER=legionforge_guardian`. Makefile modified, **not yet committed**.
-- **Alias normalization confirmed working** — After Guardian restart, Guardian logs show `fan_out_researchers` (canonical name) in `/check` requests. The PR #279 normalization fix works end-to-end.
+- **Guardian POSTGRES_USER override** — `.env` sets `POSTGRES_USER=legionforge_admin` which docker-compose was substituting into `${POSTGRES_USER:-legionforge_guardian}`, connecting Guardian as the wrong role. Fixed: `guardian-start` now explicitly exports `POSTGRES_USER=legionforge_guardian`.
 
 ### 🔴 New blocker found
-- **Orchestrator synthesis bug** — After `fan_out_researchers` runs (363s, 46K tokens), orchestrator LLM returns "I've called all the necessary tools to provide you with the information you requested about Y Combinator." Root cause: `_ORCHESTRATOR_SYSTEM_CONTENT` says "MUST call a tool on EVERY response — never answer from memory." This contradicts step-2 synthesis. No GitHub issue yet — open at start of Day 5.
-
-### Root cause chain for #276 (full post-mortem)
-What looked like one bug was actually three separate failures:
-1. **Alias normalization** — qwen2.5 strips underscores (`fan_out_researchers` → `fanoutresearchers`). Fixed in PR #279 (SecureToolNode + verify_tool_before_invocation fallback).
-2. **Guardian DB connectivity** — `POSTGRES_USER` from `.env` overrode docker-compose default, Guardian connected as `legionforge_admin` (wrong role, auth failed), cache stayed empty → all tools blocked. Fixed in Makefile.
-3. **Orchestrator synthesis** — After tools ran, system prompt prevented LLM synthesis. New issue TBD.
+- **Orchestrator synthesis bug** — After `fan_out_researchers` runs, orchestrator LLM returns "I've called all the necessary tools..." Root cause: `_ORCHESTRATOR_SYSTEM_CONTENT` says "MUST call a tool on EVERY response." This contradicts step-2 synthesis. Fixed in PR #282.
 
 ---
 
@@ -92,28 +138,30 @@ What looked like one bug was actually three separate failures:
 - PR #274 (worker startup reap — closes #272)
 - PR #278 (get_user_connection %s — psycopg3 placeholder)
 - PR #279 (fanoutresearchers alias normalization — closes #276)
-- dev re-synced with origin/main after each merge
-
-### ✅ Fixed and committed
-- **#276 fanoutresearchers Guardian HALT** — PR #279 merged
-- **copyOutput copies only status lines** — committed (8ac416f)
-- **`make briefing` overhaul** — hardcoded repo, stale NEXT.md grep, sync check, end-of-session reminders
 
 ---
 
 ## UAT issues log
 
+### Opened Day 6 (2026-03-20)
+| Issue | Title | Priority |
+|-------|-------|----------|
+| #288 | Researcher sequence registry missing multi-fetch patterns | pre-v0.8.0 |
+| #289 | Cloud model token budget: separate cap needed for paid providers | pre-v0.8.0 |
+| #290 | Orchestrator direct-answer routing for knowledge questions | post-v0.8.0 |
+| #291 | UI cancel button → DELETE /tasks/:id returns 404 | pre-v0.8.0 |
+
 ### Opened Day 4 (2026-03-17, session 2)
 | Issue | Title | Priority |
 |-------|-------|----------|
-| TBD | Orchestrator synthesis — system prompt contradicts step-2 LLM call | **pre-v0.8.0 blocker — open at start of Day 5** |
+| TBD | Orchestrator synthesis — system prompt contradicts step-2 LLM call | fixed in PR #282 |
 
 ### Opened Day 3 (2026-03-17, session 1)
 | Issue | Title | Priority |
 |-------|-------|----------|
 | #273 | Multi-node worker architecture — PostgreSQL LISTEN/NOTIFY + worker_nodes | post-v1.0 |
 | #275 | Bump actions/checkout to Node.js 24 compatible version | post-v0.8.0 (deadline Jun 2026) |
-| #276 ✅ | fanoutresearchers alias normalization bypassed — Guardian HALT on fan-out tasks | pre-v0.8.0 blocker — merged PR #279 |
+| #276 ✅ | fanoutresearchers alias normalization bypassed — Guardian HALT on fan-out tasks | merged PR #279 |
 | #277 | Show logged-in username in UI header | pre-v0.8.0 |
 
 ### Opened Day 2 (2026-03-16)
@@ -146,11 +194,8 @@ What looked like one bug was actually three separate failures:
 - Mobile/responsive UI pass
 - 381-panel admin search/filter
 - Automated benchmark harness (model × context × provider sweep)
-- **Cloudflare bypass for `web_fetch_js` / headless browser** — some sites using Cloudflare CDN/bot protection block headless Chromium. Evaluate whether `web_fetch_js` needs stealth mode (e.g. undetected-chromedriver, playwright-stealth, or a dedicated bypass layer). Research refs:
-  - https://stackoverflow.com/questions/68289474/selenium-headless-how-to-bypass-cloudflare-detection-using-selenium
-  - https://www.zenrows.com/blog/selenium-cloudflare-bypass
-  - https://www.nstbrowser.io/en/wiki/headless-browser-cloudflare-bypass-python-guide-2025
-  - https://github.com/luminati-io/bypass-cloudflare
+- Orchestrator direct-answer routing (#290)
+- **Cloudflare bypass for `web_fetch_js` / headless browser**
 
 ## At v0.8.0 — Public Release Prep
 See bottom of previous NEXT.md for full history rewrite + org transfer steps.
