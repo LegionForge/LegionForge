@@ -1101,6 +1101,17 @@
     .help-row { display:grid; grid-template-columns:160px 1fr; gap:6px; padding:4px 0; border-bottom:1px solid var(--border2); font-size:13px; }
     .help-row:last-child { border-bottom:none; }
     .help-key { font-family:var(--mono); color:var(--blue); font-size:12px; }
+    /* ── HITL approval modal (Phase 266) ─────────────────────── */
+    #hitl-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; align-items:center; justify-content:center; }
+    #hitl-modal.open { display:flex; }
+    #hitl-modal-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:20px 24px; max-width:500px; width:92%; }
+    #hitl-badge { display:none; background:var(--red,#d04030); color:#fff; border-radius:10px; font-size:10px; font-weight:700; padding:1px 5px; margin-left:4px; vertical-align:middle; }
+    @keyframes hitl-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(208,64,48,.7); } 60% { box-shadow:0 0 0 6px rgba(208,64,48,0); } }
+    #hitl-header-btn { animation: hitl-pulse 1.6s ease-in-out infinite; }
+    .hitl-row { border-bottom:1px solid var(--border2); padding:8px 0; font-size:12px; display:flex; flex-direction:column; gap:3px; }
+    .hitl-row:last-child { border-bottom:none; }
+    .hitl-row-meta { color:var(--text-xdim); font-size:11px; }
+    .hitl-cats { color:var(--orange,#d08030); font-family:var(--mono); font-size:11px; }
   </style>
 </head>
 <body>
@@ -1112,6 +1123,23 @@
   <div id="session-list"><div style="padding:10px 12px;font-size:12px;color:var(--text-xdim)">No sessions yet</div></div>
 </div>
 <div id="main">
+<!-- Phase 266: HITL Approval Modal -->
+<div id="hitl-modal" onclick="if(event.target===this)closeHitlModal()">
+  <div id="hitl-modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong>HITL Approval Request</strong>
+      <button onclick="closeHitlModal()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px">×</button>
+    </div>
+    <div id="hitl-modal-detail" style="font-size:12px;color:var(--text-dim);margin-bottom:12px"></div>
+    <label style="font-size:12px;display:block;margin-bottom:4px">Operator note (optional)</label>
+    <textarea id="hitl-operator-note" rows="3" style="width:100%;box-sizing:border-box;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;padding:6px;resize:vertical" placeholder="Reason for decision…"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn ghost" onclick="closeHitlModal()" style="font-size:12px">Cancel</button>
+      <button class="btn danger" onclick="resolveHitl('reject')" style="font-size:12px">Reject</button>
+      <button class="btn" onclick="resolveHitl('approve')" style="font-size:12px;background:var(--green,#2e7d32);color:#fff;border-color:var(--green,#2e7d32)">Approve</button>
+    </div>
+  </div>
+</div>
 <!-- Phase 91: Keyboard Shortcuts Help Modal -->
 <div id="help-modal" onclick="if(event.target===this)toggleHelpModal()">
   <div id="help-modal-box">
@@ -1139,6 +1167,7 @@
     <button id="theme-toggle" onclick="toggleTheme()" title="Cycle theme (Dark → Light → Solarized → Warm → Nord → Contrast)" aria-label="Cycle color theme"><span aria-hidden="true">🌙</span></button>
     <button id="chat-mode-btn" onclick="toggleChatMode()" title="Toggle chat mode" aria-label="Toggle chat mode" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px"><span aria-hidden="true">💬</span> Chat</button>
     <button id="help-btn" onclick="toggleHelpModal()" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" style="background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-dim);cursor:pointer;font-size:13px;padding:3px 7px">?</button>
+    <button id="hitl-header-btn" onclick="openHitlQueueFromHeader()" title="Pending HITL approvals — operator action required" aria-label="Pending HITL approvals" style="display:none;background:var(--red,#d04030);border:none;border-radius:var(--radius);color:#fff;cursor:pointer;font-size:12px;padding:3px 8px;font-weight:600">🚨 HITL<span id="hitl-badge"></span></button>
     <div id="conn-dot" title="Stream connection status" aria-label="Stream connection status" role="status"></div>
   </div>
 
@@ -1270,6 +1299,14 @@
   </div>
 
   <!-- ── Operator Dashboard (lazy-loaded — click to expand) ──────────── -->
+  <!-- ── HITL Approval Queue card (Phase 266) ─────────────── -->
+  <div class="card" id="hitl-queue-card">
+    <details id="hitl-queue-section">
+      <summary style="cursor:pointer">HITL Approvals <span style="font-size:10px;color:var(--text-xdim)">(admin)</span> <span id="hitl-queue-badge" style="display:none;background:var(--red,#d04030);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:4px"></span> <button class="btn ghost icon" style="font-size:11px;padding:2px 6px;margin-left:8px" onclick="loadHitlQueue(event)" title="Refresh">↻</button></summary>
+      <div id="hitl-queue-body" style="font-size:12px;color:var(--text-xdim);padding:4px 0;margin-top:6px">Click ↻ or open to load pending approvals.</div>
+    </details>
+  </div>
+
   <details id="op-dashboard">
     <summary><span id="op-dashboard-arrow">▶</span> ⚙ Operator Dashboard <span style="font-size:11px;font-weight:400;color:var(--text-dim);margin-left:6px">296 tools — click to expand</span></summary>
     <div id="op-dashboard-body"></div>
@@ -6060,6 +6097,21 @@ function openStream(taskId, streamToken, apiKey, agent, taskInput, retry = false
     } catch(_) { finishRun('error', 'Stream error', taskId, agent, taskInput, 0); }
     es.close();
     S.activeES = null;
+  });
+
+  es.addEventListener('hitl_required', e => {
+    es.close(); S.activeES = null;
+    if (S.streamEl) { S.streamEl.remove(); S.streamEl = null; }
+    appendSpan('[task paused — HITL approval required]\n', 'o-status');
+    finishRun('paused', 'Awaiting operator approval', taskId, agent, taskInput, 0);
+    // Trigger badge refresh so the HITL header button becomes visible.
+    if (typeof startHitlPolling === 'function' && !_hitlPollTimer) startHitlPolling();
+    if (typeof loadHitlQueue === 'function') loadHitlQueue(null);
+    // Open approval modal in non-dismissable mode (operator must decide).
+    try {
+      const d = JSON.parse(e.data || '{}');
+      if (d.request_id) { _hitlFromSSE = true; openHitlModal(d.request_id); }
+    } catch (_) {}
   });
 
   es.addEventListener('task_cancelled', () => {
@@ -14317,6 +14369,166 @@ function toggleChatMode() {
     if (btn) btn.classList.add('active');
   }
 })();
+
+// ── Phase 266: HITL Approval Queue ────────────────────────────────────────────
+
+let _hitlActiveId = null;  // request_id currently open in the modal
+let _hitlPollTimer = null;
+let _hitlRows = {};        // id → row cache so onclick only needs the id
+let _hitlFromSSE = false;  // true when modal opened by SSE event — non-dismissable
+
+// Poll /hitl/pending every 30s; update badge if admin key is set.
+function startHitlPolling() {
+  async function _poll() {
+    const apiKey = el.apiKey().value.trim();
+    if (!apiKey) return;
+    try {
+      const res = await fetch('/hitl/pending', { headers: { Authorization: 'Bearer ' + apiKey } });
+      if (res.status === 403) return;  // not admin — stay hidden
+      if (!res.ok) return;
+      const d = await res.json();
+      const count = (d.requests || []).length;
+      _updateHitlBadge(count);
+    } catch (_) {}
+  }
+  _poll();
+  _hitlPollTimer = setInterval(_poll, 30000);
+}
+
+function _updateHitlBadge(count) {
+  const btn = document.getElementById('hitl-header-btn');
+  const badge = document.getElementById('hitl-badge');
+  const qBadge = document.getElementById('hitl-queue-badge');
+  if (!btn || !badge) return;
+  if (count > 0) {
+    btn.style.display = '';
+    badge.style.display = '';
+    badge.textContent = count;
+    if (qBadge) { qBadge.style.display = ''; qBadge.textContent = count; }
+  } else {
+    btn.style.display = 'none';
+    badge.style.display = 'none';
+    if (qBadge) qBadge.style.display = 'none';
+  }
+}
+
+async function loadHitlQueue(evt) {
+  if (evt) evt.stopPropagation();
+  const apiKey = el.apiKey().value.trim();
+  const body = document.getElementById('hitl-queue-body');
+  if (!body) return;
+  if (!apiKey) { body.textContent = 'Enter API key.'; return; }
+  body.textContent = 'Loading…';
+  try {
+    const res = await apiFetch('/hitl/pending');
+    if (res.status === 403) { body.textContent = 'Admin key required.'; return; }
+    if (!res.ok) { body.textContent = 'Error ' + res.status; return; }
+    const d = await res.json();
+    const reqs = d.requests || [];
+    _updateHitlBadge(reqs.length);
+    if (!reqs.length) { body.textContent = 'No pending approvals.'; return; }
+    _hitlRows = {};
+    reqs.forEach(r => { _hitlRows[r.id] = r; });
+    body.innerHTML = reqs.map(r => {
+      const cats = (r.categories || []).join(', ');
+      const ts = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const safeId = escapeHtml(r.id || '');
+      return '<div class="hitl-row">' +
+        '<div><strong>' + escapeHtml(r.action || '') + '</strong></div>' +
+        '<div class="hitl-cats">' + escapeHtml(cats) + '</div>' +
+        '<div class="hitl-row-meta">' + escapeHtml(r.input_excerpt || '') + '</div>' +
+        '<div class="hitl-row-meta">' + ts + '</div>' +
+        '<div style="margin-top:4px;display:flex;gap:6px">' +
+          '<button class="btn" style="font-size:11px;background:var(--green,#2e7d32);color:#fff;border-color:var(--green,#2e7d32)" onclick="openHitlModal(\'' + safeId + '\')">Review…</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { body.textContent = 'Error: ' + e.message; }
+}
+
+function openHitlQueueFromHeader() {
+  // Open the HITL queue card if it's in a details element
+  const section = document.getElementById('hitl-queue-section');
+  if (section) { section.open = true; loadHitlQueue(null); }
+  // Scroll to the card
+  const card = document.getElementById('hitl-queue-card');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openHitlModal(requestId) {
+  const row = _hitlRows[requestId] || {};
+  _hitlActiveId = requestId;
+  const note = document.getElementById('hitl-operator-note');
+  if (note) note.value = '';
+  const detail = document.getElementById('hitl-modal-detail');
+  if (detail) {
+    const cats = (row.categories || []).join(', ');
+    const ts = row.created_at ? new Date(row.created_at).toLocaleString() : '';
+    detail.innerHTML =
+      '<div style="margin-bottom:4px"><strong>Action:</strong> ' + escapeHtml(row.action || '') + '</div>' +
+      '<div style="margin-bottom:4px;color:var(--orange,#d08030);font-family:var(--mono);font-size:11px"><strong>Categories:</strong> ' + escapeHtml(cats) + '</div>' +
+      '<div style="margin-bottom:4px;color:var(--text-xdim)"><strong>Excerpt:</strong> ' + escapeHtml(row.input_excerpt || '') + '</div>' +
+      '<div style="color:var(--text-xdim);font-size:11px">' + ts + '</div>';
+  }
+  // When triggered by SSE, hide the cancel button — operator must decide.
+  const cancelBtn = document.querySelector('#hitl-modal-box .btn.ghost');
+  if (cancelBtn) cancelBtn.style.display = _hitlFromSSE ? 'none' : '';
+  const modal = document.getElementById('hitl-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeHitlModal() {
+  // Non-dismissable when opened by SSE: operator must approve or reject.
+  if (_hitlFromSSE) return;
+  _hitlActiveId = null;
+  const modal = document.getElementById('hitl-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+function _forceCloseHitlModal() {
+  // Called after resolveHitl() completes — always closes regardless of SSE mode.
+  _hitlFromSSE = false;
+  _hitlActiveId = null;
+  const modal = document.getElementById('hitl-modal');
+  if (modal) modal.classList.remove('open');
+  const cancelBtn = document.querySelector('#hitl-modal-box .btn.ghost');
+  if (cancelBtn) cancelBtn.style.display = '';
+}
+
+async function resolveHitl(decision) {
+  if (!_hitlActiveId) return;
+  const apiKey = el.apiKey().value.trim();
+  if (!apiKey) { alert('API key required.'); return; }
+  const note = (document.getElementById('hitl-operator-note') || {}).value || '';
+  const requestId = _hitlActiveId;
+  _forceCloseHitlModal();
+  try {
+    const res = await fetch('/hitl/' + requestId + '/' + decision, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operator_note: note }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('HITL ' + decision + ' failed: ' + (err.detail || res.status));
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+  await loadHitlQueue(null);
+}
+
+// Start HITL polling once API key is available (key input blur already fires loadSessions etc.)
+el.apiKey().addEventListener('blur', function() {
+  if (el.apiKey().value.trim() && !_hitlPollTimer) startHitlPolling();
+});
+// Also start immediately if key already present on load
+(function() { if (el.apiKey().value.trim()) startHitlPolling(); })();
+// Close HITL modal on Escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('hitl-modal');
+    if (modal && modal.classList.contains('open')) { e.preventDefault(); closeHitlModal(); }
+  }
+});
 </script>
 </body>
 </html>

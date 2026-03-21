@@ -67,12 +67,15 @@ _in_flight: dict[str, "asyncio.Task[None]"] = {}
 # decremented in a finally block — always consistent).
 _active_tasks: int = 0
 
+from langgraph.errors import GraphInterrupt
+
 from src.database import (
     claim_next_queued_task,
     fail_dependent_tasks,
     mark_task_running,
     mark_task_complete,
     mark_task_failed,
+    mark_task_paused,
     reap_stuck_tasks,
     reap_stale_running_tasks,
     record_api_usage,
@@ -81,6 +84,7 @@ from src.database import (
 )
 from src.security.core import sanitize_log_value
 from src.gateway.events import (
+    build_hitl_required_event,
     build_sse_event,
     build_task_complete_event,
     build_task_error_event,
@@ -262,7 +266,14 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
 
     try:
         async with get_checkpointer() as checkpointer:
-            graph = uncompiled.compile(checkpointer=checkpointer)
+            # interrupt_before=["hitl_gate"] is only wired in base_graph.
+            # Researcher and orchestrator graphs don't have this node — pass
+            # an empty list so their compilation is unchanged.
+            _interrupt_nodes = ["hitl_gate"] if agent_type == "base_agent" else []
+            graph = uncompiled.compile(
+                checkpointer=checkpointer,
+                interrupt_before=_interrupt_nodes or None,
+            )
             async for lg_event in graph.astream_events(
                 initial_state, config=config, version="v2"
             ):
@@ -474,6 +485,18 @@ async def run_task(task: dict) -> None:
         asyncio.create_task(
             _fire_user_webhooks(user_id, "task_complete", _complete_payload)
         )
+
+    except GraphInterrupt:
+        # LangGraph raised GraphInterrupt before executing hitl_gate_node —
+        # the graph is paused at the checkpoint awaiting operator approval.
+        # Mark the task 'paused' (not 'failed') and emit a terminal SSE event
+        # so the client stops streaming and the HITL badge becomes visible.
+        pop_charts(task_id)
+        logger.info("[worker] Task paused for HITL approval task_id=%s", task_id)
+        await mark_task_paused(task_id)
+        # hitl_request_id is in the agent state (persisted to checkpoint by
+        # check_hitl_required).  Pass None here; the UI polls /hitl/pending.
+        await publish_event(task_id, build_hitl_required_event(task_id))
 
     except Exception as exc:
         error_msg = str(exc)

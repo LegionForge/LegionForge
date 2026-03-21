@@ -49,7 +49,7 @@ _TERMINAL_CACHE_MAXSIZE = 2_000
 
 # ── SSE event builder ─────────────────────────────────────────────────────────
 
-_TERMINAL_EVENTS = {"task_complete", "task_error", "task_cancelled"}
+_TERMINAL_EVENTS = {"task_complete", "task_error", "task_cancelled", "hitl_required"}
 
 
 def _now() -> str:
@@ -215,6 +215,29 @@ def build_task_cancelled_event(task_id: str) -> dict:
         "event": "task_cancelled",
         "data": {"task_id": task_id, "status": "cancelled", "timestamp": _now()},
     }
+
+
+def build_hitl_required_event(task_id: str, request_id: str | None = None) -> dict:
+    """
+    Terminal SSE event published when the agent is paused awaiting HITL approval.
+
+    Closes the SSE stream from the client's perspective (hitl_required is in
+    _TERMINAL_EVENTS).  The task row is set to 'paused' by the worker; the
+    operator resolves the request via POST /hitl/{request_id}/approve|reject,
+    after which the graph resumes and the task returns to 'running'.
+
+    ``request_id`` is the hitl_pending row UUID — included so the UI can
+    navigate directly to the approval modal without a polling round-trip.
+    """
+    data: dict = {
+        "task_id": task_id,
+        "status": "paused",
+        "message": "Task paused — operator approval required before the agent can continue.",
+        "timestamp": _now(),
+    }
+    if request_id:
+        data["request_id"] = request_id
+    return {"event": "hitl_required", "data": data}
 
 
 def build_heartbeat_event() -> dict:

@@ -1761,7 +1761,7 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
             task_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id         TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'queued'
-                                CHECK (status IN ('queued','running','complete','failed','cancelled')),
+                                CHECK (status IN ('queued','running','complete','failed','cancelled','paused')),
             agent_type      TEXT NOT NULL DEFAULT 'orchestrator'
                                 CHECK (agent_type IN ('orchestrator','researcher','base_agent')),
             input           TEXT NOT NULL,
@@ -1786,6 +1786,31 @@ async def _create_app_tables(conn: psycopg.AsyncConnection) -> None:
     )
     await conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at DESC)"
+    )
+    # Migration: add 'paused' status to tasks_status_check (#266 HITL).
+    # The CREATE TABLE IF NOT EXISTS above doesn't modify existing constraints;
+    # this DO block handles databases created before 'paused' was added.
+    await conn.execute(
+        """
+        DO $$
+        DECLARE
+            v_conname TEXT;
+        BEGIN
+            SELECT conname INTO v_conname
+            FROM pg_constraint
+            WHERE conrelid = 'tasks'::regclass
+              AND contype = 'c'
+              AND pg_get_constraintdef(oid) LIKE '%queued%'
+              AND pg_get_constraintdef(oid) NOT LIKE '%paused%'
+            LIMIT 1;
+
+            IF v_conname IS NOT NULL THEN
+                EXECUTE 'ALTER TABLE tasks DROP CONSTRAINT ' || quote_ident(v_conname);
+                ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
+                    CHECK (status IN ('queued','running','complete','failed','cancelled','paused'));
+            END IF;
+        END $$
+        """
     )
 
     # ── Phase 8: Gateway users ────────────────────────────────────────────────
@@ -4896,6 +4921,31 @@ async def mark_task_failed(task_id: str, error: str) -> None:
             "INSERT INTO task_events (task_id, event_type, metadata) "
             "VALUES (%s::uuid, 'failed', %s::jsonb)",
             (task_id, json.dumps({"error": error[:500]})),
+        )
+
+
+async def mark_task_paused(task_id: str) -> None:
+    """Set a task to 'paused' status while it awaits HITL operator approval.
+
+    Called by the worker when LangGraph raises GraphInterrupt (interrupt_before
+    hitl_gate).  The task remains in 'paused' state until the operator approves
+    or rejects the pending HITL request, at which point the graph resumes and the
+    task transitions back to 'running' → 'complete' / 'failed'.
+    """
+    pool = get_worker_pool()
+    async with pool.connection() as conn:
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'paused', updated_at = now()
+            WHERE task_id = %s::uuid
+            """,
+            (task_id,),
+        )
+        await conn.execute(
+            "INSERT INTO task_events (task_id, event_type, metadata) "
+            "VALUES (%s::uuid, 'paused', %s::jsonb)",
+            (task_id, json.dumps({"reason": "hitl_pending"})),
         )
 
 
