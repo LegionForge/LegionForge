@@ -1,9 +1,9 @@
 VERSION: 0.7.1-alpha
-UPDATE: 341
+UPDATE: 342
 BRANCH: dev
 COMMIT: 3476adf
-TIMESTAMP: 2026-03-21T03:00Z
-LAST_OP: UAT Day 7 — PR #292 + #293 merged (secrets injection + #266 HITL backend); secrets audit (2 gaps found: webhook_sender + testlab); UAT retrospective → process improvements added to NEXT.md + jp_todo.md
+TIMESTAMP: 2026-03-21T04:00Z
+LAST_OP: UAT Day 7 session close — CHANGELOG updated (#293 HITL backend + secrets audit retrospective); nightly shutdown complete
 NEXT_OP: make preflight target (~1h) → close 2 secret gaps → fix #291 cancel 404 → T_HITL.2 live UAT → T4/T5 blocks
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41

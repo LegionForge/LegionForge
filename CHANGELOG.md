@@ -9,6 +9,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — 2026-03-21 (UAT Day 7 — #266 HITL backend)
+
+- **HITL pause/resume backend** (`src/gateway/worker.py`, `src/database.py`, `src/gateway/events.py`, `src/gateway/static/index.html`) — closes #266 (backend pieces). Five changes landed together in PR #293:
+  - `mark_task_paused(task_id)` in `database.py` — atomically sets `status='paused'` and inserts a `task_events` row (`event_type='paused'`, `reason='hitl_pending'`).
+  - `tasks.status` CHECK constraint updated to include `'paused'`; idempotent migration DO block finds the constraint by content and recreates it.
+  - `build_hitl_required_event()` in `events.py` — returns an SSE dict with `event=hitl_required`, `status=paused`, optional `request_id`. `hitl_required` added to `_TERMINAL_EVENTS` so the SSE stream closes cleanly after pause.
+  - `interrupt_before=["hitl_gate"]` added to graph compilation in `worker.py` for `base_agent` graphs only (researcher/orchestrator excluded — they don't have that node). `GraphInterrupt` caught before generic `except Exception`; on catch: task marked paused, `hitl_required` event published.
+  - `hitl_required` SSE handler added to `index.html` — closes stream, appends status line, calls `finishRun('paused', …)`, opens non-dismissable HITL modal when `request_id` present in event data. Modal cancel button hidden for SSE-triggered invocations; `_forceCloseHitlModal()` used after approve/reject.
+- **3 new smoke tests** (`tests/test_smoke.py`, `TestHITLApprovalFlow`) — `test_mark_task_paused_exported`, `test_build_hitl_required_event_structure`, `test_worker_imports_graph_interrupt`. Baseline: 2252 → 2255.
+
+### Fixed — 2026-03-21 (UAT Day 7 — retrospective)
+
+- **Secrets audit** — full request-time Keychain read audit completed. Two remaining injection gaps identified: `webhook_sender.py` reads `legionforge_webhook_inbound_secret` at request time (not injected by `gateway-start`); `testlab/app.py` reads health admin key on first request (no injection target). Both are pre-v0.8.0 fixes — tracked in NEXT.md P2.
+
 ### Fixed — 2026-03-20 (UAT Day 6)
 
 - **`gateway-start` missing secrets injection** — `make gateway-start` only set `POSTGRES_USER`; all Keychain-sourced secrets (Postgres password, tool signer, task token, Tavily, Brave, InceptionLabs, OpenRouter, health token, app password) were never injected. From SSH, login.keychain-db is not in the session search list so both `keyring` and `security` CLI fallbacks fail silently. Fix: `gateway-start` now injects all 10 secrets via `$(KEYCHAIN)` path, matching `servers-start`.

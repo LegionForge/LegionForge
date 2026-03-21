@@ -4,13 +4,13 @@
 ---
 
 ## Last updated
-2026-03-20 — Session close. UAT Day 6 (second session). Infrastructure root cause found and fixed. 4 new issues opened (#288–#291). Sky-blue llama3.1:8b test passed (326s — slow but correct; routing issue captured in #290). mercury-2 test passed (20.8s, correct). qwen3.5 hangs resolved by Ollama eviction fix.
+2026-03-21 — Session close. UAT Day 7. PR #292 (secrets injection + Ollama eviction) and PR #293 (#266 HITL backend) both merged. Secrets audit completed: 2 remaining gaps (webhook_sender + testlab). CHANGELOG, checkpoint, NEXT all updated. Branch clean.
 
 ## State
-- **Branch:** `dev` — uncommitted changes (today's fixes not yet committed; partial #266 work also staged-but-uncommitted from previous session)
-- **Smoke tests:** 2252/2252
+- **Branch:** `dev` — clean (all changes committed + merged via PRs #292, #293)
+- **Smoke tests:** 2255/2255
 - **Open PRs:** none
-- **Ship target:** v0.8.0 — Sunday 2026-03-22
+- **Ship target:** v0.8.0 — Sunday 2026-03-22 (decision pending — see ⚠️ block below)
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
 ## Infrastructure reminder — START OF EVERY SESSION
