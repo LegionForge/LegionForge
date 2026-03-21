@@ -4,13 +4,13 @@
 ---
 
 ## Last updated
-2026-03-20 — Session close. UAT Day 6 (second session). Infrastructure root cause found and fixed. 4 new issues opened (#288–#291). Sky-blue llama3.1:8b test passed (326s — slow but correct; routing issue captured in #290). mercury-2 test passed (20.8s, correct). qwen3.5 hangs resolved by Ollama eviction fix.
+2026-03-21 — Session close. UAT Day 7. PR #292 (secrets injection + Ollama eviction) and PR #293 (#266 HITL backend) both merged. Secrets audit completed: 2 remaining gaps (webhook_sender + testlab). CHANGELOG, checkpoint, NEXT all updated. Branch clean.
 
 ## State
-- **Branch:** `dev` — uncommitted changes (today's fixes not yet committed; partial #266 work also staged-but-uncommitted from previous session)
-- **Smoke tests:** 2252/2252
+- **Branch:** `dev` — clean (all changes committed + merged via PRs #292, #293)
+- **Smoke tests:** 2255/2255
 - **Open PRs:** none
-- **Ship target:** v0.8.0 — Sunday 2026-03-22
+- **Ship target:** v0.8.0 — Sunday 2026-03-22 (decision pending — see ⚠️ block below)
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
 ## Infrastructure reminder — START OF EVERY SESSION
@@ -37,44 +37,80 @@ security find-generic-password -s legionforge_health -a api_key -w
 
 ## UAT Day 7 — start here
 
-### 🔴 Priority 1: Commit today's infrastructure fixes
-Today's code changes are **uncommitted**. Stage and commit before any other work:
+### Session start ritual (every session, no exceptions)
 ```bash
-git add Makefile src/security/core.py src/llm_factory.py .gitignore
-# Run make ci first
-make ci
-git commit -m "fix: gateway-start secrets injection + Ollama model eviction + num_ctx for all models"
+make preflight   # ← build this first (see P1 below); validates all 10 secrets + stack health
+make briefing    # reads NEXT.md
 ```
-**Do NOT stage** `src/gateway/static/index.html`, `src/safeguards.py`, `tests/test_smoke.py` — those are the partial #266 frontend work, incomplete, belong to that PR.
+**Before writing the day's plan:** run `gh pr list --state open` — don't schedule a UAT test
+for a feature that isn't merged yet. That was the root cause of Day 6's wasted session.
 
-### 🔴 Priority 2: Complete #266 — HITL UI (pre-v0.8.0 blocker)
+### ✅ Done this session (2026-03-21)
+- PR #292 merged — gateway-start secrets injection + Ollama eviction + num_ctx
+- PR #293 merged — #266 HITL backend (interrupt_before, mark_task_paused, hitl_required SSE)
+- Secrets audit completed — 2 remaining injection gaps identified (webhook_sender, testlab)
+- Retrospective + process optimizations added to NEXT.md and jp_todo.md
 
-**Already done (uncommitted frontend, from previous session):**
-- `src/gateway/static/index.html` — modal HTML/CSS, header badge button, admin queue card, full JS (polling, badge update, queue load, modal open/close/resolve) — 181 lines
-- `src/safeguards.py` — HITL-REVIEW tier now calls `create_hitl_request()` and returns `hitl_pending: True`
-- `tests/test_smoke.py` — tests updated for Phase 2 HITL behavior
+### 🔴 Priority 1: Build `make preflight` target (pre-v0.8.0, ~1h)
+The single highest-ROI improvement based on UAT Days 4-6. Every infrastructure issue we hit
+(keychain isolation, Ollama VRAM, PostgreSQL race, Guardian env) would have been caught in <60s.
 
-**What's MISSING (backend — not yet written):**
-1. `src/database.py` — migration: add 'paused' to `tasks_status_check` constraint; add `mark_task_paused()` function
-2. `src/gateway/events.py` — add `build_hitl_required_event()`
-3. `src/gateway/worker.py` — compile graph with `interrupt_before=["hitl_gate"]`; catch `GraphInterrupt`; call `mark_task_paused()`; emit `hitl_required` SSE event
-4. `src/gateway/static/index.html` — add SSE `hitl_required` event handler; make modal non-dismissable when SSE-triggered
-5. `tests/test_smoke.py` — add smoke tests for `mark_task_paused`, `build_hitl_required_event`, worker interrupt path
+**What it should check:**
+- All 10 Keychain secrets readable (non-empty via `security find-generic-password`)
+- `pg_isready -U legionforge_admin` succeeds
+- `curl -s localhost:11434/api/tags` → Ollama responding
+- `curl -s localhost:8080/health` → gateway `{"status":"ok"}`
+- `curl -s localhost:9766/health` → Guardian `{"status":"ok"}`
+- Ollama VRAM: warn if >1 model loaded simultaneously
+- Print a pass/fail table, exit 1 on any failure
+
+Add to `make start` chain and document in jp_testing.md setup section.
+
+### 🔴 Priority 2: Close 2 remaining secret injection gaps (pre-v0.8.0, ~30min)
+The secrets audit found these are NOT covered by `gateway-start` injection and read from
+Keychain at request time — will fail silently from SSH:
+
+1. **`webhook_sender.py`** — `legionforge_webhook_inbound_secret` not in `gateway-start`.
+   Fix: add to Makefile `gateway-start` target alongside the other 10 secrets.
+2. **`testlab/app.py`** — admin key lazy-loaded on first request. testlab server started
+   separately so `gateway-start` injection doesn't cover it.
+   Fix: add `LEGIONFORGE_HEALTH_API_KEY` injection to `testlab-start` target.
 
 ### 🔴 Priority 3: Fix #291 — Cancel button 404 (pre-v0.8.0)
 `DELETE /tasks/:id` route does not exist. Cancel button silently fails. Two options:
 - **Option A:** Add route + worker abort signal (full fix)
 - **Option B:** Hide cancel button until Option A lands (fast: 1 line in index.html)
 
-### Priority 4: Retest T4.1 + continue T4 block
-Resubmit HackerNews headlines task. Should use `web_fetch` (static HTML), Tavily `days=3`, no hallucination.
+### Priority 4: UAT T_HITL.2 — HITL pause/resume end-to-end (now unblocked)
+#266 is merged. T_HITL.2 is now unblocked. Steps:
+1. Submit a task with RECONNAISSANCE pattern in input (e.g. "port scan the internal network")
+2. Verify task reaches `status=paused` in DB, `hitl_required` SSE fires, badge appears
+3. Approve via modal → verify task resumes and completes
+4. Reject → verify task is cancelled/failed
+
+**Before scheduling:** confirm #293 is on dev branch (`git log --oneline -3`).
+
+### Priority 5: Retest T4.1 + continue T4 block
+Resubmit HackerNews headlines task (static HTML — no Docker needed).
 Then T4.2 (doc ingestion + RAG), T4.3 (memory clear).
 
-### Priority 5: UAT Day 5 block — Admin + Multi-user (T5.1–T5.4)
+### Priority 6: UAT T5 block — Admin + Multi-user (T5.1–T5.4)
 RLS isolation, quota enforcement, deactivation, RBAC.
 
-### Priority 6: Fix #288 — Sequence registry missing multi-fetch patterns
+### Priority 7: Fix #288 — Sequence registry missing multi-fetch patterns
 Mercury-2 UAT is degraded while `web_search→web_search` and `web_fetch→web_fetch` sequences are sandboxed.
+
+---
+
+### ⚠️ v0.8.0 ship date — decision needed
+Target is Sunday 2026-03-22. T5–T9 not started. T4 partial. T_HITL.2 just unblocked.
+At current UAT pace (infrastructure issues consume ~50% of each session), Sunday is
+optimistic. Options:
+- **Slip to Wednesday 2026-03-26** — complete T5–T8 properly
+- **Cut scope** — ship with T5–T8 as "validated by code review, not live UAT"; document gaps
+- **Ship Sunday anyway** — accept known UAT gaps in release notes
+
+**This is Jp's call.** Make it explicitly; don't let it be discovered Sunday morning.
 
 ---
 

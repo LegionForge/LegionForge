@@ -81,6 +81,8 @@ _SERVICE_TO_ENV: dict[str, str] = {
     "legionforge_firecrawl_api_key": "FIRECRAWL_API_KEY",
     # InceptionLabs cloud LLM provider (mercury-2, OpenAI-compatible)
     "legionforge_inceptionlabs_api_key": "INCEPTIONLABS_API_KEY",
+    # Outbound webhook HMAC signing secret (Phase 26)
+    "legionforge_webhook_inbound_secret": "LEGIONFORGE_WEBHOOK_INBOUND_SECRET",
 }
 
 # All environment variable names that contain secrets.
@@ -99,6 +101,7 @@ _SECRET_ENV_VARS: frozenset[str] = frozenset(_SERVICE_TO_ENV.values()) | frozens
         "SIGNING_KEY",
         "PRIVATE_KEY",
         "LEGIONFORGE_HEALTH_TOKEN",
+        "LEGIONFORGE_WEBHOOK_INBOUND_SECRET",
         "TASK_TOKEN_SECRET",
         "TOOL_SIGNING_PRIVATE_KEY",
         "AWS_ACCESS_KEY_ID",

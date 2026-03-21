@@ -59,12 +59,12 @@ def test_submit_disables_submit_button(authed_page: Page, mock_gateway: MockGate
 
 
 def test_submit_shows_cancel_button(authed_page: Page, mock_gateway: MockGateway):
-    """Cancel button becomes visible after task submission."""
+    """Cancel button stays hidden after task submission (#291 — DELETE route not yet implemented)."""
     mock_gateway.configure(next_task_id=TASK_ID)
     _submit_and_wait(authed_page, mock_gateway, "Test task C")
 
     cancel = authed_page.locator("#cancel-btn")
-    expect(cancel).to_be_visible(timeout=3000)
+    expect(cancel).to_be_hidden(timeout=3000)
 
 
 def test_conn_dot_goes_live_on_submit(authed_page: Page, mock_gateway: MockGateway):
@@ -213,6 +213,9 @@ def test_task_complete_shows_elapsed_time(authed_page: Page, mock_gateway: MockG
 # ── Cancel ────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(
+    reason="#291 — cancel button hidden until DELETE /tasks/:id route is implemented"
+)
 def test_cancel_button_cancels_task(authed_page: Page, mock_gateway: MockGateway):
     """Clicking Cancel calls DELETE /tasks/{id} and shows cancelled status."""
     task_id = "cancel-test-001"

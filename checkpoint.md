@@ -1,11 +1,11 @@
 VERSION: 0.7.1-alpha
-UPDATE: 340
+UPDATE: 342
 BRANCH: dev
-COMMIT: 75cfa93 (uncommitted changes pending — see NEXT.md)
-TIMESTAMP: 2026-03-20T23:30Z
-LAST_OP: UAT Day 6 (session 2) — SSH keychain isolation root cause fixed; gateway-start now injects all 10 secrets; Ollama auto-eviction added; num_ctx=16384 for all Ollama models; issues #288–#291 opened; mercury-2 + llama3.1:8b weather/knowledge tests passed.
-NEXT_OP: Commit today's fixes (Makefile + core.py + llm_factory.py) → PR → complete #266 HITL backend → fix #291 cancel button 404 → T4 UAT block
-SMOKE_TESTS: 2252/2252
+COMMIT: 3476adf
+TIMESTAMP: 2026-03-21T04:00Z
+LAST_OP: UAT Day 7 session close — CHANGELOG updated (#293 HITL backend + secrets audit retrospective); nightly shutdown complete
+NEXT_OP: make preflight target (~1h) → close 2 secret gaps → fix #291 cancel 404 → T_HITL.2 live UAT → T4/T5 blocks
+SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
 UI_TESTS: 40/40
