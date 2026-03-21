@@ -87,11 +87,8 @@ CLAUDE.md
 .claudeignore
 
 # ── Personal / Private Notes ──────────────────────────────────
-jp.md
+jp*.md
 jp_todo.md
-jp_testing.md
-jp_codex_comparison.md
-jp_project-best-practices.md
 GITFLOW.md
 
 # ── Session / Checkpoint Files ────────────────────────────────

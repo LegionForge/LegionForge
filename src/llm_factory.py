@@ -207,6 +207,44 @@ def _get_ollama_url(prefer_label: str | None = None) -> str:
     return settings.local_services.ollama.resolved_url()
 
 
+def _evict_ollama_model(model_name: str, base_url: str) -> None:
+    """Unload a specific Ollama model from VRAM (best-effort, sync)."""
+    try:
+        import httpx
+
+        httpx.post(
+            f"{base_url}/api/generate",
+            json={"model": model_name, "keep_alive": 0},
+            timeout=10.0,
+        )
+        logger.info("Evicted Ollama model '%s' from VRAM", model_name)
+    except Exception:
+        pass
+
+
+def _evict_other_ollama_models(target_model: str, base_url: str) -> None:
+    """Unload any loaded Ollama model that isn't the target (best-effort, sync).
+
+    Required because keep_alive=-1 means models never self-evict. Without this,
+    a large non-primary model (e.g. qwen3.5 at 8.5GB) stays loaded and blocks
+    the primary model from fitting in the memory budget.
+    """
+    try:
+        import httpx
+
+        resp = httpx.get(f"{base_url}/api/ps", timeout=3.0)
+        if resp.status_code != 200:
+            return
+        loaded = resp.json().get("models", [])
+        for m in loaded:
+            loaded_name = m.get("name", "")
+            # Normalise: treat "model" and "model:latest" as the same
+            if loaded_name.rstrip(":latest") != target_model.rstrip(":latest"):
+                _evict_ollama_model(loaded_name, base_url)
+    except Exception:
+        pass
+
+
 def _get_ollama(
     model: str | None,
     temperature: float,
@@ -215,12 +253,15 @@ def _get_ollama(
 ) -> ChatOllama:
     model = model or settings.models.primary.model_id
     base_url = _get_ollama_url()
+    _evict_other_ollama_models(model, base_url)
 
     # Issue #260: pass num_ctx from hardware profile if set; lets operator control
     # context window size without code changes (16384 recommended for research tasks).
+    # Apply profile num_ctx to all Ollama models, not just primary — non-primary models
+    # (e.g. qwen3.5 selected by direct ID) otherwise default to Ollama's 4096 minimum.
     num_ctx = kwargs.pop("num_ctx", None)
-    if num_ctx is None and model == (settings.models.primary.model_id):
-        num_ctx = settings.models.primary.num_ctx
+    if num_ctx is None:
+        num_ctx = getattr(settings.models.primary, "num_ctx", None)
 
     ollama_kwargs: dict = {}
     if num_ctx is not None:
