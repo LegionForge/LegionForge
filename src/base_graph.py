@@ -816,6 +816,18 @@ class SecureToolNode:
 
         for tc in tool_calls:
             tool_id = tc["name"] if isinstance(tc, dict) else tc.name
+            # Belt-and-suspenders: if needs_rewrite missed this specific call
+            # (e.g. qwen3.5 drops underscores), normalise here so Guardian
+            # always receives the canonical name.
+            if tool_id in self._alias_map:
+                _canonical = self._alias_map[tool_id]
+                logger.warning(
+                    "[SecureToolNode] Per-call alias normalisation %r → %r"
+                    " (needs_rewrite did not catch this call)",
+                    tool_id,
+                    _canonical,
+                )
+                tool_id = _canonical
             tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
             tool_input = (
                 tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})

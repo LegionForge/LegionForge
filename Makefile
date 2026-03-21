@@ -1314,17 +1314,31 @@ guardian-start: docker-start
 	@# If the container exists but was started outside docker-compose (e.g. via
 	@# `docker run`), compose cannot --force-recreate it.  Remove it first so
 	@# compose always creates a fresh container with the current env vars.
+	@# Fallback: if Keychain is locked/empty (SSH session), read from .guardian-creds
+	@# (gitignored, format: GUARDIAN_PG_PASSWORD=...) created once via make guardian-set-pw.
 	@docker rm -f legionforge-guardian 2>/dev/null || true
-	@export TASK_TOKEN_SECRET=$$(security find-generic-password \
+	@_kc_pg=$$(security find-generic-password \
+		-s legionforge_guardian -a api_key -w $(KEYCHAIN) 2>/dev/null || echo ""); \
+	if [ -z "$$_kc_pg" ] && [ -f $(BASE)/.guardian-creds ]; then \
+		_kc_pg=$$(grep '^GUARDIAN_PG_PASSWORD=' $(BASE)/.guardian-creds | cut -d= -f2-); \
+		[ -n "$$_kc_pg" ] && echo "  ℹ️  Using .guardian-creds fallback (Keychain unavailable)"; \
+	fi; \
+	export POSTGRES_PASSWORD=$$_kc_pg && \
+	export TASK_TOKEN_SECRET=$$(security find-generic-password \
 		-s legionforge_task_tokens -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
-	export POSTGRES_PASSWORD=$$(security find-generic-password \
-		-s legionforge_guardian -a api_key -w $(KEYCHAIN) 2>/dev/null || echo "") && \
 	export POSTGRES_USER=legionforge_guardian && \
 	docker-compose up -d guardian && \
 	sleep 2 && \
 	curl -s --max-time 5 http://localhost:9766/health >/dev/null && \
 	echo "✅ Guardian healthy at http://localhost:9766" || \
 	echo "⚠️  Guardian may still be starting — check: make guardian-logs"
+
+.PHONY: guardian-set-pw
+guardian-set-pw:  ## Store guardian PG password in .guardian-creds (fallback when Keychain unavailable)
+	@[ -n "$(PW)" ] || (echo "❌ Usage: make guardian-set-pw PW=<password>"; exit 1)
+	@echo "GUARDIAN_PG_PASSWORD=$(PW)" > $(BASE)/.guardian-creds
+	@chmod 600 $(BASE)/.guardian-creds
+	@echo "✅ Saved to .guardian-creds (gitignored)"
 
 .PHONY: guardian-stop
 guardian-stop:

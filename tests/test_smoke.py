@@ -22336,8 +22336,8 @@ def test_guardian_start_makefile_removes_stale_container():
     # Find the guardian-start target block
     assert "guardian-start:" in makefile
     start_idx = makefile.index("guardian-start:")
-    # Grab the next 700 chars (covers the entire target body)
-    snippet = makefile[start_idx : start_idx + 700]
+    # Grab the next 1200 chars (covers the entire target body including .guardian-creds fallback)
+    snippet = makefile[start_idx : start_idx + 1200]
     assert "docker rm -f legionforge-guardian" in snippet, (
         "guardian-start must `docker rm -f legionforge-guardian` before docker-compose "
         "so that externally-started containers are replaced with a fresh one"

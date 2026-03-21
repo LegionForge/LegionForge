@@ -5,6 +5,7 @@
 *.key
 *.pem
 secrets/
+.guardian-creds
 
 # ── Python ───────────────────────────────────────────────────
 __pycache__/

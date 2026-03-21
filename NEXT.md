@@ -50,6 +50,35 @@ for a feature that isn't merged yet. That was the root cause of Day 6's wasted s
 - PR #293 merged — #266 HITL backend (interrupt_before, mark_task_paused, hitl_required SSE)
 - Secrets audit completed — 2 remaining injection gaps identified (webhook_sender, testlab)
 - Retrospective + process optimizations added to NEXT.md and jp_todo.md
+- Diagnosed + partially fixed spawn_researcher SECURITY HALT (see ⚠️ Guardian section below)
+
+### ⚠️ Guardian DB connection broken — MANUAL KEYCHAIN FIX REQUIRED before next restart
+
+**Root cause:** `legionforge_guardian` Keychain entry has a null password (data=`<NULL>`).
+`make guardian-start` extracts empty string → container starts with `POSTGRES_PASSWORD=` →
+cache refresh fails → `_approved_tools = {}` → every tool call blocked with SECURITY HALT.
+
+**What was fixed this session (temporary — survives until next `make guardian-start`):**
+- PostgreSQL role `legionforge_guardian` password was reset to a new value
+- Guardian container was manually restarted with `POSTGRES_PASSWORD` injected directly
+- Guardian now has all 13 approved tools loaded and is working
+- `src/base_graph.py` got per-call alias hardening (belt-and-suspenders for qwen3.5)
+
+**MANUAL STEP required from Mac desktop (not SSH — Keychain locked in SSH):**
+```bash
+security add-generic-password -a api_key -s legionforge_guardian -U \
+  -w "ozWurVFxIHqvQR2E9CTFTl-W9rtqXygeebMyLGC8cyo" -A \
+  ~/Library/Keychains/login.keychain-db
+```
+After running this, `make guardian-start` will work correctly.
+
+**Guardian Docker image also needs rebuild** (current image 2026-02-26 has stale TASK_TOKEN_SECRET behavior):
+```bash
+make docker-build   # requires Keychain unlock for Docker credential access
+```
+This also needs to be done from Mac desktop (not SSH).
+
+---
 
 ### 🔴 Priority 1: Build `make preflight` target (pre-v0.8.0, ~1h)
 The single highest-ROI improvement based on UAT Days 4-6. Every infrastructure issue we hit
