@@ -5945,7 +5945,7 @@ async function submitTask() {
   S.streamEl = null;
   _toolBlockEl = null;
   el.submitBtn().disabled = true;
-  el.cancelBtn().style.display = 'inline-flex';
+  // Cancel button hidden: DELETE /tasks/:id route not yet implemented (#291)
   setStatus('running', '● Running…', '');
   dotLive();
   startTimer();
