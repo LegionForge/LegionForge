@@ -4,13 +4,13 @@
 ---
 
 ## Last updated
-2026-03-21 — Session close. UAT Day 7 (session 2). Guardian .guardian-creds SSH fallback + per-call alias hardening committed to dev. Strategic assessment of LegionForge vs OpenClaw/NemoClaw completed. Issues #295, #296, #297 filed. Branch clean.
+2026-03-26 — Short session. Identity hygiene: fixed sync-guardian.yml to remap jp@legionforge.org so jp-cruz no longer appears as a contributor on the public LegionForge-Guardian repo. Workflow dispatch needed to apply fix. Branch has uncommitted changes (sync-guardian.yml + docs).
 
 ## State
-- **Branch:** `dev` — clean (commits 55b30a3 + 147ab0b on dev, not yet PR'd to main)
+- **Branch:** `dev` — has uncommitted fix (sync-guardian.yml email remapping + CHANGELOG/checkpoint/NEXT updates)
 - **Smoke tests:** 2255/2255
-- **Open PRs:** none (day 7 session 2 work is on dev, needs PR)
-- **Ship target:** v0.8.0 — date TBD (was Sun 2026-03-22; needs explicit decision)
+- **Open PRs:** none
+- **Ship target:** v0.8.0 — date TBD
 - **Mode:** UAT + pre-v0.8.0 bug fixes
 
 ## Infrastructure reminder — START OF EVERY SESSION
@@ -44,6 +44,12 @@ make briefing    # reads NEXT.md
 ```
 **Before writing the day's plan:** run `gh pr list --state open` — don't schedule a UAT test
 for a feature that isn't merged yet. That was the root cause of Day 6's wasted session.
+
+### ✅ Done this session (2026-03-26)
+- Diagnosed jp-cruz appearing as contributor on `LegionForge/LegionForge-Guardian` — root cause: `jp@legionforge.org` email in 14 of 16 guardian subtree commits was not being remapped by sync workflow
+- Fixed `sync-guardian.yml`: extended `--email-callback` to remap `jp@legionforge.org` + `--name-callback` to catch both "jp-cruz" and "Jp Cruz" variants
+- Confirmed jp-cruz is NOT a member of LegionForge org (jp-cruz only) ✅
+- **Pending:** trigger workflow dispatch + verify contributor list clears (todo item added)
 
 ### ✅ Done this session (2026-03-21, session 2)
 - Diagnosed spawn_researcher SECURITY HALT root cause: `legionforge_guardian` Keychain entry null password → Guardian started with empty POSTGRES_PASSWORD → `_approved_tools={}` → all tools blocked

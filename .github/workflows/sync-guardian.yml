@@ -60,8 +60,8 @@ jobs:
           pip install --quiet git-filter-repo
           git checkout guardian-split
           git filter-repo --force \
-            --email-callback 'return email.replace(b"115298310+jp-cruz@users.noreply.github.com", b"115298310+jp-cruz@users.noreply.github.com")' \
-            --name-callback 'return name.replace(b"jp-cruz", b"Jp Cruz")'
+            --email-callback 'return email.replace(b"115298310+jp-cruz@users.noreply.github.com", b"115298310+jp-cruz@users.noreply.github.com").replace(b"jp@legionforge.org", b"115298310+jp-cruz@users.noreply.github.com")' \
+            --name-callback 'return name.replace(b"jp-cruz", b"Jp Cruz").replace(b"Jp Cruz", b"Jp Cruz")'
 
           # filter-repo clears all remotes; re-add PAT remote before push
           git remote add guardian-public \

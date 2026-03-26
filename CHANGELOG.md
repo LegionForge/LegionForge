@@ -9,6 +9,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-26 (identity hygiene — jp-cruz contributor removal)
+
+- **`sync-guardian.yml` incomplete email remapping** — `git filter-repo --email-callback` only remapped `115298310+jp-cruz@users.noreply.github.com`; 14 of 16 guardian subtree commits used `jp@legionforge.org` (jp-cruz's real email), which GitHub cross-references to the jp-cruz account, causing jp-cruz to appear as a public contributor on `LegionForge/LegionForge-Guardian`. Fix: callback now also remaps `jp@legionforge.org` → `115298310+jp-cruz@users.noreply.github.com`; name callback extended to catch both `jp-cruz` and `Jp Cruz` variants. Re-running the workflow (workflow_dispatch) force-pushes the rewritten history and clears the stale contributor.
+
 ### Added — 2026-03-21 (UAT Day 7 — #266 HITL backend)
 
 - **HITL pause/resume backend** (`src/gateway/worker.py`, `src/database.py`, `src/gateway/events.py`, `src/gateway/static/index.html`) — closes #266 (backend pieces). Five changes landed together in PR #293:

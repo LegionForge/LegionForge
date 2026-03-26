@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 343
+UPDATE: 344
 BRANCH: dev
-COMMIT: 147ab0b
-TIMESTAMP: 2026-03-21T18:00Z
-LAST_OP: UAT Day 7 (session 2) — Guardian .guardian-creds fallback + per-call alias hardening (PR on dev); strategic assessment of Guardian/Anneal vs OpenClaw/NemoClaw; issues #295 #296 #297 filed
-NEXT_OP: decide #295 pre/post v0.8.0 → if pre: implement auto-generated .secrets at db-init → then T_HITL.2 → T4/T5 UAT blocks
+COMMIT: 5085f38
+TIMESTAMP: 2026-03-26T00:00Z
+LAST_OP: Identity hygiene — sync-guardian.yml email remapping extended to cover jp@legionforge.org; jp-cruz contributor removal from LegionForge-Guardian public repo
+NEXT_OP: trigger sync workflow dispatch to force-push rewritten history → verify jp-cruz gone from contributor list → then decide #295 pre/post v0.8.0
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
