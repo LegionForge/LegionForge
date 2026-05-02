@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 344
+UPDATE: 346
 BRANCH: dev
-COMMIT: 5085f38
-TIMESTAMP: 2026-03-26T00:00Z
-LAST_OP: Identity hygiene — sync-guardian.yml email remapping extended to cover jp@legionforge.org; jp-cruz contributor removal from LegionForge-Guardian public repo
-NEXT_OP: trigger sync workflow dispatch to force-push rewritten history → verify jp-cruz gone from contributor list → then decide #295 pre/post v0.8.0
+COMMIT: be65b11
+TIMESTAMP: 2026-05-02T00:00Z
+LAST_OP: Guardian identity scrub — filter-repo --message-callback strips jp-cruz Co-authored-by trailers from all 10 commits; force-pushed LegionForge-Guardian; v0.1.0 tag repointed to 1848e6e; sync-guardian.yml patched with message-callback for future syncs
+NEXT_OP: decide #295 pre/post v0.8.0; update MEMORY.md guardian authorship entry
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
