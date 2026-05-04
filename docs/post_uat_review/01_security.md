@@ -117,7 +117,7 @@ The `append_audit_log()` function inserts a row with `row_hash = 'PENDING'`, the
 ### 11. Private developer identity in the public A2A Agent Card
 **File:** `src/gateway/routes/a2a.py` lines 65–66
 
-The A2A Agent Card at `/.well-known/agent.json` (a public, unauthenticated endpoint) hardcodes `"organization": "jp-cruz"` and `"url": "https://github.com/LegionForge/LegionForge"` — the private dev identity that is planned to be retired at v0.8.0. This is served to any caller of the public API before the identity migration.
+The A2A Agent Card at `/.well-known/agent.json` (a public, unauthenticated endpoint) hardcodes `"organization": "jp-cruz"` and `"url": "https://github.com/jp-cruz/LegionForge"` — the private dev identity that is planned to be retired at v0.8.0. This is served to any caller of the public API before the identity migration.
 
 **Recommended fix:** Replace with `"organization": "LegionForge"` and `"url": "https://github.com/LegionForge/LegionForge"` immediately, or load from config so it can be updated without a code change.
 

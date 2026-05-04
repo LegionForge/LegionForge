@@ -38,9 +38,9 @@ Recommended fix: Change CI `pip install` to use `requirements.lock` (`pip instal
 
 ---
 
-**4. `make briefing` hardcodes `LegionForge/LegionForge` — must be updated before v0.8.0 repo transfer.**
+**4. `make briefing` hardcodes `jp-cruz/LegionForge` — must be updated before v0.8.0 repo transfer.**
 
-`Makefile` line 177: `gh pr list --state open -R LegionForge/LegionForge`. After the v0.8.0 repo transfer to `LegionForge/LegionForge`, this will silently fail (`gh: repository not found`) and show `(gh not configured or no open PRs)`. The error is suppressed with `2>/dev/null`.
+`Makefile` line 177: `gh pr list --state open -R jp-cruz/LegionForge`. After the v0.8.0 repo transfer to `LegionForge/LegionForge`, this will silently fail (`gh: repository not found`) and show `(gh not configured or no open PRs)`. The error is suppressed with `2>/dev/null`.
 
 Impact: `make briefing` becomes silently wrong after transfer. Not a CI failure, but a developer experience regression that will cause confusion.
 
@@ -182,7 +182,7 @@ Recommended fix: Add a `make tag-release VERSION=x.y.z` target that: (a) updates
 
 `sync-guardian.yml` line 69: `git push guardian-public HEAD:main --force`. Every guardian sync force-pushes the public repo. If the subtree split or filter-repo produces an unexpected result (e.g., an empty commit, a regression, an accidental secret in a commit message), it overwrites the public history without a pre-push review step.
 
-This is acceptable for an automated sync but should be noted: the `GUARDIAN_REPO_PAT` secret in `LegionForge/LegionForge` will need to be re-created in `LegionForge/LegionForge` after the v0.8.0 repo transfer, or the sync will silently fail.
+This is acceptable for an automated sync but should be noted: the `GUARDIAN_REPO_PAT` secret in `jp-cruz/LegionForge` will need to be re-created in `LegionForge/LegionForge` after the v0.8.0 repo transfer, or the sync will silently fail.
 
 ---
 

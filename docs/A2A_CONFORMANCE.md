@@ -60,7 +60,7 @@ GET /.well-known/agent.json
 | `description` | MUST | Short capability summary | ⬜ |
 | `url` | MUST | `"https://{host}"` | ⬜ |
 | `version` | MUST | `"1.0.0"` | ⬜ |
-| `provider.organization` | SHOULD | `"jp-cruz"` | ⬜ |
+| `provider.organization` | SHOULD | `"LegionForge"` | ⬜ |
 | `provider.url` | SHOULD | GitHub URL | ⬜ |
 | `capabilities.streaming` | MUST if supported | `true` | ⬜ |
 | `capabilities.pushNotifications` | MUST if supported | `false` (deferred) | ⬜ |

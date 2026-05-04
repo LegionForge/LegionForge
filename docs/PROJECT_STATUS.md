@@ -231,7 +231,7 @@ curl -s -H "Authorization: Bearer $(security find-generic-password -s legionforg
 | Item | Detail |
 |---|---|
 | Release name | **LegionForge** |
-| Private dev repo | https://github.com/LegionForge/LegionForge |
+| Private dev repo | https://github.com/jp-cruz/LegionForge |
 | License | AGPL-3.0 with Section 7(b) attribution clause |
 | Owner | John Paul "Jp" Cruz ([@jp-cruz](https://github.com/jp-cruz)) |
 

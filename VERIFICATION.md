@@ -15,7 +15,7 @@ Each step has a pass/fail indicator. Stop and fix before continuing if anything 
 
 ```bash
 # Clone the repository (first-time setup)
-git clone https://github.com/LegionForge/LegionForge.git ${LEGIONFORGE_HOME}
+git clone https://github.com/jp-cruz/LegionForge.git ${LEGIONFORGE_HOME}
 
 # Or if already cloned, pull the latest changes
 cd ${LEGIONFORGE_HOME} && git pull origin main

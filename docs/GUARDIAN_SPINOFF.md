@@ -70,10 +70,10 @@ profile gets listed prominently in READMEs as founder — the org handles the re
 
 # 3. Create the main framework repo under the org (when ready for public release)
 #    github.com/LegionForge/LegionForge
-#    - Transfer from LegionForge/LegionForge when v1.0 is ready, OR
+#    - Transfer from jp-cruz/LegionForge when v1.0 is ready, OR
 #    - Create separately and push a cleaned public snapshot
 
-# 4. LegionForge/LegionForge stays private — dev work continues there unchanged
+# 4. jp-cruz/LegionForge stays private — dev work continues there unchanged
 ```
 
 ### License Decision (open question)
@@ -454,7 +454,7 @@ on every merge to LegionForge main. Guardian has its own repo, releases, and CI.
 2. Create `LegionForge/legionforge-guardian` repo (empty, public)
 3. Add jp-cruz and jp-cruz as org owners
 4. Create a GitHub PAT with `repo` scope on the guardian repo; store as
-   `GUARDIAN_REPO_PAT` in LegionForge/LegionForge's repository secrets
+   `GUARDIAN_REPO_PAT` in jp-cruz/LegionForge's repository secrets
 5. First subtree push (one-time):
    ```bash
    git remote add guardian-public https://github.com/LegionForge/legionforge-guardian.git
@@ -555,7 +555,7 @@ vim packages/guardian/src/legionforge_guardian/checks/hash_validation.py
 # Run LegionForge tests as before
 make test-smoke
 
-# Commit and push to LegionForge/LegionForge dev as before
+# Commit and push to jp-cruz/LegionForge dev as before
 git add packages/guardian/
 git commit -m "fix: guardian hash validation edge case with empty input"
 git push origin dev
@@ -582,7 +582,7 @@ The org structure supports growth without URL churn:
 
 | Repo | Purpose | When |
 |---|---|---|
-| `LegionForge/LegionForge` | Full framework (public mirror of LegionForge/LegionForge) | v1.0 |
+| `LegionForge/LegionForge` | Full framework (public mirror of jp-cruz/LegionForge) | v1.0 |
 | `LegionForge/legionforge-guardian` | Security sidecar package | Phase G4 |
 | `LegionForge/guardian-rules` | Community-contributed threat rules | Post-v1.0 |
 | `LegionForge/legionforge-guardian-ts` | TypeScript SDK for guardian_check | Post-v1.0 |
@@ -596,7 +596,7 @@ The org structure supports growth without URL churn:
 - [ ] License decision made (MIT recommended for guardian, AGPL for framework)
 - [ ] `LegionForge` GitHub org created
 - [ ] `LegionForge/legionforge-guardian` repo created (empty, no auto-README)
-- [ ] PAT created and stored as `GUARDIAN_REPO_PAT` in LegionForge/LegionForge secrets
+- [ ] PAT created and stored as `GUARDIAN_REPO_PAT` in jp-cruz/LegionForge secrets
 
 ### Phase G1 — Config decoupling ✅ COMPLETE
 - [x] All `from src.*` module-level imports removed from guardian.py

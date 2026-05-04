@@ -437,8 +437,8 @@ Delegate to an identity provider (Authentik, Authelia, or Cloudflare Access) whe
   "url": "https://{host}",
   "version": "1.0.0",
   "provider": {
-    "organization": "jp-cruz",
-    "url": "https://github.com/LegionForge/LegionForge"
+    "organization": "LegionForge",
+    "url": "https://github.com/jp-cruz/LegionForge"
   },
   "capabilities": {
     "streaming": true,

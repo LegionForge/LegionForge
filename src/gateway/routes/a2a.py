@@ -62,8 +62,8 @@ def build_agent_card(host: str = "localhost:8080") -> dict:
         "url": f"http://{host}",
         "version": "0.7.1-alpha",
         "provider": {
-            "organization": "jp-cruz",
-            "url": "https://github.com/LegionForge/LegionForge",
+            "organization": "LegionForge",
+            "url": "https://github.com/jp-cruz/LegionForge",
         },
         "capabilities": {
             "streaming": True,
