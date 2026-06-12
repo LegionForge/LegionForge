@@ -8,12 +8,9 @@ name: Sync LegionForge-Guardian
 #   2. Create a classic PAT with `repo` + `workflow` scope on that repo (as jp-cruz)
 #   3. Store it as GUARDIAN_REPO_PAT in LegionForge/LegionForge repo secrets
 #
-# Author rewriting: git subtree split preserves original commit authorship from
-# the private repo. filter-repo remaps the private account email → jp-cruz so
-# the public Guardian repo never exposes the private account identity.
-# --message-callback strips any line containing jp-cruz/jp@legionforge.org from
-# commit message bodies (catches Co-authored-by trailers GitHub adds to squash
-# merges from the private account).
+# Author rewriting: git subtree split preserves commit authorship from this
+# repo. filter-repo normalizes it to the noreply email + "Jp Cruz" name so the
+# Guardian repo's authorship stays consistent with its existing history.
 #
 # Note: git subtree push rewrites history to contain only commits that
 # touched packages/guardian/. The guardian repo's main branch must start
@@ -51,30 +48,19 @@ jobs:
           if [ -z "$PAT" ]; then echo "ERROR: GUARDIAN_REPO_PAT secret is empty"; exit 1; fi
 
       - name: Push guardian subtree to public repo
-        env:
-          GUARDIAN_MSG_CB: |
-            import re
-            message = re.sub(rb"(?i)[^\n]*jp-cruz[^\n]*\n?", b"", message)
-            message = re.sub(rb"[^\n]*jp@legionforge.org[^\n]*\n?", b"", message)
-            message = re.sub(rb"\n{3,}", b"\n\n", message)
-            message = b"\n".join(line.rstrip() for line in message.split(b"\n"))
-            message = message.strip(b"\n")
-            return (message + b"\n") if message else b"\n"
         run: |
           # Unset GITHUB_TOKEN extraheader so our PAT is used for all pushes
           git config --local --unset-all http.https://github.com/.extraheader || true
 
           git subtree split --prefix=packages/guardian -b guardian-split
 
-          # Remap private account authorship → jp-cruz before the public push.
-          # git subtree split preserves original commit authors from the private
-          # repo; filter-repo rewrites them so jp-cruz never appears publicly.
+          # Normalize authorship to match the Guardian repo's existing
+          # rewritten history (noreply email, "Jp Cruz" display name).
           pip install --quiet git-filter-repo
           git checkout guardian-split
           git filter-repo --force \
-            --email-callback 'return email.replace(b"115298310+jp-cruz@users.noreply.github.com", b"115298310+jp-cruz@users.noreply.github.com").replace(b"jp@legionforge.org", b"115298310+jp-cruz@users.noreply.github.com")' \
-            --name-callback 'return name.replace(b"jp-cruz", b"Jp Cruz").replace(b"Jp Cruz", b"Jp Cruz")' \
-            --message-callback "$GUARDIAN_MSG_CB"
+            --email-callback 'return email.replace(b"jp@legionforge.org", b"115298310+jp-cruz@users.noreply.github.com")' \
+            --name-callback 'return name.replace(b"JP Cruz", b"Jp Cruz")'
 
           # filter-repo clears all remotes; re-add PAT remote before push
           git remote add guardian-public \
