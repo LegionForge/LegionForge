@@ -29,10 +29,7 @@
 
 services:
   guardian:
-    build:
-      context: .
-      dockerfile: guardian/Dockerfile
-    image: legionforge-guardian:latest
+    image: legionforge-guardian:0.1.1
     container_name: legionforge-guardian
     restart: unless-stopped
     ports:
