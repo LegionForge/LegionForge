@@ -16,14 +16,13 @@ import json
 import logging
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sse_starlette.sse import EventSourceResponse
 
 from src.database import get_task
 from src.gateway.auth import (
     authenticate,
     extract_bearer_token,
-    require_user,
     resolve_stream_token,
 )
 from src.gateway.events import subscribe_task_events
