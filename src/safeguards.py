@@ -19,14 +19,11 @@ import hashlib
 import logging
 import os
 import uuid
-from typing import Annotated, Any
-import operator
+from typing import Any
 
 from src.security import FORCE_END_CATEGORIES, HITL_REVIEW_CATEGORIES
 from src.database import log_threat_event
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 
 from config.settings import settings
 
