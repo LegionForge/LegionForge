@@ -93,4 +93,4 @@ pytest-playwright~=0.6           # Playwright pytest plugin
 
 # ── Guardian standalone package (Phase G2) ───────────────────
 legionforge-guardian==0.1.1        # security sidecar — standalone repo LegionForge/guardian
-respx~=0.21                        # Mock HTTP client for Guardian SDK tests
+respx~=0.23                        # Mock HTTP client for Guardian SDK tests
