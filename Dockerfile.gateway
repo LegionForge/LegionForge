@@ -50,6 +50,9 @@ EXPOSE 8080
 
 # Single worker by default; override CMD for multi-worker deployments.
 # DB-backed stream tokens (Phase 10) ensure state survives across workers.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
 CMD ["uvicorn", "src.gateway.app:app", \
      "--host", "0.0.0.0", "--port", "8080", \
      "--workers", "1", "--log-level", "info"]
