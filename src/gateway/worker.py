@@ -33,7 +33,6 @@ Usage (started by app.py lifespan):
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import uuid
@@ -335,7 +334,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         if not isinstance(result_text, str):
             result_text = str(result_text)
 
-    except Exception as exc:
+    except Exception:
         raise
 
     return result_text, step_count, token_counts
