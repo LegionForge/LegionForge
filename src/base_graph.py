@@ -23,9 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import socket
 from typing import Annotated, Any, TypedDict
-import operator
 
 import httpx
 from langchain_core.callbacks import adispatch_custom_event
@@ -44,11 +42,10 @@ from src.safeguards import (
     increment_step,
     record_error,
 )
-from src.llm_factory import get_primary_llm, get_router_llm
+from src.llm_factory import get_primary_llm
 from src.observability import log_agent_event, get_metrics, timed
 from src.security import (
     sanitize_text,
-    sanitize_for_trace,
     sanitize_messages,
     sanitize_output,
     sanitize_tool_input,
@@ -56,8 +53,6 @@ from src.security import (
     validate_fetch_url,
     detect_destructive_pattern,
     check_capability_boundary,
-    Guardian,
-    FORBIDDEN_CAPABILITIES,
     SecurityError,
     has_halt_worthy_injection,
     # Phase 3: task token ACL
