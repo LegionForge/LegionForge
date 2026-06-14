@@ -9,6 +9,7 @@ don't duplicate secret-loading and SSE-parsing logic.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -121,7 +122,7 @@ async def _run_task(
     api_key: str,
     gateway_url: str,
     agent_type: str,
-    on_token: "asyncio.Queue",
+    on_token: asyncio.Queue,
     action: str = "channel",
 ) -> None:
     """
@@ -140,8 +141,6 @@ async def _run_task(
         on_token:    asyncio.Queue to push events into.
         action:      Source label for audit logs (e.g. "telegram", "slack", "webhook").
     """
-    import asyncio  # noqa: F401 — imported here to avoid top-level dep at module load
-
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",

@@ -40,15 +40,18 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from src.security.core import _log_safe
+
+if TYPE_CHECKING:
+    import redis.asyncio
 
 logger = logging.getLogger(__name__)
 
 # ── Module-level Redis client (None = DB mode) ────────────────────────────────
 
-_redis: "redis.asyncio.Redis | None" = None  # type: ignore[name-defined]
+_redis: redis.asyncio.Redis | None = None
 
 _STREAM_TOKEN_TTL = 30 * 60  # 30 minutes (seconds) — matches auth.py
 _KEY_PREFIX = "lf:stream_token:"
@@ -93,7 +96,7 @@ async def close_redis() -> None:
         logger.info("[state] Redis connection closed")
 
 
-def get_redis() -> "redis.asyncio.Redis | None":  # type: ignore[name-defined]
+def get_redis() -> redis.asyncio.Redis | None:
     """Return the active Redis client, or None when in DB mode."""
     return _redis
 

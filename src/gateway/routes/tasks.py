@@ -577,7 +577,9 @@ async def submit_tasks_batch(
         )
 
     logger.info(
-        "[gateway/batch] Queued %d tasks user=%s", len(results), _log_safe(user["username"])
+        "[gateway/batch] Queued %d tasks user=%s",
+        len(results),
+        _log_safe(user["username"]),
     )
     return {"count": len(results), "tasks": results}
 
@@ -1361,7 +1363,7 @@ async def share_task(
 
     Phase 51 — Task Sharing.
     """
-    from datetime import timedelta
+    from datetime import datetime, timedelta, timezone
 
     expires_at = None
     if body.expires_hours:

@@ -3527,7 +3527,11 @@ async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
         )
     updated = cur.statusmessage.split()[-1] != "0"  # "UPDATE N" — N > 0 means success
     if updated:
-        logger.info("[threat-rules] Rule approved rule_id=%s by=%s", _log_safe(rule_id), _log_safe(approved_by))
+        logger.info(
+            "[threat-rules] Rule approved rule_id=%s by=%s",
+            _log_safe(rule_id),
+            _log_safe(approved_by),
+        )
     return updated
 
 
@@ -3550,7 +3554,11 @@ async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
         )
     updated = cur.statusmessage.split()[-1] != "0"
     if updated:
-        logger.info("[threat-rules] Rule rejected rule_id=%s by=%s", _log_safe(rule_id), _log_safe(rejected_by))
+        logger.info(
+            "[threat-rules] Rule rejected rule_id=%s by=%s",
+            _log_safe(rule_id),
+            _log_safe(rejected_by),
+        )
     return updated
 
 
@@ -3999,7 +4007,9 @@ async def revise_package(package_id: str, revision_notes: str) -> bool:
             )
         updated = cur.statusmessage.split()[-1] != "0"
         if updated:
-            logger.info("[crystallization] Package sent for revision: %s", _log_safe(package_id))
+            logger.info(
+                "[crystallization] Package sent for revision: %s", _log_safe(package_id)
+            )
         return updated
     except Exception as e:
         logger.warning(f"[crystallization] revise_package failed: {e}")
@@ -4116,7 +4126,9 @@ async def revoke_tool(
         return True
 
     except Exception as e:
-        logger.error("[revocation] revoke_tool failed for '%s': %s", _log_safe(tool_id), e)
+        logger.error(
+            "[revocation] revoke_tool failed for '%s': %s", _log_safe(tool_id), e
+        )
         return False
 
 
@@ -4169,7 +4181,11 @@ async def create_pentest_run(mode: str = "verify", git_ref: str | None = None) -
             (mode, git_ref),
         )
         run_id = row[0]
-        logger.info("[pentest] Run created: run_id=%s mode=%s", _log_safe(run_id), _log_safe(mode))
+        logger.info(
+            "[pentest] Run created: run_id=%s mode=%s",
+            _log_safe(run_id),
+            _log_safe(mode),
+        )
         return run_id
 
 
@@ -5041,8 +5057,7 @@ async def bulk_delete_tasks(task_ids: list[str], user_id: str) -> int:
     """
     if not task_ids:
         return 0
-    pool = get_maintenance_pool()
-    async with pool.connection() as conn:
+    async with get_user_connection(user_id) as conn:
         cur = await conn.execute(
             """
             DELETE FROM tasks

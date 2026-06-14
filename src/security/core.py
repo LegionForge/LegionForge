@@ -435,20 +435,6 @@ def sanitize_text(
     return text, meta
 
 
-def sanitize_messages(messages: list[dict]) -> list[dict]:
-    """
-    Sanitize a list of message dicts (LangChain format).
-    Modifies content in place without altering structure.
-    """
-    sanitized = []
-    for msg in messages:
-        msg = dict(msg)
-        if isinstance(msg.get("content"), str):
-            msg["content"], _ = sanitize_text(msg["content"])
-        sanitized.append(msg)
-    return sanitized
-
-
 def sanitize_for_trace(data: Any) -> Any:
     """
     Recursively sanitize arbitrary data before it goes into a LangSmith trace.
