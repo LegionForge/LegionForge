@@ -301,7 +301,8 @@ class CredentialStore:
             if self._backend not in ("keychain", "env_var", "file"):
                 logger.warning(
                     f"Unknown backend '{self._backend}' — falling back to env_var"
-                )
+                )  # nosec — self._backend is a config type string ("keychain"/"env_var"/"file"),
+                   #         not a credential value. Reviewed and approved: jp@legionforge.org
             return self._load_from_env(service)
 
     def _load_from_keychain(self, service: str) -> str | None:
