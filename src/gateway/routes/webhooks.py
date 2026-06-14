@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, HttpUrl
 
 from src.gateway.auth import require_user
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,9 @@ async def register_webhook(
     )
     logger.info(
         "[webhooks] Registered webhook_id=%s user=%s url=%s",
-        wh["webhook_id"],
-        user["username"],
-        wh["url"],
+        _log_safe(wh["webhook_id"]),
+        _log_safe(user["username"]),
+        _log_safe(wh["url"]),
     )
     return wh
 
@@ -112,6 +113,6 @@ async def remove_webhook(
         )
     logger.info(
         "[webhooks] Deleted webhook_id=%s user=%s",
-        webhook_id,
-        user["username"],
+        _log_safe(webhook_id),
+        _log_safe(user["username"]),
     )

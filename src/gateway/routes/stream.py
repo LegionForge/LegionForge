@@ -26,6 +26,7 @@ from src.gateway.auth import (
     resolve_stream_token,
 )
 from src.gateway.events import subscribe_task_events
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,7 @@ async def stream_task(
             async for event in subscribe_task_events(task_id):
                 if await request.is_disconnected():
                     logger.debug(
-                        "[gateway/stream] Client disconnected task_id=%s", task_id
+                        "[gateway/stream] Client disconnected task_id=%s", _log_safe(task_id)
                     )
                     break
                 yield {

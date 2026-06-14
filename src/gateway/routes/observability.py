@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.gateway.auth import require_admin
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +377,9 @@ async def set_tool_status(
         raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found")
 
     logger.info(
-        "[admin] Tool %s status → %s by %s", tool_id, req.status, admin["username"]
+        "[admin] Tool %s status → %s by %s",
+        _log_safe(tool_id),
+        _log_safe(req.status),
+        _log_safe(admin["username"]),
     )
     return {"tool_id": tool_id, "status": req.status, "updated_by": admin["username"]}

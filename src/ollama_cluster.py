@@ -47,6 +47,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from src.security.core import _log_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -342,7 +344,7 @@ class OllamaClusterManager:
         if not self._started:
             self.start_background_polling()
 
-        logger.info("Cluster: added node '%s' at %s", label, url)
+        logger.info("Cluster: added node '%s' at %s", _log_safe(label), _log_safe(url))
 
     def remove_node(self, label: str) -> bool:
         """
@@ -358,7 +360,7 @@ class OllamaClusterManager:
             removed = len(self._nodes) < before
 
         if removed:
-            logger.info("Cluster: removed node '%s'", label)
+            logger.info("Cluster: removed node '%s'", _log_safe(label))
         return removed
 
     def update_health(self, status: NodeHealth) -> None:

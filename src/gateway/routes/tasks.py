@@ -64,7 +64,7 @@ import re as _re
 from src.gateway.auth import create_stream_token, require_user
 from src.gateway.metrics import inc_counter
 from src.rate_limiter import per_user_budget_check
-from src.security.core import sanitize_text
+from src.security.core import sanitize_text, _log_safe
 
 # Maps agent_type → LLM provider (used for per-user budget tracking).
 # All current agents run on Ollama; update this if cloud agents are added.
@@ -309,8 +309,9 @@ async def submit_task(
 
     if injection_meta.get("injection_detected"):
         logger.warning(
-            "[gateway] Injection detected in task submission "
-            f"user={user['username']} pattern_count={injection_meta.get('pattern_count', 0)}"
+            "[gateway] Injection detected in task submission user=%s pattern_count=%s",
+            _log_safe(user["username"]),
+            _log_safe(injection_meta.get("pattern_count", 0)),
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -384,8 +385,8 @@ async def submit_task(
         if hit:
             logger.info(
                 "[gateway] Cache hit task_id=%s user=%s",
-                hit["task_id"],
-                user["username"],
+                _log_safe(hit["task_id"]),
+                _log_safe(user["username"]),
             )
             return {
                 "task_id": hit["task_id"],
@@ -411,8 +412,10 @@ async def submit_task(
         )
     except RuntimeError as budget_err:
         logger.warning(
-            f"[gateway] Per-user budget exceeded: user={user['username']} "
-            f"estimated={estimated_tokens} limit={daily_limit}"
+            "[gateway] Per-user budget exceeded: user=%s estimated=%s limit=%s",
+            _log_safe(user["username"]),
+            _log_safe(estimated_tokens),
+            _log_safe(daily_limit),
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -459,8 +462,10 @@ async def submit_task(
     inc_counter("legionforge_tasks_submitted_total")
 
     logger.info(
-        f"[gateway] Task queued task_id={task_id} "
-        f"agent={body.agent_type} user={user['username']}"
+        "[gateway] Task queued task_id=%s agent=%s user=%s",
+        _log_safe(task_id),
+        _log_safe(body.agent_type),
+        _log_safe(user["username"]),
     )
 
     # Phase 42: rate limit headers
@@ -524,7 +529,7 @@ async def submit_tasks_batch(
             logger.warning(
                 "[gateway/batch] Injection detected task %d user=%s",
                 idx,
-                user["username"],
+                _log_safe(user["username"]),
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -572,7 +577,7 @@ async def submit_tasks_batch(
         )
 
     logger.info(
-        "[gateway/batch] Queued %d tasks user=%s", len(results), user["username"]
+        "[gateway/batch] Queued %d tasks user=%s", len(results), _log_safe(user["username"])
     )
     return {"count": len(results), "tasks": results}
 
@@ -1313,9 +1318,9 @@ async def retry_task(
 
     logger.info(
         "[gateway] Retried task original=%s new=%s user=%s",
-        task_id,
-        new_task_id,
-        user["username"],
+        _log_safe(task_id),
+        _log_safe(new_task_id),
+        _log_safe(user["username"]),
     )
 
     return {

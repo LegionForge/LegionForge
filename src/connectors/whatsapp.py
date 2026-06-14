@@ -86,6 +86,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from src.connectors.base import _load_secret, _run_task
+from src.security.core import _log_safe
 
 __all__ = ["app", "build_app", "main"]
 
@@ -161,7 +162,7 @@ async def _download_media(media_id: str, api_token: str) -> bytes | None:
             meta_resp.raise_for_status()
             media_url = meta_resp.json().get("url")
             if not media_url:
-                logger.warning("[whatsapp] Media URL missing for id=%s", media_id)
+                logger.warning("[whatsapp] Media URL missing for id=%s", _log_safe(media_id))
                 return None
 
             # Step 2 — download the actual bytes
@@ -207,13 +208,13 @@ async def _send_reply(
             resp = await client.post(url, json=payload, headers=headers)
             logger.info(
                 "[whatsapp] Reply sent to %s → HTTP %d",
-                _phone_log_safe(phone),
+                _log_safe(_phone_log_safe(phone)),
                 resp.status_code,
             )
     except Exception as exc:
         logger.error(
             "[whatsapp] Reply send failed for %s: %s",
-            _phone_log_safe(phone),
+            _log_safe(_phone_log_safe(phone)),
             exc,
         )
 
@@ -278,14 +279,14 @@ async def _process_message(
             _collect(),
         )
     except Exception as exc:
-        logger.error("[whatsapp] Task runner error for %s: %s", phone_safe, exc)
+        logger.error("[whatsapp] Task runner error for %s: %s", _log_safe(phone_safe), exc)
         status = "error"
         accumulated = str(exc)
 
     elapsed = time.monotonic() - start
     logger.info(
         "[whatsapp] Task complete for %s status=%s elapsed=%.1fs",
-        phone_safe,
+        _log_safe(phone_safe),
         status,
         elapsed,
     )
@@ -396,7 +397,7 @@ def build_app(
         msg_type: str = msg.get("type", "text")
         phone_safe = _phone_log_safe(sender_phone)
 
-        logger.info("[whatsapp] Inbound %s message from %s", msg_type, phone_safe)
+        logger.info("[whatsapp] Inbound %s message from %s", _log_safe(msg_type), _log_safe(phone_safe))
 
         # ── Extract message content ───────────────────────────────────────
         task_text = ""
@@ -415,7 +416,7 @@ def build_app(
         else:
             # Unsupported type — send a polite rejection
             logger.info(
-                "[whatsapp] Unsupported message type=%s from %s", msg_type, phone_safe
+                "[whatsapp] Unsupported message type=%s from %s", _log_safe(msg_type), _log_safe(phone_safe)
             )
             if sender_phone and phone_number_id and api_token:
                 background_tasks.add_task(
@@ -435,7 +436,7 @@ def build_app(
             logger.info(
                 "[whatsapp] Task truncated to %d chars for %s",
                 _TASK_MAX_LEN,
-                phone_safe,
+                _log_safe(phone_safe),
             )
 
         if not sender_phone or not phone_number_id or not api_token:
