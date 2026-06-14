@@ -197,7 +197,7 @@ def _read_html(raw: str) -> str:
     """Strip HTML tags from raw HTML string."""
     # Remove script/style blocks first
     raw = re.sub(
-        r"<(script|style)[^>]*>.*?</(script|style)\s*>", "", raw, flags=re.S | re.I
+        r"<(script|style)[^>]*>.*?</(script|style)[^>]*>", "", raw, flags=re.S | re.I
     )
     # Strip remaining tags
     raw = re.sub(r"<[^>]+>", " ", raw)
