@@ -398,8 +398,8 @@ async def get_my_usage(user: dict = Depends(require_user)) -> JSONResponse:
             }
         )
     except Exception as exc:
-        logger.error(f"[gateway] /usage/me failed: {exc}")
-        return JSONResponse({"error": str(exc)}, status_code=503)
+        logger.error("[gateway] /usage/me failed: %s", exc, exc_info=True)
+        return JSONResponse({"error": "internal error"}, status_code=503)
 
 
 @app.get("/usage/history", tags=["usage"])
@@ -420,8 +420,8 @@ async def get_usage_history(
         history = await get_user_usage_history(user["user_id"], days=days)
         return JSONResponse(history)
     except Exception as exc:
-        logger.error(f"[gateway] /usage/history failed: {exc}")
-        return JSONResponse({"error": str(exc)}, status_code=503)
+        logger.error("[gateway] /usage/history failed: %s", exc, exc_info=True)
+        return JSONResponse({"error": "internal error"}, status_code=503)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
