@@ -72,7 +72,7 @@ async def create_user(username: str, daily_limit: int, is_admin: bool = False) -
     print(f"   is_admin:    {is_admin}")
     print(f"   daily_limit: {daily_limit:,} tokens/day")
     print()
-    print(f"   API KEY (copy now — not stored in plain text):")
+    print("   API KEY (copy now — not stored in plain text):")
     print(f"   {raw_key}")
     print()
     print("   Use with: curl -H 'Authorization: Bearer <key>' ...")
@@ -162,7 +162,7 @@ async def rotate_key(username: str) -> None:
 
     print(f"✅ API key rotated for '{username}':")
     print()
-    print(f"   API KEY (copy now — not stored in plain text):")
+    print("   API KEY (copy now — not stored in plain text):")
     print(f"   {raw_key}")
     print()
     print("   Use with: curl -H 'Authorization: Bearer <key>' ...")

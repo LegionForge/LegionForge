@@ -24,10 +24,8 @@ from pydantic import BaseModel, Field
 from src.database import (
     create_task,
     get_task,
-    VALID_AGENT_TYPES,
 )
 from src.gateway.auth import create_stream_token, require_user
-from src.gateway.events import subscribe_task_events
 from src.security.core import sanitize_text
 
 logger = logging.getLogger(__name__)

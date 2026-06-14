@@ -40,7 +40,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 import bcrypt as _bcrypt
 
-from src.database import get_gateway_user_for_auth
 
 # Phase 13: stream token operations route through state.py (Redis or DB fallback)
 from src.gateway.state import (

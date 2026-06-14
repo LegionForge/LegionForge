@@ -146,7 +146,7 @@ async def run_template(
 
     Phase 50 — Task Templates.
     """
-    from src.database import get_task_template, create_task, VALID_AGENT_TYPES
+    from src.database import get_task_template, create_task
     from src.gateway.auth import create_stream_token
     from src.gateway.metrics import inc_counter
     from src.rate_limiter import per_user_budget_check
