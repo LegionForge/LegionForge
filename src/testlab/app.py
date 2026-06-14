@@ -34,7 +34,6 @@ import asyncio
 import json
 import os
 import re
-import subprocess
 import time
 import uuid
 from datetime import datetime, timezone
@@ -42,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
