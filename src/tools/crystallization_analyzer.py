@@ -711,7 +711,8 @@ async def analyze_package(package_id: str) -> dict[str, Any]:
         function_code: str = package.get("function_code", "")
         declared_side_effects: list = package.get("declared_side_effects") or ["pure"]
         test_cases: list = package.get("test_cases") or []
-        edge_cases: list = package.get("edge_cases") or []
+        # Note: declared edge_cases are intentionally ignored — we use the standard
+        # edge inputs at line below instead, for consistency across packages.
         adversarial_cases: list = package.get("adversarial_cases") or []
         example_inputs: list = []  # from candidate — used for equivalence
         example_outputs: list = []

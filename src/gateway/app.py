@@ -208,7 +208,7 @@ app = FastAPI(
 # Default: localhost only (safe for household deployment).
 # Override: CORS_ALLOW_ORIGINS="https://yourdomain.com" in environment.
 
-import os
+import os  # noqa: E402 — placed near consumer for CORS config locality
 
 _cors_origins = os.environ.get(
     "CORS_ALLOW_ORIGINS", "http://localhost:3000,http://localhost:8080"
@@ -227,7 +227,7 @@ app.add_middleware(
 #   SubmissionRateLimitMiddleware → MetricsMiddleware → RequestIDMiddleware
 # The rate limiter must run first so rejected requests are counted but never
 # reach route handlers. MetricsMiddleware records 429s as normal responses.
-from src.gateway.middleware import (
+from src.gateway.middleware import (  # noqa: E402 — placed near add_middleware calls for execution-order locality
     MetricsMiddleware,
     RequestIDMiddleware,
     SubmissionRateLimitMiddleware,

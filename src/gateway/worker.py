@@ -66,9 +66,11 @@ _in_flight: dict[str, "asyncio.Task[None]"] = {}
 # decremented in a finally block — always consistent).
 _active_tasks: int = 0
 
-from langgraph.errors import GraphInterrupt
+from langgraph.errors import (
+    GraphInterrupt,
+)  # noqa: E402 — placed after module-level worker state for grouping
 
-from src.database import (
+from src.database import (  # noqa: E402 — placed after module-level worker state for grouping
     claim_next_queued_task,
     fail_dependent_tasks,
     mark_task_running,
@@ -81,8 +83,8 @@ from src.database import (
     purge_expired_stream_tokens,
     get_user_webhooks_for_event,
 )
-from src.security.core import sanitize_log_value
-from src.gateway.events import (
+from src.security.core import sanitize_log_value  # noqa: E402
+from src.gateway.events import (  # noqa: E402
     build_hitl_required_event,
     build_sse_event,
     build_task_complete_event,
@@ -233,13 +235,12 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
     # fresh thread (run_id) so its LangGraph state is clean per task.
     session_id = task.get("session_id")
     if session_id and agent_type != "orchestrator":
-        from src.database import get_session as _db_get_session, increment_session_turn
+        from src.database import get_session as _db_get_session
 
         _sess = await _db_get_session(session_id, task["user_id"])
         lg_thread_id = _sess["thread_id"] if _sess else run_id
     else:
         lg_thread_id = run_id
-        increment_session_turn = None  # no-op reference
 
     from config.settings import settings as _settings
 

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Any
 
 import csv
 import io
@@ -470,7 +469,6 @@ async def submit_task(
 
     # Phase 42: rate limit headers
     from src.gateway.rate_limit_headers import compute_rate_limit_headers
-    import json as _json_mod
 
     rl_headers = await compute_rate_limit_headers(
         user["user_id"], provider, daily_limit
@@ -851,7 +849,7 @@ async def export_tasks(
 
         lines: list[str] = [
             "# LegionForge Task Export",
-            f"",
+            "",
             f"Generated: {datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}  ",
             f"Total: {len(tasks_rows)} task(s)  ",
             "",
@@ -981,7 +979,7 @@ class UpdateLabelsRequest(BaseModel):
         max_length=4,
         description=(
             "New label list (replaces existing labels).  "
-            f"Allowed values: bookmarked, starred, important, archived."
+            "Allowed values: bookmarked, starred, important, archived."
         ),
     )
 
@@ -1423,5 +1421,5 @@ async def revoke_share(
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Share token not found",
+            detail="Share token not found",
         )
