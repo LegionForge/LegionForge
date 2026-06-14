@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.gateway.auth import require_user
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +83,9 @@ async def create_template(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     logger.info(
         "[templates] Created template_id=%s name=%s user=%s",
-        tmpl["template_id"],
-        tmpl["name"],
-        user["username"],
+        _log_safe(tmpl["template_id"]),
+        _log_safe(tmpl["name"]),
+        _log_safe(user["username"]),
     )
     return tmpl
 
@@ -189,8 +190,8 @@ async def run_template(
     stream_token = await create_stream_token(task["task_id"], user["user_id"])
     logger.info(
         "[templates] Submitted task_id=%s from template=%s user=%s",
-        task["task_id"],
-        template_id,
-        user["username"],
+        _log_safe(task["task_id"]),
+        _log_safe(template_id),
+        _log_safe(user["username"]),
     )
     return {**task, "stream_token": stream_token, "template_id": template_id}

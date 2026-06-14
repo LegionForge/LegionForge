@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.gateway.auth import require_admin
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +155,8 @@ async def approve_hitl_request(
         resume_result["result"] = final_state.get("result", "")
         logger.info(
             "[hitl] Graph resumed after approval — thread_id=%s request_id=%s",
-            thread_id,
-            request_id,
+            _log_safe(thread_id),
+            _log_safe(request_id),
         )
     except Exception as exc:
         logger.error(
@@ -221,9 +222,9 @@ async def reject_hitl_request(
 
     logger.info(
         "[hitl] Run rejected by operator — request_id=%s thread_id=%s action=%s",
-        request_id,
-        req["thread_id"],
-        req["action"],
+        _log_safe(request_id),
+        _log_safe(req["thread_id"]),
+        _log_safe(req["action"]),
     )
     return {
         "status": "rejected",

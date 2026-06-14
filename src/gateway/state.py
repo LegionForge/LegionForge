@@ -42,6 +42,8 @@ import logging
 import secrets
 from typing import Optional
 
+from src.security.core import _log_safe
+
 logger = logging.getLogger(__name__)
 
 # ── Module-level Redis client (None = DB mode) ────────────────────────────────
@@ -246,7 +248,11 @@ async def redis_budget_check_and_reserve(
         )
 
     logger.debug(
-        f"[state] Budget reserved: user={user_id} +{estimated_tokens} → {new_val}/{daily_limit}"
+        "[state] Budget reserved: user=%s +%s → %s/%s",
+        _log_safe(user_id),
+        _log_safe(estimated_tokens),
+        _log_safe(new_val),
+        _log_safe(daily_limit),
     )
 
 

@@ -899,6 +899,17 @@ def _is_private_ip(ip: str) -> bool:
     return False
 
 
+# ── Log safety ───────────────────────────────────────────────────────────────
+_LOG_UNSAFE_RE: re.Pattern[str] = re.compile(
+    r"[\x00-\x1f\x7f-\x9f]|\x1b\[[0-9;]*[A-Za-z]"
+)
+
+
+def _log_safe(value: object, max_len: int = 200) -> str:
+    """Sanitize a value for safe inclusion in log messages."""
+    return _LOG_UNSAFE_RE.sub("?", str(value))[:max_len]
+
+
 def validate_fetch_url(url: str) -> None:
     """
     Validate a URL before making an outbound HTTP request.
@@ -971,7 +982,7 @@ def validate_fetch_url(url: str) -> None:
     except OSError:
         pass  # DNS resolution failed — let httpx handle that gracefully
 
-    logger.debug(f"[ssrf-check] URL validated: {url!r}")
+    logger.debug("[ssrf-check] URL validated: %s", _log_safe(url))
 
 
 def is_ssrf_url(url: str) -> bool:

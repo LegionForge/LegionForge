@@ -55,6 +55,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from src.security.core import _log_safe
+
 logger = logging.getLogger(__name__)
 
 # ── Token-approximate constants ───────────────────────────────────────────────
@@ -320,8 +322,8 @@ class DocumentIngestor:
             "Ingestor: stored %d/%d chunks in namespace '%s' (source: %s)",
             len(doc_ids),
             len(chunks),
-            namespace,
-            source or "—",
+            _log_safe(namespace),
+            _log_safe(source or "—"),
         )
         return doc_ids
 
@@ -418,7 +420,7 @@ class DocumentIngestor:
         deleted = int(result.split()[-1]) if result else 0
         if deleted:
             logger.info(
-                "Ingestor: deleted doc %d from namespace '%s'", doc_id, namespace
+                "Ingestor: deleted doc %d from namespace '%s'", doc_id, _log_safe(namespace)
             )
         return bool(deleted)
 

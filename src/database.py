@@ -35,6 +35,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pgvector.psycopg import register_vector_async
 
 from config.settings import settings
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -2991,7 +2992,10 @@ async def append_audit_log(
         )
 
     logger.debug(
-        f"[audit-log] Appended seq={seq} event_type={event_type} agent_id={agent_id}"
+        "[audit-log] Appended seq=%s event_type=%s agent_id=%s",
+        _log_safe(seq),
+        _log_safe(event_type),
+        _log_safe(agent_id),
     )
     return seq
 
@@ -3523,7 +3527,7 @@ async def approve_threat_rule(rule_id: str, approved_by: str) -> bool:
         )
     updated = cur.statusmessage.split()[-1] != "0"  # "UPDATE N" — N > 0 means success
     if updated:
-        logger.info(f"[threat-rules] Rule approved rule_id={rule_id} by={approved_by}")
+        logger.info("[threat-rules] Rule approved rule_id=%s by=%s", _log_safe(rule_id), _log_safe(approved_by))
     return updated
 
 
@@ -3546,7 +3550,7 @@ async def reject_threat_rule(rule_id: str, rejected_by: str) -> bool:
         )
     updated = cur.statusmessage.split()[-1] != "0"
     if updated:
-        logger.info(f"[threat-rules] Rule rejected rule_id={rule_id} by={rejected_by}")
+        logger.info("[threat-rules] Rule rejected rule_id=%s by=%s", _log_safe(rule_id), _log_safe(rejected_by))
     return updated
 
 
@@ -3939,7 +3943,9 @@ async def approve_package(package_id: str, approved_by: str) -> bool:
         updated = cur.statusmessage.split()[-1] != "0"
         if updated:
             logger.info(
-                f"[crystallization] Package approved: {package_id!r} by={approved_by!r}"
+                "[crystallization] Package approved: %s by=%s",
+                _log_safe(package_id),
+                _log_safe(approved_by),
             )
         return updated
     except Exception as e:
@@ -3964,7 +3970,9 @@ async def reject_package(package_id: str, rejected_by: str, reason: str = "") ->
         updated = cur.statusmessage.split()[-1] != "0"
         if updated:
             logger.info(
-                f"[crystallization] Package rejected: {package_id!r} by={rejected_by!r}"
+                "[crystallization] Package rejected: %s by=%s",
+                _log_safe(package_id),
+                _log_safe(rejected_by),
             )
         return updated
     except Exception as e:
@@ -3991,7 +3999,7 @@ async def revise_package(package_id: str, revision_notes: str) -> bool:
             )
         updated = cur.statusmessage.split()[-1] != "0"
         if updated:
-            logger.info(f"[crystallization] Package sent for revision: {package_id!r}")
+            logger.info("[crystallization] Package sent for revision: %s", _log_safe(package_id))
         return updated
     except Exception as e:
         logger.warning(f"[crystallization] revise_package failed: {e}")
@@ -4083,12 +4091,16 @@ async def revoke_tool(
 
         if rows_affected == 0:
             logger.warning(
-                f"[revocation] Tool '{tool_id}' not found or already revoked — no-op"
+                "[revocation] Tool '%s' not found or already revoked — no-op",
+                _log_safe(tool_id),
             )
             return False
 
         logger.info(
-            f"[revocation] Tool '{tool_id}' REVOKED by '{revoked_by}': {reason}"
+            "[revocation] Tool '%s' REVOKED by '%s': %s",
+            _log_safe(tool_id),
+            _log_safe(revoked_by),
+            _log_safe(reason),
         )
 
         # Append to audit log (non-fatal if fails)
@@ -4104,7 +4116,7 @@ async def revoke_tool(
         return True
 
     except Exception as e:
-        logger.error(f"[revocation] revoke_tool failed for '{tool_id}': {e}")
+        logger.error("[revocation] revoke_tool failed for '%s': %s", _log_safe(tool_id), e)
         return False
 
 
@@ -4157,7 +4169,7 @@ async def create_pentest_run(mode: str = "verify", git_ref: str | None = None) -
             (mode, git_ref),
         )
         run_id = row[0]
-        logger.info(f"[pentest] Run created: run_id={run_id} mode={mode}")
+        logger.info("[pentest] Run created: run_id=%s mode=%s", _log_safe(run_id), _log_safe(mode))
         return run_id
 
 

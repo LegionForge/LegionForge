@@ -48,6 +48,7 @@ from pydantic import BaseModel
 from config.settings import settings
 from src.observability import get_metrics_summary
 from src.rate_limiter import get_all_daily_status
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -863,7 +864,7 @@ async def revoke_tool_endpoint(
                 status_code=404,
             )
     except Exception as e:
-        logger.error(f"[health] revoke_tool failed for '{tool_id}': {e}")
+        logger.error("[health] revoke_tool failed for '%s': %s", _log_safe(tool_id), e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1032,7 +1033,7 @@ async def get_pentest_run_status(run_id: str, request: Request) -> JSONResponse:
             }
         )
     except Exception as e:
-        logger.error(f"[health] get_pentest_run_status failed for {run_id}: {e}")
+        logger.error("[health] get_pentest_run_status failed for %s: %s", _log_safe(run_id), e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1068,7 +1069,7 @@ async def get_pentest_run_findings(run_id: str, request: Request) -> JSONRespons
             ]
         )
     except Exception as e:
-        logger.error(f"[health] get_pentest_run_findings failed for {run_id}: {e}")
+        logger.error("[health] get_pentest_run_findings failed for %s: %s", _log_safe(run_id), e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1158,7 +1159,7 @@ async def get_pentest_run_report(
             return Response(content=renderer(), media_type=content_type)
 
     except Exception as e:
-        logger.error(f"[health] get_pentest_run_report failed for {run_id}: {e}")
+        logger.error("[health] get_pentest_run_report failed for %s: %s", _log_safe(run_id), e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1210,7 +1211,9 @@ async def approve_pentest_rule(
                 )
         rule = rows[0]
         logger.info(
-            f"[health] Pentest rule {finding_id} approved by '{body.approved_by}'"
+            "[health] Pentest rule %s approved by '%s'",
+            _log_safe(finding_id),
+            _log_safe(body.approved_by),
         )
 
         # Phase 7: promote the approved rule into threat_rules so Guardian enforces it.
@@ -1223,19 +1226,21 @@ async def approve_pentest_rule(
                 run_id=rule["run_id"],
             )
             logger.info(
-                f"[health] Promoted pentest rule {finding_id} → "
-                f"threat_rule {threat_rule_id} (enforced within 10s)"
+                "[health] Promoted pentest rule %s → threat_rule %s (enforced within 10s)",
+                _log_safe(finding_id),
+                _log_safe(threat_rule_id),
             )
         except ValueError as ve:
             # Unknown rule_type — return 422 rather than silently dropping
-            logger.warning(f"[health] Cannot promote pentest rule {finding_id}: {ve}")
+            logger.warning("[health] Cannot promote pentest rule %s: %s", _log_safe(finding_id), ve)
             return JSONResponse({"error": str(ve)}, status_code=422)
         except Exception as promo_err:
             # Promotion failed (e.g. DB unavailable) — log and continue;
             # the pentest rule is still marked APPROVED in its table.
             logger.error(
-                f"[health] promote_pentest_rule_to_threat_rule failed "
-                f"for finding {finding_id}: {promo_err}"
+                "[health] promote_pentest_rule_to_threat_rule failed for finding %s: %s",
+                _log_safe(finding_id),
+                promo_err,
             )
             threat_rule_id = None
 
@@ -1253,7 +1258,9 @@ async def approve_pentest_rule(
             )
         except Exception as audit_err:
             logger.warning(
-                f"[health] audit_log write failed for rule {finding_id}: {audit_err}"
+                "[health] audit_log write failed for rule %s: %s",
+                _log_safe(finding_id),
+                audit_err,
             )
 
         return JSONResponse(
@@ -1270,7 +1277,7 @@ async def approve_pentest_rule(
             }
         )
     except Exception as e:
-        logger.error(f"[health] approve_pentest_rule failed for {finding_id}: {e}")
+        logger.error("[health] approve_pentest_rule failed for %s: %s", _log_safe(finding_id), e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 

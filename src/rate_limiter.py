@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+
+from src.security.core import _log_safe
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import AsyncGenerator
@@ -425,8 +427,11 @@ async def per_user_budget_check(
         if redis_mode():
             await redis_budget_check_and_reserve(user_id, estimated_tokens, daily_limit)
             logger.debug(
-                f"[per-user-budget] user={user_id} provider={provider} "
-                f"estimated={estimated_tokens} limit={daily_limit} — OK (Redis)"
+                "[per-user-budget] user=%s provider=%s estimated=%s limit=%s — OK (Redis)",
+                _log_safe(user_id),
+                _log_safe(provider),
+                _log_safe(estimated_tokens),
+                _log_safe(daily_limit),
             )
             return
     except ImportError:
@@ -453,9 +458,13 @@ async def per_user_budget_check(
         )
 
     logger.debug(
-        f"[per-user-budget] user={user_id} provider={provider} "
-        f"actual={actual_used} in_flight={in_flight} estimated={estimated_tokens} "
-        f"limit={daily_limit} — OK (DB)"
+        "[per-user-budget] user=%s provider=%s actual=%s in_flight=%s estimated=%s limit=%s — OK (DB)",
+        _log_safe(user_id),
+        _log_safe(provider),
+        _log_safe(actual_used),
+        _log_safe(in_flight),
+        _log_safe(estimated_tokens),
+        _log_safe(daily_limit),
     )
 
 

@@ -42,6 +42,8 @@ import logging
 import threading
 from typing import Optional
 
+from src.security.core import _log_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,7 +124,7 @@ class MemoryStore:
         if cfg.max_docs_per_namespace > 0:
             await self._prune_if_needed(namespace, cfg.max_docs_per_namespace)
 
-        logger.debug("Memory stored doc %d in namespace '%s'", doc_id, namespace)
+        logger.debug("Memory stored doc %d in namespace '%s'", doc_id, _log_safe(namespace))
         return doc_id
 
     # ── Search ────────────────────────────────────────────────────────────────
@@ -179,8 +181,8 @@ class MemoryStore:
                 logger.warning(
                     "[rag] Injection pattern in retrieved document chunk "
                     "(doc_id=%s namespace=%s) — sanitized",
-                    chunk.get("id"),
-                    namespace,
+                    _log_safe(chunk.get("id")),
+                    _log_safe(namespace),
                 )
             sanitized_results.append({**chunk, "content": clean_content})
 
@@ -266,7 +268,7 @@ class MemoryStore:
             )
         # asyncpg returns "DELETE N" as the status string
         deleted = int(result.split()[-1]) if result else 0
-        logger.info("Memory: cleared %d doc(s) from namespace '%s'", deleted, namespace)
+        logger.info("Memory: cleared %d doc(s) from namespace '%s'", deleted, _log_safe(namespace))
         return deleted
 
     # ── Prune ─────────────────────────────────────────────────────────────────
@@ -301,7 +303,7 @@ class MemoryStore:
             logger.debug(
                 "Memory: pruned %d old doc(s) from namespace '%s' (kept %d)",
                 deleted,
-                namespace,
+                _log_safe(namespace),
                 keep_last_n,
             )
         return deleted
@@ -313,7 +315,7 @@ class MemoryStore:
             if s["total"] > max_docs:
                 await self.prune(namespace, max_docs)
         except Exception as e:
-            logger.debug("Memory prune failed for '%s': %s", namespace, e)
+            logger.debug("Memory prune failed for '%s': %s", _log_safe(namespace), e)
 
     # ── Convenience helpers ───────────────────────────────────────────────────
 

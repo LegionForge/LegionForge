@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from src.gateway.auth import require_user
+from src.security.core import _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +227,7 @@ async def stream_pipeline_run(
         # Still running — subscribe to live events
         async for event in subscribe_pipeline_events(run_id):
             if await request.is_disconnected():
-                logger.debug("[pipelines/stream] Client disconnected run_id=%d", run_id)
+                logger.debug("[pipelines/stream] Client disconnected run_id=%s", _log_safe(run_id))
                 break
             yield {
                 "event": event["event"],
@@ -359,10 +360,10 @@ async def run_pipeline(
     )
 
     logger.info(
-        "[pipelines] Started run %d for pipeline %d user=%s",
-        run_id,
-        pipeline_id,
-        user["username"],
+        "[pipelines] Started run %s for pipeline %s user=%s",
+        _log_safe(run_id),
+        _log_safe(pipeline_id),
+        _log_safe(user["username"]),
     )
 
     return {

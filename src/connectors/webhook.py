@@ -79,7 +79,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.connectors.base import _load_secret, _run_task
-from src.security.core import is_ssrf_url
+from src.security.core import is_ssrf_url, _log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ def build_app(api_key: str, inbound_secret: str) -> FastAPI:
             )
         if is_ssrf_url(callback_url):
             logger.warning(
-                "[webhook] Blocked SSRF callback_url attempt: %.80s", callback_url
+                "[webhook] Blocked SSRF callback_url attempt: %s", _log_safe(callback_url)
             )
             raise HTTPException(
                 status_code=422,
@@ -189,8 +189,10 @@ def build_app(api_key: str, inbound_secret: str) -> FastAPI:
             )
 
         logger.info(
-            f"[webhook] Queuing task len={len(task_text)} "
-            f"agent={req.agent_type} callback={callback_url!r}"
+            "[webhook] Queuing task len=%d agent=%s callback=%s",
+            len(task_text),
+            _log_safe(req.agent_type),
+            _log_safe(callback_url),
         )
 
         # ── Fire background task (don't block the response) ──────────────────
@@ -272,8 +274,10 @@ async def _process_and_callback(
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(callback_url, json=payload)
             logger.info(
-                f"[webhook] Callback POST {callback_url} → {resp.status_code} "
-                f"elapsed={elapsed:.1f}s"
+                "[webhook] Callback POST %s → %d elapsed=%.1fs",
+                _log_safe(callback_url),
+                resp.status_code,
+                elapsed,
             )
     except Exception as exc:
         logger.error(f"[webhook] Callback POST failed: {exc}")
