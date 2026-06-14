@@ -46,7 +46,6 @@ import os
 import stat
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
