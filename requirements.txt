@@ -50,7 +50,7 @@ tavily-python~=0.7          # Tavily search provider (primary)
 httpx~=0.28
 aiohttp~=3.9
 tenacity~=8.0                    # Retry logic for API calls
-fastapi~=0.132                   # Health/status endpoint
+fastapi~=0.135.0                 # Health/status endpoint — tight pin: 0.137 introduced _IncludedRouter break
 uvicorn~=0.49                    # ASGI server for health endpoint
 
 # ── Gateway (Phase 8) ────────────────────────────────────────
