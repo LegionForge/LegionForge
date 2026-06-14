@@ -34,7 +34,6 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
 
 from config.settings import settings
 from src.base_graph import AgentState, SecureToolNode
@@ -53,7 +52,6 @@ from src.security import (
     ToolManifest,
     register_tool,
     sanitize_messages,
-    sanitize_text,
 )
 
 logger = logging.getLogger(__name__)
