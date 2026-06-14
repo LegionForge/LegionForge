@@ -205,8 +205,6 @@ class Scheduler:
         """Query and fire all due scheduled tasks."""
         from src.database import (
             get_due_scheduled_tasks,
-            record_scheduled_run,
-            create_task,
         )
 
         due = await get_due_scheduled_tasks()
