@@ -12,7 +12,6 @@ Python traceback.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from config.settings import settings
 from src.search.base import SearchProvider, SearchResult
@@ -40,7 +39,6 @@ class DDGProvider(SearchProvider):
     def search(self, query: str, max_results: int = 5) -> list[SearchResult]:
         try:
             from duckduckgo_search import DDGS
-            from duckduckgo_search.exceptions import DuckDuckGoSearchException
 
             with DDGS() as ddgs:
                 raw = list(
