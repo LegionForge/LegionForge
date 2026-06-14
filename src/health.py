@@ -1316,7 +1316,6 @@ async def get_my_usage(request: Request) -> JSONResponse:
     try:
         from src.database import (
             get_user_usage_summary_today,
-            get_gateway_user_by_username,
         )
 
         usage = await get_user_usage_summary_today(user["user_id"])
