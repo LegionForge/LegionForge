@@ -36,7 +36,7 @@
 #   FAIL_FAST            — optional; 1 to stop after first suite failure
 # ─────────────────────────────────────────────────────────────────────────────
 
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 
 # ── System setup ───────────────────────────────────────────────────────────────
 RUN apt-get update \
