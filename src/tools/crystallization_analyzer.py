@@ -38,7 +38,6 @@ import sys
 import tempfile
 import textwrap
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
