@@ -66,11 +66,13 @@ _in_flight: dict[str, "asyncio.Task[None]"] = {}
 # decremented in a finally block — always consistent).
 _active_tasks: int = 0
 
-from langgraph.errors import (
-    GraphInterrupt,
-)  # noqa: E402 — placed after module-level worker state for grouping
+# Imports below are intentionally placed after the module-level worker state
+# blocks above for organisational grouping (concurrency / identity / in-flight
+# registry stay together). E402 is suppressed per-import since the order is
+# intentional; the rationale lives here so it isn't repeated each time.
+from langgraph.errors import GraphInterrupt  # noqa: E402
 
-from src.database import (  # noqa: E402 — placed after module-level worker state for grouping
+from src.database import (  # noqa: E402
     claim_next_queued_task,
     fail_dependent_tasks,
     mark_task_running,
