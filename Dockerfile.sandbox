@@ -17,7 +17,7 @@
 #   make sandbox-build
 # ============================================================
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # No network access at runtime, so install only what's needed at build time.
 # Packages: matplotlib + numpy for charts (Options A/B), plotly for interactive
