@@ -48,4 +48,7 @@ USER analyzer
 # ENTRYPOINT receives: ["runner_script_code", "json_input_args"]
 # Matches the invocation in _run_test_in_subprocess:
 #   [sys.executable, "-c", runner, json.dumps(test_input)]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python3 -c "import sys; sys.exit(0)"
+
 ENTRYPOINT ["python", "-c"]

@@ -143,7 +143,7 @@ async def web_fetch(url: str, timeout: float = 10.0) -> str:
                     import re as _re
 
                     text = _re.sub(
-                        r"<(script|style)[^>]*>.*?</(script|style)>",
+                        r"<(script|style)[^>]*>.*?</(script|style)\s*>",
                         "",
                         text,
                         flags=_re.S | _re.I,

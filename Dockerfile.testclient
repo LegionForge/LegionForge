@@ -69,4 +69,7 @@ USER testclient
 
 # Default: run all suites against GATEWAY_URL with GATEWAY_API_KEY
 ENTRYPOINT ["python", "-m", "tests.gateway_client"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python3 -c "import sys; sys.exit(0)"
+
 CMD []
