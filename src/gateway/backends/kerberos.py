@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import gssapi  # type: ignore[import]
-    import gssapi.raw as gss_raw  # type: ignore[import]
+    import gssapi.raw as gss_raw  # type: ignore[import]  # noqa: F401 — availability probe; gssapi.raw is a separate submodule
 
     _GSSAPI_AVAILABLE = True
 except ImportError:

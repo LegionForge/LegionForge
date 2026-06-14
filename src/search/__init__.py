@@ -23,12 +23,20 @@ from __future__ import annotations
 
 import logging
 
-from src.search.base import SearchResult  # noqa: F401 — re-export
+from src.search.base import SearchResult
 from src.search.registry import (
     get_provider,
     list_providers,
     provider_status,
-)  # noqa: F401 — re-export
+)
+
+__all__ = [
+    "search_web",
+    "SearchResult",
+    "get_provider",
+    "list_providers",
+    "provider_status",
+]
 
 logger = logging.getLogger(__name__)
 
