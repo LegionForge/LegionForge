@@ -276,7 +276,7 @@ def test_web_fetch_html_stripping_removes_script_tags():
     )
 
     text = re.sub(
-        r"<(script|style)[^>]*>.*?</(script|style)\s*>",
+        r"<(script|style)[^>]*>.*?</(script|style)[^>]*>",
         "",
         html,
         flags=re.S | re.I,
