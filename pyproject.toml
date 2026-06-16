@@ -28,27 +28,14 @@ where = ["."]
 include = ["src*"]
 
 [tool.bandit]
-# Project-wide skips for findings with identical, universal justification.
-# Per-line nosec is preferred for findings where rationale varies by site (B105,
-# B110, B101, etc.); these three skips cover categories where every instance in
-# this codebase has the same reason, and per-line annotation adds noise without
-# adding information. Reviewed and approved: jp@legionforge.org 2026-06-15.
+# Project-wide skip for B404 only. B603 and B607 are reviewed per-site so each
+# call gets a documented attestation that argv is not user-controlled and that
+# the target binary is acceptable for its execution environment. Reviewed and
+# approved: jp@legionforge.org 2026-06-16.
 #
-#   B404 (import subprocess) — subprocess is required for the macOS Keychain
-#     CLI integration that backs credential management; importing it is not a
-#     bug. Per-instance nosec at every import site is uninformative.
-#
-#   B603 (subprocess_without_shell_equals_true) — every subprocess call in this
-#     codebase uses a literal argv list with no `shell=True` and no untrusted
-#     input (only Keychain service names from a hardcoded registry). The
-#     reportable risk B603 flags is shell injection from untrusted input, which
-#     this pattern is immune to by construction.
-#
-#   B607 (start_process_with_partial_path) — all process calls target macOS
-#     system binaries (`security`, `pgrep`, `pg_isready`, etc.) resolved via
-#     PATH. We do not pin to /usr/bin/security because the same code paths are
-#     exercised on Linux runners during CI (where the binaries may live
-#     elsewhere) and the deployment environment hardens PATH at the systemd /
-#     launchctl boundary.
+#   B404 (import subprocess) — importing is not the vulnerability; how you use
+#     subprocess is. The real risks (shell=True, untrusted input) are covered by
+#     B602–B605, which we leave enabled. Per-instance nosec at every import
+#     site would be uninformative.
 targets = ["src"]
-skips = ["B404", "B603", "B607"]
+skips = ["B404"]

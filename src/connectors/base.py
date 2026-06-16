@@ -33,8 +33,11 @@ def _load_secret(keychain_service: str, env_var: str) -> str:
         keychain_service: macOS Keychain service name (account = "api_key").
         env_var:          Fallback environment variable name.
     """
+    # `keychain_service` is a connector-internal constant string (passed by the
+    # caller from a static registry, never user-controlled). `security` is the
+    # macOS Keychain CLI at /usr/bin/security.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "find-generic-password",

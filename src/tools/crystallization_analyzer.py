@@ -541,8 +541,9 @@ def _build_container_cmd(python_args: list[str]) -> list[str] | None:
     except Exception:  # nosec B110
         pass
 
+    # Hardcoded argv; `docker` is the dev-environment binary on PATH.
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # nosec B603 B607
             ["docker", "image", "inspect", "legionforge-analyzer:latest"],
             capture_output=True,
             timeout=2,
@@ -651,8 +652,13 @@ except Exception as e:
     # Use secret-stripped environment — NEVER pass the full os.environ
     safe_env = _get_safe_env()
 
+    # `cmd` is _build_sandboxed_cmd(base_cmd): runs sys.executable inside a
+    # `docker run --network none --read-only --tmpfs /tmp:size=10m --cap-drop ALL
+    # --user analyzer` sandbox. test_input is passed as a JSON-encoded argv
+    # element to a hardcoded runner script — not interpreted by a shell.
+    # First element is sys.executable (absolute path), so B607 does not fire.
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,

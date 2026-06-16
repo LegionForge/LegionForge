@@ -78,22 +78,25 @@ def _load_or_create_health_token() -> str:
     """
     service = settings.security.health_token_service
 
-    # Try macOS security CLI (most reliable in server context)
+    # Try macOS security CLI (most reliable in server context).
+    # `service` is settings.security.health_token_service (a startup-time
+    # constant). `security` is /usr/bin/security.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
             capture_output=True,
             text=True,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:  # nosec B110
-        pass
+    except Exception as e:
+        logger.debug("[health] Keychain admin-token lookup failed: %s", e)
 
-    # Token not found — generate and store
+    # Token not found — generate and store.
+    # `service` is a settings constant; `token` is secrets.token_urlsafe(32).
     token = secrets.token_urlsafe(32)
     try:
-        subprocess.run(
+        subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "add-generic-password",
@@ -317,10 +320,13 @@ async def _check_redis() -> dict | None:
 
 
 def _check_memory() -> dict:
+    # `vm_stat` is the macOS system memory tool (/usr/bin/vm_stat); hardcoded argv.
     try:
         import subprocess
 
-        result = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=3)
+        result = subprocess.run(  # nosec B603 B607
+            ["vm_stat"], capture_output=True, text=True, timeout=3
+        )
         lines = result.stdout.splitlines()
         stats = {}
         for line in lines:
@@ -905,9 +911,10 @@ async def start_pentest_run(
 
         from src.database import create_pentest_run
 
+        # Hardcoded argv; `git` is the dev-environment binary on PATH.
         try:
             git_ref = (
-                _sp.check_output(
+                _sp.check_output(  # nosec B603 B607
                     ["git", "rev-parse", "--short", "HEAD"], stderr=_sp.DEVNULL
                 )
                 .decode()
