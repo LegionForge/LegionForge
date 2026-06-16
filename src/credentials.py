@@ -187,8 +187,11 @@ def _keyring_get(service: str, account: str, timeout: float = 2.0) -> str | None
     def _fetch() -> None:
         try:
             result[0] = _keyring.get_password(service, account)
-        except Exception:  # nosec B110
-            pass
+        except Exception as e:
+            # Caller falls through to env-var fallback. Log at debug so a
+            # broken Keychain entry is observable to a configured operator
+            # instead of silently masquerading as "env-var path".
+            logger.debug("[creds] keyring fetch failed for %s: %s", service, e)
 
     thread = threading.Thread(target=_fetch, daemon=True)
     thread.start()
@@ -325,9 +328,11 @@ class CredentialStore:
         if key:
             return key
 
-        # Try macOS security CLI (handles code-signing restriction edge cases)
+        # Try macOS security CLI (handles code-signing restriction edge cases).
+        # `service` is keyed from the _SERVICE_TO_ENV registry (internal,
+        # static). `security` is the macOS Keychain CLI at /usr/bin/security.
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607
                 [
                     "security",
                     "find-generic-password",
@@ -343,8 +348,8 @@ class CredentialStore:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
-        except Exception:  # nosec B110
-            pass
+        except Exception as e:
+            logger.debug("[creds] security CLI lookup failed for %s: %s", service, e)
 
         # Fall through to env var
         return self._load_from_env(service)

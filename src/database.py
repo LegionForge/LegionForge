@@ -405,8 +405,11 @@ def _get_or_generate_role_password(role: str) -> str:
         _write_pgpass_entry(host, port, db, role, pw)
     except Exception as exc:
         logger.warning("[db-roles] Could not write ~/.pgpass for %r: %s", role, exc)
+    # `role` is one of the static internal role names (legionforge_admin,
+    # legionforge_worker, etc.); `pw` is server-generated via secrets.choice.
+    # `security` is /usr/bin/security on macOS.
     try:
-        subprocess.run(
+        subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "add-generic-password",
@@ -421,8 +424,11 @@ def _get_or_generate_role_password(role: str) -> str:
             capture_output=True,
             timeout=5,
         )
-    except Exception:  # nosec B110
-        pass
+    except Exception as e:
+        # Password is already cached in-process and written to ~/.pgpass, so a
+        # Keychain write failure is non-fatal. Debug-log it so operators can
+        # diagnose recurring Keychain issues without polluting normal output.
+        logger.debug("[db-roles] Keychain write failed for %s: %s", role, e)
     return pw
 
 
@@ -493,9 +499,10 @@ def _get_or_generate_app_password() -> str:
     except Exception as exc:
         logger.warning("[db-rbac] Could not write ~/.pgpass for app user: %s", exc)
 
-    # Also attempt Keychain (may fail in subprocess context — non-fatal)
+    # Also attempt Keychain (may fail in subprocess context — non-fatal).
+    # `service` is an internal constant; `pw` is server-generated.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "add-generic-password",
@@ -1243,8 +1250,14 @@ async def init_db() -> None:
                 raw_input=error_msg[:200] if error_msg else None,
                 metadata={"verified_rows": verified_rows},
             )
-        except Exception:  # nosec B110
-            pass
+        except Exception:
+            # Startup is halting; the tamper finding has already been logged at
+            # CRITICAL above. Surface the audit-write failure too so operators
+            # see both signals if log_threat_event itself is broken.
+            logger.exception(
+                "[audit-log] threat_event write failed during tamper halt at row %s",
+                verified_rows,
+            )
         raise RuntimeError(
             f"[audit-log] AUDIT LOG TAMPER DETECTED at row {verified_rows}: {error_msg}. "
             "Startup halted. Investigate the audit_log table before restarting."
@@ -5278,8 +5291,14 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
             agent_id=None,
             payload={"user_id": user_id, "stream_tokens_revoked": True},
         )
-    except Exception:  # nosec B110
-        pass  # non-fatal — DB may not be fully initialised in tests
+    except Exception:
+        # Non-fatal in test environments where the DB may not be initialised,
+        # but in production this is a missed audit row for a security-relevant
+        # event (key rotation). Surface the trace via logger.exception so it
+        # can't be silently dropped.
+        logger.exception(
+            "[security] API_KEY_ROTATED audit write failed for user_id=%s", user_id
+        )
 
     return True
 

@@ -55,8 +55,10 @@ def _get_cred(service_name: str, env_fallback: str) -> Optional[str]:
         val = creds.get(service_name)
         if val:
             return val
-    except Exception:  # nosec B110
-        pass
+    except Exception as e:
+        # Caller falls through to env-var fallback; surface the broken-Keychain
+        # case at debug so operators can spot it without spamming production.
+        logger.debug("[search] creds lookup failed for %s: %s", service_name, e)
     return os.environ.get(env_fallback) or None
 
 

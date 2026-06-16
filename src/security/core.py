@@ -46,8 +46,11 @@ def _keyring_get(service: str, account: str, timeout: float = 1.0) -> str | None
     def _fetch() -> None:
         try:
             result[0] = _keyring.get_password(service, account)
-        except Exception:  # nosec B110
-            pass
+        except Exception as e:
+            # Caller falls through to the security CLI / env-var fallback. Log
+            # at debug so silently-broken Keychain entries surface to operators
+            # rather than masquerading as missing-key states.
+            logger.debug("[security] keyring fetch failed for %s: %s", service, e)
 
     thread = threading.Thread(target=_fetch, daemon=True)
     thread.start()
@@ -121,8 +124,10 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
     # Handles cases where the Python keyring library is blocked by
     # code-signing restrictions (e.g., inside a sandboxed process).
     # timeout=5: prevent indefinite hang when Keychain triggers an auth dialog.
+    # `service` is the Keychain service name from the internal registry, never
+    # user-controlled. `security` is /usr/bin/security on macOS.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             ["security", "find-generic-password", "-s", service, "-a", "api_key", "-w"],
             capture_output=True,
             text=True,
@@ -130,8 +135,8 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:  # nosec B110
-        pass
+    except Exception as e:
+        logger.debug("[security] security CLI lookup failed for %s: %s", service, e)
 
     # ── 4. Environment variable fallback ─────────────────────────────────────
     env_var = _KEY_ENV_FALLBACKS.get(service, f"{service.upper()}_API_KEY")
@@ -776,8 +781,14 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
                     raw_input=tool_id[:200],
                     metadata={"tool_id": tool_id},
                 )
-            except Exception:  # nosec B110
-                pass
+            except Exception:
+                # The action is BLOCKED regardless; losing the audit row must not
+                # also lose the failure trace. logger.exception captures the
+                # exception type, message, and traceback to the standard log sink.
+                logger.exception(
+                    "[security] CAPABILITY_VIOLATION audit write failed for tool=%s",
+                    tool_id,
+                )
             return False
 
     manifest = _TOOL_REGISTRY[tool_id]
@@ -812,8 +823,13 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
                 raw_input=tool_id[:200],
                 metadata={"tool_id": tool_id, "mismatches": list(mismatches.keys())},
             )
-        except Exception:  # nosec B110
-            pass
+        except Exception:
+            # Tool hash mismatch is BLOCKED regardless; surface the audit-write
+            # failure so operators see the gap rather than discover it post-incident.
+            logger.exception(
+                "[security] TOOL_HASH_MISMATCH audit write failed for tool=%s",
+                tool_id,
+            )
         return False
 
     return True
