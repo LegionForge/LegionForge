@@ -47,7 +47,7 @@ class SafeguardedState(dict):
 
     # These are the keys every safeguarded graph should carry.
     # Defined here as documentation — actual typing is via TypedDict in subclasses.
-    _SAFEGUARD_FIELDS = {
+    _SAFEGUARD_FIELDS: dict[str, object] = {
         "step_count": 0,  # Auto-increments each node
         "max_steps": None,  # Set from profile at run creation
         "error_count": 0,  # Incremented on node errors

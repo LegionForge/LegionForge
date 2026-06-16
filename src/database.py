@@ -6790,7 +6790,7 @@ async def get_user_usage_history(
     ]
 
     # Grand totals
-    grand_total = sum(d["total"] for d in daily)
+    grand_total = sum(int(d["total"]) for d in daily)
     by_provider: dict[str, int] = {}
     for d in daily:
         for provider, tokens in d["providers"].items():

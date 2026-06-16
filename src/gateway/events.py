@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import OrderedDict
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -339,7 +340,7 @@ async def publish_event(task_id: str, event: dict) -> None:
         del _channels[task_id]
 
 
-async def subscribe_task_events(task_id: str) -> asyncio.AsyncGenerator[dict, None]:
+async def subscribe_task_events(task_id: str) -> AsyncGenerator[dict, None]:
     """
     Async generator that yields SSE event dicts as the worker publishes them.
     Yields a heartbeat every 15 s while waiting.  Closes on terminal event.
@@ -471,7 +472,7 @@ async def publish_pipeline_event(run_id: int, event: dict) -> None:
 
 async def subscribe_pipeline_events(
     run_id: int,
-) -> asyncio.AsyncGenerator[dict, None]:
+) -> AsyncGenerator[dict, None]:
     """
     Async generator that yields pipeline SSE events as the runner publishes them.
     Yields heartbeats every 15 s.  Closes on pipeline_complete / pipeline_failed.

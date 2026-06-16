@@ -469,7 +469,7 @@ async def status(request: Request) -> JSONResponse:
         settings.models.router.model_id,
         settings.models.embeddings.model_id,
     ]
-    available_models = components["ollama"].get("models", [])
+    available_models: list[str] = components["ollama"].get("models", [])
     missing_models = [m for m in required_models if m not in available_models]
     if missing_models:
         overall = "degraded"
