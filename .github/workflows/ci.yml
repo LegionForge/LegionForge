@@ -13,7 +13,7 @@ jobs:
       source-dirs: "src"
 
   test:
-    uses: LegionForge/dev-rig/.github/workflows/test.yml@main
+    uses: ./.github/workflows/test-with-pg.yml
     with:
       coverage-source: "src"
       coverage-threshold: 50
