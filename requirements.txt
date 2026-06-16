@@ -36,7 +36,7 @@ python-dotenv~=1.0
 PyJWT[crypto]~=2.8          # [crypto] extra adds cryptography dep for RS256/ES256 JWKS decode
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
-cryptography>=46.0.5,<47          # Ed25519 + PyJWT. ≥46.0.5 fixes CVE: SECT curve subgroup attack (Dependabot #7, HIGH). APIs used (ed25519, serialization) are stable across 44→46.
+cryptography>=48.0.1,<50          # Ed25519 + PyJWT. ≥48.0.1 fixes GHSA-537c-gmf6-5ccf (issue #29 audit slice). ≥46.0.5 still required for SECT curve subgroup attack fix. APIs used (ed25519, serialization) stable across 46→49.
 
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
