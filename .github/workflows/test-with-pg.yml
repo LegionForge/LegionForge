@@ -1,0 +1,89 @@
+# Local reusable workflow: pytest with coverage + PostgreSQL service.
+#
+# Mirrors LegionForge/dev-rig/.github/workflows/test.yml but adds a
+# postgres service container so integration tests that depend on the
+# database fixture can run instead of erroring out at setup.
+#
+# Required because dev-rig/test.yml does not (yet) accept a service
+# input. Once dev-rig grows that knob, this file should be retired
+# and ci.yml switched back to the central reusable workflow.
+
+name: Tests & Coverage
+
+on:
+  workflow_call:
+    inputs:
+      coverage-source:
+        description: "Package to measure coverage against"
+        required: true
+        type: string
+      coverage-threshold:
+        description: "Minimum coverage percentage (fail below this)"
+        required: false
+        type: number
+        default: 80
+      python-version:
+        description: "Python version to use"
+        required: false
+        type: string
+        default: "3.11"
+      extra-deps:
+        description: "Space-separated extra packages to install"
+        required: false
+        type: string
+        default: "types-PyYAML"
+
+jobs:
+  test:
+    name: Tests & Coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: legionforge_admin
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: legionforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U legionforge_admin -d legionforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: legionforge
+      POSTGRES_USER: legionforge_admin
+      POSTGRES_PASSWORD: ci_test_password
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install -e ".[dev]" ${{ inputs.extra-deps }}
+
+      - name: pytest with coverage
+        # Scope: smoke + integration. UI (Playwright), testlab, crystallization,
+        # tool_accuracy, hallucination, gateway_client, tool_integrity all need a
+        # running gateway/Ollama and are exercised by their own Make targets, not
+        # the CI gate.
+        run: |
+          python -m pytest \
+            tests/test_smoke.py tests/test_integration.py \
+            --cov=${{ inputs.coverage-source }} \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=${{ inputs.coverage-threshold }}
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml

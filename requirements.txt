@@ -36,7 +36,7 @@ python-dotenv~=1.0
 PyJWT[crypto]~=2.8          # [crypto] extra adds cryptography dep for RS256/ES256 JWKS decode
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
-cryptography>=46.0.5,<47          # Ed25519 + PyJWT. ≥46.0.5 fixes CVE: SECT curve subgroup attack (Dependabot #7, HIGH). APIs used (ed25519, serialization) are stable across 44→46.
+cryptography>=48.0.1,<50          # Ed25519 + PyJWT. ≥48.0.1 fixes GHSA-537c-gmf6-5ccf (issue #29 audit slice). ≥46.0.5 still required for SECT curve subgroup attack fix. APIs used (ed25519, serialization) stable across 46→49.
 
 # ── Token Counting & Rate Limiting ───────────────────────────
 tiktoken~=0.7
@@ -81,8 +81,8 @@ python-telegram-bot~=21.0       # Telegram bot connector (Phase 16)
 slack-bolt~=1.18                # Slack Socket Mode connector (Phase 16)
 
 # ── Dev / Testing ────────────────────────────────────────────
-pytest~=8.0
-pytest-asyncio~=0.23
+pytest~=9.0                      # ≥9.0.3 fixes CVE-2025-71176 (issue #29 audit slice)
+pytest-asyncio~=1.0              # required for pytest 9 compat (0.23 only supports pytest 8.x)
 pytest-timeout~=2.3              # Per-test timeout support (--timeout flag, Phase 69 fix)
 black>=26.3.1                     # Code formatter (CVE-2026-32274 fix; was ~=24.0)
 bandit~=1.8                      # Static security analysis (required for make security-audit)

@@ -433,7 +433,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
         "src.gateway.app:app",
-        host="0.0.0.0",  # nosec B104 — intentional: gateway must be reachable on LAN
+        # Gateway must be reachable on the LAN by intent — not a B104 misconfig.
+        host="0.0.0.0",  # nosec B104
         port=8080,
         reload=False,
         log_level="info",

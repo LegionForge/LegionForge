@@ -405,8 +405,11 @@ def _get_or_generate_role_password(role: str) -> str:
         _write_pgpass_entry(host, port, db, role, pw)
     except Exception as exc:
         logger.warning("[db-roles] Could not write ~/.pgpass for %r: %s", role, exc)
+    # `role` is one of the static internal role names (legionforge_admin,
+    # legionforge_worker, etc.); `pw` is server-generated via secrets.choice.
+    # `security` is /usr/bin/security on macOS.
     try:
-        subprocess.run(
+        subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "add-generic-password",
@@ -421,8 +424,11 @@ def _get_or_generate_role_password(role: str) -> str:
             capture_output=True,
             timeout=5,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Password is already cached in-process and written to ~/.pgpass, so a
+        # Keychain write failure is non-fatal. Debug-log it so operators can
+        # diagnose recurring Keychain issues without polluting normal output.
+        logger.debug("[db-roles] Keychain write failed for %s: %s", role, e)
     return pw
 
 
@@ -493,9 +499,10 @@ def _get_or_generate_app_password() -> str:
     except Exception as exc:
         logger.warning("[db-rbac] Could not write ~/.pgpass for app user: %s", exc)
 
-    # Also attempt Keychain (may fail in subprocess context — non-fatal)
+    # Also attempt Keychain (may fail in subprocess context — non-fatal).
+    # `service` is an internal constant; `pw` is server-generated.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "add-generic-password",
@@ -874,7 +881,9 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             )
         )
     except Exception as e:
-        logger.debug(
+        # "tokens" is part of the table name (stream_tokens); logs the SQL
+        # exception only, never any token value.
+        logger.debug(  # nosemgrep: python-logger-credential-disclosure
             "[db-roles] gateway stream_tokens/tool_registry grant skipped: %s", e
         )
 
@@ -1244,7 +1253,13 @@ async def init_db() -> None:
                 metadata={"verified_rows": verified_rows},
             )
         except Exception:
-            pass
+            # Startup is halting; the tamper finding has already been logged at
+            # CRITICAL above. Surface the audit-write failure too so operators
+            # see both signals if log_threat_event itself is broken.
+            logger.exception(
+                "[audit-log] threat_event write failed during tamper halt at row %s",
+                verified_rows,
+            )
         raise RuntimeError(
             f"[audit-log] AUDIT LOG TAMPER DETECTED at row {verified_rows}: {error_msg}. "
             "Startup halted. Investigate the audit_log table before restarting."
@@ -2392,7 +2407,7 @@ async def get_user_connection(
                     "SELECT set_config('app.user_id', '', false),"
                     " set_config('app.bypass_rls', 'off', false)"
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 
@@ -2482,7 +2497,7 @@ async def get_worker_connection(
                     "SELECT set_config('app.agent_id', '', false),"
                     "       set_config('app.request_id', '', false)"
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 
@@ -4509,7 +4524,7 @@ async def create_task(
                     ),
                 ),
             )
-    except Exception:
+    except Exception:  # nosec B110
         pass  # timeline is best-effort; never block task creation
     return task_row
 
@@ -5279,7 +5294,15 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
             payload={"user_id": user_id, "stream_tokens_revoked": True},
         )
     except Exception:
-        pass  # non-fatal — DB may not be fully initialised in tests
+        # Non-fatal in test environments where the DB may not be initialised,
+        # but in production this is a missed audit row for a security-relevant
+        # event (key rotation). Surface the trace via logger.exception so it
+        # can't be silently dropped.
+        # Logs user_id only (an internal integer ID). "API_KEY" is the audit
+        # event type name, not a value.
+        logger.exception(  # nosemgrep: python-logger-credential-disclosure
+            "[security] API_KEY_ROTATED audit write failed for user_id=%s", user_id
+        )
 
     return True
 
@@ -5339,7 +5362,9 @@ async def rotate_all_standard_users() -> list[dict]:
                 }
             )
         else:
-            logger.warning(
+            # Logs user_id (int) and username (non-secret identifier) only —
+            # rotate_api_key's returned key value is not interpolated.
+            logger.warning(  # nosemgrep: python-logger-credential-disclosure
                 "[rotate-all] rotate_api_key returned False for user_id=%s username=%s — skipped",
                 user["user_id"],
                 user["username"],
@@ -6162,7 +6187,7 @@ async def reap_stuck_tasks(timeout_seconds: int = 1800) -> list[str]:
                         ),
                     ),
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # best-effort
         return [row[0] for row in rows]
 
@@ -6208,7 +6233,7 @@ async def reap_stale_running_tasks(worker_id: str) -> list[str]:
                         ),
                     ),
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # best-effort
         return [row[0] for row in rows]
 
@@ -6765,7 +6790,7 @@ async def get_user_usage_history(
     ]
 
     # Grand totals
-    grand_total = sum(d["total"] for d in daily)
+    grand_total = sum(int(d["total"]) for d in daily)
     by_provider: dict[str, int] = {}
     for d in daily:
         for provider, tokens in d["providers"].items():

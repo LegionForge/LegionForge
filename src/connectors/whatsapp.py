@@ -162,7 +162,9 @@ async def _download_media(media_id: str, api_token: str) -> bytes | None:
             meta_resp.raise_for_status()
             media_url = meta_resp.json().get("url")
             if not media_url:
-                logger.warning("[whatsapp] Media URL missing for id=%s", _log_safe(media_id))
+                logger.warning(
+                    "[whatsapp] Media URL missing for id=%s", _log_safe(media_id)
+                )
                 return None
 
             # Step 2 — download the actual bytes
@@ -279,7 +281,9 @@ async def _process_message(
             _collect(),
         )
     except Exception as exc:
-        logger.error("[whatsapp] Task runner error for %s: %s", _log_safe(phone_safe), exc)
+        logger.error(
+            "[whatsapp] Task runner error for %s: %s", _log_safe(phone_safe), exc
+        )
         status = "error"
         accumulated = str(exc)
 
@@ -340,7 +344,9 @@ def build_app(
             logger.info("[whatsapp] Hub verification challenge accepted")
             return PlainTextResponse(challenge, status_code=200)
 
-        logger.warning(
+        # token_match is the boolean result of equality; the token value
+        # itself is never logged.
+        logger.warning(  # nosemgrep: python-logger-credential-disclosure
             "[whatsapp] Hub verification failed: mode=%r token_match=%s",
             mode,
             token == verify_token,
@@ -397,7 +403,11 @@ def build_app(
         msg_type: str = msg.get("type", "text")
         phone_safe = _phone_log_safe(sender_phone)
 
-        logger.info("[whatsapp] Inbound %s message from %s", _log_safe(msg_type), _log_safe(phone_safe))
+        logger.info(
+            "[whatsapp] Inbound %s message from %s",
+            _log_safe(msg_type),
+            _log_safe(phone_safe),
+        )
 
         # ── Extract message content ───────────────────────────────────────
         task_text = ""
@@ -416,7 +426,9 @@ def build_app(
         else:
             # Unsupported type — send a polite rejection
             logger.info(
-                "[whatsapp] Unsupported message type=%s from %s", _log_safe(msg_type), _log_safe(phone_safe)
+                "[whatsapp] Unsupported message type=%s from %s",
+                _log_safe(msg_type),
+                _log_safe(phone_safe),
             )
             if sender_phone and phone_number_id and api_token:
                 background_tasks.add_task(
@@ -440,7 +452,9 @@ def build_app(
             )
 
         if not sender_phone or not phone_number_id or not api_token:
-            logger.error(
+            # Logs presence-bools (True/False) only — the actual phone/id/token
+            # values never leave this scope.
+            logger.error(  # nosemgrep: python-logger-credential-disclosure
                 "[whatsapp] Missing required config: phone=%s pnid=%s token=%s",
                 bool(sender_phone),
                 bool(phone_number_id),
@@ -471,7 +485,7 @@ def build_app(
 # always succeeds without hitting Keychain.  The real secrets are injected at
 # main() startup via build_app().
 app = build_app(
-    api_key="",
+    api_key="",  # nosec B106
     api_token="",
     verify_token="",
     phone_number_id=PHONE_NUMBER_ID,

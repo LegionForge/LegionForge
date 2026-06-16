@@ -183,7 +183,7 @@ async def _spawn_researcher_sub_agent(sub_task: str, derived_token: str | None) 
 # Module-level refs populated at run start so tool closures can access
 # the master JWT and run_id without state injection.
 # Mutable dicts (not bare str/None) so references persist across Python calls.
-_master_token_ref: dict[str, str | None] = {"token": None}
+_master_token_ref: dict[str, str | None] = {"token": None}  # nosec B105
 _run_id_ref: dict[str, str] = {"run_id": "unknown"}
 
 

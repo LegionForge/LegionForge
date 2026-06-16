@@ -88,10 +88,12 @@ def _load_secret(keychain_service: str, env_var: str) -> str:
     Raises RuntimeError if neither source has the value.
     """
     # ── Keychain ───────────────────────────────────────────────────────────
+    # `keychain_service` is a connector-internal constant string. `security` is
+    # the macOS Keychain CLI at /usr/bin/security.
     try:
         import subprocess
 
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "find-generic-password",
