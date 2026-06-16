@@ -2231,7 +2231,14 @@ def test_credential_store_get_safe_subprocess_env_excludes_secrets():
 
     store = CredentialStore()
 
-    # Inject a fake secret into os.environ
+    # Save and restore so we don't clobber CI-provided env vars (the test/
+    # coverage workflow sets POSTGRES_PASSWORD for integration tests that
+    # come after this one). Unconditional `del` in finally previously broke
+    # downstream PG connectivity.
+    saved = {
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+        "POSTGRES_PASSWORD": os.environ.get("POSTGRES_PASSWORD"),
+    }
     os.environ["OPENAI_API_KEY"] = "sk-should-not-appear"
     os.environ["POSTGRES_PASSWORD"] = "pg-should-not-appear"
     try:
@@ -2243,8 +2250,11 @@ def test_credential_store_get_safe_subprocess_env_excludes_secrets():
         # PATH should always be present
         assert "PATH" in safe
     finally:
-        del os.environ["OPENAI_API_KEY"]
-        del os.environ["POSTGRES_PASSWORD"]
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def test_credential_store_status_has_expected_shape():
@@ -5435,9 +5445,10 @@ def test_p10_per_user_budget_check_passes_under_limit():
     import unittest.mock as mock
     from src.rate_limiter import per_user_budget_check
 
-    with mock.patch(
-        "src.database.get_user_actual_usage_today", return_value=10000
-    ), mock.patch("src.database.get_user_inflight_tokens", return_value=5000):
+    with (
+        mock.patch("src.database.get_user_actual_usage_today", return_value=10000),
+        mock.patch("src.database.get_user_inflight_tokens", return_value=5000),
+    ):
         # 10000 + 5000 + 500 = 15500 <= 100000 — should not raise
         asyncio.run(per_user_budget_check("user-1", "ollama", 500, 100000))
 
@@ -5448,9 +5459,10 @@ def test_p10_per_user_budget_check_raises_when_actual_exceeds():
     import unittest.mock as mock
     from src.rate_limiter import per_user_budget_check
 
-    with mock.patch(
-        "src.database.get_user_actual_usage_today", return_value=99800
-    ), mock.patch("src.database.get_user_inflight_tokens", return_value=0):
+    with (
+        mock.patch("src.database.get_user_actual_usage_today", return_value=99800),
+        mock.patch("src.database.get_user_inflight_tokens", return_value=0),
+    ):
         # 99800 + 0 + 500 = 100300 > 100000 — must raise
         with pytest.raises(RuntimeError, match="budget exceeded"):
             asyncio.run(per_user_budget_check("user-1", "ollama", 500, 100000))
@@ -5462,9 +5474,10 @@ def test_p10_per_user_budget_check_raises_when_inflight_exceeds():
     import unittest.mock as mock
     from src.rate_limiter import per_user_budget_check
 
-    with mock.patch(
-        "src.database.get_user_actual_usage_today", return_value=0
-    ), mock.patch("src.database.get_user_inflight_tokens", return_value=99800):
+    with (
+        mock.patch("src.database.get_user_actual_usage_today", return_value=0),
+        mock.patch("src.database.get_user_inflight_tokens", return_value=99800),
+    ):
         # 0 + 99800 + 500 > 100000 — must raise
         with pytest.raises(RuntimeError, match="budget exceeded"):
             asyncio.run(per_user_budget_check("user-1", "ollama", 500, 100000))
@@ -5476,9 +5489,10 @@ def test_p10_per_user_budget_check_raises_combined():
     import unittest.mock as mock
     from src.rate_limiter import per_user_budget_check
 
-    with mock.patch(
-        "src.database.get_user_actual_usage_today", return_value=50000
-    ), mock.patch("src.database.get_user_inflight_tokens", return_value=40000):
+    with (
+        mock.patch("src.database.get_user_actual_usage_today", return_value=50000),
+        mock.patch("src.database.get_user_inflight_tokens", return_value=40000),
+    ):
         # 50000 + 40000 + 20000 = 110000 > 100000 — must raise
         with pytest.raises(RuntimeError, match="budget exceeded"):
             asyncio.run(per_user_budget_check("user-1", "ollama", 20000, 100000))
@@ -5490,9 +5504,10 @@ def test_p10_per_user_budget_check_allows_exactly_at_limit():
     import unittest.mock as mock
     from src.rate_limiter import per_user_budget_check
 
-    with mock.patch(
-        "src.database.get_user_actual_usage_today", return_value=50000
-    ), mock.patch("src.database.get_user_inflight_tokens", return_value=40000):
+    with (
+        mock.patch("src.database.get_user_actual_usage_today", return_value=50000),
+        mock.patch("src.database.get_user_inflight_tokens", return_value=40000),
+    ):
         # 50000 + 40000 + 10000 = 100000 == 100000 — boundary: must NOT raise
         asyncio.run(per_user_budget_check("user-1", "ollama", 10000, 100000))
 
@@ -7246,8 +7261,9 @@ def test_memory_bootstrap_no_user_id_returns_empty():
     from src.memory import user_context_bootstrap
     from config.settings import settings
 
-    with patch.object(settings.agent_memory, "enabled", True), patch.object(
-        settings.agent_memory, "bootstrap_user_prefs", True
+    with (
+        patch.object(settings.agent_memory, "enabled", True),
+        patch.object(settings.agent_memory, "bootstrap_user_prefs", True),
     ):
         assert asyncio.run(user_context_bootstrap(None)) == ""
         assert asyncio.run(user_context_bootstrap("")) == ""
@@ -7260,8 +7276,9 @@ def test_memory_bootstrap_bootstrap_flag_false_returns_empty():
     from src.memory import user_context_bootstrap
     from config.settings import settings
 
-    with patch.object(settings.agent_memory, "enabled", True), patch.object(
-        settings.agent_memory, "bootstrap_user_prefs", False
+    with (
+        patch.object(settings.agent_memory, "enabled", True),
+        patch.object(settings.agent_memory, "bootstrap_user_prefs", False),
     ):
         assert asyncio.run(user_context_bootstrap("alice")) == ""
 
@@ -7275,11 +7292,13 @@ def test_memory_bootstrap_formats_prefs():
 
     fake_prefs = {"name": "Jp", "preferred_language": "English", "tone": "concise"}
 
-    with patch.object(settings.agent_memory, "enabled", True), patch.object(
-        settings.agent_memory, "bootstrap_user_prefs", True
-    ), patch(
-        "src.database.get_user_preferences",
-        new=AsyncMock(return_value={"prefs": fake_prefs}),
+    with (
+        patch.object(settings.agent_memory, "enabled", True),
+        patch.object(settings.agent_memory, "bootstrap_user_prefs", True),
+        patch(
+            "src.database.get_user_preferences",
+            new=AsyncMock(return_value={"prefs": fake_prefs}),
+        ),
     ):
         result = asyncio.run(user_context_bootstrap("jp"))
 
@@ -7295,11 +7314,13 @@ def test_memory_bootstrap_empty_prefs_returns_empty():
     from src.memory import user_context_bootstrap
     from config.settings import settings
 
-    with patch.object(settings.agent_memory, "enabled", True), patch.object(
-        settings.agent_memory, "bootstrap_user_prefs", True
-    ), patch(
-        "src.database.get_user_preferences",
-        new=AsyncMock(return_value={"prefs": {}}),
+    with (
+        patch.object(settings.agent_memory, "enabled", True),
+        patch.object(settings.agent_memory, "bootstrap_user_prefs", True),
+        patch(
+            "src.database.get_user_preferences",
+            new=AsyncMock(return_value={"prefs": {}}),
+        ),
     ):
         result = asyncio.run(user_context_bootstrap("jp"))
 
@@ -7313,11 +7334,13 @@ def test_memory_bootstrap_db_error_returns_empty():
     from src.memory import user_context_bootstrap
     from config.settings import settings
 
-    with patch.object(settings.agent_memory, "enabled", True), patch.object(
-        settings.agent_memory, "bootstrap_user_prefs", True
-    ), patch(
-        "src.database.get_user_preferences",
-        new=AsyncMock(side_effect=RuntimeError("DB unreachable")),
+    with (
+        patch.object(settings.agent_memory, "enabled", True),
+        patch.object(settings.agent_memory, "bootstrap_user_prefs", True),
+        patch(
+            "src.database.get_user_preferences",
+            new=AsyncMock(side_effect=RuntimeError("DB unreachable")),
+        ),
     ):
         result = asyncio.run(user_context_bootstrap("jp"))
 
@@ -21561,8 +21584,9 @@ def test_legionforge_guardian_init_sql_threat_events_uses_ts_column():
 
     src = inspect.getsource(guardian_app)
     # The app defines the schema contract in code; 'ts' must appear, 'created_at' must not
-    assert "\"ts\"" in src or "'ts'" in src or " ts " in src, \
-        "guardian app missing 'ts' column reference (should not use created_at)"
+    assert (
+        '"ts"' in src or "'ts'" in src or " ts " in src
+    ), "guardian app missing 'ts' column reference (should not use created_at)"
 
 
 def test_legionforge_guardian_init_sql_idempotent_table_names():
@@ -21570,7 +21594,9 @@ def test_legionforge_guardian_init_sql_idempotent_table_names():
     import importlib.metadata
 
     version = importlib.metadata.version("legionforge-guardian")
-    assert version == "0.1.1", f"requirements pin mismatch: installed {version}, expected 0.1.1"
+    assert (
+        version == "0.1.1"
+    ), f"requirements pin mismatch: installed {version}, expected 0.1.1"
 
 
 # ── Gap 3: memory_write / memory_recall tools ─────────────────────────────────
@@ -21961,12 +21987,17 @@ def test_guardian_package_has_security_md():
     urls = dict(importlib.metadata.metadata("legionforge-guardian").items())
     # Project-URL headers appear as repeated keys; check raw text
     raw = str(importlib.metadata.metadata("legionforge-guardian"))
-    assert "legionforge" in raw.lower(), "guardian metadata missing legionforge reference"
+    assert (
+        "legionforge" in raw.lower()
+    ), "guardian metadata missing legionforge reference"
 
 
 def test_guardian_package_has_changelog():
     """legionforge-guardian sdk.client module is importable (SDK ships with package)."""
-    from legionforge_guardian.sdk.client import GuardianClient, guardian_check  # noqa: F401
+    from legionforge_guardian.sdk.client import (
+        GuardianClient,
+        guardian_check,
+    )  # noqa: F401
 
 
 def test_guardian_auth_misconfigured_when_token_missing(monkeypatch):
@@ -22027,7 +22058,9 @@ def test_guardian_security_md_has_disclosure_email():
     import legionforge_guardian.app as guardian_app
 
     src = inspect.getsource(guardian_app)
-    assert "legionforge" in src.lower(), "guardian app missing legionforge.org reference"
+    assert (
+        "legionforge" in src.lower()
+    ), "guardian app missing legionforge.org reference"
 
 
 # ── worker.py AIMessage compat fix ────────────────────────────────────────────
@@ -24487,8 +24520,9 @@ class TestWhatsAppConnector:
         mock_run_task = AsyncMock()
 
         async def run():
-            with patch("src.connectors.whatsapp._run_task", mock_run_task), patch(
-                "src.connectors.whatsapp._send_reply", AsyncMock()
+            with (
+                patch("src.connectors.whatsapp._run_task", mock_run_task),
+                patch("src.connectors.whatsapp._send_reply", AsyncMock()),
             ):
                 transport = ASGITransport(app=_app)
                 async with AsyncClient(
