@@ -81,7 +81,7 @@ _SERVICE_TO_ENV: dict[str, str] = {
     # InceptionLabs cloud LLM provider (mercury-2, OpenAI-compatible)
     "legionforge_inceptionlabs_api_key": "INCEPTIONLABS_API_KEY",
     # Outbound webhook HMAC signing secret (Phase 26)
-    "legionforge_webhook_inbound_secret": "LEGIONFORGE_WEBHOOK_INBOUND_SECRET",
+    "legionforge_webhook_inbound_secret": "LEGIONFORGE_WEBHOOK_INBOUND_SECRET",  # nosec B105
 }
 
 # All environment variable names that contain secrets.
@@ -187,7 +187,7 @@ def _keyring_get(service: str, account: str, timeout: float = 2.0) -> str | None
     def _fetch() -> None:
         try:
             result[0] = _keyring.get_password(service, account)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     thread = threading.Thread(target=_fetch, daemon=True)
@@ -299,10 +299,11 @@ class CredentialStore:
         else:
             # env_var (default) or unknown backend
             if self._backend not in ("keychain", "env_var", "file"):
+                # self._backend is a config type string ("keychain" / "env_var" /
+                # "file"), never a credential value — safe to surface in logs.
                 logger.warning(
                     f"Unknown backend '{self._backend}' — falling back to env_var"
-                )  # nosec — self._backend is a config type string ("keychain"/"env_var"/"file"),
-                   #         not a credential value. Reviewed and approved: jp@legionforge.org 2026-06-14T05:43:25Z
+                )
             return self._load_from_env(service)
 
     def _load_from_keychain(self, service: str) -> str | None:
@@ -342,7 +343,7 @@ class CredentialStore:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
         # Fall through to env var

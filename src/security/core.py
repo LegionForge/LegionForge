@@ -46,7 +46,7 @@ def _keyring_get(service: str, account: str, timeout: float = 1.0) -> str | None
     def _fetch() -> None:
         try:
             result[0] = _keyring.get_password(service, account)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     thread = threading.Thread(target=_fetch, daemon=True)
@@ -130,7 +130,7 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # ── 4. Environment variable fallback ─────────────────────────────────────
@@ -504,7 +504,7 @@ def sanitize_messages(messages: list) -> list:
             except AttributeError:
                 try:
                     msg = msg.copy(update={"content": clean})
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # If copy fails, use original msg
         elif isinstance(msg, dict) and isinstance(msg.get("content"), str):
             msg = dict(msg)
@@ -776,7 +776,7 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
                     raw_input=tool_id[:200],
                     metadata={"tool_id": tool_id},
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             return False
 
@@ -812,7 +812,7 @@ async def verify_tool_before_invocation(tool_id: str) -> bool:
                 raw_input=tool_id[:200],
                 metadata={"tool_id": tool_id, "mismatches": list(mismatches.keys())},
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         return False
 

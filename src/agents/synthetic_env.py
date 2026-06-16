@@ -234,9 +234,9 @@ class SyntheticEnvironment:
             conn = await psycopg.AsyncConnection.connect(dsn, autocommit=True)
             try:
                 # Terminate active connections before dropping.
-                # nosec B608: _db_name is operator-configured (settings.pentest.synthetic_db_name),
+                # self._db_name is operator-configured via settings.pentest.synthetic_db_name,
                 # never derived from user input. Parameterized queries are not supported for
-                # datname in this pg_stat_activity context.
+                # datname in this pg_stat_activity context, hence the f-string.
                 await conn.execute(
                     f"""
                     SELECT pg_terminate_backend(pid)

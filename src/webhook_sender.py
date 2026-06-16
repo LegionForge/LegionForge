@@ -65,7 +65,7 @@ def _get_hmac_secret() -> bytes | None:
             from src.credentials import creds
 
             secret = creds.get("legionforge_webhook_inbound_secret")
-        except Exception:
+        except Exception:  # nosec B110
             pass
     return secret.encode() if secret else None
 

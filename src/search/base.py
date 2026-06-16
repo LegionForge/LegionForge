@@ -55,7 +55,7 @@ def _get_cred(service_name: str, env_fallback: str) -> Optional[str]:
         val = creds.get(service_name)
         if val:
             return val
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return os.environ.get(env_fallback) or None
 

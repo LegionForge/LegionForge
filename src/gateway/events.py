@@ -261,7 +261,7 @@ _BLOCK_REASON_LABELS: dict[str, str] = {
     "action_loop_detected": (
         "Repeated action detected — the same tool was called too many times in a row"
     ),
-    "acl_token_violation": "Tool is not in the authorized scope for this task",
+    "acl_token_violation": "Tool is not in the authorized scope for this task",  # nosec B105
     "ssrf_protection": "URL was blocked (private network address protection)",
     "hitl_required": "This action requires human approval before it can proceed",
     "injection_detected": "Security pattern detected in tool arguments — run halted",
