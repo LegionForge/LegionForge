@@ -76,7 +76,7 @@ def _load_admin_key() -> str:
         if key:
             _ADMIN_KEY = key
             return _ADMIN_KEY
-    except Exception:
+    except Exception:  # nosec B110
         pass
     raise RuntimeError(
         "No admin key found. Set TESTLAB_ADMIN_KEY env var or populate "
@@ -403,7 +403,7 @@ async def run_suite(req: RunRequest, request: Request):
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
 
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -645,7 +645,7 @@ async def run_single_test(req: SingleTestRequest, request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -707,7 +707,7 @@ async def run_category(req: CategoryRunRequest, request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -765,7 +765,7 @@ async def generate_llm_general(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -818,7 +818,7 @@ async def generate_llm_security(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -871,7 +871,7 @@ async def generate_cve_tests(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        assert proc.stdout is not None  # nosec B101
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)

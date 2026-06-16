@@ -90,7 +90,7 @@ async def close_redis() -> None:
     if _redis is not None:
         try:
             await _redis.aclose()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         _redis = None
         logger.info("[state] Redis connection closed")

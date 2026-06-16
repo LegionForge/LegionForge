@@ -421,7 +421,7 @@ def _get_or_generate_role_password(role: str) -> str:
             capture_output=True,
             timeout=5,
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return pw
 
@@ -1243,7 +1243,7 @@ async def init_db() -> None:
                 raw_input=error_msg[:200] if error_msg else None,
                 metadata={"verified_rows": verified_rows},
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         raise RuntimeError(
             f"[audit-log] AUDIT LOG TAMPER DETECTED at row {verified_rows}: {error_msg}. "
@@ -2392,7 +2392,7 @@ async def get_user_connection(
                     "SELECT set_config('app.user_id', '', false),"
                     " set_config('app.bypass_rls', 'off', false)"
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 
@@ -2482,7 +2482,7 @@ async def get_worker_connection(
                     "SELECT set_config('app.agent_id', '', false),"
                     "       set_config('app.request_id', '', false)"
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 
@@ -4509,7 +4509,7 @@ async def create_task(
                     ),
                 ),
             )
-    except Exception:
+    except Exception:  # nosec B110
         pass  # timeline is best-effort; never block task creation
     return task_row
 
@@ -5278,7 +5278,7 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
             agent_id=None,
             payload={"user_id": user_id, "stream_tokens_revoked": True},
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass  # non-fatal — DB may not be fully initialised in tests
 
     return True
@@ -6162,7 +6162,7 @@ async def reap_stuck_tasks(timeout_seconds: int = 1800) -> list[str]:
                         ),
                     ),
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # best-effort
         return [row[0] for row in rows]
 
@@ -6208,7 +6208,7 @@ async def reap_stale_running_tasks(worker_id: str) -> list[str]:
                         ),
                     ),
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # best-effort
         return [row[0] for row in rows]
 

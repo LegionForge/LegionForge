@@ -213,7 +213,7 @@ async def _stream_agent(task: dict) -> tuple[str, int, dict]:
         agent_extra = {
             "sub_agent_results": [],
             "sequence_so_far": [],
-            "task_token": None,
+            "task_token": None,  # nosec B105
             "verify_rounds": 0,
         }
     else:

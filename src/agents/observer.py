@@ -246,7 +246,7 @@ OBSERVER_TOOL_MANIFESTS = [
             "example_outputs": "str",
             "reasoning": "str",
             "disqualifying_factors": "str",
-            "token_cost_total": "int",
+            "token_cost_total": "int",  # nosec B105
             "estimated_savings_pct": "float",
         },
         declared_side_effects=["writes_db:crystallization_candidates"],

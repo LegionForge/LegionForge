@@ -129,7 +129,7 @@ def _get_signing_secret() -> str:
         secret = get_api_key_optional(settings.security.task_token_secret_service)
         if secret:
             return secret
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     raise RuntimeError(

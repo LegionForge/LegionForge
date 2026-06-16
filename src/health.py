@@ -87,7 +87,7 @@ def _load_or_create_health_token() -> str:
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # Token not found — generate and store
@@ -475,7 +475,7 @@ async def status(request: Request) -> JSONResponse:
         from src.database import get_recent_escalations
 
         escalation_events = await get_recent_escalations(hours=24)
-    except Exception:
+    except Exception:  # nosec B110
         pass  # DB not running — show empty, don't degrade overall status
 
     response_content = {
@@ -750,7 +750,7 @@ async def crystallization_reject(package_id: str, request: Request) -> JSONRespo
         try:
             body = await request.json()
             reason = str(body.get("reason", ""))
-        except Exception:
+        except Exception:  # nosec B110
             pass  # body absent or not JSON — reason stays empty
 
         from src.database import reject_package
@@ -788,7 +788,7 @@ async def crystallization_revise(package_id: str, request: Request) -> JSONRespo
         try:
             body = await request.json()
             notes = str(body.get("notes", ""))
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
         from src.database import revise_package
@@ -1033,7 +1033,9 @@ async def get_pentest_run_status(run_id: str, request: Request) -> JSONResponse:
             }
         )
     except Exception as e:
-        logger.error("[health] get_pentest_run_status failed for %s: %s", _log_safe(run_id), e)
+        logger.error(
+            "[health] get_pentest_run_status failed for %s: %s", _log_safe(run_id), e
+        )
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1069,7 +1071,9 @@ async def get_pentest_run_findings(run_id: str, request: Request) -> JSONRespons
             ]
         )
     except Exception as e:
-        logger.error("[health] get_pentest_run_findings failed for %s: %s", _log_safe(run_id), e)
+        logger.error(
+            "[health] get_pentest_run_findings failed for %s: %s", _log_safe(run_id), e
+        )
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1159,7 +1163,9 @@ async def get_pentest_run_report(
             return Response(content=renderer(), media_type=content_type)
 
     except Exception as e:
-        logger.error("[health] get_pentest_run_report failed for %s: %s", _log_safe(run_id), e)
+        logger.error(
+            "[health] get_pentest_run_report failed for %s: %s", _log_safe(run_id), e
+        )
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -1232,7 +1238,9 @@ async def approve_pentest_rule(
             )
         except ValueError as ve:
             # Unknown rule_type — return 422 rather than silently dropping
-            logger.warning("[health] Cannot promote pentest rule %s: %s", _log_safe(finding_id), ve)
+            logger.warning(
+                "[health] Cannot promote pentest rule %s: %s", _log_safe(finding_id), ve
+            )
             return JSONResponse({"error": str(ve)}, status_code=422)
         except Exception as promo_err:
             # Promotion failed (e.g. DB unavailable) — log and continue;
@@ -1277,7 +1285,9 @@ async def approve_pentest_rule(
             }
         )
     except Exception as e:
-        logger.error("[health] approve_pentest_rule failed for %s: %s", _log_safe(finding_id), e)
+        logger.error(
+            "[health] approve_pentest_rule failed for %s: %s", _log_safe(finding_id), e
+        )
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
