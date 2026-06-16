@@ -69,6 +69,7 @@ def _get_hmac_secret() -> bytes | None:
             # HMAC verification will be skipped if no secret is found; surface
             # the Keychain failure at debug so a broken entry doesn't silently
             # disable signature checks.
+            # nosemgrep: python-logger-credential-disclosure -- logs Keychain exc only; inbound-secret value never enters message.
             logger.debug("[webhook] inbound-secret lookup failed: %s", e)
     return secret.encode() if secret else None
 

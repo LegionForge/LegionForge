@@ -881,7 +881,9 @@ async def _setup_db_roles(admin_conn: psycopg.AsyncConnection) -> None:
             )
         )
     except Exception as e:
-        logger.debug(
+        # "tokens" is part of the table name (stream_tokens); logs the SQL
+        # exception only, never any token value.
+        logger.debug(  # nosemgrep: python-logger-credential-disclosure
             "[db-roles] gateway stream_tokens/tool_registry grant skipped: %s", e
         )
 
@@ -5296,7 +5298,9 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
         # but in production this is a missed audit row for a security-relevant
         # event (key rotation). Surface the trace via logger.exception so it
         # can't be silently dropped.
-        logger.exception(
+        # Logs user_id only (an internal integer ID). "API_KEY" is the audit
+        # event type name, not a value.
+        logger.exception(  # nosemgrep: python-logger-credential-disclosure
             "[security] API_KEY_ROTATED audit write failed for user_id=%s", user_id
         )
 
@@ -5358,7 +5362,9 @@ async def rotate_all_standard_users() -> list[dict]:
                 }
             )
         else:
-            logger.warning(
+            # Logs user_id (int) and username (non-secret identifier) only —
+            # rotate_api_key's returned key value is not interpolated.
+            logger.warning(  # nosemgrep: python-logger-credential-disclosure
                 "[rotate-all] rotate_api_key returned False for user_id=%s username=%s — skipped",
                 user["user_id"],
                 user["username"],

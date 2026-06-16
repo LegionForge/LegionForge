@@ -90,6 +90,7 @@ def _load_or_create_health_token() -> str:
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except Exception as e:
+        # nosemgrep: python-logger-credential-disclosure -- logs only the Keychain exception; token value never enters the message.
         logger.debug("[health] Keychain admin-token lookup failed: %s", e)
 
     # Token not found — generate and store.

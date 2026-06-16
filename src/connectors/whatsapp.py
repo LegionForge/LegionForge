@@ -344,7 +344,9 @@ def build_app(
             logger.info("[whatsapp] Hub verification challenge accepted")
             return PlainTextResponse(challenge, status_code=200)
 
-        logger.warning(
+        # token_match is the boolean result of equality; the token value
+        # itself is never logged.
+        logger.warning(  # nosemgrep: python-logger-credential-disclosure
             "[whatsapp] Hub verification failed: mode=%r token_match=%s",
             mode,
             token == verify_token,
@@ -450,7 +452,9 @@ def build_app(
             )
 
         if not sender_phone or not phone_number_id or not api_token:
-            logger.error(
+            # Logs presence-bools (True/False) only — the actual phone/id/token
+            # values never leave this scope.
+            logger.error(  # nosemgrep: python-logger-credential-disclosure
                 "[whatsapp] Missing required config: phone=%s pnid=%s token=%s",
                 bool(sender_phone),
                 bool(phone_number_id),

@@ -132,6 +132,7 @@ def _get_signing_secret() -> str:
     except Exception as e:
         # The RuntimeError below will surface the missing-secret case loudly;
         # debug-log the underlying Keychain failure so it's diagnosable.
+        # nosemgrep: python-logger-credential-disclosure -- logs Keychain exc only; task-token value never enters message.
         logger.debug("[acl] task-token secret lookup failed: %s", e)
 
     raise RuntimeError(
