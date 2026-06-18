@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 346
-BRANCH: dev
-COMMIT: be65b11
-TIMESTAMP: 2026-05-02T00:00Z
-LAST_OP: Guardian identity scrub — filter-repo --message-callback strips jp-cruz Co-authored-by trailers from all 10 commits; force-pushed LegionForge-Guardian; v0.1.0 tag repointed to 1848e6e; sync-guardian.yml patched with message-callback for future syncs
-NEXT_OP: decide #295 pre/post v0.8.0; update MEMORY.md guardian authorship entry
+UPDATE: 347
+BRANCH: main
+COMMIT: 9a6cc2c
+TIMESTAMP: 2026-06-15T04:30Z
+LAST_OP: CI hardening — three PRs merged closing the correctness slice of issue #29: #43 (F811/F821 ruff fixes — real undefined-name bugs), #44 (fastapi~=0.135.0 pin — 0.137 broke route enumeration in `app.routes`), #45 (F401/F541/F841/E402 cosmetic ruff cleanup). Smoke tests on main now green again; bandit (99 LOW), pytest CVE, semgrep, and test-infra decision remain open from #29. Filed Guardian issues #18–#21 (multi-turn / multi-modal / synthesis attacks + ADR for security-layer architecture).
+NEXT_OP: triage bandit 99 LOW findings (likely mostly `# nosec`-justifiable) as separate PR; then pytest 9.x bump for CVE-2025-71176; then semgrep review pass. Test-infra decision (skip markers vs service containers) needs Jp's architectural call.
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5

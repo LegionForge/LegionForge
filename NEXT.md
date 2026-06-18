@@ -4,14 +4,24 @@
 ---
 
 ## Last updated
-2026-03-26 — Short session. Identity hygiene: fixed sync-guardian.yml to remap jp@legionforge.org so jp-cruz no longer appears as a contributor on the public LegionForge-Guardian repo. Workflow dispatch needed to apply fix. Branch has uncommitted changes (sync-guardian.yml + docs).
+2026-06-15 — CI hardening session. Three PRs merged closing the correctness slice of issue #29: #43 (F811/F821 ruff fixes — real undefined-name bugs), #44 (fastapi~=0.135.0 pin — 0.137 broke route enumeration today), #45 (24 cosmetic ruff errors cleared). Filed Guardian issues #18–#21 for the multi-turn / multi-modal / synthesis-attack threat classes and an architecture ADR.
 
 ## State
-- **Branch:** `dev` — has uncommitted fix (sync-guardian.yml email remapping + CHANGELOG/checkpoint/NEXT updates)
-- **Smoke tests:** 2255/2255
-- **Open PRs:** none
+- **Branch:** `main` — clean
+- **Smoke tests:** 2255/2255 (locally; green on CI)
+- **Open PRs:** none (Dependabot has `python-3.14-slim` + `pytest-asyncio` PRs sitting)
 - **Ship target:** v0.8.0 — date TBD
 - **Mode:** UAT + pre-v0.8.0 bug fixes
+
+## Queued work (pick one to start next session)
+
+Ordered by readiness, cheapest first:
+
+1. **Bandit triage** — 99 LOW findings surfaced after #45 cleared ruff. Categories observed: B105 hardcoded password strings (almost certainly the injection-pattern lists in `security/core.py`), B404/B603/B607 subprocess usage (Keychain CLI calls). Likely mostly `# nosec`-justifiable with comments; should be a small PR.
+2. **Semgrep findings review** — separate `sast / Semgrep SAST` job. Per-finding decision: fix vs `# nosemgrep` justification.
+3. **pytest 8.4.2 → 9.x for CVE-2025-71176** — major version bump. Needs migration-guide scan + full `make ci` before merge.
+4. **Test-infra decision (NEEDS JP)** — skip markers vs service containers in CI. Architectural call. Affects how the `test / Tests & Coverage` job is structured going forward; currently fails because integration tests need a real PostgreSQL.
+5. **Guardian #21 ADR** — security-layer architecture (where Guardian ends, where Anneal begins). Upstream of Guardian #18/#19/#20. Probably belongs after v0.8.0 per strategic note, but the ADR itself is cheap to draft now.
 
 ## Infrastructure reminder — START OF EVERY SESSION
 ```bash
@@ -44,6 +54,13 @@ make briefing    # reads NEXT.md
 ```
 **Before writing the day's plan:** run `gh pr list --state open` — don't schedule a UAT test
 for a feature that isn't merged yet. That was the root cause of Day 6's wasted session.
+
+### ✅ Done this session (2026-06-15 — CI hardening)
+- **#43 merged** — F811 + F821 ruff correctness errors (7 real bugs): `connectors/base.py` asyncio annotation before import; `database.py:bulk_delete_tasks` calling nonexistent `get_maintenance_pool()` (fixed to `get_user_connection` — RLS defense-in-depth); `routes/tasks.py` local `from datetime import timedelta` extended to include `datetime, timezone`; `gateway/state.py` proper `TYPE_CHECKING` guard for redis; `security/core.py` deleted obsolete dict-only `sanitize_messages` that was being silently shadowed at import time.
+- **#44 merged** — `fastapi~=0.135.0` pin. Root cause: `fastapi~=0.132` reads as `>=0.132,<1.0` per PEP 440, pip pulled in 0.137 the moment it shipped today, and 0.137's `_IncludedRouter` lacks `.path`, breaking ~27 smoke tests. Dependabot will now propose future minors individually.
+- **#45 merged** — 24 cosmetic ruff errors across 9 files cleared. F541/F401/F841 all resolved by deleting dead code or converting `# noqa` to proper `__all__` re-exports; E402 suppressed at intentional-placement sites with block-level rationale.
+- **Guardian #18, #19, #20, #21 filed** — multi-turn fragmented injection, multi-modal payloads, synthesis attacks across tool returns, and the architecture ADR. #21 is upstream of the other three; recommended starting position when picking the Guardian-side work back up.
+- **Issue #29 status comment posted** — original checklist's ruff line is fully closed; bandit (99 LOW, newly surfaced), pytest CVE, semgrep, and test infrastructure remain open.
 
 ### ✅ Done this session (2026-03-26)
 - Diagnosed jp-cruz appearing as contributor on `LegionForge/LegionForge-Guardian` — root cause: `jp@legionforge.org` email in 14 of 16 guardian subtree commits was not being remapped by sync workflow
