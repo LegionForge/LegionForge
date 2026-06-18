@@ -26,7 +26,7 @@
 #   - The macOS Keychain (not in the container)
 #   - Any LegionForge source code or credentials
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Create non-root system user to run the analyzer
 RUN groupadd --system analyzer \
