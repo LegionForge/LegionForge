@@ -58,7 +58,7 @@ jobs:
       POSTGRES_USER: legionforge_admin
       POSTGRES_PASSWORD: ci_test_password
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
