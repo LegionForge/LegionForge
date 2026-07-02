@@ -33,7 +33,7 @@ keyring~=25.0
 python-dotenv~=1.0
 
 # ── JWT / Task Tokens (Phase 3) + OIDC JWKS validation (Phase 12) ────────────
-PyJWT[crypto]~=2.8          # [crypto] extra adds cryptography dep for RS256/ES256 JWKS decode
+PyJWT[crypto]~=2.13          # [crypto] extra adds cryptography dep for RS256/ES256 JWKS decode
 
 # ── Ed25519 Tool Signing (Phase 5) ───────────────────────────
 cryptography>=48.0.1,<50          # Ed25519 + PyJWT. ≥48.0.1 fixes GHSA-537c-gmf6-5ccf (issue #29 audit slice). ≥46.0.5 still required for SECT curve subgroup attack fix. APIs used (ed25519, serialization) stable across 46→49.
