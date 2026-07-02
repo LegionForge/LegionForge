@@ -136,7 +136,13 @@ def get_api_key(service: str, _retries: int = 3, _retry_delay: float = 0.5) -> s
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except Exception as e:
-        logger.debug("[security] security CLI lookup failed for %s: %s", service, e)
+        # Log only the exception type: TimeoutExpired carries the captured
+        # stdout, which is the key itself when the read times out mid-value.
+        logger.debug(
+            "[security] security CLI lookup failed for %s: %s",
+            service,
+            type(e).__name__,
+        )
 
     # ── 4. Environment variable fallback ─────────────────────────────────────
     env_var = _KEY_ENV_FALLBACKS.get(service, f"{service.upper()}_API_KEY")

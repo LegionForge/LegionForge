@@ -5301,7 +5301,8 @@ async def rotate_api_key(user_id: str, new_key_hash: str) -> bool:
         # Logs user_id only (an internal integer ID). "API_KEY" is the audit
         # event type name, not a value.
         logger.exception(  # nosemgrep: python-logger-credential-disclosure
-            "[security] API_KEY_ROTATED audit write failed for user_id=%s", user_id
+            "[security] API_KEY_ROTATED audit write failed for user_id=%s",
+            _log_safe(user_id),
         )
 
     return True
