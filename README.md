@@ -4,6 +4,8 @@
 
 > Security is enforced in the execution path — not layered on afterward.
 
+💛 [Support this project](https://legionforge.org/donations) — LegionForge is open-source and independently maintained.
+
 ---
 
 ## What Is This?
