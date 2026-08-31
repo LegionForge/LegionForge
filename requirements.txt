@@ -61,7 +61,7 @@ bcrypt~=4.0                     # API key hashing (bcrypt; passlib 1.7 incompati
 ldap3~=2.9                      # LDAP / Active Directory auth (LDAPBackend)
 
 # ── Redis State Layer (Phase 13) ──────────────────────────────
-redis[asyncio]~=5.0             # Optional Redis-backed stream tokens + rate counters
+redis[asyncio]~=8.0             # Optional Redis-backed stream tokens + rate counters
 # gssapi>=1.8.3                 # Optional Kerberos/SPNEGO auth — required only when auth_provider=kerberos
 #                               # macOS: must build from source against Homebrew MIT Kerberos (not Heimdal):
 #                               #   brew install krb5
