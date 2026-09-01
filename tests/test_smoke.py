@@ -4760,13 +4760,13 @@ def test_dockerfile_sandbox_exists():
 
 
 def test_dockerfile_sandbox_uses_slim_base():
-    """Dockerfile.sandbox uses the python:3.11-slim base image."""
+    """Dockerfile.sandbox uses the python:3.14-slim base image."""
     import os
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     dockerfile = os.path.join(project_root, "Dockerfile.sandbox")
     content = open(dockerfile).read()
-    assert "python:3.11-slim" in content
+    assert "python:3.14-slim" in content
 
 
 def test_dockerfile_sandbox_drops_to_nonroot():

@@ -118,7 +118,7 @@ git log --oneline -1 → fix: gateway_users schema + Kerberos tests 5/5 passing 
 | `packages/guardian/Dockerfile` | Standalone Guardian deploy — no LegionForge source required |
 | `Dockerfile.analyzer` | Pre-HITL analyzer — deny-default (`--network none --read-only --pids-limit 20`) |
 | `Dockerfile.pentest` | PentestAgent — air-gapped (`--network none --read-only`) |
-| `Dockerfile.sandbox` | code_execute sandbox — Python 3.11-slim, non-root `sandbox` user, stdlib only |
+| `Dockerfile.sandbox` | code_execute sandbox — Python 3.14-slim, non-root `sandbox` user, stdlib only |
 | `Dockerfile.gateway` | Gateway service (:8080) — `uvicorn`, non-root `gateway` user, multi-worker ready |
 | `Dockerfile.testclient` | HTTP test client — 4 suites (basic/load/pentest/injection), non-root `testclient` user, httpx only |
 
