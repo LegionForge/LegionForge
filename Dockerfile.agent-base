@@ -8,7 +8,7 @@
 #        require remapping pgvector's dylib; containerising Ollama loses
 #        Apple Silicon Metal GPU access.
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Security: non-root user for agent processes
 RUN addgroup --system agent && adduser --system --ingroup agent agent

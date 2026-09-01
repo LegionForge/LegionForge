@@ -1,7 +1,7 @@
 # ============================================================
 # Dockerfile.sandbox — LegionForge sandboxed code execution
 # ============================================================
-# Air-gapped Python 3.11 sandbox for the code_execute tool.
+# Air-gapped Python 3.14 sandbox for the code_execute tool.
 #
 # Runtime flags (enforced by code_tools.py, not this file):
 #   --network none          no outbound network
@@ -17,7 +17,7 @@
 #   make sandbox-build
 # ============================================================
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # No network access at runtime, so install only what's needed at build time.
 # Packages: matplotlib + numpy for charts (Options A/B), plotly for interactive
