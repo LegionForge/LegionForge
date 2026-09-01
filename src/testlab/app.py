@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -45,6 +46,8 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
+
+logger = logging.getLogger(__name__)
 
 # ── Project root (two levels up from this file) ───────────────────────────────
 _ROOT = Path(__file__).parent.parent.parent
@@ -76,8 +79,12 @@ def _load_admin_key() -> str:
         if key:
             _ADMIN_KEY = key
             return _ADMIN_KEY
-    except Exception:
-        pass
+    except Exception as e:
+        # Keychain lookup failure is non-fatal — env-var path was tried first
+        # and the RuntimeError below will surface the missing-key state. Log at
+        # debug so a configured operator can see what happened without
+        # spamming production output.
+        logger.debug("[testlab] Keychain admin-key lookup failed: %s", e)
     raise RuntimeError(
         "No admin key found. Set TESTLAB_ADMIN_KEY env var or populate "
         "'legionforge_health' Keychain item."
@@ -403,7 +410,10 @@ async def run_suite(req: RunRequest, request: Request):
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
 
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -645,7 +655,10 @@ async def run_single_test(req: SingleTestRequest, request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -707,7 +720,10 @@ async def run_category(req: CategoryRunRequest, request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -765,7 +781,10 @@ async def generate_llm_general(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -818,7 +837,10 @@ async def generate_llm_security(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)
@@ -871,7 +893,10 @@ async def generate_cve_tests(request: Request):
             stderr=asyncio.subprocess.STDOUT,
             env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"},
         )
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise RuntimeError(
+                "subprocess_exec did not yield stdout — PIPE configuration missing"
+            )
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
             full_output.append(line)

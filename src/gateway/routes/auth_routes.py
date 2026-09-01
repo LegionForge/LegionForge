@@ -81,12 +81,16 @@ async def rotate_api_key(user: dict = Depends(require_user)) -> dict:
 
     updated = await db_rotate(user["user_id"], new_hash)
     if not updated:
-        logger.error("[auth] rotate_api_key: user_id=%s not found", _log_safe(user["user_id"]))
+        # nosemgrep: python-logger-credential-disclosure -- _log_safe redacts user_id; no key value is logged.
+        logger.error(
+            "[auth] rotate_api_key: user_id=%s not found", _log_safe(user["user_id"])
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to rotate API key — user not found",
         )
 
+    # nosemgrep: python-logger-credential-disclosure -- _log_safe redacts username; rotated key value is not logged.
     logger.info("[auth] API key rotated for user=%s", _log_safe(user["username"]))
     return {
         "username": user["username"],

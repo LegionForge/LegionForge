@@ -113,9 +113,10 @@ def _load_private_key_hex() -> str | None:
     if key_hex:
         return key_hex
 
-    # 2. macOS Keychain via security CLI (timeout-guarded)
+    # 2. macOS Keychain via security CLI (timeout-guarded).
+    # `_SIGNING_KEY_SERVICE` is a module constant; `security` is /usr/bin/security.
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             [
                 "security",
                 "find-generic-password",

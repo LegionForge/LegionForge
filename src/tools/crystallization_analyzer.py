@@ -538,11 +538,12 @@ def _build_container_cmd(python_args: list[str]) -> list[str] | None:
 
         if not getattr(_settings.security, "analyzer_container_enabled", True):
             return None
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
+    # Hardcoded argv; `docker` is the dev-environment binary on PATH.
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # nosec B603 B607
             ["docker", "image", "inspect", "legionforge-analyzer:latest"],
             capture_output=True,
             timeout=2,
@@ -560,7 +561,8 @@ def _build_container_cmd(python_args: list[str]) -> list[str] | None:
         "none",
         "--read-only",
         "--tmpfs",
-        "/tmp:size=10m",  # nosec B108 — Docker tmpfs mount arg, not a Python tempfile path
+        # Docker tmpfs mount argument, not a Python tempfile path — B108 doesn't apply.
+        "/tmp:size=10m",  # nosec B108
         "--memory",
         "128m",
         "--cpus",
@@ -650,8 +652,13 @@ except Exception as e:
     # Use secret-stripped environment — NEVER pass the full os.environ
     safe_env = _get_safe_env()
 
+    # `cmd` is _build_sandboxed_cmd(base_cmd): runs sys.executable inside a
+    # `docker run --network none --read-only --tmpfs /tmp:size=10m --cap-drop ALL
+    # --user analyzer` sandbox. test_input is passed as a JSON-encoded argv
+    # element to a hardcoded runner script — not interpreted by a shell.
+    # First element is sys.executable (absolute path), so B607 does not fire.
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603
             cmd,
             capture_output=True,
             text=True,
@@ -727,7 +734,7 @@ async def analyze_package(package_id: str) -> dict[str, Any]:
                 if candidate:
                     example_inputs = candidate.get("example_inputs") or []
                     example_outputs = candidate.get("example_outputs") or []
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
     except Exception as e:
@@ -866,7 +873,7 @@ async def analyze_package(package_id: str) -> dict[str, Any]:
             count = candidate.get("observed_count", 1)
             # Rough extrapolation to daily savings
             estimated_daily_savings = int(token_total / max(count, 1) * 10)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # ── Persist analysis ──────────────────────────────────────────────────────
