@@ -218,5 +218,9 @@ def _derive_branch_token(
             granted_data_classes=granted_data_classes,
         )
     except Exception as exc:
-        logger.warning("[fan_out] Token derivation failed for branch: %s", exc)
+        # nosemgrep: python-logger-credential-disclosure -- logs the exception only; "Token" is the operation name, not a value.
+        logger.warning(
+            "[fan_out] Token derivation failed for branch: %s",
+            exc,
+        )
         return None

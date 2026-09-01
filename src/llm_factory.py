@@ -217,7 +217,7 @@ def _evict_ollama_model(model_name: str, base_url: str) -> None:
             timeout=10.0,
         )
         logger.info("Evicted Ollama model '%s' from VRAM", model_name)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -240,7 +240,7 @@ def _evict_other_ollama_models(target_model: str, base_url: str) -> None:
             # Normalise: treat "model" and "model:latest" as the same
             if loaded_name.rstrip(":latest") != target_model.rstrip(":latest"):
                 _evict_ollama_model(loaded_name, base_url)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 

@@ -181,7 +181,8 @@ def build_app(api_key: str, inbound_secret: str) -> FastAPI:
             )
         if is_ssrf_url(callback_url):
             logger.warning(
-                "[webhook] Blocked SSRF callback_url attempt: %s", _log_safe(callback_url)
+                "[webhook] Blocked SSRF callback_url attempt: %s",
+                _log_safe(callback_url),
             )
             raise HTTPException(
                 status_code=422,
@@ -300,7 +301,7 @@ def main() -> None:
             "legionforge_webhook_inbound_secret", "WEBHOOK_INBOUND_SECRET"
         )
     except RuntimeError:
-        inbound_secret = ""
+        inbound_secret = ""  # nosec B105
         logger.warning(
             "[webhook] No inbound secret configured — HMAC verification disabled. "
             "Set legionforge_webhook_inbound_secret in Keychain for production use."

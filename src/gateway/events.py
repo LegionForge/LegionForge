@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import OrderedDict
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,7 @@ _BLOCK_REASON_LABELS: dict[str, str] = {
     "action_loop_detected": (
         "Repeated action detected — the same tool was called too many times in a row"
     ),
-    "acl_token_violation": "Tool is not in the authorized scope for this task",
+    "acl_token_violation": "Tool is not in the authorized scope for this task",  # nosec B105
     "ssrf_protection": "URL was blocked (private network address protection)",
     "hitl_required": "This action requires human approval before it can proceed",
     "injection_detected": "Security pattern detected in tool arguments — run halted",
@@ -339,7 +340,7 @@ async def publish_event(task_id: str, event: dict) -> None:
         del _channels[task_id]
 
 
-async def subscribe_task_events(task_id: str) -> asyncio.AsyncGenerator[dict, None]:
+async def subscribe_task_events(task_id: str) -> AsyncGenerator[dict, None]:
     """
     Async generator that yields SSE event dicts as the worker publishes them.
     Yields a heartbeat every 15 s while waiting.  Closes on terminal event.
@@ -471,7 +472,7 @@ async def publish_pipeline_event(run_id: int, event: dict) -> None:
 
 async def subscribe_pipeline_events(
     run_id: int,
-) -> asyncio.AsyncGenerator[dict, None]:
+) -> AsyncGenerator[dict, None]:
     """
     Async generator that yields pipeline SSE events as the runner publishes them.
     Yields heartbeats every 15 s.  Closes on pipeline_complete / pipeline_failed.

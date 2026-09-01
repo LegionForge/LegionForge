@@ -47,14 +47,15 @@ class SafeguardedState(dict):
 
     # These are the keys every safeguarded graph should carry.
     # Defined here as documentation — actual typing is via TypedDict in subclasses.
-    _SAFEGUARD_FIELDS = {
+    _SAFEGUARD_FIELDS: dict[str, object] = {
         "step_count": 0,  # Auto-increments each node
         "max_steps": None,  # Set from profile at run creation
         "error_count": 0,  # Incremented on node errors
         "loop_detected": False,  # Set by detect_action_loop()
         "force_end": False,  # Set by any safeguard to terminate graph
         "action_history": [],  # Last N tool call signatures
-        "token_count": 0,  # Running token total
+        # Running token total — state-dict counter, not a credential.
+        "token_count": 0,  # nosec B105
         "run_id": None,  # UUID for this run
         "tracing_enabled": True,  # Per-run LangSmith toggle
         # Phase 2 HITL fields — populated by check_hitl_required() on HALT tier
@@ -103,7 +104,7 @@ class SafeguardedState(dict):
             "loop_detected": False,
             "force_end": False,
             "action_history": [],
-            "token_count": 0,
+            "token_count": 0,  # nosec B105
             "run_id": str(uuid.uuid4()),
             "tracing_enabled": tracing_enabled,
             "messages": [],
