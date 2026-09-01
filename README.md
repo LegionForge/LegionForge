@@ -4,8 +4,6 @@
 
 > Security is enforced in the execution path — not layered on afterward.
 
-💛 [Donate to LegionForge](https://legionforge.org/donations) — LegionForge is open-source and independently maintained.
-
 ---
 
 ## What Is This?
@@ -326,3 +324,8 @@ Copyright 2026 John Paul "Jp" Cruz.
 **v0.7.1-alpha** — Phases 0–381 + H + I + J (WhatsApp) + HITL approval flow + all 5 agent memory gaps + Guardian G4 (published to PyPI) complete. 2247/2247 smoke tests. 41/41 integration tests. 5/5 Kerberos live-KDC tests. 40/40 UI tests. 114/114 crystallization tests. All pre-v1.0 security blockers resolved. Dual-licensed AGPLv3 + commercial.
 
 Contributions, issues, and commercial licensing inquiries are welcome via [GitHub Issues](https://github.com/LegionForge/LegionForge/issues).
+
+---
+
+If you find this project useful, [donations to LegionForge](https://legionforge.org/donations)
+help support ongoing development — entirely optional, never required.
