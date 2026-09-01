@@ -1174,10 +1174,10 @@ security-audit:
 	@echo "--- JS syntax check (index.html) ---"
 	@$(MAKE) --no-print-directory js-check
 	@echo ""
-	@echo "--- bandit static analysis (medium+ severity) ---"
+	@echo "--- bandit static analysis (all severities, pyproject.toml config) ---"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \
-		$(VENV)/bin/bandit -r $(BASE)/src/ -ll && echo "✅ bandit: no medium/high issues found" \
-		|| (echo "❌ bandit found medium/high severity issues above — fix before merging" && exit 1); \
+		$(VENV)/bin/bandit -r $(BASE)/src/ -c $(BASE)/pyproject.toml && echo "✅ bandit: clean" \
+		|| (echo "❌ bandit found issues above — fix before merging" && exit 1); \
 	else \
 		echo "⚠️  bandit not installed. Run: make install"; \
 	fi
@@ -1211,9 +1211,9 @@ review-prep:
 	@echo ""
 	@echo "─── [3/7] Bandit static analysis ────────────────────"
 	@if [ -x "$(VENV)/bin/bandit" ]; then \
-		$(VENV)/bin/bandit -r $(BASE)/src/ -ll \
-		&& echo "✅ Bandit: no medium/high issues" \
-		|| (echo "❌ Bandit: medium/high issues above — fix before merging" && exit 1); \
+		$(VENV)/bin/bandit -r $(BASE)/src/ -c $(BASE)/pyproject.toml \
+		&& echo "✅ Bandit: clean (all severities, pyproject.toml config — matches CI)" \
+		|| (echo "❌ Bandit: issues above — fix before merging" && exit 1); \
 	else \
 		echo "⚠️  bandit not installed — run: make install"; \
 	fi

@@ -717,7 +717,7 @@ async def score_embedding_trust(doc: dict) -> float:
             row = await cur.fetchone()
         if row and row["trust_score"] is not None:
             return float(row["trust_score"])
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return 0.5
 
@@ -842,7 +842,7 @@ class SecureToolNode:
                         "tool_blocked",
                         {"tool": tool_id, "reason": "registry_check_failed"},
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Non-fatal: UI falls back to client-side detection
                 # Inject an error ToolMessage so the LLM can:
                 #   (a) retry with a different tool if one is available, OR
@@ -892,7 +892,7 @@ class SecureToolNode:
                         "tool_blocked",
                         {"tool": tool_id, "reason": "acl_token_violation"},
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass
                 # Add synthetic ToolMessages for every pending tool_call so the
                 # conversation state stays valid (no dangling tool_calls without a
@@ -958,7 +958,7 @@ class SecureToolNode:
                                 "reason": guardian_resp.reason,
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Non-fatal — run continues regardless
 
                     try:
@@ -966,7 +966,7 @@ class SecureToolNode:
                             "tool_blocked",
                             {"tool": tool_id, "reason": "sandbox_sequence_violation"},
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
                     sandbox_messages.append(
                         ToolMessage(
@@ -1000,7 +1000,7 @@ class SecureToolNode:
                                 "reason": "capability_boundary_violation",
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
                     # Add synthetic ToolMessages to close dangling tool_calls.
                     _guardian_halt_msgs = [
@@ -1038,7 +1038,7 @@ class SecureToolNode:
                         "tool_blocked",
                         {"tool": tool_id, "reason": "action_loop_detected"},
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass
                 return result
 
@@ -1093,7 +1093,7 @@ class SecureToolNode:
                                 "tool_blocked",
                                 {"tool": tool_id, "reason": "injection_detected"},
                             )
-                        except Exception:
+                        except Exception:  # nosec B110
                             pass
                         return {"force_end": True, "loop_detected": False}
                     else:
@@ -1138,7 +1138,7 @@ class SecureToolNode:
                                 "tool_blocked",
                                 {"tool": tool_id, "reason": "ssrf_protection"},
                             )
-                        except Exception:
+                        except Exception:  # nosec B110
                             pass
                         return {"force_end": True, "loop_detected": False}
 
@@ -1174,7 +1174,7 @@ class SecureToolNode:
                                 "tool_blocked",
                                 {"tool": tool_id, "reason": "hitl_required"},
                             )
-                        except Exception:
+                        except Exception:  # nosec B110
                             pass
                         return result
 
@@ -1258,14 +1258,14 @@ class SecureToolNode:
                                 "unexpected_call_id": tc_id,
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
                     try:
                         await adispatch_custom_event(
                             "tool_blocked",
                             {"tool": "unknown", "reason": "toctou_violation"},
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
                     return {"force_end": True, "loop_detected": False}
 
