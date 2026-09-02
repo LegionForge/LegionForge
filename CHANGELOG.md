@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — 2026-09-01/02 (org-wide PR/CI sweep)
+
+- **sast job permissions caused a silent org-wide `startup_failure`** (PR #62) — a job-level `permissions:` override on a `uses: dev-rig/.github/workflows/sast.yml` line replaces (not merges with) the caller's default permissions. Without `contents: read`, `security-events: write`, and `actions: read` explicitly listed, GitHub rejects the workflow at validation time before any job runs — no check ever posts, so branch-protection required-status-checks blocked every PR indefinitely with no visible error. Same root cause fixed across `guardian`, `context-governor`, `jeli`, `llm-valet`, and `mcp-probe` this session. See memory `lessons-legionforge.md` LF-13.
+- **Docker sandbox base image was still Python 3.11** (PR #37) — `Dockerfile.sandbox` and its header comment bumped to `python:3.14-slim`; `tests/test_smoke.py::test_dockerfile_sandbox_uses_slim_base` and `docs/PROJECT_STATUS.md` updated to match.
+- **CodeQL clear-text-logging + log-injection findings** (PR #55) — sanitized user-controlled values before logging.
+- Dependency bumps merged: redis `~=5.0→~=8.0`, psycopg `~=3.1→~=3.3`, numpy `<3,>=1.26→>=2.4.6,<3`, pyjwt `~=2.8→~=2.13`, langchain `~=1.0→~=1.3`, pytest-asyncio `~=1.0→~=1.4`, aiohttp `~=3.9→~=3.14`, sse-starlette `~=2.0→~=3.4`, `actions/checkout` 6→7, `actions/setup-python` 6→7.
+- dev-rig reusable-workflow SHA pins bumped (twice — once for a toolchain-input fix, once for the trivy-action severity-filter fix, see LF-14).
+- README donate/support link added, then moved to the footer with softened framing to match org convention.
+
 ### Fixed — 2026-06-15 (CI hardening — issue #29 correctness slice)
 
 - **Undefined names + shadowed function in src/** (PR #43) — closed 7 ruff correctness errors flagged in #29 that were real bugs, not style. `src/connectors/base.py` referenced `asyncio` in a type annotation before importing it (lifted to module-top). `src/database.py:bulk_delete_tasks` called a nonexistent `get_maintenance_pool()` — switched to `get_user_connection(user_id)` to match `bulk_cancel_tasks` (RLS-enforced defense-in-depth on user-initiated deletes). `src/gateway/routes/tasks.py` extended local `from datetime import timedelta` to also include `datetime, timezone`. `src/gateway/state.py` replaced `# type: ignore[name-defined]` with a proper `if TYPE_CHECKING: import redis.asyncio` guard. `src/security/core.py` deleted the obsolete dict-only `sanitize_messages` def at line 438 that was being silently overwritten at import time by the BaseMessage-aware def at line 506.
