@@ -1,10 +1,10 @@
 VERSION: 0.7.1-alpha
-UPDATE: 347
+UPDATE: 348
 BRANCH: main
-COMMIT: 9a6cc2c
-TIMESTAMP: 2026-06-15T04:30Z
-LAST_OP: CI hardening — three PRs merged closing the correctness slice of issue #29: #43 (F811/F821 ruff fixes — real undefined-name bugs), #44 (fastapi~=0.135.0 pin — 0.137 broke route enumeration in `app.routes`), #45 (F401/F541/F841/E402 cosmetic ruff cleanup). Smoke tests on main now green again; bandit (99 LOW), pytest CVE, semgrep, and test-infra decision remain open from #29. Filed Guardian issues #18–#21 (multi-turn / multi-modal / synthesis attacks + ADR for security-layer architecture).
-NEXT_OP: triage bandit 99 LOW findings (likely mostly `# nosec`-justifiable) as separate PR; then pytest 9.x bump for CVE-2025-71176; then semgrep review pass. Test-infra decision (skip markers vs service containers) needs Jp's architectural call.
+COMMIT: 967f592
+TIMESTAMP: 2026-09-01T13:30Z
+LAST_OP: Org-wide Dependabot/CI sweep — merged a large batch of dependency bumps (redis, psycopg, numpy, pyjwt, langchain, pytest-asyncio, aiohttp, sse-starlette, actions/checkout, actions/setup-python), a real CodeQL fix (clear-text-logging + log-injection, #55), the sast job permissions fix (#62, closes the org-wide dev-rig startup_failure bug — see lessons-legionforge LF-13), a dev-rig SHA pin (#61), the README donate-link addition + footer move, and a Python 3.11→3.14-slim sandbox base image bump (#37) with its matching test fix. `dev` branch no longer exists on origin — all work lands on `main` via feature branches now.
+NEXT_OP: bandit 99 LOW findings, pytest CVE-2025-71176 bump, and semgrep review pass from #29 are still untriaged (predate this session, not addressed here). Issue numbering has shifted since this file was last accurate — see issues #24/#25/#26 (renumbered from what earlier notes call #295/#296/#297) for the Guardian+Anneal / credential-provider / infra-secrets decisions, still open.
 SMOKE_TESTS: 2255/2255
 INTEGRATION_TESTS: 41/41
 KERBEROS_TESTS: 5/5
