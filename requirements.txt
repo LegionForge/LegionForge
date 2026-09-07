@@ -70,7 +70,7 @@ redis[asyncio]~=8.0             # Optional Redis-backed stream tokens + rate cou
 #                               #   GSSAPI_LINKER_ARGS="-L/opt/homebrew/opt/krb5/lib -lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err -Wl,-rpath,/opt/homebrew/opt/krb5/lib" \
 #                               #   pip install --no-binary :all: gssapi
 #                               # Linux: apt-get install libkrb5-dev && pip install gssapi
-fakeredis~=2.23                 # In-process fake Redis for smoke tests (no daemon required)
+fakeredis~=2.37                 # In-process fake Redis for smoke tests (no daemon required)
 
 # ── Scheduled Tasks (Phase 23) ───────────────────────────────
 croniter~=6.0                   # Cron expression parsing for scheduled task recurrence
