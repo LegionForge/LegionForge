@@ -88,7 +88,7 @@ black>=26.3.1                     # Code formatter (CVE-2026-32274 fix; was ~=24
 bandit~=1.8                      # Static security analysis (required for make security-audit)
 pip-audit~=2.10                   # Dependency CVE scanning via OSV/PyPI Advisory DB (make dep-audit)
 pip-tools~=7.4                   # Dependency pinning — make lock regenerates requirements.lock
-playwright~=1.50                 # Browser automation for UI tests (make test-ui)
+playwright~=1.62                 # Browser automation for UI tests (make test-ui)
 pytest-playwright~=0.6           # Playwright pytest plugin
 
 # ── Guardian standalone package (Phase G2) ───────────────────
