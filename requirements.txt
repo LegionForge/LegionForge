@@ -85,7 +85,7 @@ pytest~=9.0                      # ≥9.0.3 fixes CVE-2025-71176 (issue #29 audi
 pytest-asyncio~=1.4              # required for pytest 9 compat (0.23 only supports pytest 8.x)
 pytest-timeout~=2.3              # Per-test timeout support (--timeout flag, Phase 69 fix)
 black>=26.3.1                     # Code formatter (CVE-2026-32274 fix; was ~=24.0)
-bandit~=1.8                      # Static security analysis (required for make security-audit)
+bandit~=1.9                      # Static security analysis (required for make security-audit)
 pip-audit~=2.10                   # Dependency CVE scanning via OSV/PyPI Advisory DB (make dep-audit)
 pip-tools~=7.4                   # Dependency pinning — make lock regenerates requirements.lock
 playwright~=1.62                 # Browser automation for UI tests (make test-ui)
