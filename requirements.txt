@@ -20,7 +20,7 @@ langsmith~=0.1
 # ── Persistence — PostgreSQL ──────────────────────────────────
 langgraph-checkpoint-postgres~=3.0
 psycopg[binary,pool]~=3.3
-pgvector~=0.3
+pgvector~=0.5
 
 
 # ── Config & Validation ──────────────────────────────────────
