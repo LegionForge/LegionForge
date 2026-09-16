@@ -89,7 +89,7 @@ bandit~=1.9                      # Static security analysis (required for make s
 pip-audit~=2.10                   # Dependency CVE scanning via OSV/PyPI Advisory DB (make dep-audit)
 pip-tools~=7.4                   # Dependency pinning — make lock regenerates requirements.lock
 playwright~=1.62                 # Browser automation for UI tests (make test-ui)
-pytest-playwright~=0.6           # Playwright pytest plugin
+pytest-playwright~=0.9           # Playwright pytest plugin
 
 # ── Guardian standalone package (Phase G2) ───────────────────
 legionforge-guardian==0.1.1        # security sidecar — standalone repo LegionForge/guardian
