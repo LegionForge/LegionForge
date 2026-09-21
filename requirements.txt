@@ -77,7 +77,7 @@ croniter~=6.0                   # Cron expression parsing for scheduled task rec
 
 # ── Channel Connectors (Phase 8 / Phase 16) ──────────────────
 discord.py~=2.3                 # Discord bot connector (Phase 8)
-python-telegram-bot~=21.0       # Telegram bot connector (Phase 16)
+python-telegram-bot~=22.8       # Telegram bot connector (Phase 16)
 slack-bolt~=1.18                # Slack Socket Mode connector (Phase 16)
 
 # ── Dev / Testing ────────────────────────────────────────────
