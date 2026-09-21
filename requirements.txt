@@ -39,7 +39,7 @@ PyJWT[crypto]~=2.13          # [crypto] extra adds cryptography dep for RS256/ES
 cryptography>=50.0.1               # Ed25519 + PyJWT. ≥50.0.1 fixes PYSEC-2026-3552. ≥48.0.1 fixes GHSA-537c-gmf6-5ccf (issue #29 audit slice). ≥46.0.5 still required for SECT curve subgroup attack fix. APIs used (ed25519, serialization) stable across 46→50.
 
 # ── Token Counting & Rate Limiting ───────────────────────────
-tiktoken~=0.7
+tiktoken~=0.14
 aiolimiter~=1.1                  # Async rate limiter for API calls
 
 # ── Web Search (Researcher agent) ────────────────────────────
