@@ -73,7 +73,7 @@ redis[asyncio]~=8.1             # Optional Redis-backed stream tokens + rate cou
 fakeredis~=2.38                 # In-process fake Redis for smoke tests (no daemon required)
 
 # ── Scheduled Tasks (Phase 23) ───────────────────────────────
-croniter~=6.0                   # Cron expression parsing for scheduled task recurrence
+croniter~=6.2                   # Cron expression parsing for scheduled task recurrence
 
 # ── Channel Connectors (Phase 8 / Phase 16) ──────────────────
 discord.py~=2.3                 # Discord bot connector (Phase 8)
