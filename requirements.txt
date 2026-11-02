@@ -29,7 +29,7 @@ pydantic-settings~=2.0
 pyyaml~=6.0
 
 # ── Secret Management ────────────────────────────────────────
-keyring~=25.0
+keyring~=25.7
 python-dotenv~=1.2
 
 # ── JWT / Task Tokens (Phase 3) + OIDC JWKS validation (Phase 12) ────────────
