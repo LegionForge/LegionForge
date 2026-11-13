@@ -8,34 +8,58 @@ name: Dependabot Auto-Merge
 #   - Security-fix PRs from Dependabot follow the same version-type rule; a major-version
 #     security fix still halts for manual testing rather than auto-merging.
 #
-# Does not rely on repo-level "Allow auto-merge" or branch protection (main has neither
-# configured) -- this job waits on `gh pr checks --watch` itself before merging directly.
+# Does not rely on repo-level "Allow auto-merge" or branch protection -- this job
+# polls the PR's other checks itself before merging directly.
+#
+# Hardening notes:
+#   - Gate on the PR author's numeric id (Dependabot's fixed app id), not the
+#     spoofable github.actor string.
+#   - dependabot/fetch-metadata is pinned to a commit SHA, not a floating tag.
+#   - Dependabot metadata outputs go through env vars, not direct ${{ }}
+#     interpolation into the run: block.
+#   - Write permissions are granted to the job, not the whole workflow.
+#
+# Waiting: `gh pr checks --watch` includes this job's own `triage` check, which
+# cannot finish while it waits (it ran into the 6 h limit). The wait step polls
+# every check except `triage` instead, and the job has a timeout.
+#
+# Merges made with GITHUB_TOKEN do not start push-triggered workflows, so
+# nothing runs on main after an auto-merge; the PR's checks are the gate.
 
 on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   triage:
-    if: github.actor == 'dependabot[bot]'
+    # 49699333 is Dependabot's fixed GitHub App id -- unlike github.actor,
+    # the PR author id cannot be spoofed by a same-named account.
+    if: github.event.pull_request.user.id == 49699333
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Classify risk
         id: risk
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
         run: |
           set -euo pipefail
-          UPDATE_TYPE="${{ steps.metadata.outputs.update-type }}"
-          NEW_VERSION="${{ steps.metadata.outputs.new-version }}"
           if [[ "$UPDATE_TYPE" == "version-update:semver-patch" ]] || \
              { [[ "$UPDATE_TYPE" == "version-update:semver-minor" ]] && [[ "$NEW_VERSION" != 0.* ]]; }; then
             echo "level=low" >> "$GITHUB_OUTPUT"
@@ -60,6 +84,25 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
-          gh pr checks "$PR_URL" --watch
+          # Poll every check except this job's own `triage`.
+          deadline=$((SECONDS + 3000))
+          while :; do
+            buckets=$(gh pr checks "$PR_URL" --json name,bucket \
+              --jq '[.[] | select(.name != "triage") | .bucket] | unique | join(",")' || true)
+            if [[ "$buckets" == *fail* || "$buckets" == *cancel* ]]; then
+              gh pr edit "$PR_URL" --add-label dependabot-needs-review
+              gh pr comment "$PR_URL" --body "Left open: CI is red, so this was not auto-merged. Please check the failing job."
+              exit 0
+            fi
+            # Merge only once at least one other check exists and none are pending.
+            if [[ -n "$buckets" && "$buckets" != *pending* ]]; then
+              break
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for CI; leaving PR open."
+              exit 1
+            fi
+            sleep 30
+          done
           gh pr merge "$PR_URL" --squash --body "Auto-merged autonomously by Claude Code — low-risk (patch/minor) dependency bump, full CI gate green. Not manually reviewed/merged by Jp."
           gh pr edit "$PR_URL" --add-label dependabot-auto-merged
