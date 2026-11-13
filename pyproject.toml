@@ -16,7 +16,7 @@ dependencies = {file = ["requirements.txt"]}
 dev = [
     "pytest",
     "pytest-cov",
-    "ruff==0.15.20",
+    "ruff==0.17.4",
     "bandit[toml]",
     "mypy",
     "types-PyYAML",
