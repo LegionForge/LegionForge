@@ -16,6 +16,19 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _all_routes(app):
+    """Flat route list across FastAPI versions.
+
+    FastAPI >= 0.137 keeps include_router() results as a single
+    ``_IncludedRouter`` in ``app.routes`` instead of flattening them.
+    """
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:
+        return list(app.routes)
+    return list(iter_route_contexts(app.routes))
+
+
 # ── Config tests ──────────────────────────────────────────────────────────────
 
 
@@ -1661,7 +1674,7 @@ def test_bom_endpoint_exists_in_health_app():
     """/bom endpoint is registered on the health FastAPI app."""
     from src.health import app
 
-    routes = {r.path for r in app.routes}
+    routes = {r.path for r in _all_routes(app)}
     assert "/bom" in routes, "/bom route must be registered on health app"
 
 
@@ -1669,7 +1682,7 @@ def test_rules_endpoints_exist_in_health_app():
     """/rules, /rules/{rule_id}/approve, /rules/{rule_id}/reject exist on health app."""
     from src.health import app
 
-    paths = {r.path for r in app.routes}
+    paths = {r.path for r in _all_routes(app)}
     assert "/rules" in paths
     assert "/rules/{rule_id}/approve" in paths
     assert "/rules/{rule_id}/reject" in paths
@@ -2155,7 +2168,7 @@ def test_health_crystallization_list_route_registered():
     """GET /crystallization/candidates route is registered in the health FastAPI app."""
     from src.health import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert "/crystallization/candidates" in paths
 
 
@@ -2165,7 +2178,9 @@ def test_health_crystallization_approve_route_registered():
     from src.health import app
 
     post_routes = [
-        r.path for r in app.routes if isinstance(r, APIRoute) and "POST" in r.methods
+        r.path
+        for r in _all_routes(app)
+        if isinstance(getattr(r, "original_route", r), APIRoute) and "POST" in r.methods
     ]
     assert any(
         "{package_id}/approve" in p for p in post_routes
@@ -2684,7 +2699,7 @@ def test_health_revoke_tool_endpoint_registered():
     """POST /tools/{tool_id}/revoke endpoint exists on the health server app."""
     from src.health import app as health_app
 
-    routes = {r.path for r in health_app.routes}
+    routes = {r.path for r in _all_routes(health_app)}
     assert (
         "/tools/{tool_id}/revoke" in routes
     ), f"Revoke endpoint not found. Routes: {routes}"
@@ -4074,7 +4089,7 @@ def test_gateway_mcp_router_has_tools_endpoint():
     """MCP router exposes GET /tools."""
     from src.gateway.routes.mcp import router
 
-    paths = [r.path for r in router.routes]
+    paths = [r.path for r in _all_routes(router)]
     assert "/tools" in paths
 
 
@@ -7195,7 +7210,7 @@ def test_p21_gateway_memory_route_importable():
 
     assert router is not None
     # Collect route paths
-    paths = {r.path for r in router.routes}
+    paths = {r.path for r in _all_routes(router)}
     assert "/ingest" in paths
     assert "/search" in paths
     assert "" in paths  # DELETE /memory (empty path on the router)
@@ -7465,7 +7480,7 @@ def test_p22_gateway_documents_route_importable():
     """Gateway documents router imports cleanly and has expected endpoints."""
     from src.gateway.routes.documents import router
 
-    paths = {r.path for r in router.routes}
+    paths = {r.path for r in _all_routes(router)}
     assert "" in paths  # GET /documents
     assert "/ingest" in paths
     assert any("{doc_id}" in p for p in paths)
@@ -7604,7 +7619,7 @@ def test_p23_gateway_app_includes_schedules_router():
     """Gateway app registers the /schedules router."""
     from src.gateway.app import app
 
-    routes = [r.path for r in app.routes if hasattr(r, "path")]
+    routes = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     sched_routes = [r for r in routes if "/schedules" in r]
     assert len(sched_routes) > 0, "No /schedules routes found in app"
 
@@ -7693,7 +7708,7 @@ def test_p24_gateway_app_includes_admin_router():
     """Gateway app registers the /admin router."""
     from src.gateway.app import app
 
-    routes = [r.path for r in app.routes if hasattr(r, "path")]
+    routes = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     admin_routes = [r for r in routes if "/admin" in r]
     assert len(admin_routes) > 0, "No /admin routes found in app"
 
@@ -7714,7 +7729,7 @@ def test_p25_gateway_includes_observability_routes():
     """Gateway app includes /admin/audit, /admin/threats, /admin/tools routes."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("/admin/audit" in p for p in paths), "Missing /admin/audit"
     assert any("/admin/threats" in p for p in paths), "Missing /admin/threats"
     assert any("/admin/tools" in p for p in paths), "Missing /admin/tools"
@@ -7754,7 +7769,7 @@ def test_p25_threat_summary_endpoint_registered():
     """GET /admin/threats/summary route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("threats/summary" in p for p in paths)
 
 
@@ -7762,7 +7777,7 @@ def test_p25_audit_verify_endpoint_registered():
     """GET /admin/audit/verify route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("audit/verify" in p for p in paths)
 
 
@@ -7770,7 +7785,7 @@ def test_p25_tool_status_put_endpoint_registered():
     """PUT /admin/tools/{tool_id}/status route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("tools" in p and "status" in p for p in paths)
 
 
@@ -7919,7 +7934,7 @@ def test_p27_gateway_app_includes_pipelines_router():
     """Gateway app registers /pipelines routes."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("/pipelines" in p for p in paths)
 
 
@@ -8012,7 +8027,7 @@ def test_p28_batch_endpoint_registered():
     """Gateway app exposes /tasks/batch route."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert "/tasks/batch" in paths
 
 
@@ -8184,7 +8199,7 @@ def test_p30_pipeline_stream_endpoint_registered():
     """Gateway exposes /pipelines/runs/{run_id}/stream route."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("runs" in p and "stream" in p for p in paths)
 
 
@@ -8246,7 +8261,7 @@ def test_p31_task_tags_endpoint_registered():
     """Gateway registers PUT /tasks/{task_id}/tags."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("tags" in p for p in paths)
 
 
@@ -8320,7 +8335,7 @@ def test_p32_task_notes_endpoints_registered():
     """Gateway registers POST/GET /tasks/{id}/notes and DELETE .../notes/{note_id}."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("notes" in p for p in paths)
 
 
@@ -8371,7 +8386,7 @@ def test_p33_retry_endpoint_registered():
     """Gateway registers POST /tasks/{task_id}/retry."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    paths = [r.path for r in _all_routes(app) if hasattr(r, "path")]
     assert any("retry" in p for p in paths)
 
 
@@ -9742,7 +9757,7 @@ def test_p48_webhook_route_registered_in_app():
     import inspect
     from src.gateway.app import app
 
-    routes = [r.path for r in app.routes]
+    routes = [r.path for r in _all_routes(app)]
     assert any("/webhooks" in p for p in routes)
 
 
@@ -9833,7 +9848,7 @@ def test_p49_attachment_routes_in_tasks():
     """tasks router has attachment endpoints."""
     from src.gateway.routes.tasks import router
 
-    paths = [r.path for r in router.routes]
+    paths = [r.path for r in _all_routes(router)]
     attachment_paths = [p for p in paths if "attachments" in p]
     assert len(attachment_paths) >= 3  # POST list, GET list, GET single, DELETE
 
@@ -9907,7 +9922,7 @@ def test_p50_template_route_registered_in_app():
     """app.py registers the templates router."""
     from src.gateway.app import app
 
-    routes = [r.path for r in app.routes]
+    routes = [r.path for r in _all_routes(app)]
     assert any("/templates" in p for p in routes)
 
 
@@ -9915,7 +9930,7 @@ def test_p50_template_run_endpoint_exists():
     """templates router includes a /run endpoint."""
     from src.gateway.routes.templates import router
 
-    paths = [r.path for r in router.routes]
+    paths = [r.path for r in _all_routes(router)]
     assert any("run" in p for p in paths)
 
 
@@ -10001,7 +10016,7 @@ def test_p51_share_endpoints_in_tasks_router():
     """tasks router has share endpoints (POST /share, GET /shares, DELETE /shares/token)."""
     from src.gateway.routes.tasks import router
 
-    paths = [r.path for r in router.routes]
+    paths = [r.path for r in _all_routes(router)]
     assert any("share" in p for p in paths)
 
 
@@ -10009,7 +10024,7 @@ def test_p51_public_shared_endpoint_in_app():
     """app.py has a public GET /shared/{token} endpoint."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any("shared" in p for p in paths)
 
 
@@ -10108,7 +10123,7 @@ def test_p52_preferences_routes_in_auth_router():
     """auth router has GET/PUT/DELETE /preferences routes."""
     from src.gateway.routes.auth_routes import router
 
-    paths = [r.path for r in router.routes]
+    paths = [r.path for r in _all_routes(router)]
     assert any("preferences" in p for p in paths)
 
 
@@ -10133,7 +10148,7 @@ def test_p53_usage_history_in_app():
     """app.py registers GET /usage/history."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert "/usage/history" in paths
 
 
@@ -10237,7 +10252,7 @@ def test_p54_sessions_router_registered():
     """app.py registers /sessions router."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any("sessions" in p for p in paths)
 
 
@@ -10689,7 +10704,7 @@ def test_p57_sessions_get_route_registered():
     """GET /sessions route is registered in the gateway app."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any(p == "/sessions" for p in paths), f"No /sessions route in {paths}"
 
 
@@ -10699,7 +10714,10 @@ def test_p57_sessions_post_route_registered():
     from fastapi.routing import APIRoute
 
     session_routes = [
-        r for r in app.routes if isinstance(r, APIRoute) and r.path == "/sessions"
+        r
+        for r in _all_routes(app)
+        if isinstance(getattr(r, "original_route", r), APIRoute)
+        and r.path == "/sessions"
     ]
     assert session_routes, "No /sessions route found"
     methods = {m for r in session_routes for m in r.methods}
@@ -10710,7 +10728,7 @@ def test_p57_sessions_delete_route_registered():
     """DELETE /sessions/{session_id} route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any("{session_id}" in p and "sessions" in p for p in paths)
 
 
@@ -10868,7 +10886,7 @@ def test_p59_annotate_route_registered():
     """POST /tasks/{task_id}/annotate route is registered in the gateway app."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any("annotate" in p for p in paths), f"No /annotate route in {paths}"
 
 
@@ -10876,7 +10894,7 @@ def test_p59_annotation_get_route_registered():
     """GET /tasks/{task_id}/annotation route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any(
         "annotation" in p and "annotate" not in p for p in paths
     ), f"No /annotation GET route in {paths}"
@@ -10886,7 +10904,7 @@ def test_p59_admin_annotations_route_registered():
     """GET /admin/annotations route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any(
         p == "/admin/annotations" for p in paths
     ), f"No /admin/annotations in {paths}"
@@ -10990,7 +11008,7 @@ def test_p61_templates_get_route_registered():
     """GET /templates route is registered in gateway app."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any(p == "/templates" for p in paths), f"No /templates route in {paths}"
 
 
@@ -11001,7 +11019,10 @@ def test_p61_templates_post_route_registered():
     from src.gateway.app import app
 
     tmpl_routes = [
-        r for r in app.routes if isinstance(r, APIRoute) and r.path == "/templates"
+        r
+        for r in _all_routes(app)
+        if isinstance(getattr(r, "original_route", r), APIRoute)
+        and r.path == "/templates"
     ]
     assert tmpl_routes, "No /templates route found"
     methods = {m for r in tmpl_routes for m in r.methods}
@@ -11012,7 +11033,7 @@ def test_p61_templates_delete_route_registered():
     """DELETE /templates/{template_id} route is registered."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any("{template_id}" in p and "templates" in p for p in paths)
 
 
@@ -11103,7 +11124,7 @@ def test_p63_usage_history_route_exists():
     """GET /usage/history route is registered in gateway app."""
     from src.gateway.app import app
 
-    paths = [r.path for r in app.routes]
+    paths = [r.path for r in _all_routes(app)]
     assert any(
         "usage" in p and "history" in p for p in paths
     ), f"No /usage/history route in {paths}"
