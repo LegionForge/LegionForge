@@ -11,7 +11,7 @@ langchain-community~=0.4          # no 1.x release yet; stays on 0.3
 
 # ── LLM Provider Clients ─────────────────────────────────────
 langchain-openai~=1.0
-langchain-anthropic~=1.0
+langchain-anthropic~=1.7
 langchain-ollama~=1.0
 
 # ── Observability ────────────────────────────────────────────
